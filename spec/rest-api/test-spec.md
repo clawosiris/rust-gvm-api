@@ -1,0 +1,245 @@
+# Test Spec: GVM REST API (`gvm-rest-api`)
+
+## 1. Test Strategy
+
+### Test Pyramid
+
+```
+         ┌──────────┐
+         │   E2E    │  Against real gvmd (Docker Compose)
+        ┌┴──────────┴┐
+        │ Integration │  axum test client + mock GMP pool
+       ┌┴────────────┴┐
+       │    Unit       │  Individual functions, no I/O
+      └────────────────┘
+```
+
+### Test Categories
+
+| Category | Scope | Dependencies | Speed |
+|----------|-------|-------------|-------|
+| Unit | Individual functions, conversions, validation | None | < 1s each |
+| Integration | Route handlers with mock GMP | axum `TestServer` | < 5s each |
+| E2E | Full server against gvmd | Docker Compose stack | < 30s each |
+| Contract | OpenAPI spec compliance | Generated spec | < 2s each |
+
+## 2. Unit Tests
+
+### 2.1 Error Mapping (`error.rs`)
+
+| Test | Input | Expected |
+|------|-------|----------|
+| `gmp_not_found_maps_to_404` | GMP "resource not found" | 404 + RFC 7807 body |
+| `gmp_auth_failure_maps_to_401` | GMP "authentication failed" | 401 |
+| `gmp_permission_denied_maps_to_403` | GMP "permission denied" | 403 |
+| `gmp_connection_failure_maps_to_502` | GMP connection error | 502 |
+| `gmp_timeout_maps_to_504` | GMP timeout | 504 |
+| `error_response_follows_rfc7807` | Any error | Has `type`, `title`, `status`, `detail` fields |
+| `error_response_includes_instance` | Error with path context | `instance` matches request path |
+
+### 2.2 Model Conversion (`models/`)
+
+| Test | Scope |
+|------|-------|
+| `target_from_gmp_roundtrip` | GMP Target XML → API Target JSON → validate all fields |
+| `task_status_mapping` | Every GMP task status string → API enum variant |
+| `report_summary_counts` | GMP report severity counts → ResultSummary |
+| `pagination_defaults` | Missing page/per_page → defaults (1, 25) |
+| `pagination_bounds` | per_page > 1000 → clamped to 1000 |
+| `filter_to_gmp_string` | Structured filter params → GMP filter expression |
+| `uuid_validation` | Invalid UUID → 400 error |
+| `severity_range_validation` | severity_min=-1 or >10 → 400 |
+
+### 2.3 Authentication (`auth/`)
+
+| Test | Scope |
+|------|-------|
+| `valid_jwt_extracts_claims` | Well-formed JWT → user identity + roles |
+| `expired_jwt_rejected` | Expired token → 401 |
+| `invalid_signature_rejected` | Wrong secret → 401 |
+| `missing_auth_header_rejected` | No Authorization header → 401 |
+| `api_key_valid` | Known API key → authenticated |
+| `api_key_invalid` | Unknown key → 401 |
+| `api_key_read_only_blocks_write` | Read-only key + POST → 403 |
+| `rbac_admin_can_delete` | Admin role + DELETE → allowed |
+| `rbac_observer_cannot_modify` | Observer role + PUT → 403 |
+
+### 2.4 Rate Limiting (`middleware/rate_limit.rs`)
+
+| Test | Scope |
+|------|-------|
+| `under_limit_passes` | 50 requests < 100 rps limit → all 200 |
+| `over_limit_returns_429` | 150 requests > 100 rps limit → 429 after threshold |
+| `retry_after_header_present` | 429 response → has `Retry-After` header |
+| `different_clients_independent` | Two API keys → separate rate limits |
+
+### 2.5 Configuration (`config.rs`)
+
+| Test | Scope |
+|------|-------|
+| `default_config_valid` | No config file → sensible defaults |
+| `env_var_override` | `GVM_API_BIND=0.0.0.0:9090` overrides config |
+| `cli_arg_override` | `--bind 0.0.0.0:9090` overrides config + env |
+| `env_var_expansion_in_config` | `jwt_secret = "${JWT_SECRET}"` → resolved |
+| `invalid_config_rejected` | Bad TOML → clear error message |
+
+## 3. Integration Tests
+
+### 3.1 Test Infrastructure
+
+```rust
+// tests/common/mod.rs
+use axum::Router;
+use axum_test::TestServer;
+
+/// Creates a test server with a mock GMP connection pool.
+async fn test_server() -> TestServer {
+    let mock_pool = MockGmpPool::new();
+    let app = build_router(mock_pool);
+    TestServer::new(app).unwrap()
+}
+```
+
+### 3.2 Health Endpoints
+
+| Test | Request | Expected |
+|------|---------|----------|
+| `healthz_returns_200` | `GET /healthz` | 200, `{"status": "ok"}` |
+| `readyz_healthy` | `GET /readyz` (GMP connected) | 200 |
+| `readyz_unhealthy` | `GET /readyz` (GMP disconnected) | 503 |
+| `version_returns_info` | `GET /api/v1/version` | 200, includes API + GMP versions |
+
+### 3.3 Targets CRUD
+
+| Test | Request | Setup | Expected |
+|------|---------|-------|----------|
+| `list_targets_empty` | `GET /api/v1/targets` | No targets | 200, empty `data[]`, pagination |
+| `list_targets_paginated` | `GET /api/v1/targets?page=2&per_page=10` | 25 targets | 200, 10 items, correct pagination |
+| `create_target` | `POST /api/v1/targets` + body | — | 201, target with ID |
+| `create_target_missing_name` | `POST /api/v1/targets` (no name) | — | 400, RFC 7807 |
+| `get_target` | `GET /api/v1/targets/{id}` | Target exists | 200, full target |
+| `get_target_not_found` | `GET /api/v1/targets/{bad-id}` | — | 404 |
+| `update_target` | `PUT /api/v1/targets/{id}` + body | Target exists | 200, updated fields |
+| `delete_target` | `DELETE /api/v1/targets/{id}` | Target exists | 204 |
+| `delete_target_not_found` | `DELETE /api/v1/targets/{bad-id}` | — | 404 |
+
+### 3.4 Tasks Lifecycle
+
+| Test | Request | Setup | Expected |
+|------|---------|-------|----------|
+| `create_task` | `POST /api/v1/tasks` | Target + config exist | 201 |
+| `start_task` | `POST /api/v1/tasks/{id}/start` | Task exists | 200, report_id |
+| `stop_running_task` | `POST /api/v1/tasks/{id}/stop` | Task running | 200 |
+| `stop_idle_task` | `POST /api/v1/tasks/{id}/stop` | Task not running | 409 |
+| `resume_stopped_task` | `POST /api/v1/tasks/{id}/resume` | Task stopped | 200 |
+
+### 3.5 Reports
+
+| Test | Request | Setup | Expected |
+|------|---------|-------|----------|
+| `list_reports` | `GET /api/v1/reports` | Reports exist | 200, summaries |
+| `get_report_with_results` | `GET /api/v1/reports/{id}` | Report exists | 200, includes results |
+| `get_report_results_paginated` | `GET /api/v1/reports/{id}/results?page=1&per_page=50` | Large report | 200, 50 results |
+| `export_report_pdf` | `GET /api/v1/reports/{id}/export?format=pdf` | Report exists | 200, `application/pdf` |
+
+### 3.6 Authentication Flow
+
+| Test | Request | Expected |
+|------|---------|----------|
+| `auth_token_valid_credentials` | `POST /api/v1/auth/token` + valid creds | 200, JWT + refresh |
+| `auth_token_invalid_credentials` | `POST /api/v1/auth/token` + bad creds | 401 |
+| `auth_refresh_valid` | `POST /api/v1/auth/refresh` + valid refresh | 200, new JWT |
+| `auth_refresh_expired` | `POST /api/v1/auth/refresh` + expired | 401 |
+| `protected_endpoint_no_auth` | `GET /api/v1/targets` (no token) | 401 |
+| `protected_endpoint_valid_auth` | `GET /api/v1/targets` + valid JWT | 200 |
+
+### 3.7 OpenAPI Compliance
+
+| Test | Scope |
+|------|-------|
+| `openapi_spec_valid` | `GET /api/v1/openapi.json` validates against OpenAPI 3.1 schema |
+| `all_routes_documented` | Every registered route appears in the spec |
+| `response_matches_schema` | Actual responses validate against declared schemas |
+
+### 3.8 Cross-Cutting
+
+| Test | Scope |
+|------|-------|
+| `request_id_header_present` | Every response has `X-Request-Id` |
+| `cors_preflight_allowed_origin` | OPTIONS request with allowed origin → 200 |
+| `cors_preflight_denied_origin` | OPTIONS with unknown origin → no CORS headers |
+| `gzip_compression` | `Accept-Encoding: gzip` → compressed response |
+| `content_type_json` | All API responses → `Content-Type: application/json` |
+| `method_not_allowed` | `PATCH /api/v1/targets` → 405 |
+| `not_found_route` | `GET /api/v1/nonexistent` → 404 |
+
+## 4. E2E Tests (Docker Compose)
+
+### Test Environment
+
+```yaml
+# tests/docker-compose.yml
+services:
+  gvmd:
+    image: greenbone/gvmd:latest
+    # ... (Greenbone Community stack)
+
+  gvm-rest-api:
+    build: ../..
+    environment:
+      GMP_SOCKET_PATH: /run/gvmd/gvmd.sock
+    depends_on:
+      gvmd:
+        condition: service_healthy
+```
+
+### E2E Test Suite
+
+| Test | Scenario |
+|------|----------|
+| `e2e_full_scan_lifecycle` | Create target → create task → start → poll until done → get report |
+| `e2e_concurrent_requests` | 50 parallel target creates → all succeed |
+| `e2e_large_report_pagination` | Report with 10k+ results → paginate through all pages |
+| `e2e_auth_flow` | Login → use token → refresh → use new token |
+| `e2e_graceful_shutdown` | Send SIGTERM during active requests → in-flight complete, new rejected |
+
+## 5. Performance Tests
+
+| Test | Metric | Target |
+|------|--------|--------|
+| `throughput_list_targets` | Requests/sec for `GET /targets` | > 1000 rps |
+| `latency_p99_get_target` | p99 latency for `GET /targets/{id}` | < 50ms |
+| `latency_large_report` | Time to first byte for large report | < 500ms |
+| `connection_pool_saturation` | Behavior when pool exhausted | Queues, doesn't crash |
+| `memory_large_report` | Peak memory during 100MB report | < 200MB |
+
+## 6. Test Data & Fixtures
+
+```
+tests/
+├── fixtures/
+│   ├── targets/
+│   │   ├── create_target.json         # Valid create request
+│   │   ├── create_target_minimal.json # Minimum required fields
+│   │   └── create_target_invalid.json # Missing required fields
+│   ├── tasks/
+│   │   └── ...
+│   └── gmp_responses/
+│       ├── get_targets.xml            # Mock GMP response
+│       ├── get_report_large.xml       # Large report for streaming tests
+│       └── error_not_found.xml        # GMP error response
+```
+
+## 7. CI Integration
+
+All unit and integration tests run in the CI workflow. E2E tests are gated behind a feature flag:
+
+```bash
+# CI (fast)
+cargo test --workspace
+
+# E2E (requires Docker)
+cargo test --workspace --features e2e-tests
+```
+
+Coverage target: **80%** line coverage for route handlers and service layer.

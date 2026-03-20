@@ -1,0 +1,35 @@
+[package]
+name = "gvm-grpc-api"
+description = "gRPC API server for Greenbone Vulnerability Management"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+gvm-client.workspace = true
+gvm-gmp.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+prost.workspace = true
+tonic-reflection.workspace = true
+tonic-health.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+config.workspace = true
+jsonwebtoken.workspace = true
+prometheus.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+
+[build-dependencies]
+tonic-build = "0.13"
+
+[dev-dependencies]
+rstest.workspace = true
+tonic = { workspace = true, features = ["transport"] }

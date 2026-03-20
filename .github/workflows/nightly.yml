@@ -1,0 +1,180 @@
+name: Nightly
+
+on:
+  schedule:
+    # Run at 04:00 UTC every day
+    - cron: "0 4 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Workspace tests
+      - run: cargo test --workspace --all-features
+
+      # Clippy (treat warnings as errors for nightly)
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  # Build nightly binaries for API servers
+  build:
+    name: Build (${{ matrix.target }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: rust-gvm-api-linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: rust-gvm-api-linux-arm64
+            cross: true
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: rust-gvm-api-linux-amd64-musl
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: rust-gvm-api-macos-amd64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: rust-gvm-api-macos-arm64
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nightly-${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Install musl-tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }} --workspace
+
+      - name: Build (native)
+        if: "!matrix.cross"
+        run: cargo build --release --target ${{ matrix.target }} --workspace
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp target/${{ matrix.target }}/release/gvm-rest-api staging/ 2>/dev/null || true
+          cp target/${{ matrix.target }}/release/gvm-grpc-api staging/ 2>/dev/null || true
+          cd staging
+          tar czf ../${{ matrix.artifact }}.tar.gz *
+          cd ..
+          sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.tar.gz.sha256
+          retention-days: 7
+
+  # Generate SBOM
+  sbom:
+    name: Generate SBOM
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nightly-sbom
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx
+
+      - name: Generate CycloneDX SBOM (JSON)
+        run: cargo cyclonedx --format json --all --spec-version 1.5
+
+      - name: Generate CycloneDX SBOM (XML)
+        run: cargo cyclonedx --format xml --all --spec-version 1.5
+
+      - name: Collect SBOMs
+        shell: bash
+        run: |
+          mkdir -p sbom-artifacts
+          find . -name '*.cdx.json' -not -path '*/target/*' -not -path '*/fixtures/*' -not -path '*/sbom-artifacts/*' -exec cp {} sbom-artifacts/ \;
+          find . -name '*.cdx.xml' -not -path '*/target/*' -not -path '*/fixtures/*' -not -path '*/sbom-artifacts/*' -exec cp {} sbom-artifacts/ \;
+          ls -la sbom-artifacts/
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: sbom-artifacts/
+          retention-days: 7
+
+  # Update the rolling "nightly" pre-release
+  publish:
+    name: Publish Nightly
+    needs: [build, sbom]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Delete existing nightly release
+        run: gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create nightly tag
+        run: |
+          git tag -f nightly
+          git push -f origin nightly
+
+      - name: Set date
+        id: date
+        run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Create nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: "Nightly Build (${{ steps.date.outputs.today }})"
+          prerelease: true
+          body: |
+            Automated nightly build from `main` branch.
+
+            **⚠️ This is a development build — not recommended for production.**
+
+            Built from commit: ${{ github.sha }}
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.sha256
