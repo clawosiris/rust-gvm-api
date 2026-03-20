@@ -20,10 +20,12 @@ jobs:
     name: "Release v${{ inputs.version }}"
     runs-on: ubuntu-latest
     steps:
+      # Use RELEASE_TOKEN so the tag push triggers release.yml
+      # (GITHUB_TOKEN-pushed tags don't trigger other workflows)
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Configure git
         run: |
@@ -40,7 +42,6 @@ jobs:
       - name: Pin rust-gvm dependency to release tag
         run: |
           VERSION="${{ inputs.version }}"
-          # For stable releases, pin to the tag; for pre-releases, keep branch
           if [[ "$VERSION" != *"-"* ]]; then
             sed -i "s|branch = \"main\"|tag = \"v$VERSION\"|g" Cargo.toml
             echo "Pinned rust-gvm deps to tag v$VERSION"
@@ -69,13 +70,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${{ inputs.version }}"
-          echo "Tag $TAG pushed. The release.yml workflow will handle the rest."
+          echo "Tag $TAG pushed. Waiting for release.yml to trigger..."
           sleep 10
 
           for i in $(seq 1 30); do
-            RUN_ID=$(gh run list --workflow=release.yml --branch="$TAG" --limit=1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)
+            RUN_ID=$(gh run list --workflow=release.yml --limit=5 --json databaseId,headBranch --jq ".[] | select(.headBranch==\"$TAG\") | .databaseId" 2>/dev/null | head -1 || true)
             if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
               echo "Found release workflow run: $RUN_ID"
+              echo "Waiting for completion..."
               gh run watch "$RUN_ID" --exit-status || exit 1
               echo "✅ Release workflow completed successfully"
               exit 0
@@ -84,4 +86,5 @@ jobs:
             sleep 10
           done
 
-          echo "::warning::Release workflow did not appear within timeout. Check manually."
+          echo "::error::Release workflow did not trigger within timeout"
+          exit 1
