@@ -1,0 +1,87 @@
+# Orchestrated Release — triggered by clawosiris/release-orchestrator
+# Do NOT trigger manually — use the orchestrator instead.
+
+name: Orchestrated Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (without 'v' prefix)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: "Release v${{ inputs.version }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update Cargo.toml versions
+        run: |
+          VERSION="${{ inputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          sed -i "/\[workspace\.package\]/,/^\[/ s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          echo "Updated Cargo.toml to version $VERSION"
+
+      - name: Pin rust-gvm dependency to release tag
+        run: |
+          VERSION="${{ inputs.version }}"
+          # For stable releases, pin to the tag; for pre-releases, keep branch
+          if [[ "$VERSION" != *"-"* ]]; then
+            sed -i "s|branch = \"main\"|tag = \"v$VERSION\"|g" Cargo.toml
+            echo "Pinned rust-gvm deps to tag v$VERSION"
+          else
+            echo "Pre-release: keeping branch = main"
+          fi
+
+      - name: Commit version bump
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No version changes to commit"
+          else
+            git commit -m "chore: bump version to ${{ inputs.version }}"
+            git push
+          fi
+
+      - name: Create and push tag
+        run: |
+          TAG="v${{ inputs.version }}"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Wait for release workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ inputs.version }}"
+          echo "Tag $TAG pushed. The release.yml workflow will handle the rest."
+          sleep 10
+
+          for i in $(seq 1 30); do
+            RUN_ID=$(gh run list --workflow=release.yml --branch="$TAG" --limit=1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+              echo "Found release workflow run: $RUN_ID"
+              gh run watch "$RUN_ID" --exit-status || exit 1
+              echo "✅ Release workflow completed successfully"
+              exit 0
+            fi
+            echo "Waiting for release workflow to appear... ($i/30)"
+            sleep 10
+          done
+
+          echo "::warning::Release workflow did not appear within timeout. Check manually."
