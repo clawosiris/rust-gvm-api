@@ -32,4 +32,4 @@ anyhow.workspace = true
 [dev-dependencies]
 rstest.workspace = true
 wiremock.workspace = true
-assert_json_diff.workspace = true
+assert-json-diff.workspace = true
