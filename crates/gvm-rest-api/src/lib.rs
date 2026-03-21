@@ -4,7 +4,7 @@
 //! RESTful API server for Greenbone Vulnerability Management (GVM).
 //!
 //! Provides a standards-compliant REST API on top of the GMP protocol,
-//! built using [`gvm-client`] from the rust-gvm project.
+//! built using the `gvm-client` crate from the rust-gvm project.
 
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
