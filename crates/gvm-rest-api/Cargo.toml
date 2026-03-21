@@ -9,27 +9,3 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-gvm-client.workspace = true
-gvm-gmp.workspace = true
-tokio.workspace = true
-axum.workspace = true
-tower.workspace = true
-tower-http.workspace = true
-utoipa.workspace = true
-utoipa-swagger-ui.workspace = true
-utoipa-redoc.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-clap.workspace = true
-config.workspace = true
-jsonwebtoken.workspace = true
-prometheus.workspace = true
-thiserror.workspace = true
-anyhow.workspace = true
-
-[dev-dependencies]
-rstest.workspace = true
-wiremock.workspace = true
-assert-json-diff.workspace = true
