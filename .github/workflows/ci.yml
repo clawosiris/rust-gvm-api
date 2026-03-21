@@ -111,11 +111,8 @@ jobs:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
       - uses: taiki-e/install-action@660ccd1d376e9007f8fbbc3c66b63643fa9ddd6e # cargo-llvm-cov
-      - name: Generate coverage
-        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
-        continue-on-error: true
+      - run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
       - uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5
-        if: hashFiles('lcov.info') != ''
         with:
           files: lcov.info
           fail_ci_if_error: false
