@@ -38,6 +38,21 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
 
+      - name: Allow admin users bypassing protection on main branch
+        uses: greenbone/actions/admin-bypass@v3
+        with:
+          allow: "true"
+          github-token: ${{ secrets.RELEASE_TOKEN }}
+          branch: "main"
+
+      - name: Configure git (token + origin)
+        uses: greenbone/actions/set-github-user@v3
+        with:
+          user: ${{ vars.RELEASE_USER || 'clawosiris' }}
+          mail: ${{ vars.RELEASE_USER_MAIL || 'clawosiris@users.noreply.github.com' }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+
       # Pin rust-gvm dependency on stable releases
       - name: Pin upstream dependencies
         run: |
@@ -54,6 +69,14 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Disable bypassing protection on main branch for admin users
+        if: always()
+        uses: greenbone/actions/admin-bypass@v3
+        with:
+          allow: "false"
+          github-token: ${{ secrets.RELEASE_TOKEN }}
+          branch: "main"
 
       - name: Create release
         uses: greenbone/actions/release@v3
@@ -95,6 +118,21 @@ jobs:
         with:
           ref: v${{ inputs.version }}
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Allow admin users bypassing protection on main branch
+        uses: greenbone/actions/admin-bypass@v3
+        with:
+          allow: "true"
+          github-token: ${{ secrets.RELEASE_TOKEN }}
+          branch: "main"
+
+      - name: Configure git (token + origin)
+        uses: greenbone/actions/set-github-user@v3
+        with:
+          user: ${{ vars.RELEASE_USER || 'clawosiris' }}
+          mail: ${{ vars.RELEASE_USER_MAIL || 'clawosiris@users.noreply.github.com' }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
       - run: cargo test --workspace --all-features
 
@@ -130,6 +168,21 @@ jobs:
         with:
           ref: v${{ inputs.version }}
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Allow admin users bypassing protection on main branch
+        uses: greenbone/actions/admin-bypass@v3
+        with:
+          allow: "true"
+          github-token: ${{ secrets.RELEASE_TOKEN }}
+          branch: "main"
+
+      - name: Configure git (token + origin)
+        uses: greenbone/actions/set-github-user@v3
+        with:
+          user: ${{ vars.RELEASE_USER || 'clawosiris' }}
+          mail: ${{ vars.RELEASE_USER_MAIL || 'clawosiris@users.noreply.github.com' }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
@@ -174,6 +227,21 @@ jobs:
         with:
           ref: v${{ inputs.version }}
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Allow admin users bypassing protection on main branch
+        uses: greenbone/actions/admin-bypass@v3
+        with:
+          allow: "true"
+          github-token: ${{ secrets.RELEASE_TOKEN }}
+          branch: "main"
+
+      - name: Configure git (token + origin)
+        uses: greenbone/actions/set-github-user@v3
+        with:
+          user: ${{ vars.RELEASE_USER || 'clawosiris' }}
+          mail: ${{ vars.RELEASE_USER_MAIL || 'clawosiris@users.noreply.github.com' }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
       - name: Install cargo-cyclonedx
         run: cargo install cargo-cyclonedx
