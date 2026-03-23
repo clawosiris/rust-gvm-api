@@ -1,5 +1,4 @@
 # Orchestrated Release — triggered by clawosiris/release-orchestrator
-# Do NOT trigger manually — use the orchestrator instead.
 
 name: Orchestrated Release
 
@@ -32,19 +31,13 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
-
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-
-      - name: Set up Python and pontos
-        uses: greenbone/actions/setup-pontos@v3
-
-      - name: Configure git
-        uses: greenbone/actions/set-github-user@v3
+      - uses: greenbone/actions/setup-pontos@v3
+      - uses: greenbone/actions/set-github-user@v3
         with:
           user: ${{ vars.RELEASE_USER || 'clawosiris' }}
           mail: ${{ vars.RELEASE_USER_MAIL || 'clawosiris@users.noreply.github.com' }}
           token: ${{ secrets.RELEASE_TOKEN }}
-
       - name: Pin upstream dependencies
         run: |
           VERSION="${{ inputs.version }}"
@@ -55,7 +48,6 @@ jobs:
           else
             echo "Pre-release: keeping branch = main"
           fi
-
       - name: Create release with pontos
         env:
           GITHUB_USER: ${{ vars.RELEASE_USER || 'clawosiris' }}
@@ -70,7 +62,6 @@ jobs:
             ARGS="$ARGS --github-pre-release"
           fi
           pontos-release create $ARGS --repository ${{ github.repository }}
-
       - name: Regenerate Cargo.lock
         run: |
           cargo generate-lockfile
@@ -141,8 +132,10 @@ jobs:
       - name: Build (native)
         if: "!matrix.cross"
         run: cargo build --release --target ${{ matrix.target }} --workspace
-      - name: Package
+      - name: Package and upload to release
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p staging
           cp target/${{ matrix.target }}/release/gvm-rest-api staging/ 2>/dev/null || true
@@ -151,13 +144,10 @@ jobs:
           tar czf ../${{ matrix.artifact }}.tar.gz *
           cd ..
           sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
-      - name: Upload artifact
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
-        with:
-          name: ${{ matrix.artifact }}
-          path: |
-            ${{ matrix.artifact }}.tar.gz
-            ${{ matrix.artifact }}.tar.gz.sha256
+          gh release upload "v${{ inputs.version }}" \
+            ${{ matrix.artifact }}.tar.gz \
+            ${{ matrix.artifact }}.tar.gz.sha256 \
+            --clobber
 
   sbom:
     name: Generate SBOM
@@ -175,32 +165,25 @@ jobs:
         run: cargo cyclonedx --format json --all --spec-version 1.5
       - name: Generate CycloneDX SBOM (XML)
         run: cargo cyclonedx --format xml --all --spec-version 1.5
-      - name: Collect SBOMs
+      - name: Collect, package, and upload SBOMs to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p sbom-artifacts
           find . -name '*.cdx.json' -not -path '*/target/*' -not -path '*/fixtures/*' -not -path '*/sbom-artifacts/*' -exec cp {} sbom-artifacts/ \;
           find . -name '*.cdx.xml' -not -path '*/target/*' -not -path '*/fixtures/*' -not -path '*/sbom-artifacts/*' -exec cp {} sbom-artifacts/ \;
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
-        with:
-          name: sbom
-          path: sbom-artifacts/
+          cd sbom-artifacts
+          tar czf ../rust-gvm-api-sbom.tar.gz *.cdx.*
+          cd ..
+          sha256sum rust-gvm-api-sbom.tar.gz > rust-gvm-api-sbom.tar.gz.sha256
+          gh release upload "v${{ inputs.version }}" \
+            rust-gvm-api-sbom.tar.gz \
+            rust-gvm-api-sbom.tar.gz.sha256 \
+            --clobber
 
-  release:
-    name: Publish Release
+  collect:
+    name: Release complete
     needs: [build, sbom]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: v${{ inputs.version }}
-      - name: Download all artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          path: artifacts
-          merge-multiple: true
-      - name: Upload release assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "v${{ inputs.version }}" artifacts/*.tar.gz artifacts/*.sha256 --clobber
+      - run: echo "✅ All release artifacts published for v${{ inputs.version }}"
