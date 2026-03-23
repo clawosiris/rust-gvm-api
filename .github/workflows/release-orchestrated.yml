@@ -86,68 +86,8 @@ jobs:
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
       - run: cargo test --workspace --all-features
 
-  build:
-    name: Build (${{ matrix.target }})
-    needs: test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            artifact: rust-gvm-api-linux-amd64
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            artifact: rust-gvm-api-linux-arm64
-            cross: true
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            artifact: rust-gvm-api-linux-amd64-musl
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            artifact: rust-gvm-api-macos-amd64
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            artifact: rust-gvm-api-macos-arm64
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: v${{ inputs.version }}
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
-        with:
-          key: ${{ matrix.target }}
-      - name: Install cross
-        if: matrix.cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
-      - name: Install musl-tools
-        if: contains(matrix.target, 'musl')
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - name: Build (cross)
-        if: matrix.cross
-        run: cross build --release --target ${{ matrix.target }} --workspace
-      - name: Build (native)
-        if: "!matrix.cross"
-        run: cargo build --release --target ${{ matrix.target }} --workspace
-      - name: Package and upload to release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p staging
-          cp target/${{ matrix.target }}/release/gvm-rest-api staging/ 2>/dev/null || true
-          cp target/${{ matrix.target }}/release/gvm-grpc-api staging/ 2>/dev/null || true
-          cd staging
-          tar czf ../${{ matrix.artifact }}.tar.gz *
-          cd ..
-          sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
-          gh release upload "v${{ inputs.version }}" \
-            ${{ matrix.artifact }}.tar.gz \
-            ${{ matrix.artifact }}.tar.gz.sha256 \
-            --clobber
+  # NOTE: Build matrix disabled — no binary targets yet.
+  # Re-enable when gvm-rest-api / gvm-grpc-api binaries are implemented.
 
   sbom:
     name: Generate SBOM
@@ -183,7 +123,7 @@ jobs:
 
   collect:
     name: Release complete
-    needs: [build, sbom]
+    needs: [sbom]
     runs-on: ubuntu-latest
     steps:
       - run: echo "✅ All release artifacts published for v${{ inputs.version }}"
