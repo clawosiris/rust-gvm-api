@@ -15,5 +15,5 @@ authors = ["clawosiris"]
 
 [workspace.dependencies]
 # GVM client library
-gvm-client = { git = "https://github.com/clawosiris/rust-gvm", branch = "main" }
-gvm-gmp = { git = "https://github.com/clawosiris/rust-gvm", branch = "main" }
+gvm-client = { git = "https://github.com/clawosiris/rust-gvm", tag = "v0.3.1" }
+gvm-gmp = { git = "https://github.com/clawosiris/rust-gvm", tag = "v0.3.1" }
