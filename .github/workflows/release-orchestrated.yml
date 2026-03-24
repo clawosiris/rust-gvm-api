@@ -36,6 +36,7 @@ jobs:
           if [[ "$VERSION" != *"-"* ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
+            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
             sed -i "s|branch = \"main\"|tag = \"v$VERSION\"|g" Cargo.toml
             git add Cargo.toml
             git commit -m "build(deps): pin rust-gvm to v$VERSION" || true
@@ -63,6 +64,7 @@ jobs:
           if ! git diff --quiet Cargo.lock 2>/dev/null; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
+            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
             git add Cargo.lock
             git commit --amend --no-edit
             git push --force-with-lease
