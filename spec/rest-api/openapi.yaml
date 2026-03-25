@@ -1,0 +1,2254 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+info:
+  title: GVM REST API
+  description: |
+    RESTful API for Greenbone Vulnerability Management (GVM).
+
+    This API acts as a stateful proxy in front of `gvmd`, translating
+    JSON/HTTP requests into GMP commands and back. Every authenticated
+    workflow begins with a **session**: the client authenticates once and
+    receives a bearer token that is bound to a dedicated, persistent gvmd
+    connection on the server side.
+
+    ## Authentication flow
+
+    1. `POST /api/v1/sessions` with HTTP Basic credentials.
+    2. The proxy opens and authenticates a gvmd connection.
+    3. On success the proxy returns an opaque `session_token`.
+    4. All subsequent requests pass that token as
+       `Authorization: Bearer <session_token>`.
+    5. `DELETE /api/v1/sessions/{token}` tears the session down.
+
+    Sessions expire after a configurable idle timeout (default 5 min).
+  version: 0.1.0
+  license:
+    name: AGPL-3.0-or-later
+    identifier: AGPL-3.0-or-later
+
+servers:
+  - url: /api/v1
+    description: Base path for all API endpoints
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Sessions
+    description: Session lifecycle (create, inspect, destroy)
+  - name: Targets
+    description: Scan target management
+  - name: Tasks
+    description: Scan task management and control
+  - name: Reports
+    description: Scan report retrieval and export
+  - name: Results
+    description: Individual scan result retrieval
+  - name: Scan Configs
+    description: Scan configuration management
+  - name: Scanners
+    description: Scanner information
+  - name: Alerts
+    description: Alert management
+  - name: Schedules
+    description: Schedule management
+  - name: Credentials
+    description: Credential management
+  - name: Port Lists
+    description: Port list management
+  - name: Feeds
+    description: Feed status
+  - name: System
+    description: System and health endpoints
+
+paths:
+  # ─── Sessions ───────────────────────────────────────────────
+  /sessions:
+    post:
+      operationId: createSession
+      tags: [Sessions]
+      summary: Create a new session
+      description: |
+        Authenticates against gvmd using the supplied Basic credentials,
+        opens a persistent gvmd connection, and returns an opaque session
+        token. The token must be presented as a Bearer token on all
+        subsequent requests.
+      security:
+        - basicAuth: []
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionCreated"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /sessions/{token}:
+    parameters:
+      - $ref: "#/components/parameters/SessionToken"
+    get:
+      operationId: getSession
+      tags: [Sessions]
+      summary: Inspect a session
+      responses:
+        "200":
+          description: Session details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionInfo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteSession
+      tags: [Sessions]
+      summary: Close and destroy a session
+      description: |
+        Tears down the session and closes the underlying gvmd connection.
+        The token is invalidated immediately.
+      responses:
+        "204":
+          description: Session closed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Targets ────────────────────────────────────────────────
+  /targets:
+    get:
+      operationId: getTargets
+      tags: [Targets]
+      summary: List targets
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of targets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createTarget
+      tags: [Targets]
+      summary: Create a target
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTarget"
+      responses:
+        "201":
+          description: Target created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /targets/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getTarget
+      tags: [Targets]
+      summary: Get a target
+      responses:
+        "200":
+          description: Target details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Target"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: modifyTarget
+      tags: [Targets]
+      summary: Modify a target
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyTarget"
+      responses:
+        "200":
+          description: Target updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Target"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteTarget
+      tags: [Targets]
+      summary: Delete a target
+      responses:
+        "204":
+          description: Target deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Tasks ──────────────────────────────────────────────────
+  /tasks:
+    get:
+      operationId: getTasks
+      tags: [Tasks]
+      summary: List tasks
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createTask
+      tags: [Tasks]
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTask"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /tasks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getTask
+      tags: [Tasks]
+      summary: Get a task
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: modifyTask
+      tags: [Tasks]
+      summary: Modify a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyTask"
+      responses:
+        "200":
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteTask
+      tags: [Tasks]
+      summary: Delete a task
+      responses:
+        "204":
+          description: Task deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: startTask
+      tags: [Tasks]
+      summary: Start a task
+      responses:
+        "200":
+          description: Task started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAction"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "504":
+          $ref: "#/components/responses/GatewayTimeout"
+
+  /tasks/{id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: stopTask
+      tags: [Tasks]
+      summary: Stop a running task
+      responses:
+        "200":
+          description: Task stopped
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /tasks/{id}/resume:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: resumeTask
+      tags: [Tasks]
+      summary: Resume a stopped task
+      responses:
+        "200":
+          description: Task resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAction"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  # ─── Reports ────────────────────────────────────────────────
+  /reports:
+    get:
+      operationId: getReports
+      tags: [Reports]
+      summary: List reports
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of reports
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /reports/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getReport
+      tags: [Reports]
+      summary: Get a report
+      parameters:
+        - name: ignore_pagination
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: If true, return all results without pagination.
+      responses:
+        "200":
+          description: Report details with embedded results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteReport
+      tags: [Reports]
+      summary: Delete a report
+      responses:
+        "204":
+          description: Report deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /reports/{id}/results:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getReportResults
+      tags: [Reports]
+      summary: Get paginated results for a report
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Results ────────────────────────────────────────────────
+  /results:
+    get:
+      operationId: getResults
+      tags: [Results]
+      summary: List results
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /results/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getResult
+      tags: [Results]
+      summary: Get a result
+      responses:
+        "200":
+          description: Result details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Result"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Scan Configs ───────────────────────────────────────────
+  /scan-configs:
+    get:
+      operationId: getScanConfigs
+      tags: [Scan Configs]
+      summary: List scan configurations
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of scan configs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanConfigList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createScanConfig
+      tags: [Scan Configs]
+      summary: Create a scan configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScanConfig"
+      responses:
+        "201":
+          description: Scan config created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /scan-configs/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getScanConfig
+      tags: [Scan Configs]
+      summary: Get a scan configuration
+      responses:
+        "200":
+          description: Scan config details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanConfig"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: modifyScanConfig
+      tags: [Scan Configs]
+      summary: Modify a scan configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyScanConfig"
+      responses:
+        "200":
+          description: Scan config updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanConfig"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteScanConfig
+      tags: [Scan Configs]
+      summary: Delete a scan configuration
+      responses:
+        "204":
+          description: Scan config deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Scanners ───────────────────────────────────────────────
+  /scanners:
+    get:
+      operationId: getScanners
+      tags: [Scanners]
+      summary: List scanners
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of scanners
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScannerList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /scanners/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getScanner
+      tags: [Scanners]
+      summary: Get a scanner
+      responses:
+        "200":
+          description: Scanner details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scanner"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Alerts ─────────────────────────────────────────────────
+  /alerts:
+    get:
+      operationId: getAlerts
+      tags: [Alerts]
+      summary: List alerts
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of alerts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createAlert
+      tags: [Alerts]
+      summary: Create an alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlert"
+      responses:
+        "201":
+          description: Alert created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /alerts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getAlert
+      tags: [Alerts]
+      summary: Get an alert
+      responses:
+        "200":
+          description: Alert details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: modifyAlert
+      tags: [Alerts]
+      summary: Modify an alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyAlert"
+      responses:
+        "200":
+          description: Alert updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteAlert
+      tags: [Alerts]
+      summary: Delete an alert
+      responses:
+        "204":
+          description: Alert deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Schedules ──────────────────────────────────────────────
+  /schedules:
+    get:
+      operationId: getSchedules
+      tags: [Schedules]
+      summary: List schedules
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of schedules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createSchedule
+      tags: [Schedules]
+      summary: Create a schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSchedule"
+      responses:
+        "201":
+          description: Schedule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /schedules/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getSchedule
+      tags: [Schedules]
+      summary: Get a schedule
+      responses:
+        "200":
+          description: Schedule details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: modifySchedule
+      tags: [Schedules]
+      summary: Modify a schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifySchedule"
+      responses:
+        "200":
+          description: Schedule updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteSchedule
+      tags: [Schedules]
+      summary: Delete a schedule
+      responses:
+        "204":
+          description: Schedule deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Credentials ────────────────────────────────────────────
+  /credentials:
+    get:
+      operationId: getCredentials
+      tags: [Credentials]
+      summary: List credentials
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createCredential
+      tags: [Credentials]
+      summary: Create a credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCredential"
+      responses:
+        "201":
+          description: Credential created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /credentials/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getCredential
+      tags: [Credentials]
+      summary: Get a credential
+      responses:
+        "200":
+          description: Credential details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credential"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: modifyCredential
+      tags: [Credentials]
+      summary: Modify a credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyCredential"
+      responses:
+        "200":
+          description: Credential updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credential"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteCredential
+      tags: [Credentials]
+      summary: Delete a credential
+      responses:
+        "204":
+          description: Credential deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Port Lists ─────────────────────────────────────────────
+  /port-lists:
+    get:
+      operationId: getPortLists
+      tags: [Port Lists]
+      summary: List port lists
+      parameters:
+        - $ref: "#/components/parameters/FilterString"
+        - $ref: "#/components/parameters/FilterId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of port lists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortListList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /port-lists/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getPortList
+      tags: [Port Lists]
+      summary: Get a port list
+      responses:
+        "200":
+          description: Port list details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Feeds ──────────────────────────────────────────────────
+  /feeds:
+    get:
+      operationId: getFeeds
+      tags: [Feeds]
+      summary: Get feed status
+      responses:
+        "200":
+          description: Feed status for all feed types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ─── System ─────────────────────────────────────────────────
+  /version:
+    get:
+      operationId: getVersion
+      tags: [System]
+      summary: Get API and GMP version information
+      security: []
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionInfo"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: |
+        GVM username and password. Used only for session creation
+        (`POST /api/v1/sessions`). Credentials are forwarded to gvmd
+        for authentication.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Opaque session token returned by `POST /api/v1/sessions`.
+        Must be presented on all subsequent requests.
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Resource UUID
+
+    SessionToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Opaque session token
+
+    FilterString:
+      name: filter
+      in: query
+      schema:
+        type: string
+      description: |
+        GMP filter expression. Passed through to gvmd as-is.
+        Example: `name~webserver and severity>5`
+
+    FilterId:
+      name: filter_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+      description: UUID of a saved filter to apply
+
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number (1-indexed)
+
+    PerPage:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 25
+      description: Number of items per page (max 1000)
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    Unauthorized:
+      description: Authentication required or session expired
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    Conflict:
+      description: Resource state conflict
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    TooManyRequests:
+      description: Session limit or rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    BadGateway:
+      description: gvmd unreachable or connection failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    GatewayTimeout:
+      description: gvmd did not respond in time
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+  schemas:
+    # ─── RFC 9457 Problem Detail ──────────────────────────────
+    ProblemDetail:
+      type: object
+      description: |
+        Error response following RFC 9457 (Problem Details for HTTP APIs).
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+          description: |
+            A URI reference that identifies the problem type.
+          examples:
+            - "urn:ietf:rfc:9457:not-found"
+        title:
+          type: string
+          description: Short human-readable summary of the problem type.
+          examples:
+            - "Resource Not Found"
+        status:
+          type: integer
+          description: HTTP status code.
+          examples:
+            - 404
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence.
+          examples:
+            - "Target with ID '550e8400-e29b-41d4-a716-446655440000' not found."
+        instance:
+          type: string
+          format: uri-reference
+          description: URI reference identifying the specific occurrence.
+          examples:
+            - "/api/v1/targets/550e8400-e29b-41d4-a716-446655440000"
+
+    # ─── Pagination ───────────────────────────────────────────
+    Pagination:
+      type: object
+      required:
+        - page
+        - per_page
+        - total
+        - total_pages
+      properties:
+        page:
+          type: integer
+          examples:
+            - 1
+        per_page:
+          type: integer
+          examples:
+            - 25
+        total:
+          type: integer
+          description: Total number of resources matching the query.
+          examples:
+            - 142
+        total_pages:
+          type: integer
+          examples:
+            - 6
+
+    # ─── Common ───────────────────────────────────────────────
+    ResourceCreated:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the newly created resource.
+
+    ResourceRef:
+      type: object
+      description: Minimal reference to a related resource.
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    # ─── Sessions ─────────────────────────────────────────────
+    SessionCreated:
+      type: object
+      required:
+        - session_token
+        - expires_in
+        - gmp_version
+      properties:
+        session_token:
+          type: string
+          description: Opaque bearer token for subsequent requests.
+          examples:
+            - "gvm_sess_9e6b2d4a8f1c..."
+        expires_in:
+          type: integer
+          description: Idle timeout in seconds. The session expires if unused for this duration.
+          examples:
+            - 300
+        gmp_version:
+          type: string
+          description: GMP protocol version reported by gvmd.
+          examples:
+            - "22.7"
+
+    SessionInfo:
+      type: object
+      required:
+        - session_token
+        - user
+        - state
+        - created_at
+        - last_used_at
+        - expires_in
+      properties:
+        session_token:
+          type: string
+        user:
+          type: string
+          description: gvmd username this session authenticated as.
+        state:
+          type: string
+          enum:
+            - active
+            - idle
+            - expired
+            - closed
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        expires_in:
+          type: integer
+          description: Remaining seconds until idle expiry.
+
+    # ─── Targets ──────────────────────────────────────────────
+    Target:
+      type: object
+      required:
+        - id
+        - name
+        - hosts
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+          description: Host entries (IPs, ranges, hostnames).
+        exclude_hosts:
+          type: array
+          items:
+            type: string
+        alive_test:
+          $ref: "#/components/schemas/AliveTest"
+        port_list:
+          $ref: "#/components/schemas/ResourceRef"
+        reverse_lookup_only:
+          type: boolean
+        reverse_lookup_unify:
+          type: boolean
+        ssh_credential:
+          $ref: "#/components/schemas/ResourceRef"
+        smb_credential:
+          $ref: "#/components/schemas/ResourceRef"
+        esxi_credential:
+          $ref: "#/components/schemas/ResourceRef"
+        snmp_credential:
+          $ref: "#/components/schemas/ResourceRef"
+        in_use:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateTarget:
+      type: object
+      required:
+        - name
+        - hosts
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+          description: Host entries (IPs, ranges, hostnames).
+          minItems: 1
+        exclude_hosts:
+          type: array
+          items:
+            type: string
+        alive_test:
+          $ref: "#/components/schemas/AliveTest"
+        port_list_id:
+          type: string
+          format: uuid
+        reverse_lookup_only:
+          type: boolean
+        reverse_lookup_unify:
+          type: boolean
+        ssh_credential_id:
+          type: string
+          format: uuid
+        smb_credential_id:
+          type: string
+          format: uuid
+        esxi_credential_id:
+          type: string
+          format: uuid
+        snmp_credential_id:
+          type: string
+          format: uuid
+
+    ModifyTarget:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+        exclude_hosts:
+          type: array
+          items:
+            type: string
+        alive_test:
+          $ref: "#/components/schemas/AliveTest"
+        port_list_id:
+          type: string
+          format: uuid
+
+    TargetList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Target"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Tasks ────────────────────────────────────────────────
+    Task:
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        status:
+          type: string
+          enum:
+            - New
+            - Requested
+            - Running
+            - Stop Requested
+            - Done
+            - Stopped
+            - Delete Requested
+            - Ultimate Delete Requested
+            - Container
+            - Interrupted
+        target:
+          $ref: "#/components/schemas/ResourceRef"
+        scan_config:
+          $ref: "#/components/schemas/ResourceRef"
+        scanner:
+          $ref: "#/components/schemas/ResourceRef"
+        schedule:
+          $ref: "#/components/schemas/ResourceRef"
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceRef"
+        alterable:
+          type: boolean
+        hosts_ordering:
+          $ref: "#/components/schemas/HostsOrdering"
+        observers:
+          type: array
+          items:
+            type: string
+        schedule_periods:
+          type: integer
+        last_report:
+          $ref: "#/components/schemas/ResourceRef"
+        current_report:
+          $ref: "#/components/schemas/ResourceRef"
+        result_count:
+          type: integer
+        in_use:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateTask:
+      type: object
+      required:
+        - name
+        - target_id
+        - scan_config_id
+        - scanner_id
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        target_id:
+          type: string
+          format: uuid
+        scan_config_id:
+          type: string
+          format: uuid
+        scanner_id:
+          type: string
+          format: uuid
+        schedule_id:
+          type: string
+          format: uuid
+        alert_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        alterable:
+          type: boolean
+        hosts_ordering:
+          $ref: "#/components/schemas/HostsOrdering"
+        observers:
+          type: array
+          items:
+            type: string
+        schedule_periods:
+          type: integer
+        preferences:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value scan preferences.
+
+    ModifyTask:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        target_id:
+          type: string
+          format: uuid
+        scan_config_id:
+          type: string
+          format: uuid
+        scanner_id:
+          type: string
+          format: uuid
+        schedule_id:
+          type: string
+          format: uuid
+        alert_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        hosts_ordering:
+          $ref: "#/components/schemas/HostsOrdering"
+        observers:
+          type: array
+          items:
+            type: string
+        schedule_periods:
+          type: integer
+
+    TaskAction:
+      type: object
+      required:
+        - report_id
+      properties:
+        report_id:
+          type: string
+          format: uuid
+          description: UUID of the report created by the start/resume action.
+
+    TaskList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Reports ──────────────────────────────────────────────
+    Report:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+        task:
+          $ref: "#/components/schemas/ResourceRef"
+        scan_start:
+          type: string
+          format: date-time
+        scan_end:
+          type: string
+          format: date-time
+        severity:
+          type: number
+          format: double
+          description: Highest severity found in the report.
+        result_count:
+          $ref: "#/components/schemas/ResultCount"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/Result"
+          description: Embedded results (when fetching a single report).
+
+    ResultCount:
+      type: object
+      properties:
+        total:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+        log:
+          type: integer
+        false_positive:
+          type: integer
+
+    ReportList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Report"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Results ──────────────────────────────────────────────
+    Result:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: NVT name.
+        host:
+          type: string
+        port:
+          type: string
+        severity:
+          type: number
+          format: double
+        threat:
+          type: string
+          enum:
+            - High
+            - Medium
+            - Low
+            - Log
+            - Alarm
+        nvt:
+          $ref: "#/components/schemas/NvtRef"
+        description:
+          type: string
+        task:
+          $ref: "#/components/schemas/ResourceRef"
+        report:
+          $ref: "#/components/schemas/ResourceRef"
+
+    NvtRef:
+      type: object
+      properties:
+        oid:
+          type: string
+        name:
+          type: string
+        family:
+          type: string
+        cvss_base:
+          type: number
+          format: double
+        cves:
+          type: array
+          items:
+            type: string
+        tags:
+          type: string
+
+    ResultList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Result"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Scan Configs ─────────────────────────────────────────
+    ScanConfig:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        family_count:
+          type: integer
+        nvt_count:
+          type: integer
+        type:
+          type: integer
+          description: "Config type: 0 = standard OpenVAS config, 1 = OSP config."
+        in_use:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateScanConfig:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        base_scan_config_id:
+          type: string
+          format: uuid
+          description: UUID of the config to copy from.
+
+    ModifyScanConfig:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+
+    ScanConfigList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanConfig"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Scanners ─────────────────────────────────────────────
+    Scanner:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        type:
+          type: string
+          enum:
+            - OpenVAS
+            - CVE
+            - OSP
+
+    ScannerList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scanner"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Alerts ───────────────────────────────────────────────
+    Alert:
+      type: object
+      required:
+        - id
+        - name
+        - event
+        - condition
+        - method
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        event:
+          type: string
+          enum:
+            - task_run_status_changed
+            - updated_secinfo
+            - new_secinfo
+        condition:
+          type: string
+          enum:
+            - always
+            - filter_count_at_least
+            - filter_count_changed
+            - severity_at_least
+            - severity_changed
+        method:
+          type: string
+          enum:
+            - email
+            - http_get
+            - scp
+            - send_email
+            - smb
+            - snmp
+            - sourcefire_connector
+            - start_task
+            - syslog
+            - tippingpoint
+            - verinice_ce
+            - verinice_net
+            - alemba
+        event_data:
+          type: object
+          additionalProperties:
+            type: string
+        condition_data:
+          type: object
+          additionalProperties:
+            type: string
+        method_data:
+          type: object
+          additionalProperties:
+            type: string
+        filter:
+          $ref: "#/components/schemas/ResourceRef"
+        in_use:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateAlert:
+      type: object
+      required:
+        - name
+        - event
+        - condition
+        - method
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        event:
+          type: string
+          enum:
+            - task_run_status_changed
+            - updated_secinfo
+            - new_secinfo
+        condition:
+          type: string
+          enum:
+            - always
+            - filter_count_at_least
+            - filter_count_changed
+            - severity_at_least
+            - severity_changed
+        method:
+          type: string
+          enum:
+            - email
+            - http_get
+            - scp
+            - send_email
+            - smb
+            - snmp
+            - sourcefire_connector
+            - start_task
+            - syslog
+            - tippingpoint
+            - verinice_ce
+            - verinice_net
+            - alemba
+        event_data:
+          type: object
+          additionalProperties:
+            type: string
+        condition_data:
+          type: object
+          additionalProperties:
+            type: string
+        method_data:
+          type: object
+          additionalProperties:
+            type: string
+        filter_id:
+          type: string
+          format: uuid
+
+    ModifyAlert:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        event:
+          type: string
+        condition:
+          type: string
+        method:
+          type: string
+        event_data:
+          type: object
+          additionalProperties:
+            type: string
+        condition_data:
+          type: object
+          additionalProperties:
+            type: string
+        method_data:
+          type: object
+          additionalProperties:
+            type: string
+        filter_id:
+          type: string
+          format: uuid
+
+    AlertList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alert"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Schedules ────────────────────────────────────────────
+    Schedule:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        icalendar:
+          type: string
+          description: iCalendar string defining the schedule recurrence.
+        timezone:
+          type: string
+          description: IANA time zone identifier.
+          examples:
+            - "Europe/Berlin"
+        first_run:
+          type: string
+          format: date-time
+        next_run:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+          description: Maximum run duration in seconds. 0 means unlimited.
+        in_use:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateSchedule:
+      type: object
+      required:
+        - name
+        - icalendar
+        - timezone
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        icalendar:
+          type: string
+          description: iCalendar string defining the schedule recurrence.
+        timezone:
+          type: string
+          description: IANA time zone identifier.
+
+    ModifySchedule:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        icalendar:
+          type: string
+        timezone:
+          type: string
+
+    ScheduleList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Schedule"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Credentials ──────────────────────────────────────────
+    Credential:
+      type: object
+      required:
+        - id
+        - name
+        - type
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        type:
+          $ref: "#/components/schemas/CredentialType"
+        login:
+          type: string
+        in_use:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateCredential:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        type:
+          $ref: "#/components/schemas/CredentialType"
+        login:
+          type: string
+        password:
+          type: string
+          format: password
+        private_key:
+          type: string
+          description: PEM-encoded private key (for `usk` type).
+        certificate:
+          type: string
+          description: PEM-encoded certificate (for `cc` type).
+        community:
+          type: string
+          description: SNMP community string (for `snmp` type).
+        auth_algorithm:
+          type: string
+          enum:
+            - md5
+            - sha1
+          description: SNMP auth algorithm (for `snmpv3` type).
+        privacy_algorithm:
+          type: string
+          enum:
+            - aes
+            - des
+          description: SNMP privacy algorithm (for `snmpv3` type).
+        privacy_password:
+          type: string
+          format: password
+          description: SNMP privacy password (for `snmpv3` type).
+
+    ModifyCredential:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        login:
+          type: string
+        password:
+          type: string
+          format: password
+        private_key:
+          type: string
+        certificate:
+          type: string
+
+    CredentialList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Credential"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Port Lists ───────────────────────────────────────────
+    PortList:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        port_count:
+          type: integer
+          description: Total number of ports in the list.
+        tcp_count:
+          type: integer
+        udp_count:
+          type: integer
+        in_use:
+          type: boolean
+        writable:
+          type: boolean
+
+    PortListList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortList"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Feeds ────────────────────────────────────────────────
+    Feed:
+      type: object
+      required:
+        - type
+        - name
+        - version
+      properties:
+        type:
+          type: string
+          enum:
+            - NVT
+            - CERT
+            - SCAP
+            - GVMD_DATA
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        currently_syncing:
+          type: boolean
+
+    FeedList:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Feed"
+
+    # ─── System ───────────────────────────────────────────────
+    VersionInfo:
+      type: object
+      required:
+        - api_version
+        - gmp_version
+      properties:
+        api_version:
+          type: string
+          description: REST API version.
+          examples:
+            - "0.1.0"
+        gmp_version:
+          type: string
+          description: GMP protocol version reported by gvmd.
+          examples:
+            - "22.7"
+
+    # ─── Enums ────────────────────────────────────────────────
+    AliveTest:
+      type: string
+      enum:
+        - Scan Config Default
+        - ICMP Ping
+        - TCP-ACK Service Ping
+        - TCP-SYN Service Ping
+        - ARP Ping
+        - "ICMP, TCP-ACK Service Ping"
+        - "ICMP, ARP Ping"
+        - "TCP-ACK Service, ARP Ping"
+        - "ICMP, TCP-ACK Service, ARP Ping"
+        - Consider Alive
+
+    HostsOrdering:
+      type: string
+      enum:
+        - sequential
+        - random
+        - reverse
+
+    CredentialType:
+      type: string
+      enum:
+        - cc
+        - pw
+        - snmp
+        - snmpv3
+        - up
+        - usk
+      description: |
+        Credential type:
+        - `cc` — Client certificate
+        - `pw` — Password only
+        - `snmp` — SNMP v1/v2c
+        - `snmpv3` — SNMP v3
+        - `up` — Username + password
+        - `usk` — Username + SSH key
