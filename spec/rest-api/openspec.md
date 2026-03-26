@@ -332,59 +332,85 @@ service_name = "gvm-rest-api"
 
 CLI flags override config file values; environment variables override both.
 
-## 5. Implementation Phases
+## 5. Implementation Phases (REST-first, aligned with #26 and #27)
 
-### Phase 1: Foundation (MVP)
+This plan is aligned with:
 
-- Server bootstrap (axum + tower)
-- Health endpoints (`/healthz`, `/readyz`)
-- GMP connection pool
-- Version endpoint
-- Basic error handling with RFC 7807
-- Structured logging (tracing)
-- Configuration system (clap + config)
+- General architecture proposal: https://github.com/clawosiris/rust-gvm-api/issues/26
+- Connection pooling + session handling proposal: https://github.com/clawosiris/rust-gvm-api/issues/27
 
-### Phase 2: Core Resources
+Scope of this plan is **REST API only** (implementation of the proposed OpenAPI spec under `spec/rest-api/`).
+**gRPC is explicitly deferred to a later iteration.**
 
-- Targets CRUD
-- Tasks CRUD + start/stop/resume
-- Reports list + get
-- Results list + get
-- Scan configs list + get
-- Pagination + filtering
-- OpenAPI spec generation (utoipa)
-- Swagger UI + ReDoc
+### Phase 1: Architecture skeleton (hexagonal baseline)
 
-### Phase 3: Auth & Security
+- Create crate boundaries per #26:
+  - `gvm-gateway-domain` (session model, domain services, port traits)
+  - `gvm-gateway-app` (use cases: session lifecycle + GMP execution)
+  - `gvm-gateway-rest` (REST incoming adapter)
+  - `gvm-gateway-gvmd` (outgoing adapter)
+  - `gvm-gateway` (composition root)
+- Keep domain free from framework/I/O dependencies.
+- Wire REST adapter to application use cases only.
+- Keep gRPC crate/work out of scope for this iteration.
 
-- JWT authentication
-- API key authentication
-- RBAC middleware
-- Rate limiting
-- CORS configuration
-- TLS support
-- Audit logging
-- Request ID propagation
+### Phase 2: Session and connection core (from #27)
 
-### Phase 4: Advanced Features
+- Implement domain `SessionManager` with `create/get/touch/expire/remove`.
+- Enforce atomic limits:
+  - global max sessions
+  - per-user max sessions
+- Implement gvmd adapter connection store keyed by session token.
+- Add one in-flight GMP command serialization per session (single-flight queue).
+- Implement backpressure behavior for queue saturation/timeouts.
+- Implement idle-expiry cleanup and explicit teardown.
 
-- Report export (PDF/XML/CSV)
-- Alerts CRUD
-- Schedules CRUD
-- Scanners list
-- Users/feeds endpoints
-- Prometheus metrics
-- OpenTelemetry integration
-- WebSocket endpoint for task status streaming (optional)
+### Phase 3: REST adapter foundation (spec-first)
 
-### Phase 5: Production Readiness
+- Generate REST server stubs/types from the OpenAPI 3.1 spec in `spec/rest-api/`.
+- Implement session endpoints first:
+  - `POST /sessions`
+  - `GET /sessions/{token}`
+  - `DELETE /sessions/{token}`
+- Implement bearer-token extraction and session resolution middleware.
+- Map domain errors to HTTP status/problem responses consistently.
 
-- Container image (Dockerfile + docker-compose)
-- Helm chart (optional)
-- Graceful shutdown
-- Connection draining
-- Health check with gvmd connectivity
-- Performance benchmarks
+### Phase 4: Resource endpoint implementation (proposed spec)
+
+Implement REST resources against the shared application execution path (`execute(token, command)`):
+
+- Targets
+- Tasks (+ start/stop/resume)
+- Reports (+ report results)
+- Results
+- Scan configs
+- Scanners
+- Alerts
+- Schedules
+- Credentials
+- Port lists
+- Feeds
+- Version/System
+
+For each resource:
+- preserve API contract from OpenAPI spec
+- ensure token-scoped execution and per-session GMP serialization
+- keep adapter thin (translation only, no business logic)
+
+### Phase 5: REST hardening and release readiness
+
+- Add structured observability for REST flow (logs, metrics, request tracing).
+- Add resilience checks for session expiry, backend disconnects, and queue backpressure.
+- Add integration and E2E tests focused on REST behavior:
+  - session lifecycle
+  - concurrent calls on same token serialize correctly
+  - limit enforcement and teardown behavior
+- Prepare first REST-focused release cut.
+
+### Deferred to next iteration
+
+- gRPC adapter implementation and `.proto` contract integration.
+- Cross-adapter parity tests (REST vs gRPC).
 
 ## 6. Error Handling
 
