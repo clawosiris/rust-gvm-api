@@ -1,0 +1,159 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+paths:
+  /scan-configs:
+    get:
+      operationId: getScanConfigs
+      tags: [Scan Configs]
+      summary: List scan configurations
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of scan configs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanConfigList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+    post:
+      operationId: createScanConfig
+      tags: [Scan Configs]
+      summary: Create a scan configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScanConfig"
+      responses:
+        "201":
+          description: Scan config created
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /scan-configs/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getScanConfig
+      tags: [Scan Configs]
+      summary: Get a scan configuration
+      responses:
+        "200":
+          description: Scan config details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanConfig"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyScanConfig
+      tags: [Scan Configs]
+      summary: Modify a scan configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyScanConfig"
+      responses:
+        "200":
+          description: Scan config updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanConfig"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteScanConfig
+      tags: [Scan Configs]
+      summary: Delete a scan configuration
+      responses:
+        "204":
+          description: Scan config deleted
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    ScanConfig:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        familyCount:
+          type: integer
+        nvtCount:
+          type: integer
+        type:
+          type: integer
+          description: "Config type: 0 = standard OpenVAS config, 1 = OSP config."
+        inUse:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateScanConfig:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        baseScanConfigId:
+          type: string
+          format: uuid
+          description: UUID of the config to copy from.
+
+    ModifyScanConfig:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+
+    ScanConfigList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanConfig"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"

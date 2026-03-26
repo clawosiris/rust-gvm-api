@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+paths:
+  /version:
+    get:
+      operationId: getVersion
+      tags: [System]
+      summary: Get API and GMP version information
+      security: []
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionInfo"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+components:
+  schemas:
+    VersionInfo:
+      type: object
+      required:
+        - apiVersion
+        - gmpVersion
+      properties:
+        apiVersion:
+          type: string
+          description: REST API version.
+          examples:
+            - "0.1.0"
+        gmpVersion:
+          type: string
+          description: GMP protocol version.
+          examples:
+            - "22.7"

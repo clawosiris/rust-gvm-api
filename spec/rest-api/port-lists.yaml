@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+paths:
+  /port-lists:
+    get:
+      operationId: getPortLists
+      tags: [Port Lists]
+      summary: List port lists
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of port lists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortListList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /port-lists/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getPortList
+      tags: [Port Lists]
+      summary: Get a port list
+      responses:
+        "200":
+          description: Port list details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    PortList:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        portCount:
+          type: integer
+          description: Total number of ports in the list.
+        tcpCount:
+          type: integer
+        udpCount:
+          type: integer
+        inUse:
+          type: boolean
+        writable:
+          type: boolean
+
+    PortListList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortList"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
