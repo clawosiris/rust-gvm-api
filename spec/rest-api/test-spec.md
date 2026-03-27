@@ -44,6 +44,9 @@
 | `target_from_gmp_roundtrip` | GMP Target XML → API Target JSON → validate all fields |
 | `task_status_mapping` | Every GMP task status string → API enum variant |
 | `report_summary_counts` | GMP report severity counts → ResultSummary |
+| `task_from_structured_response` | Map `rust-gvm` task response models to REST Task schema |
+| `report_from_structured_response` | Map `rust-gvm` report response models to REST Report schema |
+| `result_from_structured_response` | Map `rust-gvm` result response models to REST Result schema |
 | `pagination_defaults` | Missing page/per_page → defaults (1, 25) |
 | `pagination_bounds` | per_page > 1000 → clamped to 1000 |
 | `filter_to_gmp_string` | Structured filter params → GMP filter expression |
