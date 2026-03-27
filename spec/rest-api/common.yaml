@@ -1,0 +1,251 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+components:
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Resource UUID
+
+    SessionToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Opaque session token
+
+    FilterString:
+      name: filter
+      in: query
+      schema:
+        type: string
+      description: |
+        GMP filter expression.
+        Example: `name~webserver and severity>5`
+
+    FilterId:
+      name: filterId
+      in: query
+      schema:
+        type: string
+        format: uuid
+      description: UUID of a saved filter to apply
+
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number (1-indexed)
+
+    PerPage:
+      name: perPage
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 25
+      description: Number of items per page (max 1000)
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    Unauthorized:
+      description: Authentication required or session expired
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    Conflict:
+      description: Resource state conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    TooManyRequests:
+      description: Session limit or rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    BadGateway:
+      description: Backend service unreachable or connection failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+    GatewayTimeout:
+      description: Backend service did not respond in time
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
+  schemas:
+    # ─── RFC 9457 Problem Detail ──────────────────────────────
+    ProblemDetail:
+      type: object
+      description: |
+        Error response following RFC 9457 (Problem Details for HTTP APIs).
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+          description: |
+            A URI reference that identifies the problem type.
+          examples:
+            - "urn:ietf:rfc:9457:not-found"
+        title:
+          type: string
+          description: Short human-readable summary of the problem type.
+          examples:
+            - "Resource Not Found"
+        status:
+          type: integer
+          description: HTTP status code.
+          examples:
+            - 404
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence.
+          examples:
+            - "Target with ID '550e8400-e29b-41d4-a716-446655440000' not found."
+        instance:
+          type: string
+          format: uri-reference
+          description: URI reference identifying the specific occurrence.
+          examples:
+            - "/api/v1/targets/550e8400-e29b-41d4-a716-446655440000"
+
+    # ─── Pagination ───────────────────────────────────────────
+    Pagination:
+      type: object
+      required:
+        - page
+        - perPage
+        - total
+        - totalPages
+      properties:
+        page:
+          type: integer
+          examples:
+            - 1
+        perPage:
+          type: integer
+          examples:
+            - 25
+        total:
+          type: integer
+          description: Total number of resources matching the query.
+          examples:
+            - 142
+        totalPages:
+          type: integer
+          examples:
+            - 6
+
+    # ─── Common ───────────────────────────────────────────────
+    ResourceCreated:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the newly created resource.
+
+    ResourceRef:
+      type: object
+      description: Minimal reference to a related resource.
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    # ─── Enums ────────────────────────────────────────────────
+    AliveTest:
+      type: string
+      enum:
+        - Scan Config Default
+        - ICMP Ping
+        - TCP-ACK Service Ping
+        - TCP-SYN Service Ping
+        - ARP Ping
+        - "ICMP, TCP-ACK Service Ping"
+        - "ICMP, ARP Ping"
+        - "TCP-ACK Service, ARP Ping"
+        - "ICMP, TCP-ACK Service, ARP Ping"
+        - Consider Alive
+
+    HostsOrdering:
+      type: string
+      enum:
+        - sequential
+        - random
+        - reverse
+
+    CredentialType:
+      type: string
+      enum:
+        - cc
+        - pw
+        - snmp
+        - snmpv3
+        - up
+        - usk
+      description: |
+        Credential type:
+        - `cc` — Client certificate
+        - `pw` — Password only
+        - `snmp` — SNMP v1/v2c
+        - `snmpv3` — SNMP v3
+        - `up` — Username + password
+        - `usk` — Username + SSH key

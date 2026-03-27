@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /sessions:
+    post:
+      operationId: createSession
+      tags: [Sessions]
+      summary: Create a new session
+      description: |
+        Authenticates with the supplied Basic credentials and returns an opaque
+        session token. Include the token as a Bearer token on all subsequent
+        requests.
+      security:
+        - basicAuth: []
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionCreated"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "429":
+          $ref: "./common.yaml#/components/responses/TooManyRequests"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /sessions/{token}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/SessionToken"
+    get:
+      operationId: getSession
+      tags: [Sessions]
+      summary: Inspect a session
+      responses:
+        "200":
+          description: Session details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionInfo"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteSession
+      tags: [Sessions]
+      summary: Close and destroy a session
+      description: |
+        Ends the session and invalidates the token immediately.
+      responses:
+        "204":
+          description: Session closed
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    SessionCreated:
+      type: object
+      required:
+        - sessionToken
+        - expiresIn
+        - gmpVersion
+      properties:
+        sessionToken:
+          type: string
+          description: Opaque bearer token for subsequent requests.
+          examples:
+            - "gvm_sess_9e6b2d4a8f1c..."
+        expiresIn:
+          type: integer
+          description: Idle timeout in seconds. The session expires if unused for this duration.
+          examples:
+            - 300
+        gmpVersion:
+          type: string
+          description: GMP protocol version.
+          examples:
+            - "22.7"
+
+    SessionInfo:
+      type: object
+      required:
+        - sessionToken
+        - user
+        - state
+        - createdAt
+        - lastUsedAt
+        - expiresIn
+      properties:
+        sessionToken:
+          type: string
+        user:
+          type: string
+          description: Username this session authenticated as.
+        state:
+          type: string
+          enum:
+            - active
+            - idle
+            - expired
+            - closed
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        expiresIn:
+          type: integer
+          description: Remaining seconds until idle expiry.

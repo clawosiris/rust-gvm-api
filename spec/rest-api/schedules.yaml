@@ -1,0 +1,179 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /schedules:
+    get:
+      operationId: getSchedules
+      tags: [Schedules]
+      summary: List schedules
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of schedules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+    post:
+      operationId: createSchedule
+      tags: [Schedules]
+      summary: Create a schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSchedule"
+      responses:
+        "201":
+          description: Schedule created
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /schedules/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getSchedule
+      tags: [Schedules]
+      summary: Get a schedule
+      responses:
+        "200":
+          description: Schedule details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifySchedule
+      tags: [Schedules]
+      summary: Modify a schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifySchedule"
+      responses:
+        "200":
+          description: Schedule updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteSchedule
+      tags: [Schedules]
+      summary: Delete a schedule
+      responses:
+        "204":
+          description: Schedule deleted
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    Schedule:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        icalendar:
+          type: string
+          description: iCalendar string defining the schedule recurrence.
+        timezone:
+          type: string
+          description: IANA time zone identifier.
+          examples:
+            - "Europe/Berlin"
+        firstRun:
+          type: string
+          format: date-time
+        nextRun:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+          description: Maximum run duration in seconds. 0 means unlimited.
+        inUse:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateSchedule:
+      type: object
+      required:
+        - name
+        - icalendar
+        - timezone
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        icalendar:
+          type: string
+          description: iCalendar string defining the schedule recurrence.
+        timezone:
+          type: string
+          description: IANA time zone identifier.
+
+    ModifySchedule:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        icalendar:
+          type: string
+        timezone:
+          type: string
+
+    ScheduleList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Schedule"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"

@@ -1,0 +1,266 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /alerts:
+    get:
+      operationId: getAlerts
+      tags: [Alerts]
+      summary: List alerts
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of alerts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+    post:
+      operationId: createAlert
+      tags: [Alerts]
+      summary: Create an alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlert"
+      responses:
+        "201":
+          description: Alert created
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /alerts/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getAlert
+      tags: [Alerts]
+      summary: Get an alert
+      responses:
+        "200":
+          description: Alert details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyAlert
+      tags: [Alerts]
+      summary: Modify an alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyAlert"
+      responses:
+        "200":
+          description: Alert updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteAlert
+      tags: [Alerts]
+      summary: Delete an alert
+      responses:
+        "204":
+          description: Alert deleted
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    Alert:
+      type: object
+      required:
+        - id
+        - name
+        - event
+        - condition
+        - method
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        event:
+          type: string
+          enum:
+            - task_run_status_changed
+            - updated_secinfo
+            - new_secinfo
+        condition:
+          type: string
+          enum:
+            - always
+            - filter_count_at_least
+            - filter_count_changed
+            - severity_at_least
+            - severity_changed
+        method:
+          type: string
+          enum:
+            - email
+            - http_get
+            - scp
+            - send_email
+            - smb
+            - snmp
+            - sourcefire_connector
+            - start_task
+            - syslog
+            - tippingpoint
+            - verinice_ce
+            - verinice_net
+            - alemba
+        eventData:
+          type: object
+          additionalProperties:
+            type: string
+        conditionData:
+          type: object
+          additionalProperties:
+            type: string
+        methodData:
+          type: object
+          additionalProperties:
+            type: string
+        filter:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        inUse:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateAlert:
+      type: object
+      required:
+        - name
+        - event
+        - condition
+        - method
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        event:
+          type: string
+          enum:
+            - task_run_status_changed
+            - updated_secinfo
+            - new_secinfo
+        condition:
+          type: string
+          enum:
+            - always
+            - filter_count_at_least
+            - filter_count_changed
+            - severity_at_least
+            - severity_changed
+        method:
+          type: string
+          enum:
+            - email
+            - http_get
+            - scp
+            - send_email
+            - smb
+            - snmp
+            - sourcefire_connector
+            - start_task
+            - syslog
+            - tippingpoint
+            - verinice_ce
+            - verinice_net
+            - alemba
+        eventData:
+          type: object
+          additionalProperties:
+            type: string
+        conditionData:
+          type: object
+          additionalProperties:
+            type: string
+        methodData:
+          type: object
+          additionalProperties:
+            type: string
+        filterId:
+          type: string
+          format: uuid
+
+    ModifyAlert:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        event:
+          type: string
+        condition:
+          type: string
+        method:
+          type: string
+        eventData:
+          type: object
+          additionalProperties:
+            type: string
+        conditionData:
+          type: object
+          additionalProperties:
+            type: string
+        methodData:
+          type: object
+          additionalProperties:
+            type: string
+        filterId:
+          type: string
+          format: uuid
+
+    AlertList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alert"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"

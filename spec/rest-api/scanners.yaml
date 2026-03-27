@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /scanners:
+    get:
+      operationId: getScanners
+      tags: [Scanners]
+      summary: List scanners
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of scanners
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScannerList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /scanners/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getScanner
+      tags: [Scanners]
+      summary: Get a scanner
+      responses:
+        "200":
+          description: Scanner details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scanner"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    Scanner:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        type:
+          type: string
+          enum:
+            - OpenVAS
+            - CVE
+            - OSP
+
+    ScannerList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scanner"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"

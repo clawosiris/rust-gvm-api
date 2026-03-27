@@ -1,0 +1,223 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /targets:
+    get:
+      operationId: getTargets
+      tags: [Targets]
+      summary: List targets
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of targets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+    post:
+      operationId: createTarget
+      tags: [Targets]
+      summary: Create a target
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTarget"
+      responses:
+        "201":
+          description: Target created
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /targets/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getTarget
+      tags: [Targets]
+      summary: Get a target
+      responses:
+        "200":
+          description: Target details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Target"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyTarget
+      tags: [Targets]
+      summary: Modify a target
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyTarget"
+      responses:
+        "200":
+          description: Target updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Target"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteTarget
+      tags: [Targets]
+      summary: Delete a target
+      responses:
+        "204":
+          description: Target deleted
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    Target:
+      type: object
+      required:
+        - id
+        - name
+        - hosts
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+          description: Host entries (IPs, ranges, hostnames).
+        excludeHosts:
+          type: array
+          items:
+            type: string
+        aliveTest:
+          $ref: "./common.yaml#/components/schemas/AliveTest"
+        portList:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        reverseLookupOnly:
+          type: boolean
+        reverseLookupUnify:
+          type: boolean
+        sshCredential:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        smbCredential:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        esxiCredential:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        snmpCredential:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        inUse:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateTarget:
+      type: object
+      required:
+        - name
+        - hosts
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+          description: Host entries (IPs, ranges, hostnames).
+          minItems: 1
+        excludeHosts:
+          type: array
+          items:
+            type: string
+        aliveTest:
+          $ref: "./common.yaml#/components/schemas/AliveTest"
+        portListId:
+          type: string
+          format: uuid
+        reverseLookupOnly:
+          type: boolean
+        reverseLookupUnify:
+          type: boolean
+        sshCredentialId:
+          type: string
+          format: uuid
+        smbCredentialId:
+          type: string
+          format: uuid
+        esxiCredentialId:
+          type: string
+          format: uuid
+        snmpCredentialId:
+          type: string
+          format: uuid
+
+    ModifyTarget:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+        excludeHosts:
+          type: array
+          items:
+            type: string
+        aliveTest:
+          $ref: "./common.yaml#/components/schemas/AliveTest"
+        portListId:
+          type: string
+          format: uuid
+
+    TargetList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Target"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"

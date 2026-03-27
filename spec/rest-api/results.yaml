@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /results:
+    get:
+      operationId: getResults
+      tags: [Results]
+      summary: List results
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /results/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getResult
+      tags: [Results]
+      summary: Get a result
+      responses:
+        "200":
+          description: Result details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Result"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    Result:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: NVT name.
+        host:
+          type: string
+        port:
+          type: string
+        severity:
+          type: number
+          format: double
+        threat:
+          type: string
+          enum:
+            - High
+            - Medium
+            - Low
+            - Log
+            - Alarm
+        nvt:
+          $ref: "#/components/schemas/NvtRef"
+        description:
+          type: string
+        task:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        report:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+
+    NvtRef:
+      type: object
+      properties:
+        oid:
+          type: string
+        name:
+          type: string
+        family:
+          type: string
+        cvssBase:
+          type: number
+          format: double
+        cves:
+          type: array
+          items:
+            type: string
+        tags:
+          type: string
+
+    ResultList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Result"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"

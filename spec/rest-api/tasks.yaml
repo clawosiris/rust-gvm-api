@@ -1,0 +1,323 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /tasks:
+    get:
+      operationId: getTasks
+      tags: [Tasks]
+      summary: List tasks
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+    post:
+      operationId: createTask
+      tags: [Tasks]
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTask"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /tasks/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getTask
+      tags: [Tasks]
+      summary: Get a task
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyTask
+      tags: [Tasks]
+      summary: Modify a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyTask"
+      responses:
+        "200":
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteTask
+      tags: [Tasks]
+      summary: Delete a task
+      responses:
+        "204":
+          description: Task deleted
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /tasks/{id}/start:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    post:
+      operationId: startTask
+      tags: [Tasks]
+      summary: Start a task
+      responses:
+        "200":
+          description: Task started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAction"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "409":
+          $ref: "./common.yaml#/components/responses/Conflict"
+        "504":
+          $ref: "./common.yaml#/components/responses/GatewayTimeout"
+
+  /tasks/{id}/stop:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    post:
+      operationId: stopTask
+      tags: [Tasks]
+      summary: Stop a running task
+      responses:
+        "200":
+          description: Task stopped
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "409":
+          $ref: "./common.yaml#/components/responses/Conflict"
+
+  /tasks/{id}/resume:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    post:
+      operationId: resumeTask
+      tags: [Tasks]
+      summary: Resume a stopped task
+      responses:
+        "200":
+          description: Task resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAction"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "409":
+          $ref: "./common.yaml#/components/responses/Conflict"
+
+components:
+  schemas:
+    Task:
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        status:
+          type: string
+          enum:
+            - New
+            - Requested
+            - Running
+            - Stop Requested
+            - Done
+            - Stopped
+            - Delete Requested
+            - Ultimate Delete Requested
+            - Container
+            - Interrupted
+        target:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        scanConfig:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        scanner:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        schedule:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        alerts:
+          type: array
+          items:
+            $ref: "./common.yaml#/components/schemas/ResourceRef"
+        alterable:
+          type: boolean
+        hostsOrdering:
+          $ref: "./common.yaml#/components/schemas/HostsOrdering"
+        observers:
+          type: array
+          items:
+            type: string
+        schedulePeriods:
+          type: integer
+        lastReport:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        currentReport:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        resultCount:
+          type: integer
+        inUse:
+          type: boolean
+        writable:
+          type: boolean
+
+    CreateTask:
+      type: object
+      required:
+        - name
+        - targetId
+        - scanConfigId
+        - scannerId
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        targetId:
+          type: string
+          format: uuid
+        scanConfigId:
+          type: string
+          format: uuid
+        scannerId:
+          type: string
+          format: uuid
+        scheduleId:
+          type: string
+          format: uuid
+        alertIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        alterable:
+          type: boolean
+        hostsOrdering:
+          $ref: "./common.yaml#/components/schemas/HostsOrdering"
+        observers:
+          type: array
+          items:
+            type: string
+        schedulePeriods:
+          type: integer
+        preferences:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value scan preferences.
+
+    ModifyTask:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        targetId:
+          type: string
+          format: uuid
+        scanConfigId:
+          type: string
+          format: uuid
+        scannerId:
+          type: string
+          format: uuid
+        scheduleId:
+          type: string
+          format: uuid
+        alertIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        hostsOrdering:
+          $ref: "./common.yaml#/components/schemas/HostsOrdering"
+        observers:
+          type: array
+          items:
+            type: string
+        schedulePeriods:
+          type: integer
+
+    TaskAction:
+      type: object
+      required:
+        - reportId
+      properties:
+        reportId:
+          type: string
+          format: uuid
+          description: UUID of the report created by the start/resume action.
+
+    TaskList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"

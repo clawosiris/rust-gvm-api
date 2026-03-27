@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /reports:
+    get:
+      operationId: getReports
+      tags: [Reports]
+      summary: List reports
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of reports
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /reports/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReport
+      tags: [Reports]
+      summary: Get a report
+      parameters:
+        - name: ignorePagination
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: If true, return all results without pagination.
+      responses:
+        "200":
+          description: Report details with embedded results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteReport
+      tags: [Reports]
+      summary: Delete a report
+      responses:
+        "204":
+          description: Report deleted
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /reports/{id}/results:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportResults
+      tags: [Reports]
+      summary: Get paginated results for a report
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of results
+          content:
+            application/json:
+              schema:
+                $ref: "./results.yaml#/components/schemas/ResultList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    Report:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+        task:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        scanStart:
+          type: string
+          format: date-time
+        scanEnd:
+          type: string
+          format: date-time
+        severity:
+          type: number
+          format: double
+          description: Highest severity found in the report.
+        resultCount:
+          $ref: "#/components/schemas/ResultCount"
+        results:
+          type: array
+          items:
+            $ref: "./results.yaml#/components/schemas/Result"
+          description: Embedded results (when fetching a single report).
+
+    ResultCount:
+      type: object
+      properties:
+        total:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+        log:
+          type: integer
+        falsePositive:
+          type: integer
+
+    ReportList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Report"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"

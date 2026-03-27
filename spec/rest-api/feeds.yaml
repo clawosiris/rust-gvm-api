@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /feeds:
+    get:
+      operationId: getFeeds
+      tags: [Feeds]
+      summary: Get feed status
+      responses:
+        "200":
+          description: Feed status for all feed types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+components:
+  schemas:
+    Feed:
+      type: object
+      required:
+        - type
+        - name
+        - version
+      properties:
+        type:
+          type: string
+          enum:
+            - NVT
+            - CERT
+            - SCAP
+            - GVMD_DATA
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        currentlySyncing:
+          type: boolean
+
+    FeedList:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Feed"

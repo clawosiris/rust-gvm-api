@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+info:
+  title: GVM REST API
+  description: |
+    RESTful API for Greenbone Vulnerability Management (GVM).
+
+    Authenticate once to receive a session token; use that token for all
+    subsequent requests. Sessions reduce connection overhead for multi-request
+    workflows — the server manages all connection state on your behalf.
+
+    ## Authentication flow
+
+    1. `POST /api/v1/sessions` with HTTP Basic credentials.
+    2. On success the API returns an opaque `sessionToken`.
+    3. Include the token on all subsequent requests as:
+       `Authorization: Bearer <sessionToken>`
+    4. `DELETE /api/v1/sessions/{token}` ends the session.
+
+    Sessions expire after a configurable idle timeout (default 5 min).
+
+    > **Note:** A future version of the API may support stateless per-request
+    > authentication for simpler single-call use cases. For now, session-based
+    > auth is the only supported mechanism.
+  version: 0.1.0
+  license:
+    name: AGPL-3.0-or-later
+    identifier: AGPL-3.0-or-later
+
+servers:
+  - url: /api/v1
+    description: Base path for all API endpoints
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Sessions
+    description: Session lifecycle (create, inspect, destroy)
+  - name: Targets
+    description: Scan target management
+  - name: Tasks
+    description: Scan task management and control
+  - name: Reports
+    description: Scan report retrieval and export
+  - name: Results
+    description: Individual scan result retrieval
+  - name: Scan Configs
+    description: Scan configuration management
+  - name: Scanners
+    description: Scanner information
+  - name: Alerts
+    description: Alert management
+  - name: Schedules
+    description: Schedule management
+  - name: Credentials
+    description: Credential management
+  - name: Port Lists
+    description: Port list management
+  - name: Feeds
+    description: Feed status
+  - name: System
+    description: System and health endpoints
+
+paths:
+  /sessions:
+    $ref: './sessions.yaml#/paths/~1sessions'
+  /sessions/{token}:
+    $ref: './sessions.yaml#/paths/~1sessions~1{token}'
+  /targets:
+    $ref: './targets.yaml#/paths/~1targets'
+  /targets/{id}:
+    $ref: './targets.yaml#/paths/~1targets~1{id}'
+  /tasks:
+    $ref: './tasks.yaml#/paths/~1tasks'
+  /tasks/{id}:
+    $ref: './tasks.yaml#/paths/~1tasks~1{id}'
+  /tasks/{id}/start:
+    $ref: './tasks.yaml#/paths/~1tasks~1{id}~1start'
+  /tasks/{id}/stop:
+    $ref: './tasks.yaml#/paths/~1tasks~1{id}~1stop'
+  /tasks/{id}/resume:
+    $ref: './tasks.yaml#/paths/~1tasks~1{id}~1resume'
+  /reports:
+    $ref: './reports.yaml#/paths/~1reports'
+  /reports/{id}:
+    $ref: './reports.yaml#/paths/~1reports~1{id}'
+  /reports/{id}/results:
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1results'
+  /results:
+    $ref: './results.yaml#/paths/~1results'
+  /results/{id}:
+    $ref: './results.yaml#/paths/~1results~1{id}'
+  /scan-configs:
+    $ref: './scan-configs.yaml#/paths/~1scan-configs'
+  /scan-configs/{id}:
+    $ref: './scan-configs.yaml#/paths/~1scan-configs~1{id}'
+  /scanners:
+    $ref: './scanners.yaml#/paths/~1scanners'
+  /scanners/{id}:
+    $ref: './scanners.yaml#/paths/~1scanners~1{id}'
+  /alerts:
+    $ref: './alerts.yaml#/paths/~1alerts'
+  /alerts/{id}:
+    $ref: './alerts.yaml#/paths/~1alerts~1{id}'
+  /schedules:
+    $ref: './schedules.yaml#/paths/~1schedules'
+  /schedules/{id}:
+    $ref: './schedules.yaml#/paths/~1schedules~1{id}'
+  /credentials:
+    $ref: './credentials.yaml#/paths/~1credentials'
+  /credentials/{id}:
+    $ref: './credentials.yaml#/paths/~1credentials~1{id}'
+  /port-lists:
+    $ref: './port-lists.yaml#/paths/~1port-lists'
+  /port-lists/{id}:
+    $ref: './port-lists.yaml#/paths/~1port-lists~1{id}'
+  /feeds:
+    $ref: './feeds.yaml#/paths/~1feeds'
+  /health:
+    $ref: './system.yaml#/paths/~1health'
+  /ready:
+    $ref: './system.yaml#/paths/~1ready'
+  /version:
+    $ref: './system.yaml#/paths/~1version'
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: |
+        GVM username and password. Used only for session creation
+        (`POST /api/v1/sessions`).
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Opaque session token returned by `POST /api/v1/sessions`.
+        Must be presented on all subsequent requests.
