@@ -1,5 +1,8 @@
 # rust-gvm-api
 
+[![CI](https://github.com/clawosiris/rust-gvm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/clawosiris/rust-gvm-api/actions/workflows/ci.yml)
+[![Security](https://github.com/clawosiris/rust-gvm-api/actions/workflows/security.yml/badge.svg)](https://github.com/clawosiris/rust-gvm-api/actions/workflows/security.yml)
+
 REST and gRPC API servers for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm).
 
 ## Overview
