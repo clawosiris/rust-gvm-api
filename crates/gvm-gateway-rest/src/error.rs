@@ -60,6 +60,26 @@ impl RestError {
                     instance,
                 },
             },
+            GatewayError::InvalidInput(detail) => Self {
+                status: StatusCode::BAD_REQUEST,
+                problem: ProblemDetails {
+                    r#type: "urn:gvm-gateway:problem:bad-request".to_string(),
+                    title: "Bad Request".to_string(),
+                    status: StatusCode::BAD_REQUEST.as_u16(),
+                    detail: Some(detail),
+                    instance,
+                },
+            },
+            GatewayError::Unauthorized(detail) => Self {
+                status: StatusCode::UNAUTHORIZED,
+                problem: ProblemDetails {
+                    r#type: "urn:gvm-gateway:problem:unauthorized".to_string(),
+                    title: "Unauthorized".to_string(),
+                    status: StatusCode::UNAUTHORIZED.as_u16(),
+                    detail: Some(detail),
+                    instance,
+                },
+            },
         }
     }
 
@@ -72,6 +92,22 @@ impl RestError {
                 title: "Not Found".to_string(),
                 status: StatusCode::NOT_FOUND.as_u16(),
                 detail: Some("The requested route does not exist.".to_string()),
+                instance: Some(instance.into()),
+            },
+        }
+    }
+
+    /// Builds a 405 problem details response.
+    pub fn method_not_allowed(instance: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::METHOD_NOT_ALLOWED,
+            problem: ProblemDetails {
+                r#type: "urn:gvm-gateway:problem:method-not-allowed".to_string(),
+                title: "Method Not Allowed".to_string(),
+                status: StatusCode::METHOD_NOT_ALLOWED.as_u16(),
+                detail: Some(
+                    "The requested HTTP method is not allowed for this route.".to_string(),
+                ),
                 instance: Some(instance.into()),
             },
         }

@@ -12,11 +12,15 @@ authors.workspace = true
 axum.workspace = true
 gvm-gateway-app = { path = "../gvm-gateway-app" }
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
+gvm-gmp.workspace = true
 http.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 gvm-gateway-gvmd = { path = "../gvm-gateway-gvmd" }
+gvm-mock-server.workspace = true
+gvm-protocol.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
