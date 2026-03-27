@@ -20,7 +20,10 @@ A gRPC API server that exposes Greenbone Vulnerability Management (GVM) operatio
 
 ### rust-gvm typed response policy
 
-Service and conversion layers must prefer structured `rust-gvm` response models when available, rather than manual XML extraction in this repository.
+Service and conversion layers must use structured `rust-gvm` response models.
+
+**Hard requirement:** `rust-gvm-api` must not parse or process raw GMP XML responses directly.
+All GMP XML processing and protocol-shape handling belong in `rust-gvm`.
 
 Current mandatory coverage (from `rust-gvm` PR #68):
 - task responses (`GetTasksResponse`, `CreateTaskResponse`, `StartTaskResponse` + action aliases)
@@ -547,7 +550,7 @@ GMP report responses can be very large (100k+ results). The raw XML can exceed h
 2. **Latency**: Client receives first results immediately, doesn't wait for full report
 3. **Reliability**: Partial results delivered even if connection drops mid-stream
 4. **Backpressure**: HTTP/2 flow control prevents overwhelming slow clients
-5. **Consistency**: conversion is driven by `rust-gvm` structured responses instead of local XML parsing
+5. **Consistency**: conversion is driven by `rust-gvm` structured responses; local raw XML parsing is not allowed in rust-gvm-api
 
 ### Streaming Flow
 

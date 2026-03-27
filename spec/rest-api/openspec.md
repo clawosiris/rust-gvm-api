@@ -19,7 +19,10 @@ A RESTful API server that exposes Greenbone Vulnerability Management (GVM) opera
 
 ### rust-gvm typed response policy
 
-For GMP-backed endpoints, adapter/application conversion must prefer the structured response models provided by `rust-gvm` instead of ad-hoc XML field extraction in this repository.
+For GMP-backed endpoints, adapter/application conversion must use the structured response models provided by `rust-gvm`.
+
+**Hard requirement:** `rust-gvm-api` must not parse or process raw GMP XML responses directly.
+All GMP XML processing and protocol-shape handling belong in `rust-gvm`.
 
 Current mandatory coverage (from `rust-gvm` PR #68):
 - tasks (`GetTasksResponse`, `CreateTaskResponse`, `StartTaskResponse` + action aliases)
@@ -418,7 +421,7 @@ Implement REST resources against the shared application execution path (`execute
 For each resource (acceptance-test first):
 - preserve API contract from OpenAPI spec
 - ensure token-scoped execution and per-session GMP serialization
-- keep adapter thin (translation only, no business logic)
+- keep adapter thin (translation only, no business logic, no raw GMP XML handling)
 
 ### Phase 5: REST hardening and release readiness
 
