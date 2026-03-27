@@ -165,7 +165,7 @@ async fn test_server() -> TestServer {
 
 | Test | Scope |
 |------|-------|
-| `request_id_header_present` | Every response has `X-Request-Id` |
+| `trace_context_headers_propagated` | W3C trace context is accepted/forwarded (`traceparent`, optional `tracestate`/`baggage`) |
 | `cors_preflight_allowed_origin` | OPTIONS request with allowed origin → 200 |
 | `cors_preflight_denied_origin` | OPTIONS with unknown origin → no CORS headers |
 | `gzip_compression` | `Accept-Encoding: gzip` → compressed response |

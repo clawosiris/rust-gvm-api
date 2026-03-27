@@ -22,6 +22,14 @@ info:
 
     Sessions expire after a configurable idle timeout (default 5 min).
 
+    ## Tracing (OpenTelemetry)
+
+    The API uses OpenTelemetry for distributed tracing.
+    Clients should propagate W3C Trace Context headers:
+    - `traceparent`
+    - `tracestate` (optional)
+    - `baggage` (optional)
+
     > **Note:** A future version of the API may support stateless per-request
     > authentication for simpler single-call use cases. For now, session-based
     > auth is the only supported mechanism.
