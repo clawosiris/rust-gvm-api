@@ -4,6 +4,46 @@
 openapi: 3.1.0
 
 paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Liveness probe
+      description: Returns basic process liveness information.
+      security: []
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+
+  /ready:
+    get:
+      operationId: getReadiness
+      tags: [System]
+      summary: Readiness probe
+      description: Indicates whether the service is ready to handle requests.
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessStatus"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessStatus"
+
   /version:
     get:
       operationId: getVersion
@@ -24,6 +64,29 @@ paths:
 
 components:
   schemas:
+    HealthStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          description: Liveness state.
+
+    ReadinessStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [ready, notReady]
+          description: Readiness state.
+        reason:
+          type: string
+          description: Optional human-readable reason when not ready.
+
     VersionInfo:
       type: object
       required:
