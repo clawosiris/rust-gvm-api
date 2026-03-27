@@ -263,9 +263,9 @@ RFC 7807 Problem Details:
 }
 ```
 
-#### Request IDs
+#### Distributed tracing
 
-Every response includes `X-Request-Id` and should propagate W3C Trace Context (`traceparent`, `tracestate`, optional `baggage`) for OpenTelemetry correlation.
+The API should propagate W3C Trace Context (`traceparent`, `tracestate`, optional `baggage`) for OpenTelemetry correlation.
 
 ### Authentication & Authorization
 

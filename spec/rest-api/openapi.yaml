@@ -30,8 +30,6 @@ info:
     - `tracestate` (optional)
     - `baggage` (optional)
 
-    Responses include `X-Request-Id` for log correlation.
-
     > **Note:** A future version of the API may support stateless per-request
     > authentication for simpler single-call use cases. For now, session-based
     > auth is the only supported mechanism.

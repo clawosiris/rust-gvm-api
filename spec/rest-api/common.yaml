@@ -84,11 +84,6 @@ components:
       description: W3C Baggage header for distributed tracing context.
 
   headers:
-    XRequestId:
-      description: Request identifier for log and trace correlation.
-      schema:
-        type: string
-
     Traceparent:
       description: W3C Trace Context traceparent for downstream correlation.
       schema:
@@ -97,8 +92,6 @@ components:
   responses:
     BadRequest:
       headers:
-        X-Request-Id:
-          $ref: "#/components/headers/XRequestId"
         traceparent:
           $ref: "#/components/headers/Traceparent"
       description: Invalid request
@@ -109,8 +102,6 @@ components:
 
     Unauthorized:
       headers:
-        X-Request-Id:
-          $ref: "#/components/headers/XRequestId"
         traceparent:
           $ref: "#/components/headers/Traceparent"
       description: Authentication required or session expired
@@ -121,8 +112,6 @@ components:
 
     Forbidden:
       headers:
-        X-Request-Id:
-          $ref: "#/components/headers/XRequestId"
         traceparent:
           $ref: "#/components/headers/Traceparent"
       description: Insufficient permissions
@@ -133,8 +122,6 @@ components:
 
     NotFound:
       headers:
-        X-Request-Id:
-          $ref: "#/components/headers/XRequestId"
         traceparent:
           $ref: "#/components/headers/Traceparent"
       description: Resource not found
@@ -145,8 +132,6 @@ components:
 
     Conflict:
       headers:
-        X-Request-Id:
-          $ref: "#/components/headers/XRequestId"
         traceparent:
           $ref: "#/components/headers/Traceparent"
       description: Resource state conflict
@@ -157,8 +142,6 @@ components:
 
     TooManyRequests:
       headers:
-        X-Request-Id:
-          $ref: "#/components/headers/XRequestId"
         traceparent:
           $ref: "#/components/headers/Traceparent"
         Retry-After:
@@ -173,8 +156,6 @@ components:
 
     BadGateway:
       headers:
-        X-Request-Id:
-          $ref: "#/components/headers/XRequestId"
         traceparent:
           $ref: "#/components/headers/Traceparent"
       description: Backend service unreachable or connection failed
@@ -185,8 +166,6 @@ components:
 
     GatewayTimeout:
       headers:
-        X-Request-Id:
-          $ref: "#/components/headers/XRequestId"
         traceparent:
           $ref: "#/components/headers/Traceparent"
       description: Backend service did not respond in time
