@@ -13,11 +13,8 @@ axum.workspace = true
 gvm-gateway-app = { path = "../gvm-gateway-app" }
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
 http.workspace = true
-opentelemetry.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tower.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
 gvm-gateway-gvmd = { path = "../gvm-gateway-gvmd" }
