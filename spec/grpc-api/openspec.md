@@ -10,7 +10,7 @@ A gRPC API server that exposes Greenbone Vulnerability Management (GVM) operatio
 - **Type safety**: Protobuf service definitions as the single source of truth for client/server contracts
 - **Streaming**: Server-streaming RPCs for reports and scan results (handles GMP large-response challenge)
 - **Interoperability**: gRPC reflection + health checking per the standard protocols
-- **Observable**: OpenTelemetry traces, Prometheus metrics, structured logging
+- **Observable**: OpenTelemetry traces and structured logging
 
 ### Non-Goals
 
@@ -83,7 +83,6 @@ crates/gvm-grpc-api/
 │   │   ├── auth.rs      # Auth interceptor
 │   │   ├── rate_limit.rs
 │   │   ├── audit.rs
-│   │   └── metrics.rs
 │   ├── services/
 │   │   ├── mod.rs
 │   │   ├── target.rs
@@ -518,7 +517,6 @@ enabled = true  # gRPC reflection for grpcurl/grpcui
 - Task status streaming (`WatchTaskStatus`)
 - Report export streaming (`ExportReport`)
 - Alerts, Schedules, Scanners, Users, Feeds services
-- Prometheus metrics endpoint (separate HTTP port)
 - OpenTelemetry gRPC interceptor
 
 ### Phase 5: Production Readiness

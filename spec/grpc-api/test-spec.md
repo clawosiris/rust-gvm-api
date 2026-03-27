@@ -70,8 +70,6 @@
 | `rate_limit_over_threshold_rejects` | N requests > limit → RESOURCE_EXHAUSTED |
 | `audit_log_captures_method` | RPC call → audit log entry with method name |
 | `audit_log_captures_user` | Authenticated call → log entry with user ID |
-| `metrics_counter_incremented` | RPC call → `grpc_requests_total` counter +1 |
-| `metrics_histogram_recorded` | RPC call → `grpc_request_duration` histogram entry |
 
 ### 2.5 Pagination
 
