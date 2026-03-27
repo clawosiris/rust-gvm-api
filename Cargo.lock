@@ -484,13 +484,10 @@ dependencies = [
  "gvm-gateway-domain",
  "gvm-gateway-gvmd",
  "http",
- "opentelemetry",
  "reqwest",
  "serde",
  "serde_json",
  "tokio",
- "tower 0.5.3",
- "tracing",
 ]
 
 [[package]]
