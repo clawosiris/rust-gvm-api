@@ -17,21 +17,28 @@ repository = "https://github.com/clawosiris/rust-gvm-api"
 authors = ["clawosiris"]
 
 [workspace.dependencies]
+async-trait = "0.1.89"
 axum = "0.7.9"
 clap = { version = "4.5.38", features = ["derive"] }
+gvm-client = { git = "https://github.com/clawosiris/rust-gvm", rev = "5cdfd07" }
+gvm-connection = { git = "https://github.com/clawosiris/rust-gvm", rev = "5cdfd07" }
+gvm-gmp = { git = "https://github.com/clawosiris/rust-gvm", rev = "5cdfd07", features = ["serde"] }
+gvm-mock-server = { git = "https://github.com/clawosiris/rust-gvm", rev = "5cdfd07" }
+gvm-protocol = { git = "https://github.com/clawosiris/rust-gvm", rev = "5cdfd07" }
 http = "1.3.1"
 opentelemetry = { version = "0.24.0", features = ["trace"] }
 opentelemetry-otlp = { version = "0.17.0", features = ["grpc-tonic", "trace"] }
 opentelemetry_sdk = { version = "0.24.1", features = ["rt-tokio"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread", "net"] }
+tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
 toml = "0.8.20"
 tower = { version = "0.5.2", features = ["util"] }
 tower-http = { version = "0.6.2", features = ["trace"] }
 tracing = "0.1.41"
 tracing-opentelemetry = "0.25.0"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt", "std"] }
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
 
 [workspace.dependencies.reqwest]
 version = "0.12.15"
