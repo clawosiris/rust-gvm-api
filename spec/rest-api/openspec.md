@@ -342,6 +342,18 @@ This plan is aligned with:
 Scope of this plan is **REST API only** (implementation of the proposed OpenAPI spec under `spec/rest-api/`).
 **gRPC is explicitly deferred to a later iteration.**
 
+### Delivery approach: acceptance-test first (mandatory)
+
+For every use case and endpoint, development follows this loop:
+
+1. Write or extend an **acceptance test** for the behavior.
+2. Run the test and confirm it **fails** (red) for the expected reason.
+3. Implement the minimal code to satisfy the behavior.
+4. Re-run and confirm the acceptance test is **green**.
+5. Refactor while keeping the acceptance test green.
+
+No implementation work should start without an acceptance test that defines the expected behavior.
+
 ### Phase 1: Architecture skeleton (hexagonal baseline)
 
 - Create crate boundaries per #26:
@@ -368,7 +380,7 @@ Scope of this plan is **REST API only** (implementation of the proposed OpenAPI 
 ### Phase 3: REST adapter foundation (spec-first)
 
 - Generate REST server stubs/types from the OpenAPI 3.1 spec in `spec/rest-api/`.
-- Implement session endpoints first:
+- Implement session endpoints first (acceptance-test first for each endpoint):
   - `POST /sessions`
   - `GET /sessions/{token}`
   - `DELETE /sessions/{token}`
@@ -392,7 +404,7 @@ Implement REST resources against the shared application execution path (`execute
 - Feeds
 - Version/System
 
-For each resource:
+For each resource (acceptance-test first):
 - preserve API contract from OpenAPI spec
 - ensure token-scoped execution and per-session GMP serialization
 - keep adapter thin (translation only, no business logic)
@@ -403,7 +415,7 @@ For each resource:
 - Implement OTel tracer setup with OTLP exporter and service/resource attributes.
 - Ensure W3C Trace Context propagation across incoming HTTP, application use cases, and gvmd adapter calls.
 - Add resilience checks for session expiry, backend disconnects, and queue backpressure.
-- Add integration and E2E tests focused on REST behavior:
+- Add/maintain integration and E2E tests focused on REST behavior (written first, fail-first):
   - session lifecycle
   - concurrent calls on same token serialize correctly
   - limit enforcement and teardown behavior
