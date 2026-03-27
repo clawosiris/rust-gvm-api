@@ -9,5 +9,4 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-async-trait.workspace = true
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
