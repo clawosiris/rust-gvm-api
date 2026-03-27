@@ -1,0 +1,22 @@
+[package]
+name = "gvm-gateway-rest"
+description = "REST adapter for the GVM gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+axum.workspace = true
+gvm-gateway-app = { path = "../gvm-gateway-app" }
+gvm-gateway-domain = { path = "../gvm-gateway-domain" }
+http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+gvm-gateway-gvmd = { path = "../gvm-gateway-gvmd" }
+reqwest.workspace = true
+tokio.workspace = true
