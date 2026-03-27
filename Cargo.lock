@@ -575,7 +575,6 @@ dependencies = [
 name = "gvm-gateway-app"
 version = "0.3.1"
 dependencies = [
- "async-trait",
  "gvm-gateway-domain",
 ]
 
