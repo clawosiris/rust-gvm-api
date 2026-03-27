@@ -58,8 +58,49 @@ components:
         default: 25
       description: Number of items per page (max 1000)
 
+
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      schema:
+        type: string
+      description: W3C Trace Context traceparent header for distributed tracing.
+
+    Tracestate:
+      name: tracestate
+      in: header
+      required: false
+      schema:
+        type: string
+      description: W3C Trace Context tracestate header for distributed tracing.
+
+    Baggage:
+      name: baggage
+      in: header
+      required: false
+      schema:
+        type: string
+      description: W3C Baggage header for distributed tracing context.
+
+  headers:
+    XRequestId:
+      description: Request identifier for log and trace correlation.
+      schema:
+        type: string
+
+    Traceparent:
+      description: W3C Trace Context traceparent for downstream correlation.
+      schema:
+        type: string
+
   responses:
     BadRequest:
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/XRequestId"
+        traceparent:
+          $ref: "#/components/headers/Traceparent"
       description: Invalid request
       content:
         application/json:
@@ -67,6 +108,11 @@ components:
             $ref: "#/components/schemas/ProblemDetail"
 
     Unauthorized:
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/XRequestId"
+        traceparent:
+          $ref: "#/components/headers/Traceparent"
       description: Authentication required or session expired
       content:
         application/json:
@@ -74,6 +120,11 @@ components:
             $ref: "#/components/schemas/ProblemDetail"
 
     Forbidden:
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/XRequestId"
+        traceparent:
+          $ref: "#/components/headers/Traceparent"
       description: Insufficient permissions
       content:
         application/json:
@@ -81,6 +132,11 @@ components:
             $ref: "#/components/schemas/ProblemDetail"
 
     NotFound:
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/XRequestId"
+        traceparent:
+          $ref: "#/components/headers/Traceparent"
       description: Resource not found
       content:
         application/json:
@@ -88,6 +144,11 @@ components:
             $ref: "#/components/schemas/ProblemDetail"
 
     Conflict:
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/XRequestId"
+        traceparent:
+          $ref: "#/components/headers/Traceparent"
       description: Resource state conflict
       content:
         application/json:
@@ -95,18 +156,27 @@ components:
             $ref: "#/components/schemas/ProblemDetail"
 
     TooManyRequests:
-      description: Session limit or rate limit exceeded
       headers:
+        X-Request-Id:
+          $ref: "#/components/headers/XRequestId"
+        traceparent:
+          $ref: "#/components/headers/Traceparent"
         Retry-After:
           schema:
             type: integer
           description: Seconds to wait before retrying
+      description: Session limit or rate limit exceeded
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
     BadGateway:
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/XRequestId"
+        traceparent:
+          $ref: "#/components/headers/Traceparent"
       description: Backend service unreachable or connection failed
       content:
         application/json:
@@ -114,6 +184,11 @@ components:
             $ref: "#/components/schemas/ProblemDetail"
 
     GatewayTimeout:
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/XRequestId"
+        traceparent:
+          $ref: "#/components/headers/Traceparent"
       description: Backend service did not respond in time
       content:
         application/json:

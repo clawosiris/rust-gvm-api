@@ -7,8 +7,8 @@ A RESTful API server that exposes Greenbone Vulnerability Management (GVM) opera
 ### Goals
 
 - **Standards-first**: OpenAPI 3.1 specification, JSON:API-inspired resource design, proper HTTP semantics
-- **Security-first**: JWT/API-key authentication, RBAC, TLS, rate limiting, audit logging
-- **Observable**: Structured logging, OpenTelemetry traces, Prometheus metrics
+- **Security-first**: Session-token authentication, TLS, rate limiting, audit logging
+- **Observable**: Structured logging, OpenTelemetry (OTel) traces via OTLP, Prometheus metrics
 - **Performant**: Async throughout, connection pooling to gvmd, streaming for large responses
 
 ### Non-Goals
@@ -265,22 +265,22 @@ RFC 7807 Problem Details:
 
 #### Request IDs
 
-Every response includes `X-Request-Id` header for tracing.
+Every response includes `X-Request-Id` and should propagate W3C Trace Context (`traceparent`, `tracestate`, optional `baggage`) for OpenTelemetry correlation.
 
 ### Authentication & Authorization
 
-1. **JWT Bearer Tokens** — Primary auth for interactive clients
-   - `POST /api/v1/auth/token` with GMP credentials → JWT
-   - Token includes user roles from gvmd
-   - Configurable expiration (default 1h) + refresh tokens
+1. **Session token flow** — Primary auth model
+   - `POST /api/v1/sessions` with Basic credentials
+   - API returns an opaque session token
+   - Subsequent requests use `Authorization: Bearer <sessionToken>`
 
-2. **API Keys** — For service-to-service / automation
-   - Passed via `X-API-Key` header
-   - Scoped to specific operations (read-only, full access)
+2. **Session lifecycle controls**
+   - `GET /api/v1/sessions/{token}` to inspect session state
+   - `DELETE /api/v1/sessions/{token}` for explicit teardown
 
-3. **RBAC** — Maps GMP roles to API permissions
-   - Admin, User, Observer, Guest mapped from gvmd roles
-   - Per-endpoint permission checks
+3. **Authorization**
+   - Authorization behavior follows gvmd user permissions
+   - API adapters map domain permission errors to protocol-specific status codes
 
 ### Rate Limiting
 
@@ -399,7 +399,9 @@ For each resource:
 
 ### Phase 5: REST hardening and release readiness
 
-- Add structured observability for REST flow (logs, metrics, request tracing).
+- Add structured observability for REST flow (logs, metrics, OTel tracing).
+- Implement OTel tracer setup with OTLP exporter and service/resource attributes.
+- Ensure W3C Trace Context propagation across incoming HTTP, application use cases, and gvmd adapter calls.
 - Add resilience checks for session expiry, backend disconnects, and queue backpressure.
 - Add integration and E2E tests focused on REST behavior:
   - session lifecycle
@@ -436,13 +438,13 @@ For each resource:
 |------------|---------|
 | `gvm-client` / `gvm-gmp` | GMP protocol client (from rust-gvm) |
 | `axum` | HTTP framework |
-| `tower` / `tower-http` | Middleware (CORS, compression, tracing, auth) |
+| `tower` / `tower-http` | Middleware (CORS, compression, auth, trace context propagation) |
 | `tokio` | Async runtime |
 | `utoipa` | OpenAPI spec generation |
 | `serde` / `serde_json` | Serialization |
 | `jsonwebtoken` | JWT handling |
 | `clap` | CLI argument parsing |
-| `tracing` | Structured logging |
+| `tracing` + `tracing-opentelemetry` + `opentelemetry` + `opentelemetry-otlp` | Structured logging + OTel export |
 | `prometheus` | Metrics |
 
 ### Dev/Test
