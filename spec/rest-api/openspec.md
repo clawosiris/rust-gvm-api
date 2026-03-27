@@ -8,7 +8,7 @@ A RESTful API server that exposes Greenbone Vulnerability Management (GVM) opera
 
 - **Standards-first**: OpenAPI 3.1 specification, JSON:API-inspired resource design, proper HTTP semantics
 - **Security-first**: Session-token authentication, TLS, rate limiting, audit logging
-- **Observable**: Structured logging, OpenTelemetry (OTel) traces via OTLP, Prometheus metrics
+- **Observable**: Structured logging and OpenTelemetry (OTel) traces via OTLP
 - **Performant**: Async throughout, connection pooling to gvmd, streaming for large responses
 
 ### Non-Goals
@@ -213,7 +213,6 @@ URL-based versioning (`/api/v1/`, `/api/v2/`). Major breaking changes increment 
 |--------|------|-------------|
 | `GET` | `/healthz` | Liveness probe |
 | `GET` | `/readyz` | Readiness probe (checks gvmd connectivity) |
-| `GET` | `/metrics` | Prometheus metrics |
 | `GET` | `/api/v1/version` | API + GMP version info |
 | `GET` | `/api/v1/openapi.json` | OpenAPI 3.1 spec |
 | `GET` | `/api/v1/docs` | Swagger UI |
@@ -411,7 +410,7 @@ For each resource (acceptance-test first):
 
 ### Phase 5: REST hardening and release readiness
 
-- Add structured observability for REST flow (logs, metrics, OTel tracing).
+- Add structured observability for REST flow (logs, OTel tracing).
 - Implement OTel tracer setup with OTLP exporter and service/resource attributes.
 - Ensure W3C Trace Context propagation across incoming HTTP, application use cases, and gvmd adapter calls.
 - Add resilience checks for session expiry, backend disconnects, and queue backpressure.
