@@ -44,7 +44,9 @@
 | `target_gmp_to_proto_roundtrip` | GMP Target → Proto Target → verify all fields |
 | `target_proto_to_gmp_create` | CreateTargetRequest → GMP create_target args |
 | `task_status_all_variants` | Every GMP status string → TaskStatus enum |
+| `task_from_structured_response` | gRPC task conversion consumes rust-gvm structured task responses |
 | `report_result_severity_precision` | Float severity preserved (no truncation) |
+| `report_and_result_from_structured_response` | gRPC report/result conversion consumes rust-gvm structured responses |
 | `timestamp_conversion` | GMP ISO timestamp → Proto Timestamp (seconds + nanos) |
 | `uuid_conversion` | String UUID → Proto Uuid → back to string |
 | `empty_optional_fields` | Missing GMP fields → Proto default values (not panic) |

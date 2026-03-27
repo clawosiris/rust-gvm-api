@@ -17,6 +17,18 @@ A RESTful API server that exposes Greenbone Vulnerability Management (GVM) opera
 - Built-in user management (delegates to gvmd's user/role system via GMP)
 - Web UI (API only — UIs are separate consumers)
 
+### rust-gvm typed response policy
+
+For GMP-backed endpoints, adapter/application conversion must prefer the structured response models provided by `rust-gvm` instead of ad-hoc XML field extraction in this repository.
+
+Current mandatory coverage (from `rust-gvm` PR #68):
+- tasks (`GetTasksResponse`, `CreateTaskResponse`, `StartTaskResponse` + action aliases)
+- reports (`GetReportsResponse`, `DeleteReportResponse`)
+- results (`GetResultsResponse`)
+
+When a structured model exists upstream, use it as the source for API mapping.
+
+
 ## 2. Architecture
 
 ```
@@ -391,9 +403,9 @@ No implementation work should start without an acceptance test that defines the 
 Implement REST resources against the shared application execution path (`execute(token, command)`):
 
 - Targets
-- Tasks (+ start/stop/resume)
-- Reports (+ report results)
-- Results
+- Tasks (+ start/stop/resume) — use `rust-gvm` structured task responses
+- Reports (+ report results) — use `rust-gvm` structured report responses
+- Results — use `rust-gvm` structured result responses
 - Scan configs
 - Scanners
 - Alerts
@@ -447,7 +459,7 @@ For each resource (acceptance-test first):
 
 | Dependency | Purpose |
 |------------|---------|
-| `gvm-client` / `gvm-gmp` | GMP protocol client (from rust-gvm) |
+| `gvm-client` / `gvm-gmp` | GMP protocol client + structured response models (tasks/reports/results from rust-gvm PR #68) |
 | `axum` | HTTP framework |
 | `tower` / `tower-http` | Middleware (CORS, compression, auth, trace context propagation) |
 | `tokio` | Async runtime |

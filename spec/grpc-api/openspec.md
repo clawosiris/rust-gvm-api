@@ -18,6 +18,16 @@ A gRPC API server that exposes Greenbone Vulnerability Management (GVM) operatio
 - Full GMP parity in v0.1 (start with the most-used operations)
 - Built-in user management (delegates to gvmd via GMP)
 
+### rust-gvm typed response policy
+
+Service and conversion layers must prefer structured `rust-gvm` response models when available, rather than manual XML extraction in this repository.
+
+Current mandatory coverage (from `rust-gvm` PR #68):
+- task responses (`GetTasksResponse`, `CreateTaskResponse`, `StartTaskResponse` + action aliases)
+- report responses (`GetReportsResponse`, `DeleteReportResponse`)
+- result responses (`GetResultsResponse`)
+
+
 ## 2. Architecture
 
 ```
@@ -537,6 +547,7 @@ GMP report responses can be very large (100k+ results). The raw XML can exceed h
 2. **Latency**: Client receives first results immediately, doesn't wait for full report
 3. **Reliability**: Partial results delivered even if connection drops mid-stream
 4. **Backpressure**: HTTP/2 flow control prevents overwhelming slow clients
+5. **Consistency**: conversion is driven by `rust-gvm` structured responses instead of local XML parsing
 
 ### Streaming Flow
 
@@ -544,9 +555,9 @@ GMP report responses can be very large (100k+ results). The raw XML can exceed h
 Client                    gvm-grpc-api                    gvmd
   │                            │                            │
   │── StreamReportResults ────►│                            │
-  │                            │── get_report (GMP XML) ──►│
-  │                            │◄── XML stream ────────────│
-  │◄── ReportResult #1 ───────│  (parse incrementally)     │
+  │                            │── get_report/get_results ─►│
+  │                            │◄── rust-gvm typed responses │
+  │◄── ReportResult #1 ───────│  (convert incrementally)     │
   │◄── ReportResult #2 ───────│                            │
   │◄── ReportResult #3 ───────│                            │
   │◄── ... ───────────────────│                            │
@@ -560,7 +571,7 @@ Client                    gvm-grpc-api                    gvmd
 
 | Dependency | Purpose |
 |------------|---------|
-| `gvm-client` / `gvm-gmp` | GMP protocol client |
+| `gvm-client` / `gvm-gmp` | GMP protocol client + structured response models (tasks/reports/results from rust-gvm PR #68) |
 | `tonic` | gRPC framework |
 | `prost` | Protobuf serialization |
 | `tonic-reflection` | gRPC reflection service |
