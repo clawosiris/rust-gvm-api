@@ -97,6 +97,7 @@ jobs:
         with:
           arguments: --workspace
           credentials: ${{ secrets.RELEASE_TOKEN }}
+          use-git-cli: true
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
