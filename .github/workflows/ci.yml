@@ -100,7 +100,7 @@ jobs:
       - name: Run cargo-deny
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-        run: cargo deny check --workspace
+        run: cargo deny --workspace check
 
   coverage:
     name: Coverage
