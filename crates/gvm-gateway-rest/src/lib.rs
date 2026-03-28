@@ -7,5 +7,6 @@
 //! REST adapter for the GVM gateway.
 
 pub mod error;
-pub mod router;
+pub mod routes;
+pub mod system;
 pub mod targets;
