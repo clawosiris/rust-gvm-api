@@ -2,7 +2,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
-use gvm_gateway_rest::router::build_router;
+use gvm_gateway_rest::routes::build_router;
 use gvm_gateway_rest::targets::{
     build_gmp_filter, target_from_gmp, CreateTargetRequest, ModifyTargetRequest, TargetListQuery,
 };

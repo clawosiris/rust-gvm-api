@@ -11,7 +11,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use clap::Parser;
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_gvmd::StaticGvmdAdapter;
-use gvm_gateway_rest::router::build_router;
+use gvm_gateway_rest::routes::build_router;
 use tokio::net::TcpListener;
 
 use gvm_gateway::{config::load_config, config::CliArgs, telemetry::init_tracing};
