@@ -40,7 +40,7 @@ where
                 .patch(method_not_allowed_collection),
         )
         .route(
-            "/api/v1/targets/:id",
+            "/api/v1/targets/{id}",
             get(get_target)
                 .put(update_target)
                 .delete(delete_target)

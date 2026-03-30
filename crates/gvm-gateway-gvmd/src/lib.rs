@@ -410,8 +410,8 @@ fn target_from_gmp(target: GmpTarget) -> Target {
         id: target.meta.id.to_string(),
         name: target.meta.name,
         comment: target.meta.comment,
-        hosts: split_csv(target.hosts),
-        exclude_hosts: split_csv(target.exclude_hosts),
+        hosts: target.hosts,
+        exclude_hosts: target.exclude_hosts,
         alive_test: target.alive_tests,
         port_list: target.port_list.map(|resource| ResourceRef {
             id: resource.id.to_string(),
@@ -428,13 +428,3 @@ fn target_from_gmp(target: GmpTarget) -> Target {
     }
 }
 
-fn split_csv(value: Option<String>) -> Vec<String> {
-    value
-        .unwrap_or_default()
-        .split(',')
-        .filter_map(|entry| {
-            let trimmed = entry.trim();
-            (!trimmed.is_empty()).then(|| trimmed.to_string())
-        })
-        .collect()
-}
