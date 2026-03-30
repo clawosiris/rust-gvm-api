@@ -9,7 +9,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use clap::Parser;
-use gvm_gateway_app::SystemService;
+use gvm_gateway_app::GatewayService;
 use gvm_gateway_gvmd::StaticGvmdAdapter;
 use gvm_gateway_rest::router::build_router;
 use tokio::net::TcpListener;
@@ -24,7 +24,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     init_tracing(&config)?;
 
     let listener = TcpListener::bind(&config.bind).await?;
-    let service = SystemService::new(Arc::new(StaticGvmdAdapter::ready("unknown")));
+    let system_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
+    let target_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
+    let service = GatewayService::new(system_adapter, target_adapter);
     let app = build_router(service);
 
     axum::serve(listener, app).await?;
