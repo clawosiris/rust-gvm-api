@@ -5,8 +5,8 @@
 
 use opentelemetry::global;
 use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::trace::TracerProvider;
+use opentelemetry_otlp::{SpanExporter, WithExportConfig};
+use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::config::GatewayConfig;
@@ -20,14 +20,12 @@ pub fn init_tracing(
     let registry = tracing_subscriber::registry().with(filter);
 
     if let Some(endpoint) = config.otlp_endpoint.as_ref() {
-        let exporter = opentelemetry_otlp::new_exporter()
-            .tonic()
-            .with_endpoint(endpoint);
-        let provider = TracerProvider::builder()
-            .with_batch_exporter(
-                exporter.build_span_exporter()?,
-                opentelemetry_sdk::runtime::Tokio,
-            )
+        let exporter = SpanExporter::builder()
+            .with_tonic()
+            .with_endpoint(endpoint)
+            .build()?;
+        let provider = SdkTracerProvider::builder()
+            .with_span_processor(BatchSpanProcessor::builder(exporter).build())
             .build();
         let tracer = provider.tracer("gvm-gateway");
         global::set_tracer_provider(provider);
