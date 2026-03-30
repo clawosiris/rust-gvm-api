@@ -20,6 +20,10 @@ allow = [
     "BSL-1.0",
     "CC0-1.0",
     "MPL-2.0",
+    # CDLA-Permissive-2.0: Linux Foundation license for data (not code).
+    # Used by webpki-roots for Mozilla CA certificate bundle.
+    # Pending legal review — see issue tracking this.
+    "CDLA-Permissive-2.0",
 ]
 
 [bans]
