@@ -10,9 +10,16 @@ updates:
     open-pull-requests-limit: 10
     # Group minor/patch updates to reduce PR noise
     groups:
+      opentelemetry:
+        patterns:
+          - "opentelemetry*"
+          - "tracing-opentelemetry"
       cargo:
         patterns:
           - "*"
+        exclude-patterns:
+          - "opentelemetry*"
+          - "tracing-opentelemetry"
         update-types:
           - "minor"
           - "patch"
