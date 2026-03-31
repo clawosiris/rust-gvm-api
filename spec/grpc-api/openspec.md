@@ -33,34 +33,49 @@ Current mandatory coverage (from `rust-gvm` PR #68):
 
 ## 2. Architecture
 
+The gRPC API is part of the unified `gvm-gateway` binary (see [ADR-001](#adr-001-unified-gateway-binary-rest--grpc)).
+
+Both REST and gRPC are served on **a single port** (`:8080`) using HTTP/2 content-type multiplexing.
+
 ```
-┌─────────────────────────────────────────────────┐
-│                 gvm-grpc-api                     │
-│                                                  │
-│  ┌───────────┐  ┌───────────┐  ┌──────────────┐ │
-│  │  tonic    │  │   Auth    │  │  Interceptors│ │
-│  │  Server   │──│  (JWT /   │──│  (Trace/Rate/│ │
-│  │           │  │  mTLS)    │  │   Metrics)   │ │
-│  └─────┬─────┘  └───────────┘  └──────────────┘ │
-│        │                                         │
-│  ┌─────┴─────────────────────────────────────┐   │
-│  │           Service Implementations          │   │
-│  │  ┌─────────┐ ┌──────────┐ ┌────────────┐ │   │
-│  │  │ Scan    │ │ Target   │ │  Report     │ │   │
-│  │  │ Service │ │ Service  │ │  Service    │ │   │
-│  │  └────┬────┘ └────┬─────┘ └─────┬──────┘ │   │
-│  └───────┼───────────┼─────────────┼────────┘   │
-│          └───────────┼─────────────┘             │
-│                ┌─────┴─────┐                     │
-│                │ GMP Pool  │                     │
-│                │(gvm-client│                     │
-│                │ conn pool)│                     │
-│                └─────┬─────┘                     │
-└──────────────────────┼───────────────────────────┘
-                       │ GMP/XML
-                 ┌─────┴─────┐
-                 │   gvmd    │
-                 └───────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                      gvm-gateway (:8080)                              │
+│                                                                       │
+│  ┌──────────────────────────────────────────────────────────────┐    │
+│  │                   Protocol Multiplexer                        │    │
+│  │         (routes by Content-Type: application/grpc)            │    │
+│  └──────────────────────────┬───────────────────────────────────┘    │
+│                             │                                         │
+│            ┌────────────────┴────────────────┐                       │
+│            │                                  │                       │
+│  ┌─────────┴─────────┐              ┌────────┴────────┐              │
+│  │   REST (Axum)     │              │   gRPC (Tonic)  │              │
+│  │  ┌─────────────┐  │              │  ┌────────────┐ │              │
+│  │  │ Middleware  │  │              │  │Interceptors│ │              │
+│  │  │(Auth/Trace) │  │              │  │(Auth/Trace)│ │              │
+│  │  └──────┬──────┘  │              │  └─────┬──────┘ │              │
+│  │  ┌──────┴──────┐  │              │  ┌─────┴──────┐ │              │
+│  │  │  Handlers   │  │              │  │  Services  │ │              │
+│  │  │(targets,...)│  │              │  │(Target,...)│ │              │
+│  │  └──────┬──────┘  │              │  └─────┬──────┘ │              │
+│  └─────────┼─────────┘              └────────┼────────┘              │
+│                 │                                 │                   │
+│                 └─────────────┬─────────────────-─┘                   │
+│                               │                                       │
+│                 ┌─────────────┴─────────────┐                         │
+│                 │     Shared Domain Layer    │                         │
+│                 │  (gvm-gateway-domain)      │                         │
+│                 └─────────────┬─────────────┘                         │
+│                               │                                       │
+│                 ┌─────────────┴─────────────┐                         │
+│                 │    GMP Connection Pool     │                         │
+│                 │  (gvm-gateway-gvmd)        │                         │
+│                 └─────────────┬─────────────┘                         │
+└───────────────────────────────┼───────────────────────────────────────┘
+                                │ GMP/XML
+                          ┌─────┴─────┐
+                          │   gvmd    │
+                          └───────────┘
 ```
 
 ### Crate Structure
@@ -454,17 +469,24 @@ Using `google.rpc.Status` with `ErrorInfo`, `BadRequest`, and `DebugInfo` detail
 
 ## 6. Configuration
 
+The gRPC API shares a unified configuration file with the REST API (see [ADR-001](#adr-001-unified-gateway-binary-rest--grpc)).
+
 ```toml
-# gvm-grpc-api.toml
+# gvm-gateway.toml
 
 [server]
-bind = "0.0.0.0:50051"
-tls_cert = "/etc/gvm-api/tls/cert.pem"
-tls_key = "/etc/gvm-api/tls/key.pem"
-tls_ca = "/etc/gvm-api/tls/ca.pem"   # For mTLS client verification
-max_message_size_bytes = 67_108_864   # 64 MB (for large reports)
+bind = "0.0.0.0:8080"                 # Single port for REST + gRPC
+max_message_size_bytes = 67_108_864   # 64 MB (for large gRPC responses)
 keepalive_secs = 60
 keepalive_timeout_secs = 20
+
+[grpc]
+reflection_enabled = true             # gRPC reflection for grpcurl/grpcui (disable in prod)
+
+[tls]
+cert = "/etc/gvm-gateway/tls/cert.pem"
+key = "/etc/gvm-gateway/tls/key.pem"
+ca = "/etc/gvm-gateway/tls/ca.pem"    # For mTLS client verification (optional)
 
 [gmp]
 transport = "unix"
@@ -488,23 +510,20 @@ level = "info"
 
 [telemetry]
 otlp_endpoint = "http://localhost:4317"
-service_name = "gvm-grpc-api"
-
-[reflection]
-enabled = true  # gRPC reflection for grpcurl/grpcui
+service_name = "gvm-gateway"
 ```
 
 ## 7. Implementation Phases
 
 ### Phase 1: Foundation (MVP)
 
-- Server bootstrap (tonic)
+- Server bootstrap (tonic) integrated into unified `gvm-gateway` binary
 - gRPC health checking protocol (`grpc.health.v1`)
 - gRPC reflection
-- GMP connection pool (shared with REST if colocated)
+- GMP connection pool (shared with REST API)
 - System service (version, status)
-- Configuration + CLI
-- Structured logging
+- Unified configuration + CLI (shared with REST)
+- Structured logging (shared tracing subscriber)
 
 ### Phase 2: Core Services
 
@@ -623,9 +642,81 @@ python -m grpc_tools.protoc -Iproto --python_out=. --grpc_python_out=. proto/gvm
 protoc -Iproto --go_out=. --go-grpc_out=. proto/gvm/v1/*.proto
 ```
 
-## 12. Open Questions
+## 12. Architectural Decisions
 
-- [ ] Should we run REST + gRPC in a single binary or keep them separate?
+### ADR-001: Unified Gateway Binary (REST + gRPC)
+
+**Status:** Accepted (2026-03-31)
+
+**Context:** We need to decide whether REST and gRPC APIs should be separate binaries or combined.
+
+**Decision:** REST and gRPC will be served from a **single binary** (`gvm-gateway`) on separate ports.
+
+**Rationale:**
+- **Shared connection pool**: Both APIs connect to gvmd via GMP. A single pool reduces connection overhead and simplifies resource management.
+- **Shared domain logic**: Authentication, session management, and business validation are identical across protocols.
+- **Simpler operations**: One container, one deployment, one set of config files, one health check endpoint.
+- **Consistent behavior**: Bug fixes and features apply to both APIs simultaneously.
+
+**Consequences:**
+- Binary size increases slightly (includes both Axum and Tonic dependencies)
+- Both APIs must be deployed together (cannot scale independently)
+- Configuration covers both protocols in a single file
+- Single port simplifies firewall rules and load balancer config
+
+**Implementation:**
+
+Both protocols are served on a single port using HTTP/2 content-type multiplexing. The server inspects the `Content-Type` header to route requests:
+- `application/grpc` → gRPC handler (Tonic)
+- All other requests → REST handler (Axum)
+
+```rust
+// gvm-gateway/src/main.rs
+use hyper::Request;
+use tonic::body::BoxBody;
+use tower::ServiceExt;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let config = Config::load()?;
+    let gmp_pool = GmpPool::new(&config.gmp).await?;
+    
+    let rest = rest_router(gmp_pool.clone());
+    let grpc = grpc_server(gmp_pool.clone());
+    
+    // Multiplex based on content-type
+    let service = tower::service_fn(move |req: Request<_>| {
+        let rest = rest.clone();
+        let grpc = grpc.clone();
+        async move {
+            if is_grpc_request(&req) {
+                grpc.oneshot(req).await
+            } else {
+                rest.oneshot(req).await
+            }
+        }
+    });
+    
+    axum::Server::bind(&config.bind)
+        .serve(service.into_make_service())
+        .await?;
+    Ok(())
+}
+
+fn is_grpc_request<B>(req: &Request<B>) -> bool {
+    req.headers()
+        .get("content-type")
+        .map(|v| v.as_bytes().starts_with(b"application/grpc"))
+        .unwrap_or(false)
+}
+```
+
+**Default port:** `8080` (HTTP/2, serves both REST and gRPC)
+
+---
+
+## 13. Open Questions
+
 - [ ] Bidirectional streaming for interactive scan control?
 - [ ] gRPC-Web support for browser clients (via envoy proxy or tonic-web)?
 - [ ] Shared protobuf package published as a standalone crate for clients?
