@@ -3,6 +3,11 @@
 [![CI](https://github.com/clawosiris/rust-gvm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/clawosiris/rust-gvm-api/actions/workflows/ci.yml)
 [![Security](https://github.com/clawosiris/rust-gvm-api/actions/workflows/security.yml/badge.svg)](https://github.com/clawosiris/rust-gvm-api/actions/workflows/security.yml)
 
+> [!NOTE]
+> **Releases** are managed via the [release-orchestrator](https://github.com/clawosiris/release-orchestrator).
+> To create a nightly/alpha build, create an alpha release in the orchestrator.
+> See [RELEASING.md](./RELEASING.md) for details.
+
 REST and gRPC API servers for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm).
 
 ## Overview
