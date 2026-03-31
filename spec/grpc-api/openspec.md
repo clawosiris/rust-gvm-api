@@ -35,22 +35,30 @@ Current mandatory coverage (from `rust-gvm` PR #68):
 
 The gRPC API is part of the unified `gvm-gateway` binary (see [ADR-001](#adr-001-unified-gateway-binary-rest--grpc)).
 
+Both REST and gRPC are served on **a single port** (`:8080`) using HTTP/2 content-type multiplexing.
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                          gvm-gateway                                  │
+│                      gvm-gateway (:8080)                              │
 │                                                                       │
-│  ┌─────────────────────────────┐  ┌─────────────────────────────┐    │
-│  │     REST API (:8080)        │  │     gRPC API (:50051)       │    │
-│  │  ┌───────┐  ┌────────────┐  │  │  ┌───────┐  ┌────────────┐  │    │
-│  │  │ Axum  │  │ Middleware │  │  │  │ Tonic │  │Interceptors│  │    │
-│  │  │Router │──│(Auth/Trace)│  │  │  │Server │──│(Auth/Trace)│  │    │
-│  │  └───┬───┘  └────────────┘  │  │  └───┬───┘  └────────────┘  │    │
-│  │      │                       │  │      │                      │    │
-│  │  ┌───┴───────────────────┐  │  │  ┌───┴───────────────────┐  │    │
-│  │  │   REST Handlers       │  │  │  │   gRPC Services       │  │    │
-│  │  │ (targets, tasks, ...) │  │  │  │ (Target, Task, ...)   │  │    │
-│  │  └───────────┬───────────┘  │  │  └───────────┬───────────┘  │    │
-│  └──────────────┼──────────────┘  └──────────────┼───────────────┘   │
+│  ┌──────────────────────────────────────────────────────────────┐    │
+│  │                   Protocol Multiplexer                        │    │
+│  │         (routes by Content-Type: application/grpc)            │    │
+│  └──────────────────────────┬───────────────────────────────────┘    │
+│                             │                                         │
+│            ┌────────────────┴────────────────┐                       │
+│            │                                  │                       │
+│  ┌─────────┴─────────┐              ┌────────┴────────┐              │
+│  │   REST (Axum)     │              │   gRPC (Tonic)  │              │
+│  │  ┌─────────────┐  │              │  ┌────────────┐ │              │
+│  │  │ Middleware  │  │              │  │Interceptors│ │              │
+│  │  │(Auth/Trace) │  │              │  │(Auth/Trace)│ │              │
+│  │  └──────┬──────┘  │              │  └─────┬──────┘ │              │
+│  │  ┌──────┴──────┐  │              │  ┌─────┴──────┐ │              │
+│  │  │  Handlers   │  │              │  │  Services  │ │              │
+│  │  │(targets,...)│  │              │  │(Target,...)│ │              │
+│  │  └──────┬──────┘  │              │  └─────┬──────┘ │              │
+│  └─────────┼─────────┘              └────────┼────────┘              │
 │                 │                                 │                   │
 │                 └─────────────┬─────────────────-─┘                   │
 │                               │                                       │
@@ -466,14 +474,13 @@ The gRPC API shares a unified configuration file with the REST API (see [ADR-001
 ```toml
 # gvm-gateway.toml
 
-[rest]
-bind = "0.0.0.0:8080"
-
-[grpc]
-bind = "0.0.0.0:50051"
-max_message_size_bytes = 67_108_864   # 64 MB (for large reports)
+[server]
+bind = "0.0.0.0:8080"                 # Single port for REST + gRPC
+max_message_size_bytes = 67_108_864   # 64 MB (for large gRPC responses)
 keepalive_secs = 60
 keepalive_timeout_secs = 20
+
+[grpc]
 reflection_enabled = true             # gRPC reflection for grpcurl/grpcui (disable in prod)
 
 [tls]
@@ -655,26 +662,56 @@ protoc -Iproto --go_out=. --go-grpc_out=. proto/gvm/v1/*.proto
 - Binary size increases slightly (includes both Axum and Tonic dependencies)
 - Both APIs must be deployed together (cannot scale independently)
 - Configuration covers both protocols in a single file
+- Single port simplifies firewall rules and load balancer config
 
 **Implementation:**
+
+Both protocols are served on a single port using HTTP/2 content-type multiplexing. The server inspects the `Content-Type` header to route requests:
+- `application/grpc` → gRPC handler (Tonic)
+- All other requests → REST handler (Axum)
+
 ```rust
 // gvm-gateway/src/main.rs
+use hyper::Request;
+use tonic::body::BoxBody;
+use tower::ServiceExt;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = Config::load()?;
     let gmp_pool = GmpPool::new(&config.gmp).await?;
     
-    let rest = serve_rest(config.rest.bind, gmp_pool.clone());
-    let grpc = serve_grpc(config.grpc.bind, gmp_pool.clone());
+    let rest = rest_router(gmp_pool.clone());
+    let grpc = grpc_server(gmp_pool.clone());
     
-    tokio::try_join!(rest, grpc)?;
+    // Multiplex based on content-type
+    let service = tower::service_fn(move |req: Request<_>| {
+        let rest = rest.clone();
+        let grpc = grpc.clone();
+        async move {
+            if is_grpc_request(&req) {
+                grpc.oneshot(req).await
+            } else {
+                rest.oneshot(req).await
+            }
+        }
+    });
+    
+    axum::Server::bind(&config.bind)
+        .serve(service.into_make_service())
+        .await?;
     Ok(())
+}
+
+fn is_grpc_request<B>(req: &Request<B>) -> bool {
+    req.headers()
+        .get("content-type")
+        .map(|v| v.as_bytes().starts_with(b"application/grpc"))
+        .unwrap_or(false)
 }
 ```
 
-**Default ports:**
-- REST API: `8080` (HTTP/1.1 + HTTP/2)
-- gRPC API: `50051` (HTTP/2)
+**Default port:** `8080` (HTTP/2, serves both REST and gRPC)
 
 ---
 
