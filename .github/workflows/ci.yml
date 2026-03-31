@@ -95,6 +95,7 @@ jobs:
         with:
           arguments: --workspace
           credentials: x-access-token:${{ secrets.RELEASE_TOKEN }}
+          use-git-cli: "true"
 
   coverage:
     name: Coverage
