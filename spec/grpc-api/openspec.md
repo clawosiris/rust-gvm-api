@@ -33,34 +33,41 @@ Current mandatory coverage (from `rust-gvm` PR #68):
 
 ## 2. Architecture
 
+The gRPC API is part of the unified `gvm-gateway` binary (see [ADR-001](#adr-001-unified-gateway-binary-rest--grpc)).
+
 ```
-┌─────────────────────────────────────────────────┐
-│                 gvm-grpc-api                     │
-│                                                  │
-│  ┌───────────┐  ┌───────────┐  ┌──────────────┐ │
-│  │  tonic    │  │   Auth    │  │  Interceptors│ │
-│  │  Server   │──│  (JWT /   │──│  (Trace/Rate/│ │
-│  │           │  │  mTLS)    │  │   Metrics)   │ │
-│  └─────┬─────┘  └───────────┘  └──────────────┘ │
-│        │                                         │
-│  ┌─────┴─────────────────────────────────────┐   │
-│  │           Service Implementations          │   │
-│  │  ┌─────────┐ ┌──────────┐ ┌────────────┐ │   │
-│  │  │ Scan    │ │ Target   │ │  Report     │ │   │
-│  │  │ Service │ │ Service  │ │  Service    │ │   │
-│  │  └────┬────┘ └────┬─────┘ └─────┬──────┘ │   │
-│  └───────┼───────────┼─────────────┼────────┘   │
-│          └───────────┼─────────────┘             │
-│                ┌─────┴─────┐                     │
-│                │ GMP Pool  │                     │
-│                │(gvm-client│                     │
-│                │ conn pool)│                     │
-│                └─────┬─────┘                     │
-└──────────────────────┼───────────────────────────┘
-                       │ GMP/XML
-                 ┌─────┴─────┐
-                 │   gvmd    │
-                 └───────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                          gvm-gateway                                  │
+│                                                                       │
+│  ┌─────────────────────────────┐  ┌─────────────────────────────┐    │
+│  │     REST API (:8080)        │  │     gRPC API (:50051)       │    │
+│  │  ┌───────┐  ┌────────────┐  │  │  ┌───────┐  ┌────────────┐  │    │
+│  │  │ Axum  │  │ Middleware │  │  │  │ Tonic │  │Interceptors│  │    │
+│  │  │Router │──│(Auth/Trace)│  │  │  │Server │──│(Auth/Trace)│  │    │
+│  │  └───┬───┘  └────────────┘  │  │  └───┬───┘  └────────────┘  │    │
+│  │      │                       │  │      │                      │    │
+│  │  ┌───┴───────────────────┐  │  │  ┌───┴───────────────────┐  │    │
+│  │  │   REST Handlers       │  │  │  │   gRPC Services       │  │    │
+│  │  │ (targets, tasks, ...) │  │  │  │ (Target, Task, ...)   │  │    │
+│  │  └───────────┬───────────┘  │  │  └───────────┬───────────┘  │    │
+│  └──────────────┼──────────────┘  └──────────────┼───────────────┘   │
+│                 │                                 │                   │
+│                 └─────────────┬─────────────────-─┘                   │
+│                               │                                       │
+│                 ┌─────────────┴─────────────┐                         │
+│                 │     Shared Domain Layer    │                         │
+│                 │  (gvm-gateway-domain)      │                         │
+│                 └─────────────┬─────────────┘                         │
+│                               │                                       │
+│                 ┌─────────────┴─────────────┐                         │
+│                 │    GMP Connection Pool     │                         │
+│                 │  (gvm-gateway-gvmd)        │                         │
+│                 └─────────────┬─────────────┘                         │
+└───────────────────────────────┼───────────────────────────────────────┘
+                                │ GMP/XML
+                          ┌─────┴─────┐
+                          │   gvmd    │
+                          └───────────┘
 ```
 
 ### Crate Structure
@@ -454,17 +461,25 @@ Using `google.rpc.Status` with `ErrorInfo`, `BadRequest`, and `DebugInfo` detail
 
 ## 6. Configuration
 
-```toml
-# gvm-grpc-api.toml
+The gRPC API shares a unified configuration file with the REST API (see [ADR-001](#adr-001-unified-gateway-binary-rest--grpc)).
 
-[server]
+```toml
+# gvm-gateway.toml
+
+[rest]
+bind = "0.0.0.0:8080"
+
+[grpc]
 bind = "0.0.0.0:50051"
-tls_cert = "/etc/gvm-api/tls/cert.pem"
-tls_key = "/etc/gvm-api/tls/key.pem"
-tls_ca = "/etc/gvm-api/tls/ca.pem"   # For mTLS client verification
 max_message_size_bytes = 67_108_864   # 64 MB (for large reports)
 keepalive_secs = 60
 keepalive_timeout_secs = 20
+reflection_enabled = true             # gRPC reflection for grpcurl/grpcui (disable in prod)
+
+[tls]
+cert = "/etc/gvm-gateway/tls/cert.pem"
+key = "/etc/gvm-gateway/tls/key.pem"
+ca = "/etc/gvm-gateway/tls/ca.pem"    # For mTLS client verification (optional)
 
 [gmp]
 transport = "unix"
@@ -488,23 +503,20 @@ level = "info"
 
 [telemetry]
 otlp_endpoint = "http://localhost:4317"
-service_name = "gvm-grpc-api"
-
-[reflection]
-enabled = true  # gRPC reflection for grpcurl/grpcui
+service_name = "gvm-gateway"
 ```
 
 ## 7. Implementation Phases
 
 ### Phase 1: Foundation (MVP)
 
-- Server bootstrap (tonic)
+- Server bootstrap (tonic) integrated into unified `gvm-gateway` binary
 - gRPC health checking protocol (`grpc.health.v1`)
 - gRPC reflection
-- GMP connection pool (shared with REST if colocated)
+- GMP connection pool (shared with REST API)
 - System service (version, status)
-- Configuration + CLI
-- Structured logging
+- Unified configuration + CLI (shared with REST)
+- Structured logging (shared tracing subscriber)
 
 ### Phase 2: Core Services
 
@@ -623,9 +635,51 @@ python -m grpc_tools.protoc -Iproto --python_out=. --grpc_python_out=. proto/gvm
 protoc -Iproto --go_out=. --go-grpc_out=. proto/gvm/v1/*.proto
 ```
 
-## 12. Open Questions
+## 12. Architectural Decisions
 
-- [ ] Should we run REST + gRPC in a single binary or keep them separate?
+### ADR-001: Unified Gateway Binary (REST + gRPC)
+
+**Status:** Accepted (2026-03-31)
+
+**Context:** We need to decide whether REST and gRPC APIs should be separate binaries or combined.
+
+**Decision:** REST and gRPC will be served from a **single binary** (`gvm-gateway`) on separate ports.
+
+**Rationale:**
+- **Shared connection pool**: Both APIs connect to gvmd via GMP. A single pool reduces connection overhead and simplifies resource management.
+- **Shared domain logic**: Authentication, session management, and business validation are identical across protocols.
+- **Simpler operations**: One container, one deployment, one set of config files, one health check endpoint.
+- **Consistent behavior**: Bug fixes and features apply to both APIs simultaneously.
+
+**Consequences:**
+- Binary size increases slightly (includes both Axum and Tonic dependencies)
+- Both APIs must be deployed together (cannot scale independently)
+- Configuration covers both protocols in a single file
+
+**Implementation:**
+```rust
+// gvm-gateway/src/main.rs
+#[tokio::main]
+async fn main() -> Result<()> {
+    let config = Config::load()?;
+    let gmp_pool = GmpPool::new(&config.gmp).await?;
+    
+    let rest = serve_rest(config.rest.bind, gmp_pool.clone());
+    let grpc = serve_grpc(config.grpc.bind, gmp_pool.clone());
+    
+    tokio::try_join!(rest, grpc)?;
+    Ok(())
+}
+```
+
+**Default ports:**
+- REST API: `8080` (HTTP/1.1 + HTTP/2)
+- gRPC API: `50051` (HTTP/2)
+
+---
+
+## 13. Open Questions
+
 - [ ] Bidirectional streaming for interactive scan control?
 - [ ] gRPC-Web support for browser clients (via envoy proxy or tonic-web)?
 - [ ] Shared protobuf package published as a standalone crate for clients?
