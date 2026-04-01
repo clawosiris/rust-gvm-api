@@ -438,24 +438,34 @@ dependencies = [
  "axum",
  "clap",
  "gvm-gateway-app",
+ "gvm-gateway-domain",
  "gvm-gateway-gvmd",
  "gvm-gateway-rest",
+ "gvm-gmp",
+ "gvm-mock-server",
+ "gvm-protocol",
+ "http",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "reqwest",
  "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "toml",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
 name = "gvm-gateway-app"
 version = "0.3.1"
 dependencies = [
+ "async-trait",
  "gvm-gateway-domain",
+ "tokio",
 ]
 
 [[package]]
@@ -463,7 +473,9 @@ name = "gvm-gateway-domain"
 version = "0.3.1"
 dependencies = [
  "async-trait",
+ "gvm-gmp",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -475,8 +487,8 @@ dependencies = [
  "gvm-client",
  "gvm-connection",
  "gvm-gateway-domain",
- "gvm-gateway-rest",
  "gvm-gmp",
+ "gvm-mock-server",
  "tokio",
 ]
 
@@ -485,18 +497,11 @@ name = "gvm-gateway-rest"
 version = "0.3.1"
 dependencies = [
  "axum",
- "gvm-client",
  "gvm-gateway-app",
  "gvm-gateway-domain",
- "gvm-gateway-gvmd",
- "gvm-gmp",
- "gvm-mock-server",
- "gvm-protocol",
  "http",
- "reqwest",
  "serde",
  "serde_json",
- "tokio",
  "uuid",
 ]
 

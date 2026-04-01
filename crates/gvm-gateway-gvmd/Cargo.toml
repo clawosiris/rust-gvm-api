@@ -13,6 +13,8 @@ async-trait.workspace = true
 gvm-client.workspace = true
 gvm-connection.workspace = true
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
-gvm-gateway-rest = { path = "../gvm-gateway-rest" }
 gvm-gmp.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+gvm-mock-server.workspace = true

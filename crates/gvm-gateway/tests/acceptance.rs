@@ -1,10 +1,18 @@
-use std::{net::SocketAddr, sync::Arc};
+//! Acceptance tests for the GVM gateway service.
+//!
+//! These tests validate the complete service behavior including health,
+//! readiness, version endpoints, and full target CRUD operations via
+//! the REST adapter backed by a mock GMP server.
+
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 use gvm_gateway_app::GatewayService;
+use gvm_gateway_domain::{target_from_gmp, TargetPage};
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
 use gvm_gateway_rest::router::build_router;
 use gvm_gateway_rest::targets::{
-    build_gmp_filter, target_from_gmp, CreateTargetRequest, ModifyTargetRequest, TargetListQuery,
+    build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery,
 };
 use gvm_gmp::responses::GetTargetsResponse;
 use gvm_mock_server::{
@@ -30,6 +38,10 @@ async fn spawn_server(
 
     (addr, handle)
 }
+
+// ============================================================================
+// Health & Readiness Tests
+// ============================================================================
 
 #[tokio::test]
 async fn health_returns_200() {
@@ -105,6 +117,10 @@ async fn version_returns_api_and_gmp_version() {
 
     handle.abort();
 }
+
+// ============================================================================
+// Trace Context & Error Handling Tests
+// ============================================================================
 
 #[tokio::test]
 async fn trace_context_headers_propagated() {
@@ -182,6 +198,10 @@ async fn not_found_route_returns_404_problem() {
 
     handle.abort();
 }
+
+// ============================================================================
+// Domain Type Unit Tests (moved from adapter)
+// ============================================================================
 
 #[test]
 fn target_from_gmp_roundtrip() {
@@ -272,6 +292,10 @@ fn uuid_validation() {
     .is_err());
 }
 
+// ============================================================================
+// Target CRUD Acceptance Tests (with mock GMP server)
+// ============================================================================
+
 #[tokio::test]
 async fn list_targets_empty() {
     let harness = target_harness(|_| {}).await;
@@ -317,12 +341,12 @@ async fn list_targets_paginated() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let json = response.json::<serde_json::Value>().await.unwrap();
-    assert_eq!(json["data"].as_array().unwrap().len(), 10);
-    assert_eq!(json["pagination"]["page"], 2);
-    assert_eq!(json["pagination"]["perPage"], 10);
-    assert_eq!(json["pagination"]["total"], 25);
-    assert_eq!(json["pagination"]["totalPages"], 3);
+    let json = response.json::<TargetPage>().await.unwrap();
+    assert_eq!(json.data.len(), 10);
+    assert_eq!(json.pagination.page, 2);
+    assert_eq!(json.pagination.per_page, 10);
+    assert_eq!(json.pagination.total, 25);
+    assert_eq!(json.pagination.total_pages, 3);
 
     harness.shutdown().await;
 }
@@ -544,6 +568,10 @@ async fn method_not_allowed() {
 
     harness.shutdown().await;
 }
+
+// ============================================================================
+// Test Harness
+// ============================================================================
 
 struct TargetHarness {
     addr: SocketAddr,

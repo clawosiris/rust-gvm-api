@@ -16,13 +16,9 @@ use std::{
 use async_trait::async_trait;
 use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
-use gvm_gateway_domain::{GatewayError, ReadinessStatus, SystemPort, TargetPort};
-use gvm_gateway_rest::{
-    error::{map_gvm_error, map_parse_error},
-    targets::{
-        target_from_gmp, CreateTargetInput, ModifyTargetInput, Pagination, Target, TargetPage,
-        TargetQuery,
-    },
+use gvm_gateway_domain::{
+    target_from_gmp, CreateTargetInput, GatewayError, ModifyTargetInput, Pagination,
+    ReadinessStatus, SystemPort, Target, TargetPage, TargetPort, TargetQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -95,17 +91,11 @@ impl SystemPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl TargetPort for StaticGvmdAdapter {
-    type TargetQuery = TargetQuery;
-    type CreateTargetInput = CreateTargetInput;
-    type ModifyTargetInput = ModifyTargetInput;
-    type Target = Target;
-    type TargetPage = TargetPage;
-
     async fn list_targets(
         &self,
         _: &str,
-        _: &Self::TargetQuery,
-    ) -> Result<Self::TargetPage, GatewayError> {
+        _: &TargetQuery,
+    ) -> Result<TargetPage, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
@@ -114,14 +104,14 @@ impl TargetPort for StaticGvmdAdapter {
     async fn create_target(
         &self,
         _: &str,
-        _: Self::CreateTargetInput,
+        _: CreateTargetInput,
     ) -> Result<String, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
     }
 
-    async fn get_target(&self, _: &str, _: &str) -> Result<Self::Target, GatewayError> {
+    async fn get_target(&self, _: &str, _: &str) -> Result<Target, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
@@ -131,8 +121,8 @@ impl TargetPort for StaticGvmdAdapter {
         &self,
         _: &str,
         _: &str,
-        _: Self::ModifyTargetInput,
-    ) -> Result<Self::Target, GatewayError> {
+        _: ModifyTargetInput,
+    ) -> Result<Target, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
@@ -199,17 +189,11 @@ impl GvmdAdapter {
 
 #[async_trait]
 impl TargetPort for GvmdAdapter {
-    type TargetQuery = TargetQuery;
-    type CreateTargetInput = CreateTargetInput;
-    type ModifyTargetInput = ModifyTargetInput;
-    type Target = Target;
-    type TargetPage = TargetPage;
-
     async fn list_targets(
         &self,
         session_token: &str,
-        query: &Self::TargetQuery,
-    ) -> Result<Self::TargetPage, GatewayError> {
+        query: &TargetQuery,
+    ) -> Result<TargetPage, GatewayError> {
         let client = self.session_client(session_token)?;
         let filter_id = query
             .filter_id
@@ -265,7 +249,7 @@ impl TargetPort for GvmdAdapter {
     async fn create_target(
         &self,
         session_token: &str,
-        input: Self::CreateTargetInput,
+        input: CreateTargetInput,
     ) -> Result<String, GatewayError> {
         reject_unsupported_credentials(&input)?;
         let client = self.session_client(session_token)?;
@@ -302,7 +286,7 @@ impl TargetPort for GvmdAdapter {
         &self,
         session_token: &str,
         id: &str,
-    ) -> Result<Self::Target, GatewayError> {
+    ) -> Result<Target, GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
@@ -323,8 +307,8 @@ impl TargetPort for GvmdAdapter {
         &self,
         session_token: &str,
         id: &str,
-        input: Self::ModifyTargetInput,
-    ) -> Result<Self::Target, GatewayError> {
+        input: ModifyTargetInput,
+    ) -> Result<Target, GatewayError> {
         let client = self.session_client(session_token)?;
         let target_id = parse_entity_id(id)?;
         let response = client
@@ -389,4 +373,591 @@ fn parse_entity_id(value: &str) -> Result<EntityId, GatewayError> {
 fn parse_alive_test(value: &str) -> Result<AliveTest, GatewayError> {
     AliveTest::from_str(value)
         .map_err(|_| GatewayError::InvalidInput(format!("invalid aliveTest: {value}")))
+}
+
+/// Classify a gvmd client error into a protocol-agnostic domain error.
+pub fn map_gvm_error(error: gvm_client::GvmError) -> GatewayError {
+    match error {
+        gvm_client::GvmError::Server {
+            status: 400,
+            message,
+        } => GatewayError::InvalidInput(message),
+        gvm_client::GvmError::Server {
+            status: 401,
+            message,
+        } => GatewayError::Unauthorized(message),
+        gvm_client::GvmError::Server {
+            status: 404,
+            message,
+        } => GatewayError::NotFound(message),
+        gvm_client::GvmError::Timeout(duration) => {
+            GatewayError::BackendUnavailable(format!("gvmd timeout after {duration:?}"))
+        }
+        other => GatewayError::BackendUnavailable(other.to_string()),
+    }
+}
+
+/// Classify a GMP parse failure into a protocol-agnostic domain error.
+pub fn map_parse_error(error: gvm_gmp::responses::ParseError) -> GatewayError {
+    match error {
+        gvm_gmp::responses::ParseError::ServerError {
+            status: 404,
+            message,
+        } => GatewayError::NotFound(message),
+        gvm_gmp::responses::ParseError::ServerError {
+            status: 400,
+            message,
+        } => GatewayError::InvalidInput(message),
+        gvm_gmp::responses::ParseError::ServerError {
+            status: 401,
+            message,
+        } => GatewayError::Unauthorized(message),
+        other => GatewayError::BackendUnavailable(other.to_string()),
+    }
+}
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ------------------------------------------------------------------------
+    // StaticGvmdAdapter tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn static_adapter_ready_returns_ready_status() {
+        let adapter = StaticGvmdAdapter::ready("22.7");
+        let status = adapter.readiness().unwrap();
+        assert_eq!(status.status, "ready");
+        assert!(status.reason.is_none());
+    }
+
+    #[test]
+    fn static_adapter_ready_returns_gmp_version() {
+        let adapter = StaticGvmdAdapter::ready("22.7");
+        let version = adapter.gmp_version().unwrap();
+        assert_eq!(version, "22.7");
+    }
+
+    #[test]
+    fn static_adapter_not_ready_returns_not_ready_status() {
+        let adapter = StaticGvmdAdapter::not_ready("gvmd offline", "22.7");
+        let status = adapter.readiness().unwrap();
+        assert_eq!(status.status, "notReady");
+        assert_eq!(status.reason.as_deref(), Some("gvmd offline"));
+    }
+
+    #[test]
+    fn static_adapter_not_ready_gmp_version_fails() {
+        let adapter = StaticGvmdAdapter::not_ready("gvmd offline", "22.7");
+        let result = adapter.gmp_version();
+        assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
+    }
+
+    #[tokio::test]
+    async fn static_adapter_list_targets_unsupported() {
+        let adapter = StaticGvmdAdapter::ready("22.7");
+        let result = adapter
+            .list_targets("token", &TargetQuery::default())
+            .await;
+        assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
+    }
+
+    #[tokio::test]
+    async fn static_adapter_create_target_unsupported() {
+        let adapter = StaticGvmdAdapter::ready("22.7");
+        let input = CreateTargetInput {
+            name: "test".to_string(),
+            comment: None,
+            hosts: vec![],
+            exclude_hosts: vec![],
+            alive_test: None,
+            port_list_id: None,
+            reverse_lookup_only: None,
+            reverse_lookup_unify: None,
+            ssh_credential_id: None,
+            smb_credential_id: None,
+            esxi_credential_id: None,
+            snmp_credential_id: None,
+        };
+        let result = adapter.create_target("token", input).await;
+        assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
+    }
+
+    #[tokio::test]
+    async fn static_adapter_get_target_unsupported() {
+        let adapter = StaticGvmdAdapter::ready("22.7");
+        let result = adapter.get_target("token", "id").await;
+        assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
+    }
+
+    #[tokio::test]
+    async fn static_adapter_modify_target_unsupported() {
+        let adapter = StaticGvmdAdapter::ready("22.7");
+        let result = adapter
+            .modify_target("token", "id", ModifyTargetInput::default())
+            .await;
+        assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
+    }
+
+    #[tokio::test]
+    async fn static_adapter_delete_target_unsupported() {
+        let adapter = StaticGvmdAdapter::ready("22.7");
+        let result = adapter.delete_target("token", "id").await;
+        assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
+    }
+
+    // ------------------------------------------------------------------------
+    // GvmdAdapter unit tests (non-integration)
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn gvmd_adapter_session_client_fails_without_session() {
+        let adapter = GvmdAdapter::unix_socket("/tmp/nonexistent.sock");
+        let result = adapter.session_client("missing-token");
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    // ------------------------------------------------------------------------
+    // Helper function tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn parse_entity_id_valid() {
+        let result = parse_entity_id("550e8400-e29b-41d4-a716-446655440000");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_entity_id_invalid_empty() {
+        let result = parse_entity_id("");
+        assert!(matches!(result, Err(GatewayError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn parse_entity_id_invalid_special_chars() {
+        let result = parse_entity_id("invalid@id");
+        assert!(matches!(result, Err(GatewayError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn parse_alive_test_valid() {
+        let result = parse_alive_test("ICMP Ping");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_alive_test_invalid() {
+        let result = parse_alive_test("InvalidTest");
+        assert!(matches!(result, Err(GatewayError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn reject_unsupported_credentials_passes_empty() {
+        let input = CreateTargetInput {
+            name: "test".to_string(),
+            comment: None,
+            hosts: vec!["127.0.0.1".to_string()],
+            exclude_hosts: vec![],
+            alive_test: None,
+            port_list_id: None,
+            reverse_lookup_only: None,
+            reverse_lookup_unify: None,
+            ssh_credential_id: None,
+            smb_credential_id: None,
+            esxi_credential_id: None,
+            snmp_credential_id: None,
+        };
+        assert!(reject_unsupported_credentials(&input).is_ok());
+    }
+
+    #[test]
+    fn reject_unsupported_credentials_fails_ssh() {
+        let input = CreateTargetInput {
+            name: "test".to_string(),
+            comment: None,
+            hosts: vec!["127.0.0.1".to_string()],
+            exclude_hosts: vec![],
+            alive_test: None,
+            port_list_id: None,
+            reverse_lookup_only: None,
+            reverse_lookup_unify: None,
+            ssh_credential_id: Some("cred-id".to_string()),
+            smb_credential_id: None,
+            esxi_credential_id: None,
+            snmp_credential_id: None,
+        };
+        assert!(matches!(
+            reject_unsupported_credentials(&input),
+            Err(GatewayError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn reject_unsupported_credentials_fails_smb() {
+        let input = CreateTargetInput {
+            name: "test".to_string(),
+            comment: None,
+            hosts: vec![],
+            exclude_hosts: vec![],
+            alive_test: None,
+            port_list_id: None,
+            reverse_lookup_only: None,
+            reverse_lookup_unify: None,
+            ssh_credential_id: None,
+            smb_credential_id: Some("cred-id".to_string()),
+            esxi_credential_id: None,
+            snmp_credential_id: None,
+        };
+        assert!(matches!(
+            reject_unsupported_credentials(&input),
+            Err(GatewayError::InvalidInput(_))
+        ));
+    }
+
+    // ------------------------------------------------------------------------
+    // Error mapping tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn map_gvm_error_400_to_invalid_input() {
+        let error = gvm_client::GvmError::Server {
+            status: 400,
+            message: "bad request".to_string(),
+        };
+        let mapped = map_gvm_error(error);
+        assert!(matches!(mapped, GatewayError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn map_gvm_error_401_to_unauthorized() {
+        let error = gvm_client::GvmError::Server {
+            status: 401,
+            message: "unauthorized".to_string(),
+        };
+        let mapped = map_gvm_error(error);
+        assert!(matches!(mapped, GatewayError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn map_gvm_error_404_to_not_found() {
+        let error = gvm_client::GvmError::Server {
+            status: 404,
+            message: "not found".to_string(),
+        };
+        let mapped = map_gvm_error(error);
+        assert!(matches!(mapped, GatewayError::NotFound(_)));
+    }
+
+    #[test]
+    fn map_parse_error_404_to_not_found() {
+        let error = gvm_gmp::responses::ParseError::ServerError {
+            status: 404,
+            message: "not found".to_string(),
+        };
+        let mapped = map_parse_error(error);
+        assert!(matches!(mapped, GatewayError::NotFound(_)));
+    }
+
+    #[test]
+    fn map_parse_error_400_to_invalid_input() {
+        let error = gvm_gmp::responses::ParseError::ServerError {
+            status: 400,
+            message: "bad request".to_string(),
+        };
+        let mapped = map_parse_error(error);
+        assert!(matches!(mapped, GatewayError::InvalidInput(_)));
+    }
+
+    // ------------------------------------------------------------------------
+    // GvmdAdapter integration tests (using mock server)
+    // ------------------------------------------------------------------------
+
+    mod integration {
+        use super::*;
+        use gvm_mock_server::{GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode};
+
+        async fn create_mock_adapter() -> (GvmdAdapter, MockGmpServer, String) {
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_7)
+                .unix_socket_auto()
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+
+            (adapter, server, token.to_string())
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_connect_session_success() {
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_7)
+                .unix_socket_auto()
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let result = adapter.connect_session("token", "admin", "admin").await;
+
+            assert!(result.is_ok());
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_list_targets_empty() {
+            let (adapter, server, token) = create_mock_adapter().await;
+
+            let result = adapter
+                .list_targets(
+                    &token,
+                    &TargetQuery {
+                        filter_string: None,
+                        filter_id: None,
+                        page: 1,
+                        per_page: 25,
+                    },
+                )
+                .await;
+
+            assert!(result.is_ok());
+            let page = result.unwrap();
+            assert!(page.data.is_empty());
+            assert_eq!(page.pagination.total, 0);
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_create_target() {
+            let (adapter, server, token) = create_mock_adapter().await;
+
+            let input = CreateTargetInput {
+                name: "Test Target".to_string(),
+                comment: Some("Integration test".to_string()),
+                hosts: vec!["192.168.1.1".to_string()],
+                exclude_hosts: vec![],
+                alive_test: None,
+                port_list_id: None,
+                reverse_lookup_only: None,
+                reverse_lookup_unify: None,
+                ssh_credential_id: None,
+                smb_credential_id: None,
+                esxi_credential_id: None,
+                snmp_credential_id: None,
+            };
+
+            let result = adapter.create_target(&token, input).await;
+
+            assert!(result.is_ok());
+            let id = result.unwrap();
+            assert!(!id.is_empty());
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_get_target() {
+            let (adapter, server, token) = create_mock_adapter().await;
+
+            // Create a target first
+            let input = CreateTargetInput {
+                name: "Get Me".to_string(),
+                comment: None,
+                hosts: vec!["10.0.0.1".to_string()],
+                exclude_hosts: vec![],
+                alive_test: None,
+                port_list_id: None,
+                reverse_lookup_only: None,
+                reverse_lookup_unify: None,
+                ssh_credential_id: None,
+                smb_credential_id: None,
+                esxi_credential_id: None,
+                snmp_credential_id: None,
+            };
+            let id = adapter.create_target(&token, input).await.unwrap();
+
+            // Fetch the target
+            let result = adapter.get_target(&token, &id).await;
+
+            assert!(result.is_ok());
+            let target = result.unwrap();
+            assert_eq!(target.name, "Get Me");
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_get_target_not_found() {
+            let (adapter, server, token) = create_mock_adapter().await;
+
+            let result = adapter
+                .get_target(&token, "550e8400-e29b-41d4-a716-446655440000")
+                .await;
+
+            assert!(matches!(result, Err(GatewayError::NotFound(_))));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_modify_target() {
+            let (adapter, server, token) = create_mock_adapter().await;
+
+            // Create a target first
+            let input = CreateTargetInput {
+                name: "Before Modify".to_string(),
+                comment: None,
+                hosts: vec!["10.0.0.1".to_string()],
+                exclude_hosts: vec![],
+                alive_test: None,
+                port_list_id: None,
+                reverse_lookup_only: None,
+                reverse_lookup_unify: None,
+                ssh_credential_id: None,
+                smb_credential_id: None,
+                esxi_credential_id: None,
+                snmp_credential_id: None,
+            };
+            let id = adapter.create_target(&token, input).await.unwrap();
+
+            // Modify the target
+            let modify_input = ModifyTargetInput {
+                name: Some("After Modify".to_string()),
+                comment: Some("Updated".to_string()),
+                hosts: Some(vec!["10.0.0.2".to_string(), "10.0.0.3".to_string()]),
+                exclude_hosts: None,
+                alive_test: None,
+                port_list_id: None,
+            };
+            let result = adapter.modify_target(&token, &id, modify_input).await;
+
+            assert!(result.is_ok());
+            let target = result.unwrap();
+            assert_eq!(target.name, "After Modify");
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_delete_target() {
+            let (adapter, server, token) = create_mock_adapter().await;
+
+            // Create a target first
+            let input = CreateTargetInput {
+                name: "Delete Me".to_string(),
+                comment: None,
+                hosts: vec!["10.0.0.1".to_string()],
+                exclude_hosts: vec![],
+                alive_test: None,
+                port_list_id: None,
+                reverse_lookup_only: None,
+                reverse_lookup_unify: None,
+                ssh_credential_id: None,
+                smb_credential_id: None,
+                esxi_credential_id: None,
+                snmp_credential_id: None,
+            };
+            let id = adapter.create_target(&token, input).await.unwrap();
+
+            // Delete the target
+            let result = adapter.delete_target(&token, &id).await;
+
+            assert!(result.is_ok());
+
+            // Verify it's gone
+            let get_result = adapter.get_target(&token, &id).await;
+            assert!(matches!(get_result, Err(GatewayError::NotFound(_))));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_list_targets_paginated() {
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_7)
+                .unix_socket_auto()
+                .seed(|store| {
+                    for i in 1..=15 {
+                        let mut resource = Resource::new("target", &format!("Target-{i:02}"));
+                        resource.set_attr("hosts", &format!("10.0.0.{i}"));
+                        store.create(resource);
+                    }
+                })
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+
+            let result = adapter
+                .list_targets(
+                    token,
+                    &TargetQuery {
+                        filter_string: None,
+                        filter_id: None,
+                        page: 1,
+                        per_page: 10,
+                    },
+                )
+                .await;
+
+            assert!(result.is_ok());
+            let page = result.unwrap();
+            assert_eq!(page.data.len(), 10);
+            assert_eq!(page.pagination.total, 15);
+            assert_eq!(page.pagination.total_pages, 2);
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_list_targets_unauthorized() {
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_7)
+                .unix_socket_auto()
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            // Don't authenticate
+
+            let result = adapter
+                .list_targets(
+                    "unauthed-token",
+                    &TargetQuery {
+                        filter_string: None,
+                        filter_id: None,
+                        page: 1,
+                        per_page: 25,
+                    },
+                )
+                .await;
+
+            assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+
+            server.shutdown().await;
+        }
+    }
 }

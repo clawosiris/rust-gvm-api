@@ -12,6 +12,7 @@ authors.workspace = true
 axum.workspace = true
 clap.workspace = true
 gvm-gateway-app = { path = "../gvm-gateway-app" }
+gvm-gateway-domain = { path = "../gvm-gateway-domain" }
 gvm-gateway-gvmd = { path = "../gvm-gateway-gvmd" }
 gvm-gateway-rest = { path = "../gvm-gateway-rest" }
 opentelemetry-otlp.workspace = true
@@ -24,4 +25,11 @@ tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+gvm-gmp.workspace = true
+gvm-mock-server.workspace = true
+gvm-protocol.workspace = true
+http.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
 tempfile = "3.19.1"
+uuid.workspace = true
