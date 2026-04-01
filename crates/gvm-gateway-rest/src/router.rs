@@ -16,23 +16,14 @@ use gvm_gateway_domain::{SystemPort, TargetPort};
 
 use crate::{
     error::RestError,
-    targets::{
-        create_target, delete_target, get_target, list_targets, update_target, CreateTargetInput,
-        ModifyTargetInput, Target, TargetPage, TargetQuery,
-    },
+    targets::{create_target, delete_target, get_target, list_targets, update_target},
 };
 
 /// Builds the gateway router.
 pub fn build_router<S, T>(state: GatewayService<S, T>) -> Router
 where
     S: SystemPort,
-    T: TargetPort<
-        TargetQuery = TargetQuery,
-        CreateTargetInput = CreateTargetInput,
-        ModifyTargetInput = ModifyTargetInput,
-        Target = Target,
-        TargetPage = TargetPage,
-    >,
+    T: TargetPort,
 {
     Router::new()
         .route("/health", get(health))
