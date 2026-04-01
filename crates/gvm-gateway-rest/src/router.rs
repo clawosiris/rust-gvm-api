@@ -4,8 +4,7 @@
 //! Router construction for the REST adapter.
 
 use axum::{
-    body::Bytes,
-    extract::{OriginalUri, Path, Request, State},
+    extract::{OriginalUri, Request, State},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -13,18 +12,27 @@ use axum::{
     Json, Router,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{GatewayError, SystemPort, TargetPort};
+use gvm_gateway_domain::{SystemPort, TargetPort};
 
 use crate::{
     error::RestError,
-    targets::{validate_uuid, CreateTargetRequest, ModifyTargetRequest, TargetListQuery},
+    targets::{
+        create_target, delete_target, get_target, list_targets, update_target, CreateTargetInput,
+        ModifyTargetInput, Target, TargetPage, TargetQuery,
+    },
 };
 
 /// Builds the gateway router.
 pub fn build_router<S, T>(state: GatewayService<S, T>) -> Router
 where
     S: SystemPort,
-    T: TargetPort,
+    T: TargetPort<
+        TargetQuery = TargetQuery,
+        CreateTargetInput = CreateTargetInput,
+        ModifyTargetInput = ModifyTargetInput,
+        Target = Target,
+        TargetPage = TargetPage,
+    >,
 {
     Router::new()
         .route("/health", get(health))
@@ -81,168 +89,6 @@ where
     }
 }
 
-async fn list_targets<S, T>(
-    State(service): State<GatewayService<S, T>>,
-    headers: HeaderMap,
-    uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-{
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match TargetListQuery::try_from_query_string(uri.query().unwrap_or("")) {
-        Ok(query) => query,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service
-        .list_targets(
-            &session,
-            gvm_gateway_domain::TargetQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
-        .await
-    {
-        Ok(targets) => (StatusCode::OK, Json(targets)).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn create_target<S, T>(
-    State(service): State<GatewayService<S, T>>,
-    headers: HeaderMap,
-    uri: OriginalUri,
-    body: Bytes,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-{
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<CreateTargetRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response()
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.create_target(&session, input).await {
-        Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn get_target<S, T>(
-    State(service): State<GatewayService<S, T>>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-    uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-{
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.get_target(&session, &id).await {
-        Ok(target) => (StatusCode::OK, Json(target)).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn update_target<S, T>(
-    State(service): State<GatewayService<S, T>>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-    uri: OriginalUri,
-    body: Bytes,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-{
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<ModifyTargetRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response()
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.modify_target(&session, &id, input).await {
-        Ok(target) => (StatusCode::OK, Json(target)).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn delete_target<S, T>(
-    State(service): State<GatewayService<S, T>>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-    uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-{
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.delete_target(&session, &id).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
 async fn method_not_allowed_collection(uri: OriginalUri) -> Response {
     RestError::method_not_allowed(uri.path()).into_response()
 }
@@ -291,14 +137,20 @@ fn apply_trace_headers(headers: &mut HeaderMap, trace_headers: &TraceHeaders) {
     }
 }
 
-fn bearer_token(headers: &HeaderMap) -> Result<String, GatewayError> {
+pub(crate) fn bearer_token(
+    headers: &HeaderMap,
+) -> Result<String, gvm_gateway_domain::GatewayError> {
     let value = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| GatewayError::Unauthorized("missing bearer token".to_string()))?;
+        .ok_or_else(|| {
+            gvm_gateway_domain::GatewayError::Unauthorized("missing bearer token".to_string())
+        })?;
 
     value
         .strip_prefix("Bearer ")
         .map(ToOwned::to_owned)
-        .ok_or_else(|| GatewayError::Unauthorized("missing bearer token".to_string()))
+        .ok_or_else(|| {
+            gvm_gateway_domain::GatewayError::Unauthorized("missing bearer token".to_string())
+        })
 }

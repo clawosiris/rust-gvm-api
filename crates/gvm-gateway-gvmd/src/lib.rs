@@ -14,11 +14,15 @@ use std::{
 };
 
 use async_trait::async_trait;
-use gvm_client::{GmpClient, GvmError};
+use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
-use gvm_gateway_domain::{
-    CreateTargetInput, GatewayError, ModifyTargetInput, Pagination, ReadinessStatus, ResourceRef,
-    SystemPort, Target, TargetPage, TargetPort, TargetQuery,
+use gvm_gateway_domain::{GatewayError, ReadinessStatus, SystemPort, TargetPort};
+use gvm_gateway_rest::{
+    error::{map_gvm_error, map_parse_error},
+    targets::{
+        target_from_gmp, CreateTargetInput, ModifyTargetInput, Pagination, Target, TargetPage,
+        TargetQuery,
+    },
 };
 use gvm_gmp::{
     commands::{
@@ -28,10 +32,7 @@ use gvm_gmp::{
             GetTargetsOpts, ModifyTargetOpts,
         },
     },
-    responses::{
-        ActionResponse, CreateTargetResponse, GetTargetsResponse, ParseError as GmpParseError,
-        Target as GmpTarget,
-    },
+    responses::{ActionResponse, CreateTargetResponse, GetTargetsResponse},
     AliveTest, EntityId,
 };
 use tokio::sync::Mutex as AsyncMutex;
@@ -94,19 +95,33 @@ impl SystemPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl TargetPort for StaticGvmdAdapter {
-    async fn list_targets(&self, _: &str, _: &TargetQuery) -> Result<TargetPage, GatewayError> {
+    type TargetQuery = TargetQuery;
+    type CreateTargetInput = CreateTargetInput;
+    type ModifyTargetInput = ModifyTargetInput;
+    type Target = Target;
+    type TargetPage = TargetPage;
+
+    async fn list_targets(
+        &self,
+        _: &str,
+        _: &Self::TargetQuery,
+    ) -> Result<Self::TargetPage, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
     }
 
-    async fn create_target(&self, _: &str, _: CreateTargetInput) -> Result<String, GatewayError> {
+    async fn create_target(
+        &self,
+        _: &str,
+        _: Self::CreateTargetInput,
+    ) -> Result<String, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
     }
 
-    async fn get_target(&self, _: &str, _: &str) -> Result<Target, GatewayError> {
+    async fn get_target(&self, _: &str, _: &str) -> Result<Self::Target, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
@@ -116,8 +131,8 @@ impl TargetPort for StaticGvmdAdapter {
         &self,
         _: &str,
         _: &str,
-        _: ModifyTargetInput,
-    ) -> Result<Target, GatewayError> {
+        _: Self::ModifyTargetInput,
+    ) -> Result<Self::Target, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
@@ -184,11 +199,17 @@ impl GvmdAdapter {
 
 #[async_trait]
 impl TargetPort for GvmdAdapter {
+    type TargetQuery = TargetQuery;
+    type CreateTargetInput = CreateTargetInput;
+    type ModifyTargetInput = ModifyTargetInput;
+    type Target = Target;
+    type TargetPage = TargetPage;
+
     async fn list_targets(
         &self,
         session_token: &str,
-        query: &TargetQuery,
-    ) -> Result<TargetPage, GatewayError> {
+        query: &Self::TargetQuery,
+    ) -> Result<Self::TargetPage, GatewayError> {
         let client = self.session_client(session_token)?;
         let filter_id = query
             .filter_id
@@ -244,7 +265,7 @@ impl TargetPort for GvmdAdapter {
     async fn create_target(
         &self,
         session_token: &str,
-        input: CreateTargetInput,
+        input: Self::CreateTargetInput,
     ) -> Result<String, GatewayError> {
         reject_unsupported_credentials(&input)?;
         let client = self.session_client(session_token)?;
@@ -277,7 +298,11 @@ impl TargetPort for GvmdAdapter {
         Ok(parsed.id.to_string())
     }
 
-    async fn get_target(&self, session_token: &str, id: &str) -> Result<Target, GatewayError> {
+    async fn get_target(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<Self::Target, GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
@@ -298,8 +323,8 @@ impl TargetPort for GvmdAdapter {
         &self,
         session_token: &str,
         id: &str,
-        input: ModifyTargetInput,
-    ) -> Result<Target, GatewayError> {
+        input: Self::ModifyTargetInput,
+    ) -> Result<Self::Target, GatewayError> {
         let client = self.session_client(session_token)?;
         let target_id = parse_entity_id(id)?;
         let response = client
@@ -364,66 +389,4 @@ fn parse_entity_id(value: &str) -> Result<EntityId, GatewayError> {
 fn parse_alive_test(value: &str) -> Result<AliveTest, GatewayError> {
     AliveTest::from_str(value)
         .map_err(|_| GatewayError::InvalidInput(format!("invalid aliveTest: {value}")))
-}
-
-fn map_gvm_error(error: GvmError) -> GatewayError {
-    match error {
-        GvmError::Server {
-            status: 400,
-            message,
-        } => GatewayError::InvalidInput(message),
-        GvmError::Server {
-            status: 401,
-            message,
-        } => GatewayError::Unauthorized(message),
-        GvmError::Server {
-            status: 404,
-            message,
-        } => GatewayError::NotFound(message),
-        GvmError::Timeout(duration) => {
-            GatewayError::BackendUnavailable(format!("gvmd timeout after {duration:?}"))
-        }
-        other => GatewayError::BackendUnavailable(other.to_string()),
-    }
-}
-
-fn map_parse_error(error: GmpParseError) -> GatewayError {
-    match error {
-        GmpParseError::ServerError {
-            status: 404,
-            message,
-        } => GatewayError::NotFound(message),
-        GmpParseError::ServerError {
-            status: 400,
-            message,
-        } => GatewayError::InvalidInput(message),
-        GmpParseError::ServerError {
-            status: 401,
-            message,
-        } => GatewayError::Unauthorized(message),
-        other => GatewayError::BackendUnavailable(other.to_string()),
-    }
-}
-
-fn target_from_gmp(target: GmpTarget) -> Target {
-    Target {
-        id: target.meta.id.to_string(),
-        name: target.meta.name,
-        comment: target.meta.comment,
-        hosts: target.hosts,
-        exclude_hosts: target.exclude_hosts,
-        alive_test: target.alive_tests,
-        port_list: target.port_list.map(|resource| ResourceRef {
-            id: resource.id.to_string(),
-            name: Some(resource.name),
-        }),
-        reverse_lookup_only: target.reverse_lookup_only,
-        reverse_lookup_unify: target.reverse_lookup_unify,
-        ssh_credential: None,
-        smb_credential: None,
-        esxi_credential: None,
-        snmp_credential: None,
-        in_use: target.meta.in_use,
-        writable: target.meta.writable,
-    }
 }

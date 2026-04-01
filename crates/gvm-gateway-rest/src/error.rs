@@ -8,7 +8,9 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use gvm_client::GvmError;
 use gvm_gateway_domain::GatewayError;
+use gvm_gmp::responses::ParseError as GmpParseError;
 use serde::Serialize;
 
 /// RFC 9457 problem details payload.
@@ -117,5 +119,46 @@ impl RestError {
 impl IntoResponse for RestError {
     fn into_response(self) -> Response {
         (self.status, Json(self.problem)).into_response()
+    }
+}
+
+/// Classify a gvmd client error into a protocol-agnostic domain error.
+pub fn map_gvm_error(error: GvmError) -> GatewayError {
+    match error {
+        GvmError::Server {
+            status: 400,
+            message,
+        } => GatewayError::InvalidInput(message),
+        GvmError::Server {
+            status: 401,
+            message,
+        } => GatewayError::Unauthorized(message),
+        GvmError::Server {
+            status: 404,
+            message,
+        } => GatewayError::NotFound(message),
+        GvmError::Timeout(duration) => {
+            GatewayError::BackendUnavailable(format!("gvmd timeout after {duration:?}"))
+        }
+        other => GatewayError::BackendUnavailable(other.to_string()),
+    }
+}
+
+/// Classify a GMP parse failure into a protocol-agnostic domain error.
+pub fn map_parse_error(error: GmpParseError) -> GatewayError {
+    match error {
+        GmpParseError::ServerError {
+            status: 404,
+            message,
+        } => GatewayError::NotFound(message),
+        GmpParseError::ServerError {
+            status: 400,
+            message,
+        } => GatewayError::InvalidInput(message),
+        GmpParseError::ServerError {
+            status: 401,
+            message,
+        } => GatewayError::Unauthorized(message),
+        other => GatewayError::BackendUnavailable(other.to_string()),
     }
 }
