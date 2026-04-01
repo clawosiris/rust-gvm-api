@@ -9,8 +9,8 @@
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
-    CreateTargetInput, GatewayError, HealthStatus, ModifyTargetInput, ReadinessStatus,
-    SessionManager, SystemPort, Target, TargetPage, TargetPort, TargetQuery, VersionInfo,
+    GatewayError, HealthStatus, ReadinessStatus, SessionManager, SystemPort, TargetPort,
+    VersionInfo,
 };
 
 /// Application services exposed to adapters.
@@ -74,8 +74,8 @@ where
     pub async fn list_targets(
         &self,
         session_token: &str,
-        query: TargetQuery,
-    ) -> Result<TargetPage, GatewayError> {
+        query: T::TargetQuery,
+    ) -> Result<T::TargetPage, GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.targets.list_targets(&session.token, &query).await
     }
@@ -84,14 +84,18 @@ where
     pub async fn create_target(
         &self,
         session_token: &str,
-        input: CreateTargetInput,
+        input: T::CreateTargetInput,
     ) -> Result<String, GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.targets.create_target(&session.token, input).await
     }
 
     /// Fetches a target for an authenticated session.
-    pub async fn get_target(&self, session_token: &str, id: &str) -> Result<Target, GatewayError> {
+    pub async fn get_target(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<T::Target, GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.targets.get_target(&session.token, id).await
     }
@@ -101,8 +105,8 @@ where
         &self,
         session_token: &str,
         id: &str,
-        input: ModifyTargetInput,
-    ) -> Result<Target, GatewayError> {
+        input: T::ModifyTargetInput,
+    ) -> Result<T::Target, GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.targets.modify_target(&session.token, id, input).await
     }

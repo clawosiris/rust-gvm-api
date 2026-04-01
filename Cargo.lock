@@ -475,6 +475,7 @@ dependencies = [
  "gvm-client",
  "gvm-connection",
  "gvm-gateway-domain",
+ "gvm-gateway-rest",
  "gvm-gmp",
  "tokio",
 ]
@@ -484,6 +485,7 @@ name = "gvm-gateway-rest"
 version = "0.3.1"
 dependencies = [
  "axum",
+ "gvm-client",
  "gvm-gateway-app",
  "gvm-gateway-domain",
  "gvm-gateway-gvmd",
