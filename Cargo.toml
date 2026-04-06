@@ -25,8 +25,8 @@ opentelemetry-otlp = { version = "0.31.1", features = ["grpc-tonic", "trace"] }
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread", "net"] }
-toml = "1.1.0"
+tokio = { version = "1.51.0", features = ["macros", "rt-multi-thread", "net"] }
+toml = "1.1.2"
 tower = { version = "0.5.2", features = ["util"] }
 tower-http = { version = "0.6.2", features = ["trace"] }
 tracing = "0.1.41"
