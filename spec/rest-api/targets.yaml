@@ -9,10 +9,6 @@ paths:
       operationId: getTargets
       tags: [Targets]
       summary: List targets
-      description: |
-        Requires an existing bearer token provisioned outside this REST surface.
-        Public session-management endpoints are not part of the currently delivered
-        Targets CRUD scope.
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
         - $ref: "./common.yaml#/components/parameters/FilterId"
@@ -31,9 +27,6 @@ paths:
       operationId: createTarget
       tags: [Targets]
       summary: Create a target
-      description: |
-        Requires an existing bearer token provisioned outside this REST surface.
-        Credential attachment fields are reserved for a later phase and are not yet supported.
       requestBody:
         required: true
         content:
@@ -182,6 +175,18 @@ components:
           type: boolean
         reverseLookupUnify:
           type: boolean
+        sshCredentialId:
+          type: string
+          format: uuid
+        smbCredentialId:
+          type: string
+          format: uuid
+        esxiCredentialId:
+          type: string
+          format: uuid
+        snmpCredentialId:
+          type: string
+          format: uuid
 
     ModifyTarget:
       type: object

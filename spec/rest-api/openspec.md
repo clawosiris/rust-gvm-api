@@ -283,13 +283,14 @@ The API should propagate W3C Trace Context (`traceparent`, `tracestate`, optiona
 
 ### Authentication & Authorization
 
-1. **Bearer token flow** — current delivered auth model
-   - clients obtain an opaque bearer token out of band
-   - subsequent requests use `Authorization: Bearer <token>`
-   - the gateway keeps an internal session-backed execution model
+1. **Session token flow** — Primary auth model
+   - `POST /api/v1/sessions` with Basic credentials
+   - API returns an opaque session token
+   - Subsequent requests use `Authorization: Bearer <sessionToken>`
 
-2. **Public session endpoints**
-   - REST session-management endpoints are deferred to a later phase
+2. **Session lifecycle controls**
+   - `GET /api/v1/sessions/{token}` to inspect session state
+   - `DELETE /api/v1/sessions/{token}` for explicit teardown
 
 3. **Authorization**
    - Authorization behavior follows gvmd user permissions
@@ -379,19 +380,26 @@ No implementation work should start without an acceptance test that defines the 
 - Wire REST adapter to application use cases only.
 - Keep gRPC crate/work out of scope for this iteration.
 
-### Phase 2: Session-backed execution core (from #27)
+### Phase 2: Session and connection core (from #27)
 
 - Implement domain `SessionManager` with `create/get/touch/expire/remove`.
+- Enforce atomic limits:
+  - global max sessions
+  - per-user max sessions
 - Implement gvmd adapter connection store keyed by session token.
-- Add one in-flight GMP command serialization per session where needed.
-- Treat session lifecycle limits and cleanup as internal implementation behavior for now.
+- Add one in-flight GMP command serialization per session (single-flight queue).
+- Implement backpressure behavior for queue saturation/timeouts.
+- Implement idle-expiry cleanup and explicit teardown.
 
 ### Phase 3: REST adapter foundation (spec-first)
 
 - Generate REST server stubs/types from the OpenAPI 3.1 spec in `spec/rest-api/`.
-- Implement bearer-token extraction and protected route handling for Targets CRUD.
+- Implement session endpoints first (acceptance-test first for each endpoint):
+  - `POST /sessions`
+  - `GET /sessions/{token}`
+  - `DELETE /sessions/{token}`
+- Implement bearer-token extraction and session resolution middleware.
 - Map domain errors to HTTP status/problem responses consistently.
-- Defer public `/sessions` endpoints to a later phase.
 
 ### Phase 4: Resource endpoint implementation (proposed spec)
 
@@ -486,5 +494,5 @@ For each resource (acceptance-test first):
 
 - [ ] Should we support GMP filter syntax passthrough or only structured query params?
 - [ ] WebSocket vs SSE for real-time task status updates?
-- [ ] Connection pool strategy after public session endpoints land: per-user sessions or shared pool with per-request auth?
+- [ ] Connection pool strategy: per-user sessions or shared pool with per-request auth?
 - [ ] Should report export be synchronous or async (poll-based)?
