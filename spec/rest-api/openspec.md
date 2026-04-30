@@ -39,9 +39,9 @@ When a structured model exists upstream, use it as the source for API mapping.
 │                  gvm-rest-api                    │
 │                                                  │
 │  ┌───────────┐  ┌───────────┐  ┌──────────────┐ │
-│  │  Router   │  │   Auth    │  │  Middleware   │ │
-│  │  (axum)   │──│  (JWT /   │──│  (CORS/Rate/ │ │
-│  │           │  │  API Key) │  │   Trace/Comp)│ │
+│  │  Router   │  │ Session   │  │  Middleware   │ │
+│  │  (axum)   │──│ Lifecycle  │──│  (CORS/Rate/ │ │
+│  │           │  │ + Bearer   │  │   Trace/Comp)│ │
 │  └─────┬─────┘  └───────────┘  └──────────────┘ │
 │        │                                         │
 │  ┌─────┴─────────────────────────────────────┐   │
@@ -75,9 +75,7 @@ crates/gvm-rest-api/
 │   ├── error.rs         # Error types → HTTP status mapping
 │   ├── auth/
 │   │   ├── mod.rs
-│   │   ├── jwt.rs       # JWT token validation
-│   │   ├── api_key.rs   # API key authentication
-│   │   └── rbac.rs      # Role-based access control
+│   │   └── bearer.rs    # Session-token extraction / validation
 │   ├── middleware/
 │   │   ├── mod.rs
 │   │   ├── rate_limit.rs
@@ -85,8 +83,9 @@ crates/gvm-rest-api/
 │   │   └── request_id.rs
 │   ├── routes/
 │   │   ├── mod.rs
-│   │   ├── health.rs    # GET /healthz, GET /readyz
+│   │   ├── health.rs    # GET /health, GET /ready
 │   │   ├── version.rs   # GET /api/v1/version
+│   │   ├── sessions.rs  # /api/v1/sessions/*
 │   │   ├── scans.rs     # /api/v1/scans/*
 │   │   ├── targets.rs   # /api/v1/targets/*
 │   │   ├── tasks.rs     # /api/v1/tasks/*
@@ -206,14 +205,15 @@ URL-based versioning (`/api/v1/`, `/api/v2/`). Major breaking changes increment 
 | `PUT` | `/api/v1/schedules/{id}` | Update schedule |
 | `DELETE` | `/api/v1/schedules/{id}` | Delete schedule |
 
-#### Users & Auth
+#### Sessions & Auth
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/auth/token` | Authenticate, get JWT |
-| `POST` | `/api/v1/auth/refresh` | Refresh JWT |
-| `GET` | `/api/v1/users` | List users |
-| `GET` | `/api/v1/users/me` | Get current user |
+| `POST` | `/api/v1/sessions` | Authenticate with HTTP Basic credentials and create a session |
+| `GET` | `/api/v1/sessions/{token}` | Inspect current session state |
+| `DELETE` | `/api/v1/sessions/{token}` | Close and destroy a session |
+
+Authentication is session-based for v0.1. Public user-management endpoints are deferred unless the API contract is expanded later.
 
 #### Feeds
 
@@ -226,12 +226,12 @@ URL-based versioning (`/api/v1/`, `/api/v2/`). Major breaking changes increment 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/healthz` | Liveness probe |
-| `GET` | `/readyz` | Readiness probe (checks gvmd connectivity) |
+| `GET` | `/health` | Liveness probe |
+| `GET` | `/ready` | Readiness probe (checks gvmd connectivity) |
 | `GET` | `/api/v1/version` | API + GMP version info |
 | `GET` | `/api/v1/openapi.json` | OpenAPI 3.1 spec |
-| `GET` | `/api/v1/docs` | Swagger UI |
-| `GET` | `/api/v1/redoc` | ReDoc documentation |
+
+Swagger/ReDoc endpoints are not part of the current published contract.
 
 ### Request/Response Conventions
 
@@ -298,10 +298,11 @@ The API should propagate W3C Trace Context (`traceparent`, `tracestate`, optiona
 
 ### Rate Limiting
 
-Token-bucket rate limiting per API key / JWT subject:
-- Default: 100 req/s per client
+Token-bucket rate limiting per session / authenticated user, aligned with the session model in #27:
+- Default: 100 req/s per client workflow
 - Configurable per-endpoint overrides
 - `429 Too Many Requests` with `Retry-After` header
+- Capacity/backpressure should compose cleanly with global/per-user session limits
 
 ## 4. Configuration
 
@@ -325,11 +326,10 @@ pool_size = 10
 connect_timeout_secs = 5
 request_timeout_secs = 60
 
-[auth]
-jwt_secret = "${JWT_SECRET}"  # env var expansion
-jwt_expiration_secs = 3600
-jwt_refresh_expiration_secs = 86400
-api_key_enabled = true
+[session]
+idle_timeout_secs = 300
+max_sessions = 100
+max_sessions_per_user = 5
 
 [rate_limit]
 default_rps = 100
@@ -468,7 +468,7 @@ For each resource (acceptance-test first):
 | `tokio` | Async runtime |
 | `utoipa` | OpenAPI spec generation |
 | `serde` / `serde_json` | Serialization |
-| `jsonwebtoken` | JWT handling |
+| `uuid` | Opaque session-token / resource identifier support |
 | `clap` | CLI argument parsing |
 | `tracing` + `tracing-opentelemetry` + `opentelemetry` + `opentelemetry-otlp` | Structured logging + OTel export |
 | `prometheus` | Metrics |
@@ -483,7 +483,7 @@ For each resource (acceptance-test first):
 
 ## 8. Security Considerations
 
-- **No credential storage**: JWT secret from env var, GMP credentials per-session
+- **No credential storage**: GMP credentials are used only to establish a session; bearer session tokens must be treated as secrets and redacted from logs
 - **TLS everywhere**: Support native TLS for API + GMP transport
 - **Input validation**: All request bodies validated before GMP translation
 - **No unsafe code**: `#[deny(unsafe_code)]` crate-wide
@@ -494,5 +494,5 @@ For each resource (acceptance-test first):
 
 - [ ] Should we support GMP filter syntax passthrough or only structured query params?
 - [ ] WebSocket vs SSE for real-time task status updates?
-- [ ] Connection pool strategy: per-user sessions or shared pool with per-request auth?
+- [ ] Should a later API version add a stateless per-request auth mode, or should session-based auth remain the only public contract?
 - [ ] Should report export be synchronous or async (poll-based)?
