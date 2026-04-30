@@ -126,7 +126,142 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         }
     }
 
+    tighten_target_query_parameters(&mut document);
+    tighten_target_payload_schemas(&mut document);
+    ensure_problem_detail_schema(&mut document);
+    strip_nullable_types(&mut document);
     document
+}
+
+fn tighten_target_query_parameters(document: &mut Value) {
+    if let Some(parameters) = document["paths"]["/targets"]["get"]["parameters"].as_array_mut() {
+        for parameter in parameters {
+            match parameter["name"].as_str() {
+                Some("page") => {
+                    parameter["schema"]["minimum"] = json!(1);
+                    parameter["schema"]["default"] = json!(1);
+                }
+                Some("perPage") => {
+                    parameter["schema"]["minimum"] = json!(1);
+                    parameter["schema"]["maximum"] = json!(1000);
+                    parameter["schema"]["default"] = json!(25);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn tighten_target_payload_schemas(document: &mut Value) {
+    document["components"]["schemas"]["CreateTarget"]["properties"]["hosts"]["minItems"] = json!(1);
+}
+
+fn ensure_problem_detail_schema(document: &mut Value) {
+    let schemas = document["components"]["schemas"]
+        .as_object_mut()
+        .expect("generated OpenAPI document must contain components.schemas");
+
+    schemas.insert(
+        "ProblemDetail".to_string(),
+        json!({
+            "type": "object",
+            "required": ["type", "title", "status"],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "format": "uri"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "detail": {
+                    "type": "string"
+                },
+                "instance": {
+                    "type": "string",
+                    "format": "uri-reference"
+                }
+            }
+        }),
+    );
+}
+
+fn strip_nullable_types(value: &mut Value) {
+    *value = normalize_nullable_schema(std::mem::take(value));
+}
+
+fn normalize_nullable_schema(value: Value) -> Value {
+    match value {
+        Value::Object(object) => {
+            let mut object = object
+                .into_iter()
+                .map(|(key, value)| (key, normalize_nullable_schema(value)))
+                .collect::<Map<String, Value>>();
+
+            if let Some(Value::Array(types)) = object.get_mut("type") {
+                let mut filtered = types
+                    .iter()
+                    .filter(|ty| ty.as_str() != Some("null"))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if filtered.len() == 1 {
+                    object.insert("type".to_string(), filtered.remove(0));
+                } else if filtered.len() != types.len() {
+                    *types = filtered;
+                }
+            }
+
+            collapse_nullable_combinator(&object, "anyOf")
+                .or_else(|| collapse_nullable_combinator(&object, "oneOf"))
+                .unwrap_or(Value::Object(object))
+        }
+        Value::Array(array) => Value::Array(
+            array
+                .into_iter()
+                .map(normalize_nullable_schema)
+                .collect::<Vec<_>>(),
+        ),
+        other => other,
+    }
+}
+
+fn collapse_nullable_combinator(object: &Map<String, Value>, key: &str) -> Option<Value> {
+    let Value::Array(options) = object.get(key)? else {
+        return None;
+    };
+
+    let filtered = options
+        .iter()
+        .filter(|option| !is_null_schema(option))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if filtered.len() == options.len() {
+        return None;
+    }
+
+    if filtered.len() == 1 {
+        let mut remaining = filtered.into_iter().next().unwrap();
+        if let Value::Object(ref mut remaining_object) = remaining {
+            for (other_key, other_value) in object {
+                if other_key != key && !remaining_object.contains_key(other_key) {
+                    remaining_object.insert(other_key.clone(), other_value.clone());
+                }
+            }
+        }
+        Some(remaining)
+    } else {
+        let mut normalized = object.clone();
+        normalized.insert(key.to_string(), Value::Array(filtered));
+        Some(Value::Object(normalized))
+    }
+}
+
+fn is_null_schema(value: &Value) -> bool {
+    matches!(value, Value::Object(object) if object.get("type").and_then(Value::as_str) == Some("null"))
 }
 
 fn copy_path(
@@ -193,15 +328,12 @@ pub(crate) fn health_docs(op: TransformOperation<'_>) -> TransformOperation<'_> 
 
 /// OpenAPI transform for `GET /ready`.
 pub(crate) fn ready_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getReadiness")
+    op.id("getReadiness")
         .tag("System")
         .summary("Readiness probe")
         .description("Indicates whether the service is ready to handle requests.")
         .response_with::<200, Json<ReadinessStatusDoc>, _>(ok_json("Service is ready"))
-        .response_with::<503, Json<ReadinessStatusDoc>, _>(ok_json("Service is not ready"));
-
-    problem_response::<502>(op, "Backend service unreachable or connection failed")
+        .response_with::<503, Json<ReadinessStatusDoc>, _>(ok_json("Service is not ready"))
 }
 
 /// OpenAPI transform for `GET /api/v1/version`.

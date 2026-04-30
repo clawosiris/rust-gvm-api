@@ -146,6 +146,15 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
     let targets_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
+    let common_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/common.yaml")).unwrap();
+
+    let docs = SpecDocs {
+        generated: &json,
+        system: &system_spec,
+        targets: &targets_spec,
+        common: &common_spec,
+    };
 
     assert_eq!(json["servers"], root_spec["servers"]);
     assert_eq!(json["security"], root_spec["security"]);
@@ -162,81 +171,495 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
     );
 
     let checks = [
-        ("/health", "get", &system_spec, "/health", &["200"] as &[_]),
-        ("/ready", "get", &system_spec, "/ready", &["200", "503"]),
-        ("/version", "get", &system_spec, "/version", &["200", "502"]),
-        (
-            "/openapi.json",
-            "get",
-            &system_spec,
-            "/openapi.json",
-            &["200"],
-        ),
-        (
-            "/targets",
-            "get",
-            &targets_spec,
-            "/targets",
-            &["200", "401"],
-        ),
-        (
-            "/targets",
-            "post",
-            &targets_spec,
-            "/targets",
-            &["201", "400", "401"],
-        ),
-        (
-            "/targets/{id}",
-            "get",
-            &targets_spec,
-            "/targets/{id}",
-            &["200", "401", "404"],
-        ),
-        (
-            "/targets/{id}",
-            "put",
-            &targets_spec,
-            "/targets/{id}",
-            &["200", "400", "401", "404"],
-        ),
-        (
-            "/targets/{id}",
-            "delete",
-            &targets_spec,
-            "/targets/{id}",
-            &["204", "401", "404"],
-        ),
+        ("/health", "get", DocName::System, "/health"),
+        ("/ready", "get", DocName::System, "/ready"),
+        ("/version", "get", DocName::System, "/version"),
+        ("/openapi.json", "get", DocName::System, "/openapi.json"),
+        ("/targets", "get", DocName::Targets, "/targets"),
+        ("/targets", "post", DocName::Targets, "/targets"),
+        ("/targets/{id}", "get", DocName::Targets, "/targets/{id}"),
+        ("/targets/{id}", "put", DocName::Targets, "/targets/{id}"),
+        ("/targets/{id}", "delete", DocName::Targets, "/targets/{id}"),
     ];
 
-    for (generated_path, method, curated_doc, curated_path, statuses) in checks {
-        let generated_op = op(&json, generated_path, method);
-        let curated_op = op(curated_doc, curated_path, method);
+    for (generated_path, method, curated_doc, curated_path) in checks {
+        assert_operation_contract(&docs, generated_path, method, curated_doc, curated_path);
+    }
 
-        assert_eq!(generated_op["operationId"], curated_op["operationId"]);
-        assert_eq!(generated_op["tags"], curated_op["tags"]);
-        assert_eq!(generated_op["summary"], curated_op["summary"]);
+    handle.abort();
+}
 
-        let generated_statuses = response_statuses(generated_op);
-        for status in statuses {
-            assert!(
-                generated_statuses.contains(status),
-                "missing generated status {status} for {method} {generated_path}"
+#[derive(Clone, Copy)]
+enum DocName {
+    Generated,
+    System,
+    Targets,
+    Common,
+}
+
+struct SpecDocs<'a> {
+    generated: &'a Value,
+    system: &'a Value,
+    targets: &'a Value,
+    common: &'a Value,
+}
+
+fn assert_operation_contract(
+    docs: &SpecDocs<'_>,
+    generated_path: &str,
+    method: &str,
+    curated_doc: DocName,
+    curated_path: &str,
+) {
+    let generated_op = effective_operation(docs.generated, generated_path, method);
+    let curated_op = effective_operation(doc(docs, curated_doc), curated_path, method);
+    let context = format!("{method} {generated_path}");
+
+    assert_eq!(
+        generated_op["operationId"], curated_op["operationId"],
+        "operationId drift for {context}"
+    );
+    assert_eq!(
+        generated_op["tags"], curated_op["tags"],
+        "tags drift for {context}"
+    );
+    assert_eq!(
+        generated_op["summary"], curated_op["summary"],
+        "summary drift for {context}"
+    );
+
+    compare_parameters(
+        docs,
+        DocName::Generated,
+        &generated_op,
+        curated_doc,
+        &curated_op,
+        &context,
+    );
+    compare_request_body(
+        docs,
+        DocName::Generated,
+        &generated_op,
+        curated_doc,
+        &curated_op,
+        &context,
+    );
+    compare_responses(
+        docs,
+        DocName::Generated,
+        &generated_op,
+        curated_doc,
+        &curated_op,
+        &context,
+    );
+}
+
+fn compare_parameters(
+    docs: &SpecDocs<'_>,
+    generated_doc: DocName,
+    generated_op: &Value,
+    curated_doc: DocName,
+    curated_op: &Value,
+    context: &str,
+) {
+    let generated_params = generated_op["parameters"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let curated_params = curated_op["parameters"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    let generated_keys = generated_params
+        .iter()
+        .map(|parameter| parameter_key(docs, generated_doc, parameter))
+        .collect::<BTreeSet<_>>();
+    let curated_keys = curated_params
+        .iter()
+        .map(|parameter| parameter_key(docs, curated_doc, parameter))
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        generated_keys, curated_keys,
+        "parameter set drift for {context}"
+    );
+
+    for key in generated_keys {
+        let generated_parameter = generated_params
+            .iter()
+            .find(|parameter| parameter_key(docs, generated_doc, parameter) == key)
+            .unwrap();
+        let curated_parameter = curated_params
+            .iter()
+            .find(|parameter| parameter_key(docs, curated_doc, parameter) == key)
+            .unwrap();
+
+        let (generated_parameter_doc, generated_parameter) =
+            resolve_ref(docs, generated_doc, generated_parameter);
+        let (curated_parameter_doc, curated_parameter) =
+            resolve_ref(docs, curated_doc, curated_parameter);
+
+        assert_required_flag(
+            generated_parameter.get("required"),
+            curated_parameter.get("required"),
+            &format!("{context} parameter {key} required"),
+        );
+
+        compare_schema_like(
+            docs,
+            generated_parameter_doc,
+            generated_parameter.get("schema").unwrap_or(&Value::Null),
+            curated_parameter_doc,
+            curated_parameter.get("schema").unwrap_or(&Value::Null),
+            &format!("{context} parameter {key} schema"),
+        );
+    }
+}
+
+fn compare_request_body(
+    docs: &SpecDocs<'_>,
+    generated_doc: DocName,
+    generated_op: &Value,
+    curated_doc: DocName,
+    curated_op: &Value,
+    context: &str,
+) {
+    let generated_body = generated_op
+        .get("requestBody")
+        .filter(|value| !value.is_null());
+    let curated_body = curated_op
+        .get("requestBody")
+        .filter(|value| !value.is_null());
+
+    match (generated_body, curated_body) {
+        (None, None) => {}
+        (Some(_), None) | (None, Some(_)) => {
+            panic!("requestBody presence drift for {context}");
+        }
+        (Some(generated_body), Some(curated_body)) => {
+            let (generated_body_doc, generated_body) =
+                resolve_ref(docs, generated_doc, generated_body);
+            let (curated_body_doc, curated_body) = resolve_ref(docs, curated_doc, curated_body);
+
+            assert_required_flag(
+                generated_body.get("required"),
+                curated_body.get("required"),
+                &format!("{context} requestBody required"),
+            );
+
+            let generated_content = generated_body["content"].as_object().unwrap();
+            let curated_content = curated_body["content"].as_object().unwrap();
+            assert_eq!(
+                generated_content.keys().collect::<BTreeSet<_>>(),
+                curated_content.keys().collect::<BTreeSet<_>>(),
+                "requestBody content types drift for {context}"
+            );
+
+            for media_type in generated_content.keys() {
+                compare_schema_like(
+                    docs,
+                    generated_body_doc,
+                    &generated_content[media_type]["schema"],
+                    curated_body_doc,
+                    &curated_content[media_type]["schema"],
+                    &format!("{context} requestBody {media_type} schema"),
+                );
+            }
+        }
+    }
+}
+
+fn compare_responses(
+    docs: &SpecDocs<'_>,
+    generated_doc: DocName,
+    generated_op: &Value,
+    curated_doc: DocName,
+    curated_op: &Value,
+    context: &str,
+) {
+    let generated_responses = generated_op["responses"].as_object().unwrap();
+    let curated_responses = curated_op["responses"].as_object().unwrap();
+    let generated_statuses = generated_responses
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let curated_statuses = curated_responses
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        generated_statuses.is_subset(&curated_statuses),
+        "response status drift for {context}: generated={generated_statuses:?}, curated={curated_statuses:?}"
+    );
+
+    for status in generated_statuses {
+        let (generated_response_doc, generated_response) =
+            resolve_ref(docs, generated_doc, &generated_responses[status]);
+        let (curated_response_doc, curated_response) =
+            resolve_ref(docs, curated_doc, &curated_responses[status]);
+
+        let generated_content = generated_response
+            .get("content")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let curated_content = curated_response
+            .get("content")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+
+        let generated_media_types = generated_content
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let curated_media_types = curated_content
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert!(
+            generated_media_types.is_subset(&curated_media_types),
+            "response content type drift for {context} {status}"
+        );
+
+        for media_type in generated_media_types {
+            compare_schema_like(
+                docs,
+                generated_response_doc,
+                &generated_content[media_type]["schema"],
+                curated_response_doc,
+                &curated_content[media_type]["schema"],
+                &format!("{context} response {status} {media_type} schema"),
             );
         }
     }
+}
 
-    let target_props = &json["components"]["schemas"]["Target"]["properties"];
-    assert!(target_props.get("excludeHosts").is_some());
-    assert!(target_props.get("aliveTest").is_some());
-    assert!(target_props.get("portList").is_some());
-    assert_eq!(target_props["id"]["format"], "uuid");
+fn compare_schema_like(
+    docs: &SpecDocs<'_>,
+    generated_doc: DocName,
+    generated: &Value,
+    curated_doc: DocName,
+    curated: &Value,
+    context: &str,
+) {
+    let (generated_doc, generated) = resolve_ref(docs, generated_doc, generated);
+    let (curated_doc, curated) = resolve_ref(docs, curated_doc, curated);
 
-    let pagination_props = &json["components"]["schemas"]["Pagination"]["properties"];
-    assert!(pagination_props.get("perPage").is_some());
-    assert!(pagination_props.get("totalPages").is_some());
+    match (generated, curated) {
+        (Value::Null, Value::Null) => {}
+        (_, Value::Null) | (Value::Null, _) => panic!("schema presence drift for {context}"),
+        (Value::Object(generated), Value::Object(curated)) => {
+            for (key, curated_value) in curated {
+                if matches!(
+                    key.as_str(),
+                    "description" | "example" | "examples" | "title"
+                ) {
+                    continue;
+                }
 
-    handle.abort();
+                let generated_value = generated
+                    .get(key)
+                    .unwrap_or_else(|| panic!("missing `{key}` in {context}"));
+
+                match key.as_str() {
+                    "required" if curated_value.is_boolean() => assert_required_flag(
+                        Some(generated_value),
+                        Some(curated_value),
+                        &format!("{context} required"),
+                    ),
+                    "required" => assert_required_items(
+                        generated_value,
+                        curated_value,
+                        &format!("{context} required"),
+                    ),
+                    "enum" => assert_enum_subset(
+                        generated_value,
+                        curated_value,
+                        &format!("{context} enum"),
+                    ),
+                    "minimum" | "exclusiveMinimum" | "minLength" | "minItems" | "minProperties" => {
+                        assert_numeric_at_least(
+                            generated_value,
+                            curated_value,
+                            &format!("{context} {key}"),
+                        )
+                    }
+                    "maximum" | "exclusiveMaximum" | "maxLength" | "maxItems" | "maxProperties" => {
+                        assert_numeric_at_most(
+                            generated_value,
+                            curated_value,
+                            &format!("{context} {key}"),
+                        )
+                    }
+                    _ => compare_schema_like(
+                        docs,
+                        generated_doc,
+                        generated_value,
+                        curated_doc,
+                        curated_value,
+                        &format!("{context}.{key}"),
+                    ),
+                }
+            }
+        }
+        (Value::Array(generated), Value::Array(curated)) => {
+            assert_eq!(
+                generated.len(),
+                curated.len(),
+                "array length drift for {context}"
+            );
+            for (index, (generated_value, curated_value)) in
+                generated.iter().zip(curated).enumerate()
+            {
+                compare_schema_like(
+                    docs,
+                    generated_doc,
+                    generated_value,
+                    curated_doc,
+                    curated_value,
+                    &format!("{context}[{index}]"),
+                );
+            }
+        }
+        _ => assert_eq!(generated, curated, "value drift for {context}"),
+    }
+}
+
+fn assert_required_flag(generated: Option<&Value>, curated: Option<&Value>, context: &str) {
+    let generated = generated.and_then(Value::as_bool).unwrap_or(false);
+    let curated = curated.and_then(Value::as_bool).unwrap_or(false);
+    assert!(generated || !curated, "required-flag drift for {context}");
+}
+
+fn assert_required_items(generated: &Value, curated: &Value, context: &str) {
+    let generated = generated
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    let curated = curated
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert!(
+        generated.is_superset(&curated),
+        "required items drift for {context}: generated={generated:?}, curated={curated:?}"
+    );
+}
+
+fn assert_enum_subset(generated: &Value, curated: &Value, context: &str) {
+    let generated = generated
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(Value::to_string)
+        .collect::<BTreeSet<_>>();
+    let curated = curated
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(Value::to_string)
+        .collect::<BTreeSet<_>>();
+    assert!(
+        generated.is_subset(&curated),
+        "enum drift for {context}: generated={generated:?}, curated={curated:?}"
+    );
+}
+
+fn assert_numeric_at_least(generated: &Value, curated: &Value, context: &str) {
+    let generated = generated
+        .as_f64()
+        .unwrap_or_else(|| panic!("non-numeric generated value for {context}"));
+    let curated = curated
+        .as_f64()
+        .unwrap_or_else(|| panic!("non-numeric curated value for {context}"));
+    assert!(generated >= curated, "numeric drift for {context}");
+}
+
+fn assert_numeric_at_most(generated: &Value, curated: &Value, context: &str) {
+    let generated = generated
+        .as_f64()
+        .unwrap_or_else(|| panic!("non-numeric generated value for {context}"));
+    let curated = curated
+        .as_f64()
+        .unwrap_or_else(|| panic!("non-numeric curated value for {context}"));
+    assert!(generated <= curated, "numeric drift for {context}");
+}
+
+fn parameter_key(docs: &SpecDocs<'_>, current_doc: DocName, parameter: &Value) -> String {
+    let (_, parameter) = resolve_ref(docs, current_doc, parameter);
+    format!(
+        "{}:{}",
+        parameter["in"].as_str().unwrap(),
+        parameter["name"].as_str().unwrap()
+    )
+}
+
+fn effective_operation(doc: &Value, path: &str, method: &str) -> Value {
+    let mut operation = op(doc, path, method).clone();
+    let mut parameters = Vec::new();
+
+    if let Some(path_parameters) = doc["paths"][path]["parameters"].as_array() {
+        parameters.extend(path_parameters.iter().cloned());
+    }
+    if let Some(operation_parameters) = operation["parameters"].as_array() {
+        parameters.extend(operation_parameters.iter().cloned());
+    }
+    if !parameters.is_empty() {
+        operation["parameters"] = Value::Array(parameters);
+    }
+
+    operation
+}
+
+fn resolve_ref<'a>(
+    docs: &'a SpecDocs<'a>,
+    mut current_doc: DocName,
+    mut value: &'a Value,
+) -> (DocName, &'a Value) {
+    while let Some(reference) = value.get("$ref").and_then(Value::as_str) {
+        let (next_doc, pointer) = parse_ref(current_doc, reference);
+        current_doc = next_doc;
+        value = doc(docs, current_doc)
+            .pointer(&pointer)
+            .unwrap_or_else(|| panic!("missing ref target `{reference}`"));
+    }
+
+    (current_doc, value)
+}
+
+fn parse_ref(current_doc: DocName, reference: &str) -> (DocName, String) {
+    let (doc_name, pointer) = reference.split_once('#').unwrap_or((reference, ""));
+    let doc = match doc_name {
+        "" => current_doc,
+        "./common.yaml" => DocName::Common,
+        "./system.yaml" => DocName::System,
+        "./targets.yaml" => DocName::Targets,
+        other => panic!("unsupported ref document `{other}`"),
+    };
+
+    let pointer = if pointer.is_empty() {
+        String::new()
+    } else {
+        pointer.replace("~1", "/").replace("~0", "~")
+    };
+
+    (doc, pointer)
+}
+
+fn doc<'a>(docs: &'a SpecDocs<'a>, name: DocName) -> &'a Value {
+    match name {
+        DocName::Generated => docs.generated,
+        DocName::System => docs.system,
+        DocName::Targets => docs.targets,
+        DocName::Common => docs.common,
+    }
 }
 
 fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {
@@ -245,15 +668,6 @@ fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {
 
 fn path_names(doc: &Value) -> BTreeSet<&str> {
     doc["paths"]
-        .as_object()
-        .unwrap()
-        .keys()
-        .map(String::as_str)
-        .collect()
-}
-
-fn response_statuses(operation: &Value) -> BTreeSet<&str> {
-    operation["responses"]
         .as_object()
         .unwrap()
         .keys()
