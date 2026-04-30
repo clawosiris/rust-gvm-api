@@ -549,6 +549,7 @@ dependencies = [
  "reqwest 0.13.3",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tempfile",
  "tokio",
  "toml",

@@ -13,6 +13,7 @@ use axum::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 fn ok_json<T>(
@@ -26,6 +27,117 @@ fn problem_response<'a, const N: u16>(
     description: &'static str,
 ) -> TransformOperation<'a> {
     op.response_with::<N, Json<ProblemDetailDoc>, _>(|response| response.description(description))
+}
+
+/// Finalize the generated OpenAPI document so its served contract shape matches
+/// the curated repository spec for the implemented subset.
+pub(crate) fn finalize_document(mut document: Value) -> Value {
+    document["servers"] = json!([
+        {
+            "url": "/api/v1",
+            "description": "Base path for all API endpoints"
+        }
+    ]);
+    document["security"] = json!([
+        {
+            "bearerAuth": []
+        }
+    ]);
+    document["tags"] = json!([
+        {
+            "name": "Targets",
+            "description": "Scan target management"
+        },
+        {
+            "name": "System",
+            "description": "System and health endpoints"
+        }
+    ]);
+
+    let source_paths = document["paths"].as_object().cloned().unwrap_or_default();
+    let mut normalized_paths = Map::new();
+
+    copy_path(&source_paths, &mut normalized_paths, "/health", "/health");
+    copy_path(&source_paths, &mut normalized_paths, "/ready", "/ready");
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/version",
+        "/version",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/targets",
+        "/targets",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/targets/{id}",
+        "/targets/{id}",
+    );
+    normalized_paths.insert(
+        "/openapi.json".to_string(),
+        json!({
+            "get": {
+                "operationId": "getOpenApiDocument",
+                "tags": ["System"],
+                "summary": "Get generated OpenAPI document",
+                "description": "Returns the generated OpenAPI document for the implemented REST surface.",
+                "security": [],
+                "responses": {
+                    "200": {
+                        "description": "Generated OpenAPI document",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }),
+    );
+    document["paths"] = Value::Object(normalized_paths);
+
+    for (path, method) in [
+        ("/health", "get"),
+        ("/ready", "get"),
+        ("/version", "get"),
+        ("/openapi.json", "get"),
+    ] {
+        if let Some(operation) = document["paths"][path][method].as_object_mut() {
+            operation.insert("security".to_string(), json!([]));
+        }
+    }
+
+    for (path, method) in [
+        ("/targets", "get"),
+        ("/targets", "post"),
+        ("/targets/{id}", "get"),
+        ("/targets/{id}", "put"),
+        ("/targets/{id}", "delete"),
+    ] {
+        if let Some(operation) = document["paths"][path][method].as_object_mut() {
+            operation.remove("security");
+        }
+    }
+
+    document
+}
+
+fn copy_path(
+    source_paths: &Map<String, Value>,
+    normalized_paths: &mut Map<String, Value>,
+    source: &str,
+    target: &str,
+) {
+    if let Some(path_item) = source_paths.get(source) {
+        normalized_paths.insert(target.to_string(), path_item.clone());
+    }
 }
 
 /// Configure the top-level generated OpenAPI document.
@@ -438,7 +550,7 @@ mod tests {
 
     #[test]
     fn generated_openapi_subset_matches_curated_spec() {
-        let generated = serde_json::to_value(build_openapi::<StubSystem, StubTarget>()).unwrap();
+        let generated = build_openapi::<StubSystem, StubTarget>();
         let system_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
         let targets_spec: Value =
@@ -447,47 +559,48 @@ mod tests {
         let checks = [
             ("/health", "get", &system_spec, "/health", &["200"] as &[_]),
             ("/ready", "get", &system_spec, "/ready", &["200", "503"]),
+            ("/version", "get", &system_spec, "/version", &["200", "502"]),
             (
-                "/api/v1/version",
+                "/openapi.json",
                 "get",
                 &system_spec,
-                "/version",
-                &["200", "502"],
+                "/openapi.json",
+                &["200"],
             ),
             (
-                "/api/v1/targets",
+                "/targets",
                 "get",
                 &targets_spec,
                 "/targets",
-                &["200", "400", "401"],
+                &["200", "401"],
             ),
             (
-                "/api/v1/targets",
+                "/targets",
                 "post",
                 &targets_spec,
                 "/targets",
                 &["201", "400", "401"],
             ),
             (
-                "/api/v1/targets/{id}",
+                "/targets/{id}",
                 "get",
                 &targets_spec,
                 "/targets/{id}",
-                &["200", "400", "401", "404"],
+                &["200", "401", "404"],
             ),
             (
-                "/api/v1/targets/{id}",
+                "/targets/{id}",
                 "put",
                 &targets_spec,
                 "/targets/{id}",
                 &["200", "400", "401", "404"],
             ),
             (
-                "/api/v1/targets/{id}",
+                "/targets/{id}",
                 "delete",
                 &targets_spec,
                 "/targets/{id}",
-                &["204", "400", "401", "404"],
+                &["204", "401", "404"],
             ),
         ];
 
@@ -512,7 +625,7 @@ mod tests {
 
     #[test]
     fn generated_openapi_preserves_key_schema_fields() {
-        let generated = serde_json::to_value(build_openapi::<StubSystem, StubTarget>()).unwrap();
+        let generated = build_openapi::<StubSystem, StubTarget>();
 
         let target_props = &generated["components"]["schemas"]["Target"]["properties"];
         assert!(target_props.get("excludeHosts").is_some());

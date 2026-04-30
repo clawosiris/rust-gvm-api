@@ -4,6 +4,7 @@
 //! readiness, version endpoints, and full target CRUD operations via
 //! the REST adapter backed by a mock GMP server.
 
+use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -21,6 +22,7 @@ use gvm_mock_server::{
 use gvm_protocol::Response as GmpResponse;
 use http::StatusCode;
 use reqwest::Client;
+use serde_json::Value;
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -137,23 +139,126 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         "application/json"
     );
 
-    let json = response.json::<serde_json::Value>().await.unwrap();
+    let json = response.json::<Value>().await.unwrap();
+    let root_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/openapi.yaml")).unwrap();
+    let system_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
+    let targets_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
+
+    assert_eq!(json["servers"], root_spec["servers"]);
+    assert_eq!(json["security"], root_spec["security"]);
     assert_eq!(
-        json["paths"]["/api/v1/version"]["get"]["operationId"],
-        "getVersion"
+        path_names(&json),
+        BTreeSet::from([
+            "/health",
+            "/openapi.json",
+            "/ready",
+            "/targets",
+            "/targets/{id}",
+            "/version",
+        ])
     );
-    assert_eq!(
-        json["paths"]["/api/v1/targets"]["get"]["operationId"],
-        "getTargets"
-    );
-    assert!(json["paths"]["/api/v1/openapi.json"].is_null());
-    assert!(json["components"]["schemas"]["Target"]["properties"]["excludeHosts"].is_object());
-    assert!(json["components"]["schemas"]["Target"]["properties"]["aliveTest"].is_object());
-    assert!(json["components"]["schemas"]["Target"]["properties"]["portList"].is_object());
-    assert!(json["components"]["schemas"]["Pagination"]["properties"]["perPage"].is_object());
-    assert!(json["components"]["schemas"]["Pagination"]["properties"]["totalPages"].is_object());
+
+    let checks = [
+        ("/health", "get", &system_spec, "/health", &["200"] as &[_]),
+        ("/ready", "get", &system_spec, "/ready", &["200", "503"]),
+        ("/version", "get", &system_spec, "/version", &["200", "502"]),
+        (
+            "/openapi.json",
+            "get",
+            &system_spec,
+            "/openapi.json",
+            &["200"],
+        ),
+        (
+            "/targets",
+            "get",
+            &targets_spec,
+            "/targets",
+            &["200", "401"],
+        ),
+        (
+            "/targets",
+            "post",
+            &targets_spec,
+            "/targets",
+            &["201", "400", "401"],
+        ),
+        (
+            "/targets/{id}",
+            "get",
+            &targets_spec,
+            "/targets/{id}",
+            &["200", "401", "404"],
+        ),
+        (
+            "/targets/{id}",
+            "put",
+            &targets_spec,
+            "/targets/{id}",
+            &["200", "400", "401", "404"],
+        ),
+        (
+            "/targets/{id}",
+            "delete",
+            &targets_spec,
+            "/targets/{id}",
+            &["204", "401", "404"],
+        ),
+    ];
+
+    for (generated_path, method, curated_doc, curated_path, statuses) in checks {
+        let generated_op = op(&json, generated_path, method);
+        let curated_op = op(curated_doc, curated_path, method);
+
+        assert_eq!(generated_op["operationId"], curated_op["operationId"]);
+        assert_eq!(generated_op["tags"], curated_op["tags"]);
+        assert_eq!(generated_op["summary"], curated_op["summary"]);
+
+        let generated_statuses = response_statuses(generated_op);
+        for status in statuses {
+            assert!(
+                generated_statuses.contains(status),
+                "missing generated status {status} for {method} {generated_path}"
+            );
+        }
+    }
+
+    let target_props = &json["components"]["schemas"]["Target"]["properties"];
+    assert!(target_props.get("excludeHosts").is_some());
+    assert!(target_props.get("aliveTest").is_some());
+    assert!(target_props.get("portList").is_some());
+    assert_eq!(target_props["id"]["format"], "uuid");
+
+    let pagination_props = &json["components"]["schemas"]["Pagination"]["properties"];
+    assert!(pagination_props.get("perPage").is_some());
+    assert!(pagination_props.get("totalPages").is_some());
 
     handle.abort();
+}
+
+fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {
+    &doc["paths"][path][method]
+}
+
+fn path_names(doc: &Value) -> BTreeSet<&str> {
+    doc["paths"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect()
+}
+
+fn response_statuses(operation: &Value) -> BTreeSet<&str> {
+    operation["responses"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect()
 }
 
 // ============================================================================

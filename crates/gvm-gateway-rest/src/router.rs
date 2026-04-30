@@ -22,12 +22,14 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{SystemPort, TargetPort};
+use serde_json::Value;
 
 use crate::{
     error::RestError,
     openapi::{
-        configure as configure_openapi, create_target_docs, delete_target_docs, get_target_docs,
-        health_docs, list_targets_docs, ready_docs, update_target_docs, version_docs,
+        configure as configure_openapi, create_target_docs, delete_target_docs, finalize_document,
+        get_target_docs, health_docs, list_targets_docs, ready_docs, update_target_docs,
+        version_docs,
     },
     targets::{create_target, delete_target, get_target, list_targets, update_target},
 };
@@ -52,7 +54,7 @@ where
 }
 
 /// Builds the generated OpenAPI document for the currently implemented routes.
-pub(crate) fn build_openapi<S, T>() -> OpenApi
+pub(crate) fn build_openapi<S, T>() -> Value
 where
     S: SystemPort,
     T: TargetPort,
@@ -63,7 +65,7 @@ where
     aide::generate::inferred_empty_response_status(204);
 
     let _ = documented_router::<S, T>().finish_api_with(&mut api, configure_openapi);
-    api
+    finalize_document(serde_json::to_value(api).expect("generated OpenAPI must serialize"))
 }
 
 fn documented_router<S, T>() -> ApiRouter<GatewayService<S, T>>
