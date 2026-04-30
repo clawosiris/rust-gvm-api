@@ -91,11 +91,7 @@ where
     }
 
     /// Fetches a target for an authenticated session.
-    pub async fn get_target(
-        &self,
-        session_token: &str,
-        id: &str,
-    ) -> Result<Target, GatewayError> {
+    pub async fn get_target(&self, session_token: &str, id: &str) -> Result<Target, GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.targets.get_target(&session.token, id).await
     }
@@ -192,11 +188,7 @@ mod tests {
             Ok("mock-target-id".to_string())
         }
 
-        async fn get_target(
-            &self,
-            _session_token: &str,
-            id: &str,
-        ) -> Result<Target, GatewayError> {
+        async fn get_target(&self, _session_token: &str, id: &str) -> Result<Target, GatewayError> {
             if self.should_fail {
                 return Err(GatewayError::NotFound(format!("target {id} not found")));
             }
@@ -247,11 +239,7 @@ mod tests {
             })
         }
 
-        async fn delete_target(
-            &self,
-            _session_token: &str,
-            id: &str,
-        ) -> Result<(), GatewayError> {
+        async fn delete_target(&self, _session_token: &str, id: &str) -> Result<(), GatewayError> {
             if self.should_fail {
                 return Err(GatewayError::NotFound(format!("target {id} not found")));
             }

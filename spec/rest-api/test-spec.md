@@ -120,6 +120,7 @@ async fn test_server() -> TestServer {
 | `list_targets_paginated` | `GET /api/v1/targets?page=2&per_page=10` | 25 targets | 200, 10 items, correct pagination |
 | `create_target` | `POST /api/v1/targets` + body | — | 201, target with ID |
 | `create_target_missing_name` | `POST /api/v1/targets` (no name) | — | 400, RFC 7807 |
+| `create_target_with_credential_id` | `POST /api/v1/targets` + unsupported credential field | — | 400, unsupported in current phase |
 | `get_target` | `GET /api/v1/targets/{id}` | Target exists | 200, full target |
 | `get_target_not_found` | `GET /api/v1/targets/{bad-id}` | — | 404 |
 | `update_target` | `PUT /api/v1/targets/{id}` + body | Target exists | 200, updated fields |
@@ -154,7 +155,7 @@ async fn test_server() -> TestServer {
 | `auth_refresh_valid` | `POST /api/v1/auth/refresh` + valid refresh | 200, new JWT |
 | `auth_refresh_expired` | `POST /api/v1/auth/refresh` + expired | 401 |
 | `protected_endpoint_no_auth` | `GET /api/v1/targets` (no token) | 401 |
-| `protected_endpoint_valid_auth` | `GET /api/v1/targets` + valid JWT | 200 |
+| `protected_endpoint_valid_auth` | `GET /api/v1/targets` + valid bearer token | 200 |
 
 ### 3.7 OpenAPI Compliance
 

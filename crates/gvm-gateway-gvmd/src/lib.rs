@@ -91,21 +91,13 @@ impl SystemPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl TargetPort for StaticGvmdAdapter {
-    async fn list_targets(
-        &self,
-        _: &str,
-        _: &TargetQuery,
-    ) -> Result<TargetPage, GatewayError> {
+    async fn list_targets(&self, _: &str, _: &TargetQuery) -> Result<TargetPage, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
     }
 
-    async fn create_target(
-        &self,
-        _: &str,
-        _: CreateTargetInput,
-    ) -> Result<String, GatewayError> {
+    async fn create_target(&self, _: &str, _: CreateTargetInput) -> Result<String, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
@@ -282,11 +274,7 @@ impl TargetPort for GvmdAdapter {
         Ok(parsed.id.to_string())
     }
 
-    async fn get_target(
-        &self,
-        session_token: &str,
-        id: &str,
-    ) -> Result<Target, GatewayError> {
+    async fn get_target(&self, session_token: &str, id: &str) -> Result<Target, GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
@@ -461,9 +449,7 @@ mod tests {
     #[tokio::test]
     async fn static_adapter_list_targets_unsupported() {
         let adapter = StaticGvmdAdapter::ready("22.7");
-        let result = adapter
-            .list_targets("token", &TargetQuery::default())
-            .await;
+        let result = adapter.list_targets("token", &TargetQuery::default()).await;
         assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
     }
 
