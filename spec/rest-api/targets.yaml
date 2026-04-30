@@ -21,6 +21,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TargetList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
     post:
@@ -59,6 +61,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Target"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":
@@ -93,6 +97,8 @@ paths:
       responses:
         "204":
           description: Target deleted
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "403":

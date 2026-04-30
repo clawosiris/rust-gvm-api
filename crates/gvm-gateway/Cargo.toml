@@ -31,5 +31,6 @@ gvm-protocol.workspace = true
 http.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
+serde_yaml = "0.9.34"
 tempfile = "3.19.1"
 uuid.workspace = true

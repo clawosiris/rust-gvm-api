@@ -134,6 +134,8 @@ paths:
     $ref: './system.yaml#/paths/~1ready'
   /version:
     $ref: './system.yaml#/paths/~1version'
+  /openapi.json:
+    $ref: './system.yaml#/paths/~1openapi.json'
 
 components:
   securitySchemes:
