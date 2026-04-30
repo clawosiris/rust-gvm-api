@@ -96,6 +96,8 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@91bf2b620e09e18d6eb78b92e7861937469acedb # v2
         with:
           arguments: --workspace
+          credentials: https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com
+          use-git-cli: "true"
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
