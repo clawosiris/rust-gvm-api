@@ -9,10 +9,16 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+aide = { version = "0.16.0-alpha.4", features = ["axum", "axum-json", "axum-query", "axum-original-uri"] }
 axum.workspace = true
 gvm-gateway-app = { path = "../gvm-gateway-app" }
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
 http.workspace = true
+schemars = { version = "1.0.4", features = ["uuid1"] }
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+serde_yaml = "0.9.34"

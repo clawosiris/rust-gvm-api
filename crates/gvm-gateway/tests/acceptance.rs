@@ -118,6 +118,44 @@ async fn version_returns_api_and_gmp_version() {
     handle.abort();
 }
 
+#[tokio::test]
+async fn generated_openapi_endpoint_exposes_implemented_contract() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+    let response = Client::new()
+        .get(format!("http://{addr}/api/v1/openapi.json"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .unwrap(),
+        "application/json"
+    );
+
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(
+        json["paths"]["/api/v1/version"]["get"]["operationId"],
+        "getVersion"
+    );
+    assert_eq!(
+        json["paths"]["/api/v1/targets"]["get"]["operationId"],
+        "getTargets"
+    );
+    assert!(json["paths"]["/api/v1/openapi.json"].is_null());
+    assert!(json["components"]["schemas"]["Target"]["properties"]["excludeHosts"].is_object());
+    assert!(json["components"]["schemas"]["Target"]["properties"]["aliveTest"].is_object());
+    assert!(json["components"]["schemas"]["Target"]["properties"]["portList"].is_object());
+    assert!(json["components"]["schemas"]["Pagination"]["properties"]["perPage"].is_object());
+    assert!(json["components"]["schemas"]["Pagination"]["properties"]["totalPages"].is_object());
+
+    handle.abort();
+}
+
 // ============================================================================
 // Trace Context & Error Handling Tests
 // ============================================================================

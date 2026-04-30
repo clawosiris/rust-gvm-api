@@ -62,6 +62,21 @@ paths:
         "502":
           $ref: "./common.yaml#/components/responses/BadGateway"
 
+  /openapi.json:
+    get:
+      operationId: getOpenApiDocument
+      tags: [System]
+      summary: Get generated OpenAPI document
+      description: Returns the generated OpenAPI document for the implemented REST surface.
+      security: []
+      responses:
+        "200":
+          description: Generated OpenAPI document
+          content:
+            application/json:
+              schema:
+                type: object
+
 components:
   schemas:
     HealthStatus:

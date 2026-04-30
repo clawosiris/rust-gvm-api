@@ -3,12 +3,21 @@
 
 //! Router construction for the REST adapter.
 
+use std::sync::Arc;
+
+use aide::{
+    axum::{
+        routing::{delete_with, get_with, post_with, put_with},
+        ApiRouter,
+    },
+    openapi::OpenApi,
+};
 use axum::{
-    extract::{OriginalUri, Request, State},
+    extract::{Extension, OriginalUri, Request, State},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, patch},
     Json, Router,
 };
 use gvm_gateway_app::GatewayService;
@@ -16,6 +25,10 @@ use gvm_gateway_domain::{SystemPort, TargetPort};
 
 use crate::{
     error::RestError,
+    openapi::{
+        configure as configure_openapi, create_target_docs, delete_target_docs, get_target_docs,
+        health_docs, list_targets_docs, ready_docs, update_target_docs, version_docs,
+    },
     targets::{create_target, delete_target, get_target, list_targets, update_target},
 };
 
@@ -25,37 +38,82 @@ where
     S: SystemPort,
     T: TargetPort,
 {
-    Router::new()
-        .route("/health", get(health))
-        .route("/ready", get(ready))
-        .route("/api/v1/version", get(version))
-        .route(
-            "/api/v1/targets",
-            get(list_targets)
-                .post(create_target)
-                .patch(method_not_allowed_collection),
-        )
-        .route(
-            "/api/v1/targets/{id}",
-            get(get_target)
-                .put(update_target)
-                .delete(delete_target)
-                .patch(method_not_allowed_item),
-        )
+    let openapi = build_openapi::<S, T>();
+    let openapi_json =
+        Arc::new(serde_json::to_string_pretty(&openapi).expect("generated OpenAPI must serialize"));
+
+    documented_router::<S, T>()
+        .route("/api/v1/openapi.json", get(serve_openapi))
         .fallback(not_found)
         .layer(middleware::from_fn(trace_context_middleware))
         .with_state(state)
+        .layer(Extension(openapi_json))
+        .into()
 }
 
-async fn health<S, T>(State(service): State<GatewayService<S, T>>) -> impl IntoResponse
+/// Builds the generated OpenAPI document for the currently implemented routes.
+pub(crate) fn build_openapi<S, T>() -> OpenApi
 where
     S: SystemPort,
     T: TargetPort,
 {
-    Json(service.health())
+    let mut api = OpenApi::default();
+    aide::generate::extract_schemas(true);
+    aide::generate::infer_responses(false);
+    aide::generate::inferred_empty_response_status(204);
+
+    let _ = documented_router::<S, T>().finish_api_with(&mut api, configure_openapi);
+    api
 }
 
-async fn ready<S, T>(State(service): State<GatewayService<S, T>>) -> Response
+fn documented_router<S, T>() -> ApiRouter<GatewayService<S, T>>
+where
+    S: SystemPort,
+    T: TargetPort,
+{
+    ApiRouter::new()
+        .api_route("/health", get_with(health, health_docs))
+        .api_route("/ready", get_with(ready, ready_docs))
+        .api_route("/api/v1/version", get_with(version, version_docs))
+        .api_route("/api/v1/targets", get_with(list_targets, list_targets_docs))
+        .api_route(
+            "/api/v1/targets",
+            post_with(create_target, create_target_docs),
+        )
+        .route("/api/v1/targets", patch(method_not_allowed_collection))
+        .api_route(
+            "/api/v1/targets/{id}",
+            get_with(get_target, get_target_docs),
+        )
+        .api_route(
+            "/api/v1/targets/{id}",
+            put_with(update_target, update_target_docs),
+        )
+        .api_route(
+            "/api/v1/targets/{id}",
+            delete_with(delete_target, delete_target_docs),
+        )
+        .route("/api/v1/targets/{id}", patch(method_not_allowed_item))
+}
+
+async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Response {
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        (*openapi_json).clone(),
+    )
+        .into_response()
+}
+
+pub(crate) async fn health<S, T>(State(service): State<GatewayService<S, T>>) -> Response
+where
+    S: SystemPort,
+    T: TargetPort,
+{
+    Json(service.health()).into_response()
+}
+
+pub(crate) async fn ready<S, T>(State(service): State<GatewayService<S, T>>) -> Response
 where
     S: SystemPort,
     T: TargetPort,
@@ -69,7 +127,7 @@ where
     }
 }
 
-async fn version<S, T>(State(service): State<GatewayService<S, T>>) -> Response
+pub(crate) async fn version<S, T>(State(service): State<GatewayService<S, T>>) -> Response
 where
     S: SystemPort,
     T: TargetPort,
@@ -80,11 +138,11 @@ where
     }
 }
 
-async fn method_not_allowed_collection(uri: OriginalUri) -> Response {
+pub(crate) async fn method_not_allowed_collection(uri: OriginalUri) -> Response {
     RestError::method_not_allowed(uri.path()).into_response()
 }
 
-async fn method_not_allowed_item(uri: OriginalUri) -> Response {
+pub(crate) async fn method_not_allowed_item(uri: OriginalUri) -> Response {
     RestError::method_not_allowed(uri.path()).into_response()
 }
 
