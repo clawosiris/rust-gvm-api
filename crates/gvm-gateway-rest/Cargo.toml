@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 aide = { version = "0.16.0-alpha.4", features = ["axum", "axum-json", "axum-query", "axum-original-uri"] }
 axum.workspace = true
+base64.workspace = true
 gvm-gateway-app = { path = "../gvm-gateway-app" }
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
 http.workspace = true

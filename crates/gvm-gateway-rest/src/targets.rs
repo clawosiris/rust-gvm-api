@@ -11,7 +11,7 @@ use axum::{
     Json,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{GatewayError, SystemPort, TargetPort};
+use gvm_gateway_domain::{AuthPort, GatewayError, SystemPort, TargetPort};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -197,14 +197,15 @@ impl ModifyTargetRequest {
 }
 
 /// List targets handler.
-pub async fn list_targets<S, T>(
-    State(service): State<GatewayService<S, T>>,
+pub async fn list_targets<S, T, A>(
+    State(service): State<GatewayService<S, T, A>>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
@@ -234,8 +235,8 @@ where
 }
 
 /// Create target handler.
-pub async fn create_target<S, T>(
-    State(service): State<GatewayService<S, T>>,
+pub async fn create_target<S, T, A>(
+    State(service): State<GatewayService<S, T, A>>,
     headers: HeaderMap,
     uri: OriginalUri,
     body: Bytes,
@@ -243,6 +244,7 @@ pub async fn create_target<S, T>(
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
@@ -271,8 +273,8 @@ where
 }
 
 /// Get target handler.
-pub async fn get_target<S, T>(
-    State(service): State<GatewayService<S, T>>,
+pub async fn get_target<S, T, A>(
+    State(service): State<GatewayService<S, T, A>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -280,6 +282,7 @@ pub async fn get_target<S, T>(
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -297,8 +300,8 @@ where
 }
 
 /// Update target handler.
-pub async fn update_target<S, T>(
-    State(service): State<GatewayService<S, T>>,
+pub async fn update_target<S, T, A>(
+    State(service): State<GatewayService<S, T, A>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -307,6 +310,7 @@ pub async fn update_target<S, T>(
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -338,8 +342,8 @@ where
 }
 
 /// Delete target handler.
-pub async fn delete_target<S, T>(
-    State(service): State<GatewayService<S, T>>,
+pub async fn delete_target<S, T, A>(
+    State(service): State<GatewayService<S, T, A>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -347,6 +351,7 @@ pub async fn delete_target<S, T>(
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {

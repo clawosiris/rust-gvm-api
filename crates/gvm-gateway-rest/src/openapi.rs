@@ -16,6 +16,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
+fn datetime_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "string",
+        "format": "date-time"
+    })
+}
+
 fn ok_json<T>(
     description: &'static str,
 ) -> impl FnOnce(TransformResponse<T>) -> TransformResponse<T> {
@@ -45,6 +52,10 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     ]);
     document["tags"] = json!([
         {
+            "name": "Sessions",
+            "description": "Session lifecycle"
+        },
+        {
             "name": "Targets",
             "description": "Scan target management"
         },
@@ -64,6 +75,18 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         &mut normalized_paths,
         "/api/v1/version",
         "/version",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/sessions",
+        "/sessions",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/sessions/{token}",
+        "/sessions/{token}",
     );
     copy_path(
         &source_paths,
@@ -114,6 +137,20 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         }
     }
 
+    // Session endpoints: POST uses basicAuth, GET/DELETE use bearerAuth (inherited).
+    if let Some(operation) = document["paths"]["/sessions"]["post"].as_object_mut() {
+        operation.insert("security".to_string(), json!([{"basicAuth": []}]));
+    }
+    // GET and DELETE on /sessions/{token} use global bearer security (no override needed)
+    for (path, method) in [
+        ("/sessions/{token}", "get"),
+        ("/sessions/{token}", "delete"),
+    ] {
+        if let Some(operation) = document["paths"][path][method].as_object_mut() {
+            operation.remove("security");
+        }
+    }
+
     for (path, method) in [
         ("/targets", "get"),
         ("/targets", "post"),
@@ -129,6 +166,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     tighten_target_query_parameters(&mut document);
     tighten_target_payload_schemas(&mut document);
     ensure_problem_detail_schema(&mut document);
+    ensure_basic_auth_scheme(&mut document);
     strip_nullable_types(&mut document);
     document
 }
@@ -187,6 +225,19 @@ fn ensure_problem_detail_schema(document: &mut Value) {
             }
         }),
     );
+}
+
+fn ensure_basic_auth_scheme(document: &mut Value) {
+    if let Some(security_schemes) = document["components"]["securitySchemes"].as_object_mut() {
+        security_schemes.insert(
+            "basicAuth".to_string(),
+            json!({
+                "type": "http",
+                "scheme": "basic",
+                "description": "HTTP Basic credentials used to create a session."
+            }),
+        );
+    }
 }
 
 fn strip_nullable_types(value: &mut Value) {
@@ -299,6 +350,12 @@ pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
             extensions: Default::default(),
         })
         .tag(Tag {
+            name: "Sessions".to_string(),
+            description: Some("Session lifecycle".to_string()),
+            external_docs: None,
+            extensions: Default::default(),
+        })
+        .tag(Tag {
             name: "Targets".to_string(),
             description: Some("Scan target management".to_string()),
             external_docs: None,
@@ -316,6 +373,10 @@ pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
             },
         )
 }
+
+// ============================================================================
+// OpenAPI endpoint documentation transforms
+// ============================================================================
 
 /// OpenAPI transform for `GET /health`.
 pub(crate) fn health_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
@@ -347,6 +408,57 @@ pub(crate) fn version_docs(op: TransformOperation<'_>) -> TransformOperation<'_>
 
     problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
+
+// -- Session endpoints -------------------------------------------------------
+
+/// OpenAPI transform for `POST /api/v1/sessions`.
+pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createSession")
+        .tag("Sessions")
+        .summary("Create a new session")
+        .description(
+            "Authenticates with the supplied Basic credentials and returns an opaque \
+             session token. Include the token as a Bearer token on all subsequent requests.",
+        )
+        .security_requirement("basicAuth")
+        .response_with::<201, Json<SessionCreatedDoc>, _>(ok_json("Session created"));
+
+    let op = problem_response::<401>(op, "Authentication failed");
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
+}
+
+/// OpenAPI transform for `GET /api/v1/sessions/{token}`.
+pub(crate) fn get_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getSession")
+        .tag("Sessions")
+        .summary("Inspect a session")
+        .description("Returns the current state and metadata for a session.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SessionTokenPathDoc>>()
+        .response_with::<200, Json<SessionInfoDoc>, _>(ok_json("Session details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Session not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/sessions/{token}`.
+pub(crate) fn delete_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteSession")
+        .tag("Sessions")
+        .summary("Close and destroy a session")
+        .description("Ends the session and invalidates the token immediately.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SessionTokenPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Session closed"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Session not found")
+}
+
+// -- Target endpoints --------------------------------------------------------
 
 /// OpenAPI transform for `GET /api/v1/targets`.
 pub(crate) fn list_targets_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
@@ -426,6 +538,10 @@ pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperati
     problem_response::<404>(op, "Resource not found")
 }
 
+// ============================================================================
+// OpenAPI document-only schema types
+// ============================================================================
+
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ProblemDetail")]
 struct ProblemDetailDoc {
@@ -461,6 +577,55 @@ struct VersionInfoDoc {
     #[serde(rename = "gmpVersion")]
     gmp_version: String,
 }
+
+// -- Session schemas ---------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "SessionCreated")]
+struct SessionCreatedDoc {
+    #[serde(rename = "sessionToken")]
+    session_token: String,
+    #[serde(rename = "expiresIn")]
+    expires_in: u64,
+    #[serde(rename = "gmpVersion")]
+    gmp_version: String,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "SessionInfo")]
+struct SessionInfoDoc {
+    #[serde(rename = "sessionToken")]
+    session_token: String,
+    user: String,
+    state: SessionStateDoc,
+    #[serde(rename = "createdAt")]
+    #[schemars(schema_with = "datetime_schema")]
+    created_at: String,
+    #[serde(rename = "lastUsedAt")]
+    #[schemars(schema_with = "datetime_schema")]
+    last_used_at: String,
+    #[serde(rename = "expiresIn")]
+    expires_in: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+enum SessionStateDoc {
+    #[serde(rename = "active")]
+    Active,
+    #[serde(rename = "idle")]
+    Idle,
+    #[serde(rename = "expired")]
+    Expired,
+    #[serde(rename = "closed")]
+    Closed,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+struct SessionTokenPathDoc {
+    token: String,
+}
+
+// -- Target schemas ----------------------------------------------------------
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "Target")]
@@ -631,12 +796,13 @@ mod tests {
 
     use crate::router::build_openapi;
     use gvm_gateway_domain::{
-        CreateTargetInput, GatewayError, ModifyTargetInput, ReadinessStatus, SystemPort, Target,
-        TargetPage, TargetPort, TargetQuery,
+        AuthPort, CreateTargetInput, GatewayError, ModifyTargetInput, ReadinessStatus, SystemPort,
+        Target, TargetPage, TargetPort, TargetQuery,
     };
 
     struct StubSystem;
     struct StubTarget;
+    struct StubAuth;
 
     impl SystemPort for StubSystem {
         fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
@@ -680,13 +846,34 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl AuthPort for StubAuth {
+        async fn authenticate_session(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn disconnect_session(&self, _: &str) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
+    /// The generated OpenAPI document must include the curated operationIds and
+    /// response status codes for every implemented endpoint so that the served
+    /// contract stays aligned with the repository specification.
     #[test]
     fn generated_openapi_subset_matches_curated_spec() {
-        let generated = build_openapi::<StubSystem, StubTarget>();
+        let generated = build_openapi::<StubSystem, StubTarget, StubAuth>();
         let system_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
         let targets_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
+        let sessions_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
 
         let checks = [
             ("/health", "get", &system_spec, "/health", &["200"] as &[_]),
@@ -699,6 +886,29 @@ mod tests {
                 "/openapi.json",
                 &["200"],
             ),
+            // Sessions
+            (
+                "/sessions",
+                "post",
+                &sessions_spec,
+                "/sessions",
+                &["201", "401", "502"],
+            ),
+            (
+                "/sessions/{token}",
+                "get",
+                &sessions_spec,
+                "/sessions/{token}",
+                &["200", "404"],
+            ),
+            (
+                "/sessions/{token}",
+                "delete",
+                &sessions_spec,
+                "/sessions/{token}",
+                &["204", "404"],
+            ),
+            // Targets
             (
                 "/targets",
                 "get",
@@ -757,7 +967,7 @@ mod tests {
 
     #[test]
     fn generated_openapi_preserves_key_schema_fields() {
-        let generated = build_openapi::<StubSystem, StubTarget>();
+        let generated = build_openapi::<StubSystem, StubTarget, StubAuth>();
 
         let target_props = &generated["components"]["schemas"]["Target"]["properties"];
         assert!(target_props.get("excludeHosts").is_some());
@@ -777,6 +987,22 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert!(create_target_required.contains("name"));
         assert!(create_target_required.contains("hosts"));
+    }
+
+    /// Session schemas are present in the generated document.
+    #[test]
+    fn generated_openapi_includes_session_schemas() {
+        let generated = build_openapi::<StubSystem, StubTarget, StubAuth>();
+        let schemas = generated["components"]["schemas"].as_object().unwrap();
+
+        assert!(
+            schemas.contains_key("SessionCreated"),
+            "missing SessionCreated schema"
+        );
+        assert!(
+            schemas.contains_key("SessionInfo"),
+            "missing SessionInfo schema"
+        );
     }
 
     fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {

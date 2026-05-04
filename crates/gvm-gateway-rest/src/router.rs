@@ -21,30 +21,33 @@ use axum::{
     Json, Router,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{SystemPort, TargetPort};
+use gvm_gateway_domain::{AuthPort, SystemPort, TargetPort};
 use serde_json::Value;
 
 use crate::{
     error::RestError,
     openapi::{
-        configure as configure_openapi, create_target_docs, delete_target_docs, finalize_document,
+        configure as configure_openapi, create_session_docs, create_target_docs,
+        delete_session_docs, delete_target_docs, finalize_document, get_session_docs,
         get_target_docs, health_docs, list_targets_docs, ready_docs, update_target_docs,
         version_docs,
     },
+    sessions::{create_session, delete_session, get_session},
     targets::{create_target, delete_target, get_target, list_targets, update_target},
 };
 
 /// Builds the gateway router.
-pub fn build_router<S, T>(state: GatewayService<S, T>) -> Router
+pub fn build_router<S, T, A>(state: GatewayService<S, T, A>) -> Router
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
-    let openapi = build_openapi::<S, T>();
+    let openapi = build_openapi::<S, T, A>();
     let openapi_json =
         Arc::new(serde_json::to_string_pretty(&openapi).expect("generated OpenAPI must serialize"));
 
-    documented_router::<S, T>()
+    documented_router::<S, T, A>()
         .route("/api/v1/openapi.json", get(serve_openapi))
         .fallback(not_found)
         .layer(middleware::from_fn(trace_context_middleware))
@@ -54,29 +57,45 @@ where
 }
 
 /// Builds the generated OpenAPI document for the currently implemented routes.
-pub(crate) fn build_openapi<S, T>() -> Value
+pub(crate) fn build_openapi<S, T, A>() -> Value
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     let mut api = OpenApi::default();
     aide::generate::extract_schemas(true);
     aide::generate::infer_responses(false);
     aide::generate::inferred_empty_response_status(204);
 
-    let _ = documented_router::<S, T>().finish_api_with(&mut api, configure_openapi);
+    let _ = documented_router::<S, T, A>().finish_api_with(&mut api, configure_openapi);
     finalize_document(serde_json::to_value(api).expect("generated OpenAPI must serialize"))
 }
 
-fn documented_router<S, T>() -> ApiRouter<GatewayService<S, T>>
+fn documented_router<S, T, A>() -> ApiRouter<GatewayService<S, T, A>>
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     ApiRouter::new()
         .api_route("/health", get_with(health, health_docs))
         .api_route("/ready", get_with(ready, ready_docs))
         .api_route("/api/v1/version", get_with(version, version_docs))
+        // Session lifecycle
+        .api_route(
+            "/api/v1/sessions",
+            post_with(create_session, create_session_docs),
+        )
+        .api_route(
+            "/api/v1/sessions/{token}",
+            get_with(get_session, get_session_docs),
+        )
+        .api_route(
+            "/api/v1/sessions/{token}",
+            delete_with(delete_session, delete_session_docs),
+        )
+        // Targets
         .api_route("/api/v1/targets", get_with(list_targets, list_targets_docs))
         .api_route(
             "/api/v1/targets",
@@ -107,18 +126,20 @@ async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Respo
         .into_response()
 }
 
-pub(crate) async fn health<S, T>(State(service): State<GatewayService<S, T>>) -> Response
+pub(crate) async fn health<S, T, A>(State(service): State<GatewayService<S, T, A>>) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     Json(service.health()).into_response()
 }
 
-pub(crate) async fn ready<S, T>(State(service): State<GatewayService<S, T>>) -> Response
+pub(crate) async fn ready<S, T, A>(State(service): State<GatewayService<S, T, A>>) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     match service.ready() {
         Ok(readiness) if readiness.status == "ready" => {
@@ -129,10 +150,11 @@ where
     }
 }
 
-pub(crate) async fn version<S, T>(State(service): State<GatewayService<S, T>>) -> Response
+pub(crate) async fn version<S, T, A>(State(service): State<GatewayService<S, T, A>>) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     match service.version() {
         Ok(version) => (StatusCode::OK, Json(version)).into_response(),

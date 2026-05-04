@@ -9,23 +9,26 @@
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
-    CreateTargetInput, GatewayError, HealthStatus, ModifyTargetInput, ReadinessStatus,
-    SessionManager, SystemPort, Target, TargetPage, TargetPort, TargetQuery, VersionInfo,
+    AuthPort, CreateTargetInput, GatewayError, HealthStatus, ModifyTargetInput, ReadinessStatus,
+    SessionCreated, SessionInfo, SessionManager, SystemPort, Target, TargetPage, TargetPort,
+    TargetQuery, VersionInfo,
 };
 
 /// Application services exposed to adapters.
-pub struct GatewayService<S, T> {
+pub struct GatewayService<S, T, A> {
     system: Arc<S>,
     targets: Arc<T>,
+    auth: Arc<A>,
     sessions: Arc<SessionManager>,
 }
 
-impl<S, T> GatewayService<S, T> {
+impl<S, T, A> GatewayService<S, T, A> {
     /// Creates a new service backed by the provided ports.
-    pub fn new(system: Arc<S>, targets: Arc<T>) -> Self {
+    pub fn new(system: Arc<S>, targets: Arc<T>, auth: Arc<A>) -> Self {
         Self {
             system,
             targets,
+            auth,
             sessions: Arc::new(SessionManager::default()),
         }
     }
@@ -36,20 +39,22 @@ impl<S, T> GatewayService<S, T> {
     }
 }
 
-impl<S, T> Clone for GatewayService<S, T> {
+impl<S, T, A> Clone for GatewayService<S, T, A> {
     fn clone(&self) -> Self {
         Self {
             system: Arc::clone(&self.system),
             targets: Arc::clone(&self.targets),
+            auth: Arc::clone(&self.auth),
             sessions: Arc::clone(&self.sessions),
         }
     }
 }
 
-impl<S, T> GatewayService<S, T>
+impl<S, T, A> GatewayService<S, T, A>
 where
     S: SystemPort,
     T: TargetPort,
+    A: AuthPort,
 {
     /// Returns liveness information.
     pub fn health(&self) -> HealthStatus {
@@ -69,6 +74,55 @@ where
             gmp_version,
         })
     }
+
+    // ------------------------------------------------------------------
+    // Session lifecycle
+    // ------------------------------------------------------------------
+
+    /// Authenticates with the supplied credentials, creates a domain session,
+    /// and establishes a backend connection bound to the new token.
+    pub async fn create_session(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<SessionCreated, GatewayError> {
+        let session = self.sessions.create(username)?;
+        if let Err(err) = self
+            .auth
+            .authenticate_session(&session.token, username, password)
+            .await
+        {
+            // Roll back the domain session when backend auth fails.
+            let _ = self.sessions.remove(&session.token);
+            return Err(err);
+        }
+        let gmp_version = self.system.gmp_version()?;
+        Ok(SessionCreated {
+            token: session.token,
+            expires_in: self.sessions.idle_timeout_secs(),
+            gmp_version,
+        })
+    }
+
+    /// Returns detailed session information without extending the idle timer.
+    pub fn get_session(&self, token: &str) -> Result<SessionInfo, GatewayError> {
+        self.sessions.get_info(token)
+    }
+
+    /// Closes and destroys a session, disconnecting the backend connection.
+    pub async fn delete_session(&self, token: &str) -> Result<(), GatewayError> {
+        let removed = self.sessions.remove(token)?;
+        if removed.is_none() {
+            return Err(GatewayError::NotFound("session not found".to_string()));
+        }
+        // Best-effort backend disconnect; ignore errors.
+        let _ = self.auth.disconnect_session(token).await;
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Targets
+    // ------------------------------------------------------------------
 
     /// Lists targets for an authenticated session.
     pub async fn list_targets(
@@ -247,13 +301,41 @@ mod tests {
         }
     }
 
-    fn create_test_service() -> GatewayService<MockSystemPort, MockTargetPort> {
+    // Mock auth port for testing
+    #[derive(Clone, Default)]
+    struct MockAuthPort {
+        should_fail: bool,
+    }
+
+    #[async_trait]
+    impl AuthPort for MockAuthPort {
+        async fn authenticate_session(
+            &self,
+            _session_token: &str,
+            _username: &str,
+            _password: &str,
+        ) -> Result<(), GatewayError> {
+            if self.should_fail {
+                return Err(GatewayError::Unauthorized(
+                    "invalid credentials".to_string(),
+                ));
+            }
+            Ok(())
+        }
+
+        async fn disconnect_session(&self, _session_token: &str) -> Result<(), GatewayError> {
+            Ok(())
+        }
+    }
+
+    fn create_test_service() -> GatewayService<MockSystemPort, MockTargetPort, MockAuthPort> {
         GatewayService::new(
             Arc::new(MockSystemPort {
                 ready: true,
                 gmp_version: "22.7".to_string(),
             }),
             Arc::new(MockTargetPort::default()),
+            Arc::new(MockAuthPort::default()),
         )
     }
 
@@ -284,6 +366,7 @@ mod tests {
                 gmp_version: "22.7".to_string(),
             }),
             Arc::new(MockTargetPort::default()),
+            Arc::new(MockAuthPort::default()),
         );
         let ready = service.ready().unwrap();
         assert_eq!(ready.status, "notReady");
@@ -392,5 +475,78 @@ mod tests {
             .list_targets(&session.token, TargetQuery::default())
             .await;
         assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    // ------------------------------------------------------------------------
+    // Session lifecycle use-case tests
+    // ------------------------------------------------------------------------
+
+    /// create_session returns a token, idle timeout, and GMP version
+    /// when backend authentication succeeds.
+    #[tokio::test]
+    async fn service_create_session_success() {
+        let service = create_test_service();
+        let created = service.create_session("admin", "secret").await.unwrap();
+
+        assert!(created.token.starts_with("gvm_sess_"));
+        assert_eq!(created.expires_in, 300);
+        assert_eq!(created.gmp_version, "22.7");
+    }
+
+    /// create_session rolls back the domain session when backend auth fails.
+    #[tokio::test]
+    async fn service_create_session_auth_failure_rolls_back() {
+        let service = GatewayService::new(
+            Arc::new(MockSystemPort {
+                ready: true,
+                gmp_version: "22.7".to_string(),
+            }),
+            Arc::new(MockTargetPort::default()),
+            Arc::new(MockAuthPort { should_fail: true }),
+        );
+
+        let result = service.create_session("admin", "wrong").await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    /// get_session returns session info for an active session.
+    #[tokio::test]
+    async fn service_get_session_active() {
+        let service = create_test_service();
+        let created = service.create_session("admin", "secret").await.unwrap();
+        let info = service.get_session(&created.token).unwrap();
+
+        assert_eq!(info.token, created.token);
+        assert_eq!(info.user, "admin");
+        assert_eq!(info.state, "active");
+        assert!(info.expires_in > 0);
+    }
+
+    /// get_session returns NotFound for unknown tokens.
+    #[tokio::test]
+    async fn service_get_session_not_found() {
+        let service = create_test_service();
+        let result = service.get_session("nonexistent");
+        assert!(matches!(result, Err(GatewayError::NotFound(_))));
+    }
+
+    /// delete_session removes the session so subsequent gets fail.
+    #[tokio::test]
+    async fn service_delete_session_success() {
+        let service = create_test_service();
+        let created = service.create_session("admin", "secret").await.unwrap();
+
+        service.delete_session(&created.token).await.unwrap();
+
+        let result = service.get_session(&created.token);
+        assert!(matches!(result, Err(GatewayError::NotFound(_))));
+    }
+
+    /// delete_session fails with NotFound for unknown tokens.
+    #[tokio::test]
+    async fn service_delete_session_not_found() {
+        let service = create_test_service();
+        let result = service.delete_session("nonexistent").await;
+        assert!(matches!(result, Err(GatewayError::NotFound(_))));
     }
 }
