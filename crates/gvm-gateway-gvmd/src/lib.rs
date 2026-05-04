@@ -17,18 +17,27 @@ use async_trait::async_trait;
 use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
-    target_from_gmp, AuthPort, CreateTargetInput, GatewayError, ModifyTargetInput, Pagination,
-    ReadinessStatus, SystemPort, Target, TargetPage, TargetPort, TargetQuery,
+    report_from_gmp, result_from_gmp, target_from_gmp, AuthPort, CreateTargetInput, GatewayError,
+    GetReportOpts, ModifyTargetInput, Pagination, ReadinessStatus, Report, ReportPage, ReportPort,
+    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanResult, SystemPort, Target, TargetPage,
+    TargetPort, TargetQuery,
 };
 use gvm_gmp::{
     commands::{
         authentication::authenticate,
+        reports::{
+            delete_report, get_report, get_reports, GetReportsOpts,
+        },
+        results::{get_result, get_results, GetResultsOpts},
         targets::{
             create_target, delete_target, get_target, get_targets, modify_target, CreateTargetOpts,
             GetTargetsOpts, ModifyTargetOpts,
         },
     },
-    responses::{ActionResponse, CreateTargetResponse, GetTargetsResponse},
+    responses::{
+        ActionResponse, CreateTargetResponse, GetReportsResponse, GetResultsResponse,
+        GetTargetsResponse,
+    },
     AliveTest, EntityId,
 };
 use tokio::sync::Mutex as AsyncMutex;
@@ -123,6 +132,58 @@ impl TargetPort for StaticGvmdAdapter {
     async fn delete_target(&self, _: &str, _: &str) -> Result<(), GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl ReportPort for StaticGvmdAdapter {
+    async fn list_reports(&self, _: &str, _: &ReportQuery) -> Result<ReportPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report(
+        &self,
+        _: &str,
+        _: &str,
+        _: &GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn delete_report(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report_results(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl ResultPort for StaticGvmdAdapter {
+    async fn list_results(&self, _: &str, _: &ResultQuery) -> Result<ResultPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support results".to_string(),
+        ))
+    }
+
+    async fn get_result(&self, _: &str, _: &str) -> Result<ScanResult, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support results".to_string(),
         ))
     }
 }
@@ -360,6 +421,270 @@ impl TargetPort for GvmdAdapter {
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ReportPort for GvmdAdapter {
+    async fn list_reports(
+        &self,
+        session_token: &str,
+        query: &ReportQuery,
+    ) -> Result<ReportPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_reports(GetReportsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                details: Some(true),
+                ignore_pagination: None,
+                no_report: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetReportsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(report_from_gmp)
+            .collect::<Vec<_>>();
+
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let data = items
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect::<Vec<_>>();
+
+        Ok(ReportPage {
+            data,
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+
+    async fn get_report(
+        &self,
+        session_token: &str,
+        id: &str,
+        opts: &GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let report_id = parse_entity_id(id)?;
+
+        // Get the report with details
+        let response = client
+            .lock()
+            .await
+            .call(get_report(&report_id))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetReportsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut report = parsed
+            .items
+            .into_iter()
+            .next()
+            .map(report_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("report {id} not found")))?;
+
+        // Fetch results for this report
+        let filter = if opts.ignore_pagination {
+            Some(format!("report_id={id}"))
+        } else {
+            Some(format!("report_id={id} first=25 rows=25"))
+        };
+
+        let results_response = client
+            .lock()
+            .await
+            .call(get_results(GetResultsOpts {
+                filter_string: filter,
+                filter_id: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let results_parsed =
+            GetResultsResponse::from_response(&results_response).map_err(map_parse_error)?;
+        report.results = results_parsed
+            .items
+            .into_iter()
+            .map(result_from_gmp)
+            .collect();
+
+        Ok(report)
+    }
+
+    async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_report(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn get_report_results(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        // Validate that the report_id is a valid UUID
+        let _ = parse_entity_id(report_id)?;
+
+        let filter = {
+            let mut parts = vec![format!("report_id={report_id}")];
+            if let Some(ref filter_string) = query.filter_string {
+                if !filter_string.trim().is_empty() {
+                    parts.push(filter_string.clone());
+                }
+            }
+            Some(parts.join(" "))
+        };
+
+        let response = client
+            .lock()
+            .await
+            .call(get_results(GetResultsOpts {
+                filter_string: filter,
+                filter_id: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetResultsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(result_from_gmp)
+            .collect::<Vec<_>>();
+
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let data = items
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect::<Vec<_>>();
+
+        Ok(ResultPage {
+            data,
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+}
+
+#[async_trait]
+impl ResultPort for GvmdAdapter {
+    async fn list_results(
+        &self,
+        session_token: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_results(GetResultsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetResultsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(result_from_gmp)
+            .collect::<Vec<_>>();
+
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let data = items
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect::<Vec<_>>();
+
+        Ok(ResultPage {
+            data,
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+
+    async fn get_result(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ScanResult, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_result(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetResultsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(result_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("result {id} not found")))
     }
 }
 
