@@ -598,6 +598,7 @@ dependencies = [
  "aide",
  "async-trait",
  "axum",
+ "base64",
  "gvm-gateway-app",
  "gvm-gateway-domain",
  "http",

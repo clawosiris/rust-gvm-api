@@ -32,7 +32,12 @@ async fn spawn_server(
 ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let service = GatewayService::new(Arc::new(system_adapter), Arc::new(target_adapter));
+    let auth_adapter = StaticGvmdAdapter::ready("22.7");
+    let service = GatewayService::new(
+        Arc::new(system_adapter),
+        Arc::new(target_adapter),
+        Arc::new(auth_adapter),
+    );
     let app = build_router(service);
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
@@ -120,6 +125,164 @@ async fn version_returns_api_and_gmp_version() {
     handle.abort();
 }
 
+// ============================================================================
+// Session Lifecycle Tests
+// ============================================================================
+
+/// POST /api/v1/sessions with valid Basic auth creates a session and returns
+/// the token, idle timeout, and GMP version.
+#[tokio::test]
+async fn create_session_valid_credentials() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+    let client = Client::new();
+
+    let response = client
+        .post(format!("http://{addr}/api/v1/sessions"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0") // admin:secret
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert!(json["sessionToken"]
+        .as_str()
+        .unwrap()
+        .starts_with("gvm_sess_"));
+    assert_eq!(json["expiresIn"], 300);
+    assert_eq!(json["gmpVersion"], "22.7");
+
+    handle.abort();
+}
+
+/// POST /api/v1/sessions without an Authorization header returns 401.
+#[tokio::test]
+async fn create_session_missing_auth() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+
+    let response = Client::new()
+        .post(format!("http://{addr}/api/v1/sessions"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    handle.abort();
+}
+
+/// GET /api/v1/sessions/{token} returns session details for an active session.
+#[tokio::test]
+async fn get_session_returns_details() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+    let client = Client::new();
+
+    // Create a session first.
+    let create_resp = client
+        .post(format!("http://{addr}/api/v1/sessions"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        .send()
+        .await
+        .unwrap();
+    let token = create_resp.json::<serde_json::Value>().await.unwrap()["sessionToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Inspect the session.
+    let response = client
+        .get(format!("http://{addr}/api/v1/sessions/{token}"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["sessionToken"], token);
+    assert_eq!(json["user"], "admin");
+    assert_eq!(json["state"], "active");
+    assert!(json["createdAt"].as_str().unwrap().ends_with('Z'));
+    assert!(json["expiresIn"].as_i64().unwrap() > 0);
+
+    handle.abort();
+}
+
+/// GET /api/v1/sessions/{unknown} returns 404.
+#[tokio::test]
+async fn get_session_not_found() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+
+    let response = Client::new()
+        .get(format!("http://{addr}/api/v1/sessions/nonexistent-token"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    handle.abort();
+}
+
+/// DELETE /api/v1/sessions/{token} closes the session. Subsequent GET returns 404.
+#[tokio::test]
+async fn delete_session_closes_and_invalidates() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+    let client = Client::new();
+
+    // Create a session.
+    let create_resp = client
+        .post(format!("http://{addr}/api/v1/sessions"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        .send()
+        .await
+        .unwrap();
+    let token = create_resp.json::<serde_json::Value>().await.unwrap()["sessionToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Delete the session.
+    let response = client
+        .delete(format!("http://{addr}/api/v1/sessions/{token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Confirm it's gone.
+    let response = client
+        .get(format!("http://{addr}/api/v1/sessions/{token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    handle.abort();
+}
+
+/// DELETE /api/v1/sessions/{unknown} returns 404.
+#[tokio::test]
+async fn delete_session_not_found() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+
+    let response = Client::new()
+        .delete(format!("http://{addr}/api/v1/sessions/nonexistent-token"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    handle.abort();
+}
+
+// ============================================================================
+// OpenAPI Contract Tests
+// ============================================================================
+
 #[tokio::test]
 async fn generated_openapi_endpoint_exposes_implemented_contract() {
     let adapter = StaticGvmdAdapter::ready("22.7");
@@ -144,6 +307,8 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         serde_yaml::from_str(include_str!("../../../spec/rest-api/openapi.yaml")).unwrap();
     let system_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
+    let sessions_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
     let targets_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
     let common_spec: Value =
@@ -152,6 +317,7 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
     let docs = SpecDocs {
         generated: &json,
         system: &system_spec,
+        sessions: &sessions_spec,
         targets: &targets_spec,
         common: &common_spec,
     };
@@ -164,6 +330,8 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/health",
             "/openapi.json",
             "/ready",
+            "/sessions",
+            "/sessions/{token}",
             "/targets",
             "/targets/{id}",
             "/version",
@@ -175,6 +343,19 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         ("/ready", "get", DocName::System, "/ready"),
         ("/version", "get", DocName::System, "/version"),
         ("/openapi.json", "get", DocName::System, "/openapi.json"),
+        ("/sessions", "post", DocName::Sessions, "/sessions"),
+        (
+            "/sessions/{token}",
+            "get",
+            DocName::Sessions,
+            "/sessions/{token}",
+        ),
+        (
+            "/sessions/{token}",
+            "delete",
+            DocName::Sessions,
+            "/sessions/{token}",
+        ),
         ("/targets", "get", DocName::Targets, "/targets"),
         ("/targets", "post", DocName::Targets, "/targets"),
         ("/targets/{id}", "get", DocName::Targets, "/targets/{id}"),
@@ -193,6 +374,7 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
 enum DocName {
     Generated,
     System,
+    Sessions,
     Targets,
     Common,
 }
@@ -200,6 +382,7 @@ enum DocName {
 struct SpecDocs<'a> {
     generated: &'a Value,
     system: &'a Value,
+    sessions: &'a Value,
     targets: &'a Value,
     common: &'a Value,
 }
@@ -657,6 +840,7 @@ fn doc<'a>(docs: &'a SpecDocs<'a>, name: DocName) -> &'a Value {
     match name {
         DocName::Generated => docs.generated,
         DocName::System => docs.system,
+        DocName::Sessions => docs.sessions,
         DocName::Targets => docs.targets,
         DocName::Common => docs.common,
     }
@@ -1158,6 +1342,7 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
     let target_adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
     let service = GatewayService::new(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
     );
     let token = service.session_manager().create("admin").unwrap().token;

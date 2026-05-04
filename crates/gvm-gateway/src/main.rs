@@ -26,7 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind(&config.bind).await?;
     let system_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
     let target_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let service = GatewayService::new(system_adapter, target_adapter);
+    let auth_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
+    let service = GatewayService::new(system_adapter, target_adapter, auth_adapter);
     let app = build_router(service);
 
     axum::serve(listener, app).await?;

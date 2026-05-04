@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
-    target_from_gmp, CreateTargetInput, GatewayError, ModifyTargetInput, Pagination,
+    target_from_gmp, AuthPort, CreateTargetInput, GatewayError, ModifyTargetInput, Pagination,
     ReadinessStatus, SystemPort, Target, TargetPage, TargetPort, TargetQuery,
 };
 use gvm_gmp::{
@@ -124,6 +124,28 @@ impl TargetPort for StaticGvmdAdapter {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
+    }
+}
+
+#[async_trait]
+impl AuthPort for StaticGvmdAdapter {
+    async fn authenticate_session(
+        &self,
+        _session_token: &str,
+        _username: &str,
+        _password: &str,
+    ) -> Result<(), GatewayError> {
+        if self.ready {
+            Ok(())
+        } else {
+            Err(GatewayError::BackendUnavailable(
+                "static adapter not ready".to_string(),
+            ))
+        }
+    }
+
+    async fn disconnect_session(&self, _session_token: &str) -> Result<(), GatewayError> {
+        Ok(())
     }
 }
 
@@ -337,6 +359,27 @@ impl TargetPort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl AuthPort for GvmdAdapter {
+    async fn authenticate_session(
+        &self,
+        session_token: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<(), GatewayError> {
+        self.connect_session(session_token, username, password)
+            .await
+    }
+
+    async fn disconnect_session(&self, session_token: &str) -> Result<(), GatewayError> {
+        self.sessions
+            .lock()
+            .map_err(|_| GatewayError::BackendUnavailable("session store unavailable".to_string()))?
+            .remove(session_token);
         Ok(())
     }
 }

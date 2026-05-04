@@ -9,4 +9,5 @@
 pub mod error;
 pub mod openapi;
 pub mod router;
+pub mod sessions;
 pub mod targets;
