@@ -57,15 +57,14 @@
 
 | Test | Scope |
 |------|-------|
-| `valid_jwt_extracts_claims` | Well-formed JWT → user identity + roles |
-| `expired_jwt_rejected` | Expired token → 401 |
-| `invalid_signature_rejected` | Wrong secret → 401 |
-| `missing_auth_header_rejected` | No Authorization header → 401 |
-| `api_key_valid` | Known API key → authenticated |
-| `api_key_invalid` | Unknown key → 401 |
-| `api_key_read_only_blocks_write` | Read-only key + POST → 403 |
-| `rbac_admin_can_delete` | Admin role + DELETE → allowed |
-| `rbac_observer_cannot_modify` | Observer role + PUT → 403 |
+| `basic_auth_session_create_valid_credentials` | Valid HTTP Basic credentials → 201 + session token |
+| `basic_auth_session_create_invalid_credentials` | Bad credentials → 401 |
+| `missing_auth_header_rejected` | No Authorization header on protected endpoint → 401 |
+| `malformed_bearer_header_rejected` | Invalid bearer header syntax → 401 |
+| `unknown_session_token_rejected` | Unknown bearer token → 401 |
+| `expired_session_token_rejected` | Expired token → 401 |
+| `closed_session_token_rejected` | Closed token → 401 |
+| `valid_session_token_allows_request` | Active token → request proceeds |
 
 ### 2.4 Rate Limiting (`middleware/rate_limit.rs`)
 
@@ -74,7 +73,7 @@
 | `under_limit_passes` | 50 requests < 100 rps limit → all 200 |
 | `over_limit_returns_429` | 150 requests > 100 rps limit → 429 after threshold |
 | `retry_after_header_present` | 429 response → has `Retry-After` header |
-| `different_clients_independent` | Two API keys → separate rate limits |
+| `different_sessions_independent` | Two active session tokens → separate rate limits |
 
 ### 2.5 Configuration (`config.rs`)
 
@@ -83,7 +82,7 @@
 | `default_config_valid` | No config file → sensible defaults |
 | `env_var_override` | `GVM_API_BIND=0.0.0.0:9090` overrides config |
 | `cli_arg_override` | `--bind 0.0.0.0:9090` overrides config + env |
-| `env_var_expansion_in_config` | `jwt_secret = "${JWT_SECRET}"` → resolved |
+| `env_var_expansion_in_config` | e.g. session/TLS config uses `${...}` env expansion correctly |
 | `invalid_config_rejected` | Bad TOML → clear error message |
 
 ## 3. Integration Tests
@@ -107,9 +106,9 @@ async fn test_server() -> TestServer {
 
 | Test | Request | Expected |
 |------|---------|----------|
-| `healthz_returns_200` | `GET /healthz` | 200, `{"status": "ok"}` |
-| `readyz_healthy` | `GET /readyz` (GMP connected) | 200 |
-| `readyz_unhealthy` | `GET /readyz` (GMP disconnected) | 503 |
+| `health_returns_200` | `GET /health` | 200, `{"status": "ok"}` |
+| `ready_healthy` | `GET /ready` (GMP connected) | 200 |
+| `ready_unhealthy` | `GET /ready` (GMP disconnected) | 503 |
 | `version_returns_info` | `GET /api/v1/version` | 200, includes API + GMP versions |
 
 ### 3.3 Targets CRUD
@@ -149,12 +148,13 @@ async fn test_server() -> TestServer {
 
 | Test | Request | Expected |
 |------|---------|----------|
-| `auth_token_valid_credentials` | `POST /api/v1/auth/token` + valid creds | 200, JWT + refresh |
-| `auth_token_invalid_credentials` | `POST /api/v1/auth/token` + bad creds | 401 |
-| `auth_refresh_valid` | `POST /api/v1/auth/refresh` + valid refresh | 200, new JWT |
-| `auth_refresh_expired` | `POST /api/v1/auth/refresh` + expired | 401 |
+| `create_session_valid_credentials` | `POST /api/v1/sessions` + valid Basic auth | 201, session token + metadata |
+| `create_session_invalid_credentials` | `POST /api/v1/sessions` + bad Basic auth | 401 |
+| `get_session_valid_token` | `GET /api/v1/sessions/{token}` | 200, session details |
+| `delete_session_valid_token` | `DELETE /api/v1/sessions/{token}` | 204 |
 | `protected_endpoint_no_auth` | `GET /api/v1/targets` (no token) | 401 |
-| `protected_endpoint_valid_auth` | `GET /api/v1/targets` + valid JWT | 200 |
+| `protected_endpoint_unknown_token` | `GET /api/v1/targets` + unknown token | 401 |
+| `protected_endpoint_valid_auth` | `GET /api/v1/targets` + valid session token | 200 |
 
 ### 3.7 OpenAPI Compliance
 
@@ -203,7 +203,7 @@ services:
 | `e2e_full_scan_lifecycle` | Create target → create task → start → poll until done → get report |
 | `e2e_concurrent_requests` | 50 parallel target creates → all succeed |
 | `e2e_large_report_pagination` | Report with 10k+ results → paginate through all pages |
-| `e2e_auth_flow` | Login → use token → refresh → use new token |
+| `e2e_auth_flow` | Create session → use token → close session → confirm token is rejected |
 | `e2e_graceful_shutdown` | Send SIGTERM during active requests → in-flight complete, new rejected |
 
 ## 5. Performance Tests
