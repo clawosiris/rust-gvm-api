@@ -78,3 +78,18 @@ jobs:
         uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v3
         with:
           sarif_file: semgrep.sarif
+
+  # Aggregator job for branch protection — require this single check
+  security:
+    name: Security
+    if: always()
+    needs: [cargo-audit, cargo-machete, semgrep]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check upstream job results
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ||
+                "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more upstream jobs failed or were cancelled"
+            exit 1
+          fi
