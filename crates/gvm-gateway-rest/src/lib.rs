@@ -9,5 +9,7 @@
 pub mod error;
 pub mod openapi;
 pub mod router;
+pub mod scan_configs;
+pub mod scanners;
 pub mod sessions;
 pub mod targets;

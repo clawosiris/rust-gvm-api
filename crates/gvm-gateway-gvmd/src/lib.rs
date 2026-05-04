@@ -17,8 +17,10 @@ use async_trait::async_trait;
 use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
-    target_from_gmp, AuthPort, CreateTargetInput, GatewayError, ModifyTargetInput, Pagination,
-    ReadinessStatus, SystemPort, Target, TargetPage, TargetPort, TargetQuery,
+    target_from_gmp, AuthPort, CreateScanConfigInput, CreateTargetInput, GatewayError,
+    ModifyScanConfigInput, ModifyTargetInput, Pagination, ReadinessStatus, ScanConfig,
+    ScanConfigPage, ScanConfigPort, ScanConfigQuery, Scanner, ScannerPage, ScannerPort,
+    ScannerQuery, SystemPort, Target, TargetPage, TargetPort, TargetQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -146,6 +148,71 @@ impl AuthPort for StaticGvmdAdapter {
 
     async fn disconnect_session(&self, _session_token: &str) -> Result<(), GatewayError> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ScanConfigPort for StaticGvmdAdapter {
+    async fn list_scan_configs(
+        &self,
+        _: &str,
+        _: &ScanConfigQuery,
+    ) -> Result<ScanConfigPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+
+    async fn create_scan_config(
+        &self,
+        _: &str,
+        _: CreateScanConfigInput,
+    ) -> Result<String, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+
+    async fn get_scan_config(&self, _: &str, _: &str) -> Result<ScanConfig, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+
+    async fn modify_scan_config(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyScanConfigInput,
+    ) -> Result<ScanConfig, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+
+    async fn delete_scan_config(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl ScannerPort for StaticGvmdAdapter {
+    async fn list_scanners(
+        &self,
+        _: &str,
+        _: &ScannerQuery,
+    ) -> Result<ScannerPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scanners".to_string(),
+        ))
+    }
+
+    async fn get_scanner(&self, _: &str, _: &str) -> Result<Scanner, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scanners".to_string(),
+        ))
     }
 }
 
@@ -381,6 +448,71 @@ impl AuthPort for GvmdAdapter {
             .map_err(|_| GatewayError::BackendUnavailable("session store unavailable".to_string()))?
             .remove(session_token);
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ScanConfigPort for GvmdAdapter {
+    async fn list_scan_configs(
+        &self,
+        _: &str,
+        _: &ScanConfigQuery,
+    ) -> Result<ScanConfigPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "scan config GMP commands not yet available in rust-gvm".to_string(),
+        ))
+    }
+
+    async fn create_scan_config(
+        &self,
+        _: &str,
+        _: CreateScanConfigInput,
+    ) -> Result<String, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "scan config GMP commands not yet available in rust-gvm".to_string(),
+        ))
+    }
+
+    async fn get_scan_config(&self, _: &str, _: &str) -> Result<ScanConfig, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "scan config GMP commands not yet available in rust-gvm".to_string(),
+        ))
+    }
+
+    async fn modify_scan_config(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyScanConfigInput,
+    ) -> Result<ScanConfig, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "scan config GMP commands not yet available in rust-gvm".to_string(),
+        ))
+    }
+
+    async fn delete_scan_config(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "scan config GMP commands not yet available in rust-gvm".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl ScannerPort for GvmdAdapter {
+    async fn list_scanners(
+        &self,
+        _: &str,
+        _: &ScannerQuery,
+    ) -> Result<ScannerPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "scanner GMP commands not yet available in rust-gvm".to_string(),
+        ))
+    }
+
+    async fn get_scanner(&self, _: &str, _: &str) -> Result<Scanner, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "scanner GMP commands not yet available in rust-gvm".to_string(),
+        ))
     }
 }
 

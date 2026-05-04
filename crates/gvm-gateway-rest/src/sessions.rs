@@ -11,7 +11,9 @@ use axum::{
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{format_rfc3339, AuthPort, GatewayError, SystemPort, TargetPort};
+use gvm_gateway_domain::{
+    format_rfc3339, AuthPort, GatewayError, ScanConfigPort, ScannerPort, SystemPort, TargetPort,
+};
 use serde::Serialize;
 
 use crate::error::RestError;
@@ -53,8 +55,8 @@ struct SessionInfoResponse {
 /// Create a new session via HTTP Basic authentication.
 ///
 /// `POST /api/v1/sessions`
-pub async fn create_session<S, T, A>(
-    State(service): State<GatewayService<S, T, A>>,
+pub async fn create_session<S, T, A, SC, SN>(
+    State(service): State<GatewayService<S, T, A, SC, SN>>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response
@@ -62,6 +64,8 @@ where
     S: SystemPort,
     T: TargetPort,
     A: AuthPort,
+    SC: ScanConfigPort,
+    SN: ScannerPort,
 {
     let instance = uri.path().to_string();
     let (username, password) = match extract_basic_credentials(&headers) {
@@ -86,8 +90,8 @@ where
 /// Inspect a session.
 ///
 /// `GET /api/v1/sessions/{token}`
-pub async fn get_session<S, T, A>(
-    State(service): State<GatewayService<S, T, A>>,
+pub async fn get_session<S, T, A, SC, SN>(
+    State(service): State<GatewayService<S, T, A, SC, SN>>,
     Path(token): Path<String>,
     uri: OriginalUri,
 ) -> Response
@@ -95,6 +99,8 @@ where
     S: SystemPort,
     T: TargetPort,
     A: AuthPort,
+    SC: ScanConfigPort,
+    SN: ScannerPort,
 {
     let instance = uri.path().to_string();
 
@@ -118,8 +124,8 @@ where
 /// Close and destroy a session.
 ///
 /// `DELETE /api/v1/sessions/{token}`
-pub async fn delete_session<S, T, A>(
-    State(service): State<GatewayService<S, T, A>>,
+pub async fn delete_session<S, T, A, SC, SN>(
+    State(service): State<GatewayService<S, T, A, SC, SN>>,
     Path(token): Path<String>,
     uri: OriginalUri,
 ) -> Response
@@ -127,6 +133,8 @@ where
     S: SystemPort,
     T: TargetPort,
     A: AuthPort,
+    SC: ScanConfigPort,
+    SN: ScannerPort,
 {
     let instance = uri.path().to_string();
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Greenbone AG
 
-//! Target DTOs, request parsing, handlers, and response mapping for the REST adapter.
+//! Scan config DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
 use axum::{
     body::Bytes,
@@ -11,21 +11,17 @@ use axum::{
     Json,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{AuthPort, GatewayError, ScanConfigPort, ScannerPort, SystemPort, TargetPort};
-use serde::Deserialize;
-use uuid::Uuid;
-
-use crate::{error::RestError, router::bearer_token};
-
-// Re-export domain types for backward compatibility
-pub use gvm_gateway_domain::{
-    target_from_gmp, CreateTargetInput, ModifyTargetInput, Pagination, ResourceRef, Target,
-    TargetPage, TargetQuery,
+use gvm_gateway_domain::{
+    AuthPort, CreateScanConfigInput, GatewayError, ModifyScanConfigInput, ScanConfigPort,
+    ScanConfigQuery, ScannerPort, SystemPort, TargetPort,
 };
+use serde::Deserialize;
 
-/// Parsed list-targets query from HTTP request.
+use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
+
+/// Parsed list-scan-configs query from HTTP request.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TargetListQuery {
+pub struct ScanConfigListQuery {
     /// Optional filter string.
     pub filter_string: Option<String>,
     /// Optional filter identifier.
@@ -36,7 +32,7 @@ pub struct TargetListQuery {
     pub per_page: u32,
 }
 
-impl TargetListQuery {
+impl ScanConfigListQuery {
     /// Parse query parameters from a raw query string.
     pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
         let mut filter_string = None;
@@ -86,118 +82,58 @@ impl TargetListQuery {
     }
 }
 
-/// Create-target request payload.
+/// Create-scan-config request payload.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-pub struct CreateTargetRequest {
-    /// Optional name so validation can return RFC 9457 instead of extractor failures.
+pub struct CreateScanConfigRequest {
+    /// Name (optional so validation can return RFC 9457 instead of extractor failures).
     pub name: Option<String>,
     /// Optional comment.
     pub comment: Option<String>,
-    /// Hosts.
-    #[serde(default)]
-    pub hosts: Vec<String>,
-    /// Excluded hosts.
-    #[serde(rename = "excludeHosts", default)]
-    pub exclude_hosts: Vec<String>,
-    /// Optional alive test.
-    #[serde(rename = "aliveTest")]
-    pub alive_test: Option<String>,
-    /// Optional port list identifier.
-    #[serde(rename = "portListId")]
-    pub port_list_id: Option<String>,
-    /// Reverse lookup only.
-    #[serde(rename = "reverseLookupOnly")]
-    pub reverse_lookup_only: Option<bool>,
-    /// Reverse lookup unify.
-    #[serde(rename = "reverseLookupUnify")]
-    pub reverse_lookup_unify: Option<bool>,
-    /// Optional SSH credential identifier.
-    #[serde(rename = "sshCredentialId")]
-    pub ssh_credential_id: Option<String>,
-    /// Optional SMB credential identifier.
-    #[serde(rename = "smbCredentialId")]
-    pub smb_credential_id: Option<String>,
-    /// Optional ESXi credential identifier.
-    #[serde(rename = "esxiCredentialId")]
-    pub esxi_credential_id: Option<String>,
-    /// Optional SNMP credential identifier.
-    #[serde(rename = "snmpCredentialId")]
-    pub snmp_credential_id: Option<String>,
+    /// Optional base scan config identifier to copy from.
+    #[serde(rename = "baseScanConfigId")]
+    pub base_scan_config_id: Option<String>,
 }
 
-impl CreateTargetRequest {
+impl CreateScanConfigRequest {
     /// Validate the request and convert it into the application command.
-    pub fn validate(self) -> Result<CreateTargetInput, GatewayError> {
+    pub fn validate(self) -> Result<CreateScanConfigInput, GatewayError> {
         let name = self
             .name
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| GatewayError::InvalidInput("name is required".to_string()))?;
-        if self.hosts.is_empty() {
-            return Err(GatewayError::InvalidInput(
-                "hosts must contain at least one entry".to_string(),
-            ));
+        if let Some(ref id) = self.base_scan_config_id {
+            validate_uuid("baseScanConfigId", id)?;
         }
-        validate_optional_uuid("portListId", self.port_list_id.as_deref())?;
-        validate_optional_uuid("sshCredentialId", self.ssh_credential_id.as_deref())?;
-        validate_optional_uuid("smbCredentialId", self.smb_credential_id.as_deref())?;
-        validate_optional_uuid("esxiCredentialId", self.esxi_credential_id.as_deref())?;
-        validate_optional_uuid("snmpCredentialId", self.snmp_credential_id.as_deref())?;
 
-        Ok(CreateTargetInput {
+        Ok(CreateScanConfigInput {
             name,
             comment: self.comment,
-            hosts: self.hosts,
-            exclude_hosts: self.exclude_hosts,
-            alive_test: self.alive_test,
-            port_list_id: self.port_list_id,
-            reverse_lookup_only: self.reverse_lookup_only,
-            reverse_lookup_unify: self.reverse_lookup_unify,
-            ssh_credential_id: self.ssh_credential_id,
-            smb_credential_id: self.smb_credential_id,
-            esxi_credential_id: self.esxi_credential_id,
-            snmp_credential_id: self.snmp_credential_id,
+            base_scan_config_id: self.base_scan_config_id,
         })
     }
 }
 
-/// Modify-target request payload.
+/// Modify-scan-config request payload.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-pub struct ModifyTargetRequest {
+pub struct ModifyScanConfigRequest {
     /// Optional name.
     pub name: Option<String>,
     /// Optional comment.
     pub comment: Option<String>,
-    /// Optional hosts.
-    pub hosts: Option<Vec<String>>,
-    /// Optional excluded hosts.
-    #[serde(rename = "excludeHosts")]
-    pub exclude_hosts: Option<Vec<String>>,
-    /// Optional alive test.
-    #[serde(rename = "aliveTest")]
-    pub alive_test: Option<String>,
-    /// Optional port list identifier.
-    #[serde(rename = "portListId")]
-    pub port_list_id: Option<String>,
 }
 
-impl ModifyTargetRequest {
+impl ModifyScanConfigRequest {
     /// Validate the request and convert it into the application command.
-    pub fn validate(self) -> Result<ModifyTargetInput, GatewayError> {
-        validate_optional_uuid("portListId", self.port_list_id.as_deref())?;
-
-        Ok(ModifyTargetInput {
+    pub fn validate(self) -> Result<ModifyScanConfigInput, GatewayError> {
+        Ok(ModifyScanConfigInput {
             name: self.name,
             comment: self.comment,
-            hosts: self.hosts,
-            exclude_hosts: self.exclude_hosts,
-            alive_test: self.alive_test,
-            port_list_id: self.port_list_id,
         })
     }
 }
 
-/// List targets handler.
-pub async fn list_targets<S, T, A, SC, SN>(
+/// List scan configs handler.
+pub async fn list_scan_configs<S, T, A, SC, SN>(
     State(service): State<GatewayService<S, T, A, SC, SN>>,
     headers: HeaderMap,
     uri: OriginalUri,
@@ -214,15 +150,15 @@ where
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    let query = match TargetListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+    let query = match ScanConfigListQuery::try_from_query_string(uri.query().unwrap_or("")) {
         Ok(query) => query,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
 
     match service
-        .list_targets(
+        .list_scan_configs(
             &session,
-            TargetQuery {
+            ScanConfigQuery {
                 filter_string: query.filter_string,
                 filter_id: query.filter_id,
                 page: query.page,
@@ -231,13 +167,13 @@ where
         )
         .await
     {
-        Ok(targets) => (StatusCode::OK, Json(targets)).into_response(),
+        Ok(configs) => (StatusCode::OK, Json(configs)).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
 
-/// Create target handler.
-pub async fn create_target<S, T, A, SC, SN>(
+/// Create scan config handler.
+pub async fn create_scan_config<S, T, A, SC, SN>(
     State(service): State<GatewayService<S, T, A, SC, SN>>,
     headers: HeaderMap,
     uri: OriginalUri,
@@ -255,7 +191,7 @@ where
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    let request = match serde_json::from_slice::<CreateTargetRequest>(&body) {
+    let request = match serde_json::from_slice::<CreateScanConfigRequest>(&body) {
         Ok(request) => request,
         Err(error) => {
             return RestError::from_gateway_error(
@@ -270,14 +206,14 @@ where
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
 
-    match service.create_target(&session, input).await {
+    match service.create_scan_config(&session, input).await {
         Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
 
-/// Get target handler.
-pub async fn get_target<S, T, A, SC, SN>(
+/// Get scan config handler.
+pub async fn get_scan_config<S, T, A, SC, SN>(
     State(service): State<GatewayService<S, T, A, SC, SN>>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -299,14 +235,14 @@ where
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
 
-    match service.get_target(&session, &id).await {
-        Ok(target) => (StatusCode::OK, Json(target)).into_response(),
+    match service.get_scan_config(&session, &id).await {
+        Ok(config) => (StatusCode::OK, Json(config)).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
 
-/// Update target handler.
-pub async fn update_target<S, T, A, SC, SN>(
+/// Update scan config handler.
+pub async fn update_scan_config<S, T, A, SC, SN>(
     State(service): State<GatewayService<S, T, A, SC, SN>>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -328,7 +264,7 @@ where
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    let request = match serde_json::from_slice::<ModifyTargetRequest>(&body) {
+    let request = match serde_json::from_slice::<ModifyScanConfigRequest>(&body) {
         Ok(request) => request,
         Err(error) => {
             return RestError::from_gateway_error(
@@ -343,14 +279,14 @@ where
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
 
-    match service.modify_target(&session, &id, input).await {
-        Ok(target) => (StatusCode::OK, Json(target)).into_response(),
+    match service.modify_scan_config(&session, &id, input).await {
+        Ok(config) => (StatusCode::OK, Json(config)).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
 
-/// Delete target handler.
-pub async fn delete_target<S, T, A, SC, SN>(
+/// Delete scan config handler.
+pub async fn delete_scan_config<S, T, A, SC, SN>(
     State(service): State<GatewayService<S, T, A, SC, SN>>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -372,30 +308,8 @@ where
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
 
-    match service.delete_target(&session, &id).await {
+    match service.delete_scan_config(&session, &id).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
-}
-
-/// Build the GMP inline filter string.
-pub fn build_gmp_filter(
-    filter_string: Option<String>,
-    _filter_id: Option<String>,
-) -> Option<String> {
-    filter_string.filter(|value| !value.trim().is_empty())
-}
-
-fn validate_optional_uuid(field: &str, value: Option<&str>) -> Result<(), GatewayError> {
-    if let Some(value) = value {
-        validate_uuid(field, value)?;
-    }
-    Ok(())
-}
-
-/// Validate a UUID-like REST resource identifier.
-pub fn validate_uuid(field: &str, value: &str) -> Result<(), GatewayError> {
-    Uuid::parse_str(value)
-        .map(|_| ())
-        .map_err(|_| GatewayError::InvalidInput(format!("{field} must be a valid UUID")))
 }

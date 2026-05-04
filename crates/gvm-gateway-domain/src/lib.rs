@@ -164,6 +164,125 @@ pub struct ModifyTargetInput {
 }
 
 // ============================================================================
+// Scan Config Domain Types
+// ============================================================================
+
+/// Domain scan configuration representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ScanConfig {
+    /// Scan config identifier.
+    pub id: String,
+    /// Scan config name.
+    pub name: String,
+    /// Optional comment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    /// Number of NVT families included.
+    #[serde(rename = "familyCount", skip_serializing_if = "Option::is_none")]
+    pub family_count: Option<u32>,
+    /// Number of NVTs included.
+    #[serde(rename = "nvtCount", skip_serializing_if = "Option::is_none")]
+    pub nvt_count: Option<u32>,
+    /// Config type: 0 = standard OpenVAS config, 1 = OSP config.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub config_type: Option<i32>,
+    /// Whether the config is in use.
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    /// Whether the config is writable.
+    pub writable: bool,
+}
+
+/// Paginated scan config list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ScanConfigPage {
+    /// Page items.
+    pub data: Vec<ScanConfig>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Scan config list query options.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScanConfigQuery {
+    /// Optional GMP filter string.
+    pub filter_string: Option<String>,
+    /// Optional saved filter identifier.
+    pub filter_id: Option<String>,
+    /// Requested page number.
+    pub page: u32,
+    /// Requested page size.
+    pub per_page: u32,
+}
+
+/// Scan config create command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateScanConfigInput {
+    /// Name.
+    pub name: String,
+    /// Optional comment.
+    pub comment: Option<String>,
+    /// Optional base scan config identifier to copy from.
+    pub base_scan_config_id: Option<String>,
+}
+
+/// Scan config update command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ModifyScanConfigInput {
+    /// Optional name.
+    pub name: Option<String>,
+    /// Optional comment.
+    pub comment: Option<String>,
+}
+
+// ============================================================================
+// Scanner Domain Types
+// ============================================================================
+
+/// Domain scanner representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Scanner {
+    /// Scanner identifier.
+    pub id: String,
+    /// Scanner name.
+    pub name: String,
+    /// Optional comment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    /// Scanner host.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    /// Scanner port.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<i32>,
+    /// Scanner type (OpenVAS, CVE, OSP).
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub scanner_type: Option<String>,
+}
+
+/// Paginated scanner list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ScannerPage {
+    /// Page items.
+    pub data: Vec<Scanner>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Scanner list query options.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScannerQuery {
+    /// Optional GMP filter string.
+    pub filter_string: Option<String>,
+    /// Optional saved filter identifier.
+    pub filter_id: Option<String>,
+    /// Requested page number.
+    pub page: u32,
+    /// Requested page size.
+    pub per_page: u32,
+}
+
+// ============================================================================
 // Conversion Utilities
 // ============================================================================
 
@@ -505,6 +624,58 @@ pub trait TargetPort: Send + Sync + 'static {
 
     /// Delete a target by identifier.
     async fn delete_target(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+}
+
+/// Port for scan config operations.
+#[async_trait]
+pub trait ScanConfigPort: Send + Sync + 'static {
+    /// List scan configs for the session.
+    async fn list_scan_configs(
+        &self,
+        session_token: &str,
+        query: &ScanConfigQuery,
+    ) -> Result<ScanConfigPage, GatewayError>;
+
+    /// Create a new scan config.
+    async fn create_scan_config(
+        &self,
+        session_token: &str,
+        input: CreateScanConfigInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a scan config by identifier.
+    async fn get_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ScanConfig, GatewayError>;
+
+    /// Modify a scan config by identifier.
+    async fn modify_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyScanConfigInput,
+    ) -> Result<ScanConfig, GatewayError>;
+
+    /// Delete a scan config by identifier.
+    async fn delete_scan_config(&self, session_token: &str, id: &str)
+        -> Result<(), GatewayError>;
+}
+
+/// Port for scanner operations.
+#[async_trait]
+pub trait ScannerPort: Send + Sync + 'static {
+    /// List scanners for the session.
+    async fn list_scanners(
+        &self,
+        session_token: &str,
+        query: &ScannerQuery,
+    ) -> Result<ScannerPage, GatewayError>;
+
+    /// Fetch a scanner by identifier.
+    async fn get_scanner(&self, session_token: &str, id: &str)
+        -> Result<Scanner, GatewayError>;
 }
 
 // ============================================================================
@@ -859,6 +1030,107 @@ mod tests {
     fn format_rfc3339_known_date() {
         // 2026-05-04T12:00:00Z = 1_777_896_000
         assert_eq!(format_rfc3339(1_777_896_000), "2026-05-04T12:00:00Z");
+    }
+
+    // ------------------------------------------------------------------------
+    // ScanConfig domain type tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn scan_config_serializes_camel_case() {
+        let config = ScanConfig {
+            id: "abc".to_string(),
+            name: "Full and fast".to_string(),
+            comment: None,
+            family_count: Some(10),
+            nvt_count: Some(500),
+            config_type: Some(0),
+            in_use: true,
+            writable: false,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"familyCount\""));
+        assert!(json.contains("\"nvtCount\""));
+        assert!(json.contains("\"inUse\""));
+        assert!(json.contains("\"type\""));
+    }
+
+    #[test]
+    fn scan_config_omits_none_optional_fields() {
+        let config = ScanConfig {
+            id: "abc".to_string(),
+            name: "Minimal".to_string(),
+            comment: None,
+            family_count: None,
+            nvt_count: None,
+            config_type: None,
+            in_use: false,
+            writable: true,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("comment"));
+        assert!(!json.contains("familyCount"));
+        assert!(!json.contains("nvtCount"));
+        assert!(!json.contains("\"type\""));
+    }
+
+    #[test]
+    fn scan_config_query_default() {
+        let query = ScanConfigQuery::default();
+        assert_eq!(query.page, 0);
+        assert_eq!(query.per_page, 0);
+        assert!(query.filter_string.is_none());
+    }
+
+    #[test]
+    fn modify_scan_config_input_default() {
+        let input = ModifyScanConfigInput::default();
+        assert!(input.name.is_none());
+        assert!(input.comment.is_none());
+    }
+
+    // ------------------------------------------------------------------------
+    // Scanner domain type tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn scanner_serializes_type_field() {
+        let scanner = Scanner {
+            id: "abc".to_string(),
+            name: "OpenVAS Default".to_string(),
+            comment: None,
+            host: Some("localhost".to_string()),
+            port: Some(9390),
+            scanner_type: Some("OpenVAS".to_string()),
+        };
+        let json = serde_json::to_string(&scanner).unwrap();
+        assert!(json.contains("\"type\""));
+        assert!(json.contains("\"OpenVAS\""));
+    }
+
+    #[test]
+    fn scanner_omits_none_optional_fields() {
+        let scanner = Scanner {
+            id: "abc".to_string(),
+            name: "Minimal".to_string(),
+            comment: None,
+            host: None,
+            port: None,
+            scanner_type: None,
+        };
+        let json = serde_json::to_string(&scanner).unwrap();
+        assert!(!json.contains("comment"));
+        assert!(!json.contains("host"));
+        assert!(!json.contains("port"));
+        assert!(!json.contains("\"type\""));
+    }
+
+    #[test]
+    fn scanner_query_default() {
+        let query = ScannerQuery::default();
+        assert_eq!(query.page, 0);
+        assert_eq!(query.per_page, 0);
+        assert!(query.filter_string.is_none());
     }
 
     #[test]

@@ -9,26 +9,38 @@
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
-    AuthPort, CreateTargetInput, GatewayError, HealthStatus, ModifyTargetInput, ReadinessStatus,
+    AuthPort, CreateScanConfigInput, CreateTargetInput, GatewayError, HealthStatus,
+    ModifyScanConfigInput, ModifyTargetInput, ReadinessStatus, ScanConfig, ScanConfigPage,
+    ScanConfigPort, ScanConfigQuery, Scanner, ScannerPage, ScannerPort, ScannerQuery,
     SessionCreated, SessionInfo, SessionManager, SystemPort, Target, TargetPage, TargetPort,
     TargetQuery, VersionInfo,
 };
 
 /// Application services exposed to adapters.
-pub struct GatewayService<S, T, A> {
+pub struct GatewayService<S, T, A, SC, SN> {
     system: Arc<S>,
     targets: Arc<T>,
     auth: Arc<A>,
+    scan_configs: Arc<SC>,
+    scanners: Arc<SN>,
     sessions: Arc<SessionManager>,
 }
 
-impl<S, T, A> GatewayService<S, T, A> {
+impl<S, T, A, SC, SN> GatewayService<S, T, A, SC, SN> {
     /// Creates a new service backed by the provided ports.
-    pub fn new(system: Arc<S>, targets: Arc<T>, auth: Arc<A>) -> Self {
+    pub fn new(
+        system: Arc<S>,
+        targets: Arc<T>,
+        auth: Arc<A>,
+        scan_configs: Arc<SC>,
+        scanners: Arc<SN>,
+    ) -> Self {
         Self {
             system,
             targets,
             auth,
+            scan_configs,
+            scanners,
             sessions: Arc::new(SessionManager::default()),
         }
     }
@@ -39,22 +51,26 @@ impl<S, T, A> GatewayService<S, T, A> {
     }
 }
 
-impl<S, T, A> Clone for GatewayService<S, T, A> {
+impl<S, T, A, SC, SN> Clone for GatewayService<S, T, A, SC, SN> {
     fn clone(&self) -> Self {
         Self {
             system: Arc::clone(&self.system),
             targets: Arc::clone(&self.targets),
             auth: Arc::clone(&self.auth),
+            scan_configs: Arc::clone(&self.scan_configs),
+            scanners: Arc::clone(&self.scanners),
             sessions: Arc::clone(&self.sessions),
         }
     }
 }
 
-impl<S, T, A> GatewayService<S, T, A>
+impl<S, T, A, SC, SN> GatewayService<S, T, A, SC, SN>
 where
     S: SystemPort,
     T: TargetPort,
     A: AuthPort,
+    SC: ScanConfigPort,
+    SN: ScannerPort,
 {
     /// Returns liveness information.
     pub fn health(&self) -> HealthStatus {
@@ -165,6 +181,97 @@ where
     pub async fn delete_target(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.targets.delete_target(&session.token, id).await
+    }
+
+    // ------------------------------------------------------------------
+    // Scan Configs
+    // ------------------------------------------------------------------
+
+    /// Lists scan configs for an authenticated session.
+    pub async fn list_scan_configs(
+        &self,
+        session_token: &str,
+        query: ScanConfigQuery,
+    ) -> Result<ScanConfigPage, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs
+            .list_scan_configs(&session.token, &query)
+            .await
+    }
+
+    /// Creates a new scan config for an authenticated session.
+    pub async fn create_scan_config(
+        &self,
+        session_token: &str,
+        input: CreateScanConfigInput,
+    ) -> Result<String, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs
+            .create_scan_config(&session.token, input)
+            .await
+    }
+
+    /// Fetches a scan config for an authenticated session.
+    pub async fn get_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ScanConfig, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs
+            .get_scan_config(&session.token, id)
+            .await
+    }
+
+    /// Modifies a scan config for an authenticated session.
+    pub async fn modify_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyScanConfigInput,
+    ) -> Result<ScanConfig, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs
+            .modify_scan_config(&session.token, id, input)
+            .await
+    }
+
+    /// Deletes a scan config for an authenticated session.
+    pub async fn delete_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<(), GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs
+            .delete_scan_config(&session.token, id)
+            .await
+    }
+
+    // ------------------------------------------------------------------
+    // Scanners
+    // ------------------------------------------------------------------
+
+    /// Lists scanners for an authenticated session.
+    pub async fn list_scanners(
+        &self,
+        session_token: &str,
+        query: ScannerQuery,
+    ) -> Result<ScannerPage, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scanners
+            .list_scanners(&session.token, &query)
+            .await
+    }
+
+    /// Fetches a scanner for an authenticated session.
+    pub async fn get_scanner(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<Scanner, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scanners.get_scanner(&session.token, id).await
     }
 }
 
@@ -328,7 +435,119 @@ mod tests {
         }
     }
 
-    fn create_test_service() -> GatewayService<MockSystemPort, MockTargetPort, MockAuthPort> {
+    // Mock scan config port for testing
+    #[derive(Clone, Default)]
+    struct MockScanConfigPort;
+
+    #[async_trait]
+    impl ScanConfigPort for MockScanConfigPort {
+        async fn list_scan_configs(
+            &self,
+            _session_token: &str,
+            query: &ScanConfigQuery,
+        ) -> Result<ScanConfigPage, GatewayError> {
+            Ok(ScanConfigPage {
+                data: vec![],
+                pagination: gvm_gateway_domain::Pagination {
+                    page: query.page,
+                    per_page: query.per_page,
+                    total: 0,
+                    total_pages: 0,
+                },
+            })
+        }
+
+        async fn create_scan_config(
+            &self,
+            _session_token: &str,
+            _input: CreateScanConfigInput,
+        ) -> Result<String, GatewayError> {
+            Ok("mock-config-id".to_string())
+        }
+
+        async fn get_scan_config(
+            &self,
+            _session_token: &str,
+            id: &str,
+        ) -> Result<ScanConfig, GatewayError> {
+            Ok(ScanConfig {
+                id: id.to_string(),
+                name: "Mock Config".to_string(),
+                comment: None,
+                family_count: None,
+                nvt_count: None,
+                config_type: None,
+                in_use: false,
+                writable: true,
+            })
+        }
+
+        async fn modify_scan_config(
+            &self,
+            _session_token: &str,
+            id: &str,
+            input: ModifyScanConfigInput,
+        ) -> Result<ScanConfig, GatewayError> {
+            Ok(ScanConfig {
+                id: id.to_string(),
+                name: input.name.unwrap_or_else(|| "Modified Config".to_string()),
+                comment: input.comment,
+                family_count: None,
+                nvt_count: None,
+                config_type: None,
+                in_use: false,
+                writable: true,
+            })
+        }
+
+        async fn delete_scan_config(
+            &self,
+            _session_token: &str,
+            _id: &str,
+        ) -> Result<(), GatewayError> {
+            Ok(())
+        }
+    }
+
+    // Mock scanner port for testing
+    #[derive(Clone, Default)]
+    struct MockScannerPort;
+
+    #[async_trait]
+    impl ScannerPort for MockScannerPort {
+        async fn list_scanners(
+            &self,
+            _session_token: &str,
+            query: &ScannerQuery,
+        ) -> Result<ScannerPage, GatewayError> {
+            Ok(ScannerPage {
+                data: vec![],
+                pagination: gvm_gateway_domain::Pagination {
+                    page: query.page,
+                    per_page: query.per_page,
+                    total: 0,
+                    total_pages: 0,
+                },
+            })
+        }
+
+        async fn get_scanner(
+            &self,
+            _session_token: &str,
+            id: &str,
+        ) -> Result<Scanner, GatewayError> {
+            Ok(Scanner {
+                id: id.to_string(),
+                name: "Mock Scanner".to_string(),
+                comment: None,
+                host: None,
+                port: None,
+                scanner_type: None,
+            })
+        }
+    }
+
+    fn create_test_service() -> GatewayService<MockSystemPort, MockTargetPort, MockAuthPort, MockScanConfigPort, MockScannerPort> {
         GatewayService::new(
             Arc::new(MockSystemPort {
                 ready: true,
@@ -336,6 +555,8 @@ mod tests {
             }),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockAuthPort::default()),
+            Arc::new(MockScanConfigPort::default()),
+            Arc::new(MockScannerPort::default()),
         )
     }
 
@@ -367,6 +588,8 @@ mod tests {
             }),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockAuthPort::default()),
+            Arc::new(MockScanConfigPort::default()),
+            Arc::new(MockScannerPort::default()),
         );
         let ready = service.ready().unwrap();
         assert_eq!(ready.status, "notReady");
@@ -503,6 +726,8 @@ mod tests {
             }),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockAuthPort { should_fail: true }),
+            Arc::new(MockScanConfigPort::default()),
+            Arc::new(MockScannerPort::default()),
         );
 
         let result = service.create_session("admin", "wrong").await;
@@ -548,5 +773,71 @@ mod tests {
         let service = create_test_service();
         let result = service.delete_session("nonexistent").await;
         assert!(matches!(result, Err(GatewayError::NotFound(_))));
+    }
+
+    // ------------------------------------------------------------------------
+    // Scan config use-case tests
+    // ------------------------------------------------------------------------
+
+    /// list_scan_configs requires a valid session.
+    #[tokio::test]
+    async fn service_list_scan_configs_requires_valid_session() {
+        let service = create_test_service();
+        let result = service
+            .list_scan_configs("invalid-token", ScanConfigQuery::default())
+            .await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    /// list_scan_configs succeeds with a valid session.
+    #[tokio::test]
+    async fn service_list_scan_configs_with_valid_session() {
+        let service = create_test_service();
+        let session = service.session_manager().create("admin").unwrap();
+        let result = service
+            .list_scan_configs(&session.token, ScanConfigQuery::default())
+            .await;
+        assert!(result.is_ok());
+    }
+
+    /// get_scan_config requires a valid session.
+    #[tokio::test]
+    async fn service_get_scan_config_requires_valid_session() {
+        let service = create_test_service();
+        let result = service.get_scan_config("invalid-token", "some-id").await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    // ------------------------------------------------------------------------
+    // Scanner use-case tests
+    // ------------------------------------------------------------------------
+
+    /// list_scanners requires a valid session.
+    #[tokio::test]
+    async fn service_list_scanners_requires_valid_session() {
+        let service = create_test_service();
+        let result = service
+            .list_scanners("invalid-token", ScannerQuery::default())
+            .await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    /// list_scanners succeeds with a valid session.
+    #[tokio::test]
+    async fn service_list_scanners_with_valid_session() {
+        let service = create_test_service();
+        let session = service.session_manager().create("admin").unwrap();
+        let result = service
+            .list_scanners(&session.token, ScannerQuery::default())
+            .await;
+        assert!(result.is_ok());
+    }
+
+    /// get_scanner requires a valid session.
+    #[tokio::test]
+    async fn service_get_scanner_requires_valid_session() {
+        let service = create_test_service();
+        let result = service.get_scanner("invalid-token", "some-id").await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
     }
 }

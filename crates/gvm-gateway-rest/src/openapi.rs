@@ -60,6 +60,14 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
             "description": "Scan target management"
         },
         {
+            "name": "Scan Configs",
+            "description": "Scan configuration management"
+        },
+        {
+            "name": "Scanners",
+            "description": "Scanner management"
+        },
+        {
             "name": "System",
             "description": "System and health endpoints"
         }
@@ -99,6 +107,30 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         &mut normalized_paths,
         "/api/v1/targets/{id}",
         "/targets/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/scan-configs",
+        "/scan-configs",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/scan-configs/{id}",
+        "/scan-configs/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/scanners",
+        "/scanners",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/scanners/{id}",
+        "/scanners/{id}",
     );
     normalized_paths.insert(
         "/openapi.json".to_string(),
@@ -151,28 +183,39 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         }
     }
 
+    // Resource endpoints use global bearer security (remove per-handler overrides).
     for (path, method) in [
         ("/targets", "get"),
         ("/targets", "post"),
         ("/targets/{id}", "get"),
         ("/targets/{id}", "put"),
         ("/targets/{id}", "delete"),
+        ("/scan-configs", "get"),
+        ("/scan-configs", "post"),
+        ("/scan-configs/{id}", "get"),
+        ("/scan-configs/{id}", "put"),
+        ("/scan-configs/{id}", "delete"),
+        ("/scanners", "get"),
+        ("/scanners/{id}", "get"),
     ] {
         if let Some(operation) = document["paths"][path][method].as_object_mut() {
             operation.remove("security");
         }
     }
 
-    tighten_target_query_parameters(&mut document);
+    tighten_list_query_parameters(&mut document, "/targets");
+    tighten_list_query_parameters(&mut document, "/scan-configs");
+    tighten_list_query_parameters(&mut document, "/scanners");
     tighten_target_payload_schemas(&mut document);
+    tighten_scan_config_payload_schemas(&mut document);
     ensure_problem_detail_schema(&mut document);
     ensure_basic_auth_scheme(&mut document);
     strip_nullable_types(&mut document);
     document
 }
 
-fn tighten_target_query_parameters(document: &mut Value) {
-    if let Some(parameters) = document["paths"]["/targets"]["get"]["parameters"].as_array_mut() {
+fn tighten_list_query_parameters(document: &mut Value, path: &str) {
+    if let Some(parameters) = document["paths"][path]["get"]["parameters"].as_array_mut() {
         for parameter in parameters {
             match parameter["name"].as_str() {
                 Some("page") => {
@@ -192,6 +235,17 @@ fn tighten_target_query_parameters(document: &mut Value) {
 
 fn tighten_target_payload_schemas(document: &mut Value) {
     document["components"]["schemas"]["CreateTarget"]["properties"]["hosts"]["minItems"] = json!(1);
+}
+
+fn tighten_scan_config_payload_schemas(document: &mut Value) {
+    // CreateScanConfig requires name — ensure the schema reflects this.
+    if let Some(required) = document["components"]["schemas"]["CreateScanConfig"]["required"]
+        .as_array_mut()
+    {
+        if !required.iter().any(|v| v.as_str() == Some("name")) {
+            required.push(json!("name"));
+        }
+    }
 }
 
 fn ensure_problem_detail_schema(document: &mut Value) {
@@ -358,6 +412,18 @@ pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
         .tag(Tag {
             name: "Targets".to_string(),
             description: Some("Scan target management".to_string()),
+            external_docs: None,
+            extensions: Default::default(),
+        })
+        .tag(Tag {
+            name: "Scan Configs".to_string(),
+            description: Some("Scan configuration management".to_string()),
+            external_docs: None,
+            extensions: Default::default(),
+        })
+        .tag(Tag {
+            name: "Scanners".to_string(),
+            description: Some("Scanner management".to_string()),
             external_docs: None,
             extensions: Default::default(),
         })
@@ -534,6 +600,116 @@ pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperati
         .response_with::<204, (), _>(|response| response.description("Target deleted"));
 
     let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+// -- Scan Config endpoints ---------------------------------------------------
+
+/// OpenAPI transform for `GET /api/v1/scan-configs`.
+pub(crate) fn list_scan_configs_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanConfigs")
+        .tag("Scan Configs")
+        .summary("List scan configurations")
+        .description("Returns a paginated list of scan configurations.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ListQueryDoc>>()
+        .response_with::<200, Json<ScanConfigListDoc>, _>(ok_json(
+            "Paginated list of scan configs",
+        ));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `POST /api/v1/scan-configs`.
+pub(crate) fn create_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createScanConfig")
+        .tag("Scan Configs")
+        .summary("Create a scan configuration")
+        .description("Creates a new scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateScanConfigDoc>>()
+        .response_with::<201, Json<ResourceCreatedDoc>, _>(ok_json("Scan config created"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/scan-configs/{id}`.
+pub(crate) fn get_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanConfig")
+        .tag("Scan Configs")
+        .summary("Get a scan configuration")
+        .description("Returns the details for a single scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<ScanConfigDoc>, _>(ok_json("Scan config details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `PUT /api/v1/scan-configs/{id}`.
+pub(crate) fn update_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyScanConfig")
+        .tag("Scan Configs")
+        .summary("Modify a scan configuration")
+        .description("Updates an existing scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyScanConfigDoc>)>()
+        .response_with::<200, Json<ScanConfigDoc>, _>(ok_json("Scan config updated"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/scan-configs/{id}`.
+pub(crate) fn delete_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteScanConfig")
+        .tag("Scan Configs")
+        .summary("Delete a scan configuration")
+        .description("Deletes an existing scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Scan config deleted"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+// -- Scanner endpoints -------------------------------------------------------
+
+/// OpenAPI transform for `GET /api/v1/scanners`.
+pub(crate) fn list_scanners_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanners")
+        .tag("Scanners")
+        .summary("List scanners")
+        .description("Returns a paginated list of scanners.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ListQueryDoc>>()
+        .response_with::<200, Json<ScannerListDoc>, _>(ok_json("Paginated list of scanners"));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/scanners/{id}`.
+pub(crate) fn get_scanner_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanner")
+        .tag("Scanners")
+        .summary("Get a scanner")
+        .description("Returns the details for a single scanner.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<ScannerDoc>, _>(ok_json("Scanner details"));
+
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
 }
@@ -734,8 +910,97 @@ struct ResourceRefDoc {
     name: Option<String>,
 }
 
+// -- Scan Config schemas -----------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "ScanConfig")]
+struct ScanConfigDoc {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(rename = "familyCount", skip_serializing_if = "Option::is_none")]
+    family_count: Option<u32>,
+    #[serde(rename = "nvtCount", skip_serializing_if = "Option::is_none")]
+    nvt_count: Option<u32>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    config_type: Option<i32>,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+    writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "ScanConfigList")]
+struct ScanConfigListDoc {
+    data: Vec<ScanConfigDoc>,
+    pagination: PaginationDoc,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "CreateScanConfig")]
+struct CreateScanConfigDoc {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(rename = "baseScanConfigId", skip_serializing_if = "Option::is_none")]
+    base_scan_config_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "ModifyScanConfig")]
+struct ModifyScanConfigDoc {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+}
+
+// -- Scanner schemas ---------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "Scanner")]
+struct ScannerDoc {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<i32>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    scanner_type: Option<ScannerTypeDoc>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "ScannerList")]
+struct ScannerListDoc {
+    data: Vec<ScannerDoc>,
+    pagination: PaginationDoc,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+enum ScannerTypeDoc {
+    OpenVAS,
+    CVE,
+    OSP,
+}
+
+// -- Shared query/path schemas -----------------------------------------------
+
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 struct TargetListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct ListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
@@ -796,13 +1061,17 @@ mod tests {
 
     use crate::router::build_openapi;
     use gvm_gateway_domain::{
-        AuthPort, CreateTargetInput, GatewayError, ModifyTargetInput, ReadinessStatus, SystemPort,
-        Target, TargetPage, TargetPort, TargetQuery,
+        AuthPort, CreateScanConfigInput, CreateTargetInput, GatewayError, ModifyScanConfigInput,
+        ModifyTargetInput, ReadinessStatus, ScanConfig, ScanConfigPage, ScanConfigPort,
+        ScanConfigQuery, Scanner, ScannerPage, ScannerPort, ScannerQuery, SystemPort, Target,
+        TargetPage, TargetPort, TargetQuery,
     };
 
     struct StubSystem;
     struct StubTarget;
     struct StubAuth;
+    struct StubScanConfig;
+    struct StubScanner;
 
     impl SystemPort for StubSystem {
         fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
@@ -862,18 +1131,74 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl ScanConfigPort for StubScanConfig {
+        async fn list_scan_configs(
+            &self,
+            _: &str,
+            _: &ScanConfigQuery,
+        ) -> Result<ScanConfigPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn create_scan_config(
+            &self,
+            _: &str,
+            _: CreateScanConfigInput,
+        ) -> Result<String, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn get_scan_config(&self, _: &str, _: &str) -> Result<ScanConfig, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn modify_scan_config(
+            &self,
+            _: &str,
+            _: &str,
+            _: ModifyScanConfigInput,
+        ) -> Result<ScanConfig, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn delete_scan_config(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
+    #[async_trait]
+    impl ScannerPort for StubScanner {
+        async fn list_scanners(
+            &self,
+            _: &str,
+            _: &ScannerQuery,
+        ) -> Result<ScannerPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn get_scanner(&self, _: &str, _: &str) -> Result<Scanner, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
     /// The generated OpenAPI document must include the curated operationIds and
     /// response status codes for every implemented endpoint so that the served
     /// contract stays aligned with the repository specification.
     #[test]
     fn generated_openapi_subset_matches_curated_spec() {
-        let generated = build_openapi::<StubSystem, StubTarget, StubAuth>();
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubAuth, StubScanConfig, StubScanner>();
         let system_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
         let targets_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
         let sessions_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
+        let scan_configs_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/scan-configs.yaml")).unwrap();
+        let scanners_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/scanners.yaml")).unwrap();
 
         let checks = [
             ("/health", "get", &system_spec, "/health", &["200"] as &[_]),
@@ -944,6 +1269,57 @@ mod tests {
                 "/targets/{id}",
                 &["204", "401", "404"],
             ),
+            // Scan Configs
+            (
+                "/scan-configs",
+                "get",
+                &scan_configs_spec,
+                "/scan-configs",
+                &["200", "401"],
+            ),
+            (
+                "/scan-configs",
+                "post",
+                &scan_configs_spec,
+                "/scan-configs",
+                &["201", "400", "401"],
+            ),
+            (
+                "/scan-configs/{id}",
+                "get",
+                &scan_configs_spec,
+                "/scan-configs/{id}",
+                &["200", "401", "404"],
+            ),
+            (
+                "/scan-configs/{id}",
+                "put",
+                &scan_configs_spec,
+                "/scan-configs/{id}",
+                &["200", "400", "401", "404"],
+            ),
+            (
+                "/scan-configs/{id}",
+                "delete",
+                &scan_configs_spec,
+                "/scan-configs/{id}",
+                &["204", "401", "404"],
+            ),
+            // Scanners
+            (
+                "/scanners",
+                "get",
+                &scanners_spec,
+                "/scanners",
+                &["200", "401"],
+            ),
+            (
+                "/scanners/{id}",
+                "get",
+                &scanners_spec,
+                "/scanners/{id}",
+                &["200", "401", "404"],
+            ),
         ];
 
         for (generated_path, method, curated_doc, curated_path, statuses) in checks {
@@ -967,7 +1343,8 @@ mod tests {
 
     #[test]
     fn generated_openapi_preserves_key_schema_fields() {
-        let generated = build_openapi::<StubSystem, StubTarget, StubAuth>();
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubAuth, StubScanConfig, StubScanner>();
 
         let target_props = &generated["components"]["schemas"]["Target"]["properties"];
         assert!(target_props.get("excludeHosts").is_some());
@@ -992,7 +1369,8 @@ mod tests {
     /// Session schemas are present in the generated document.
     #[test]
     fn generated_openapi_includes_session_schemas() {
-        let generated = build_openapi::<StubSystem, StubTarget, StubAuth>();
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubAuth, StubScanConfig, StubScanner>();
         let schemas = generated["components"]["schemas"].as_object().unwrap();
 
         assert!(
@@ -1003,6 +1381,65 @@ mod tests {
             schemas.contains_key("SessionInfo"),
             "missing SessionInfo schema"
         );
+    }
+
+    /// Scan config and scanner schemas are present in the generated document.
+    #[test]
+    fn generated_openapi_includes_scan_config_and_scanner_schemas() {
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubAuth, StubScanConfig, StubScanner>();
+        let schemas = generated["components"]["schemas"].as_object().unwrap();
+
+        assert!(
+            schemas.contains_key("ScanConfig"),
+            "missing ScanConfig schema"
+        );
+        assert!(
+            schemas.contains_key("ScanConfigList"),
+            "missing ScanConfigList schema"
+        );
+        assert!(
+            schemas.contains_key("CreateScanConfig"),
+            "missing CreateScanConfig schema"
+        );
+        assert!(
+            schemas.contains_key("Scanner"),
+            "missing Scanner schema"
+        );
+        assert!(
+            schemas.contains_key("ScannerList"),
+            "missing ScannerList schema"
+        );
+    }
+
+    /// ScanConfig schema has the required fields from the curated spec.
+    #[test]
+    fn generated_scan_config_schema_has_required_fields() {
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubAuth, StubScanConfig, StubScanner>();
+        let scan_config_required = generated["components"]["schemas"]["ScanConfig"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<BTreeSet<_>>();
+        assert!(scan_config_required.contains("id"));
+        assert!(scan_config_required.contains("name"));
+    }
+
+    /// Scanner schema has the required fields from the curated spec.
+    #[test]
+    fn generated_scanner_schema_has_required_fields() {
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubAuth, StubScanConfig, StubScanner>();
+        let scanner_required = generated["components"]["schemas"]["Scanner"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<BTreeSet<_>>();
+        assert!(scanner_required.contains("id"));
+        assert!(scanner_required.contains("name"));
     }
 
     fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {

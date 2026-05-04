@@ -33,10 +33,14 @@ async fn spawn_server(
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let auth_adapter = StaticGvmdAdapter::ready("22.7");
+    let scan_config_adapter = StaticGvmdAdapter::ready("22.7");
+    let scanner_adapter = StaticGvmdAdapter::ready("22.7");
     let service = GatewayService::new(
         Arc::new(system_adapter),
         Arc::new(target_adapter),
         Arc::new(auth_adapter),
+        Arc::new(scan_config_adapter),
+        Arc::new(scanner_adapter),
     );
     let app = build_router(service);
     let handle = tokio::spawn(async move {
@@ -311,6 +315,10 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
     let targets_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
+    let scan_configs_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/scan-configs.yaml")).unwrap();
+    let scanners_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/scanners.yaml")).unwrap();
     let common_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/common.yaml")).unwrap();
 
@@ -319,6 +327,8 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         system: &system_spec,
         sessions: &sessions_spec,
         targets: &targets_spec,
+        scan_configs: &scan_configs_spec,
+        scanners: &scanners_spec,
         common: &common_spec,
     };
 
@@ -330,6 +340,10 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/health",
             "/openapi.json",
             "/ready",
+            "/scan-configs",
+            "/scan-configs/{id}",
+            "/scanners",
+            "/scanners/{id}",
             "/sessions",
             "/sessions/{token}",
             "/targets",
@@ -361,6 +375,13 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         ("/targets/{id}", "get", DocName::Targets, "/targets/{id}"),
         ("/targets/{id}", "put", DocName::Targets, "/targets/{id}"),
         ("/targets/{id}", "delete", DocName::Targets, "/targets/{id}"),
+        ("/scan-configs", "get", DocName::ScanConfigs, "/scan-configs"),
+        ("/scan-configs", "post", DocName::ScanConfigs, "/scan-configs"),
+        ("/scan-configs/{id}", "get", DocName::ScanConfigs, "/scan-configs/{id}"),
+        ("/scan-configs/{id}", "put", DocName::ScanConfigs, "/scan-configs/{id}"),
+        ("/scan-configs/{id}", "delete", DocName::ScanConfigs, "/scan-configs/{id}"),
+        ("/scanners", "get", DocName::Scanners, "/scanners"),
+        ("/scanners/{id}", "get", DocName::Scanners, "/scanners/{id}"),
     ];
 
     for (generated_path, method, curated_doc, curated_path) in checks {
@@ -376,6 +397,8 @@ enum DocName {
     System,
     Sessions,
     Targets,
+    ScanConfigs,
+    Scanners,
     Common,
 }
 
@@ -384,6 +407,8 @@ struct SpecDocs<'a> {
     system: &'a Value,
     sessions: &'a Value,
     targets: &'a Value,
+    scan_configs: &'a Value,
+    scanners: &'a Value,
     common: &'a Value,
 }
 
@@ -824,6 +849,8 @@ fn parse_ref(current_doc: DocName, reference: &str) -> (DocName, String) {
         "./common.yaml" => DocName::Common,
         "./system.yaml" => DocName::System,
         "./targets.yaml" => DocName::Targets,
+        "./scan-configs.yaml" => DocName::ScanConfigs,
+        "./scanners.yaml" => DocName::Scanners,
         other => panic!("unsupported ref document `{other}`"),
     };
 
@@ -842,6 +869,8 @@ fn doc<'a>(docs: &'a SpecDocs<'a>, name: DocName) -> &'a Value {
         DocName::System => docs.system,
         DocName::Sessions => docs.sessions,
         DocName::Targets => docs.targets,
+        DocName::ScanConfigs => docs.scan_configs,
+        DocName::Scanners => docs.scanners,
         DocName::Common => docs.common,
     }
 }
@@ -1344,6 +1373,8 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
     );
     let token = service.session_manager().create("admin").unwrap().token;
     target_adapter
