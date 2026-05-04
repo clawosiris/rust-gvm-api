@@ -1190,11 +1190,7 @@ mod tests {
 
     #[async_trait]
     impl ReportPort for StubReport {
-        async fn list_reports(
-            &self,
-            _: &str,
-            _: &ReportQuery,
-        ) -> Result<ReportPage, GatewayError> {
+        async fn list_reports(&self, _: &str, _: &ReportQuery) -> Result<ReportPage, GatewayError> {
             unreachable!("OpenAPI generation does not execute handlers")
         }
 
@@ -1223,11 +1219,7 @@ mod tests {
 
     #[async_trait]
     impl ResultPort for StubResult {
-        async fn list_results(
-            &self,
-            _: &str,
-            _: &ResultQuery,
-        ) -> Result<ResultPage, GatewayError> {
+        async fn list_results(&self, _: &str, _: &ResultQuery) -> Result<ResultPage, GatewayError> {
             unreachable!("OpenAPI generation does not execute handlers")
         }
 

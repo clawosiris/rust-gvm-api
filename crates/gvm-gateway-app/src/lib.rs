@@ -217,11 +217,7 @@ where
     }
 
     /// Deletes a report for an authenticated session.
-    pub async fn delete_report(
-        &self,
-        session_token: &str,
-        id: &str,
-    ) -> Result<(), GatewayError> {
+    pub async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.reports.delete_report(&session.token, id).await
     }

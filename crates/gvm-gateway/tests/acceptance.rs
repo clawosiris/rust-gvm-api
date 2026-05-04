@@ -378,12 +378,7 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         ("/targets/{id}", "delete", DocName::Targets, "/targets/{id}"),
         ("/reports", "get", DocName::Reports, "/reports"),
         ("/reports/{id}", "get", DocName::Reports, "/reports/{id}"),
-        (
-            "/reports/{id}",
-            "delete",
-            DocName::Reports,
-            "/reports/{id}",
-        ),
+        ("/reports/{id}", "delete", DocName::Reports, "/reports/{id}"),
         (
             "/reports/{id}/results",
             "get",

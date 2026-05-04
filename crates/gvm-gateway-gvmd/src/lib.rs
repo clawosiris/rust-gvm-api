@@ -25,9 +25,7 @@ use gvm_gateway_domain::{
 use gvm_gmp::{
     commands::{
         authentication::authenticate,
-        reports::{
-            delete_report, get_report, get_reports, GetReportsOpts,
-        },
+        reports::{delete_report, get_report, get_reports, GetReportsOpts},
         results::{get_result, get_results, GetResultsOpts},
         targets::{
             create_target, delete_target, get_target, get_targets, modify_target, CreateTargetOpts,
@@ -666,11 +664,7 @@ impl ResultPort for GvmdAdapter {
         })
     }
 
-    async fn get_result(
-        &self,
-        session_token: &str,
-        id: &str,
-    ) -> Result<ScanResult, GatewayError> {
+    async fn get_result(&self, session_token: &str, id: &str) -> Result<ScanResult, GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()

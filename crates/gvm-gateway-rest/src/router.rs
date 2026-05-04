@@ -125,10 +125,7 @@ where
         )
         .route("/api/v1/targets/{id}", patch(method_not_allowed_item))
         // Reports
-        .api_route(
-            "/api/v1/reports",
-            get_with(list_reports, list_reports_docs),
-        )
+        .api_route("/api/v1/reports", get_with(list_reports, list_reports_docs))
         .api_route(
             "/api/v1/reports/{id}",
             get_with(get_report, get_report_docs),
@@ -142,10 +139,7 @@ where
             get_with(get_report_results, get_report_results_docs),
         )
         // Results
-        .api_route(
-            "/api/v1/results",
-            get_with(list_results, list_results_docs),
-        )
+        .api_route("/api/v1/results", get_with(list_results, list_results_docs))
         .api_route(
             "/api/v1/results/{id}",
             get_with(get_result, get_result_docs),
@@ -161,7 +155,9 @@ async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Respo
         .into_response()
 }
 
-pub(crate) async fn health<S, T, A, R, Re>(State(service): State<GatewayService<S, T, A, R, Re>>) -> Response
+pub(crate) async fn health<S, T, A, R, Re>(
+    State(service): State<GatewayService<S, T, A, R, Re>>,
+) -> Response
 where
     S: SystemPort,
     T: TargetPort,
@@ -172,7 +168,9 @@ where
     Json(service.health()).into_response()
 }
 
-pub(crate) async fn ready<S, T, A, R, Re>(State(service): State<GatewayService<S, T, A, R, Re>>) -> Response
+pub(crate) async fn ready<S, T, A, R, Re>(
+    State(service): State<GatewayService<S, T, A, R, Re>>,
+) -> Response
 where
     S: SystemPort,
     T: TargetPort,
@@ -189,7 +187,9 @@ where
     }
 }
 
-pub(crate) async fn version<S, T, A, R, Re>(State(service): State<GatewayService<S, T, A, R, Re>>) -> Response
+pub(crate) async fn version<S, T, A, R, Re>(
+    State(service): State<GatewayService<S, T, A, R, Re>>,
+) -> Response
 where
     S: SystemPort,
     T: TargetPort,

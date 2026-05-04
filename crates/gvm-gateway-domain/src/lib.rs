@@ -1174,7 +1174,7 @@ mod tests {
         assert!(json.contains("\"scanStart\""));
         assert!(!json.contains("\"scanEnd\""));
         assert!(json.contains("\"resultCount\""));
-        assert!(json.contains("\"falsePositive\"") == false);
+        assert!(!json.contains("\"falsePositive\""));
         assert!(!json.contains("\"results\""));
     }
 
