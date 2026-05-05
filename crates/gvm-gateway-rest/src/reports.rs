@@ -12,7 +12,7 @@ use axum::{
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
     AuthPort, GatewayError, GetReportOpts, ReportPort, ReportQuery, ResultPort, ResultQuery,
-    SystemPort, TargetPort,
+    SystemPort, TargetPort, TaskPort,
 };
 
 use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
@@ -161,14 +161,15 @@ impl ReportResultsQuery {
 }
 
 /// List reports handler.
-pub async fn list_reports<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn list_reports<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -201,8 +202,8 @@ where
 }
 
 /// Get report handler.
-pub async fn get_report<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn get_report<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -210,6 +211,7 @@ pub async fn get_report<S, T, A, R, Re>(
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -240,8 +242,8 @@ where
 }
 
 /// Delete report handler.
-pub async fn delete_report<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn delete_report<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -249,6 +251,7 @@ pub async fn delete_report<S, T, A, R, Re>(
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -269,8 +272,8 @@ where
 }
 
 /// Get report results handler.
-pub async fn get_report_results<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn get_report_results<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -278,6 +281,7 @@ pub async fn get_report_results<S, T, A, R, Re>(
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,

@@ -21,38 +21,44 @@ use axum::{
     Json, Router,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{AuthPort, ReportPort, ResultPort, SystemPort, TargetPort};
+use gvm_gateway_domain::{AuthPort, ReportPort, ResultPort, SystemPort, TargetPort, TaskPort};
 use serde_json::Value;
 
 use crate::{
     error::RestError,
     openapi::{
-        configure as configure_openapi, create_session_docs, create_target_docs,
-        delete_report_docs, delete_session_docs, delete_target_docs, finalize_document,
-        get_report_docs, get_report_results_docs, get_result_docs, get_session_docs,
-        get_target_docs, health_docs, list_reports_docs, list_results_docs, list_targets_docs,
-        ready_docs, update_target_docs, version_docs,
+        configure as configure_openapi, create_session_docs, create_target_docs, create_task_docs,
+        delete_report_docs, delete_session_docs, delete_target_docs, delete_task_docs,
+        finalize_document, get_report_docs, get_report_results_docs, get_result_docs,
+        get_session_docs, get_target_docs, get_task_docs, health_docs, list_reports_docs,
+        list_results_docs, list_targets_docs, list_tasks_docs, ready_docs, resume_task_docs,
+        start_task_docs, stop_task_docs, update_target_docs, update_task_docs, version_docs,
     },
     reports::{delete_report, get_report, get_report_results, list_reports},
     results::{get_result, list_results},
     sessions::{create_session, delete_session, get_session},
     targets::{create_target, delete_target, get_target, list_targets, update_target},
+    tasks::{
+        create_task, delete_task, get_task, list_tasks, resume_task, start_task, stop_task,
+        update_task,
+    },
 };
 
 /// Builds the gateway router.
-pub fn build_router<S, T, A, R, Re>(state: GatewayService<S, T, A, R, Re>) -> Router
+pub fn build_router<S, T, K, A, R, Re>(state: GatewayService<S, T, K, A, R, Re>) -> Router
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
 {
-    let openapi = build_openapi::<S, T, A, R, Re>();
+    let openapi = build_openapi::<S, T, K, A, R, Re>();
     let openapi_json =
         Arc::new(serde_json::to_string_pretty(&openapi).expect("generated OpenAPI must serialize"));
 
-    documented_router::<S, T, A, R, Re>()
+    documented_router::<S, T, K, A, R, Re>()
         .route("/api/v1/openapi.json", get(serve_openapi))
         .fallback(not_found)
         .layer(middleware::from_fn(trace_context_middleware))
@@ -62,10 +68,11 @@ where
 }
 
 /// Builds the generated OpenAPI document for the currently implemented routes.
-pub(crate) fn build_openapi<S, T, A, R, Re>() -> Value
+pub(crate) fn build_openapi<S, T, K, A, R, Re>() -> Value
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -75,14 +82,15 @@ where
     aide::generate::infer_responses(false);
     aide::generate::inferred_empty_response_status(204);
 
-    let _ = documented_router::<S, T, A, R, Re>().finish_api_with(&mut api, configure_openapi);
+    let _ = documented_router::<S, T, K, A, R, Re>().finish_api_with(&mut api, configure_openapi);
     finalize_document(serde_json::to_value(api).expect("generated OpenAPI must serialize"))
 }
 
-fn documented_router<S, T, A, R, Re>() -> ApiRouter<GatewayService<S, T, A, R, Re>>
+fn documented_router<S, T, K, A, R, Re>() -> ApiRouter<GatewayService<S, T, K, A, R, Re>>
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -124,6 +132,32 @@ where
             delete_with(delete_target, delete_target_docs),
         )
         .route("/api/v1/targets/{id}", patch(method_not_allowed_item))
+        // Tasks
+        .api_route("/api/v1/tasks", get_with(list_tasks, list_tasks_docs))
+        .api_route("/api/v1/tasks", post_with(create_task, create_task_docs))
+        .route("/api/v1/tasks", patch(method_not_allowed_collection))
+        .api_route("/api/v1/tasks/{id}", get_with(get_task, get_task_docs))
+        .api_route(
+            "/api/v1/tasks/{id}",
+            put_with(update_task, update_task_docs),
+        )
+        .api_route(
+            "/api/v1/tasks/{id}",
+            delete_with(delete_task, delete_task_docs),
+        )
+        .route("/api/v1/tasks/{id}", patch(method_not_allowed_item))
+        .api_route(
+            "/api/v1/tasks/{id}/start",
+            post_with(start_task, start_task_docs),
+        )
+        .api_route(
+            "/api/v1/tasks/{id}/stop",
+            post_with(stop_task, stop_task_docs),
+        )
+        .api_route(
+            "/api/v1/tasks/{id}/resume",
+            post_with(resume_task, resume_task_docs),
+        )
         // Reports
         .api_route("/api/v1/reports", get_with(list_reports, list_reports_docs))
         .api_route(
@@ -155,12 +189,13 @@ async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Respo
         .into_response()
 }
 
-pub(crate) async fn health<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub(crate) async fn health<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
 ) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -168,12 +203,13 @@ where
     Json(service.health()).into_response()
 }
 
-pub(crate) async fn ready<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub(crate) async fn ready<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
 ) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -187,12 +223,13 @@ where
     }
 }
 
-pub(crate) async fn version<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub(crate) async fn version<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
 ) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,

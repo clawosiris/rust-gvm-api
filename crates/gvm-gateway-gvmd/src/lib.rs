@@ -17,10 +17,11 @@ use async_trait::async_trait;
 use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
-    report_from_gmp, result_from_gmp, target_from_gmp, AuthPort, CreateTargetInput, GatewayError,
-    GetReportOpts, ModifyTargetInput, Pagination, ReadinessStatus, Report, ReportPage, ReportPort,
-    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanResult, SystemPort, Target, TargetPage,
-    TargetPort, TargetQuery,
+    report_from_gmp, result_from_gmp, target_from_gmp, task_from_gmp, AuthPort, CreateTargetInput,
+    CreateTaskInput, GatewayError, GetReportOpts, ModifyTargetInput, ModifyTaskInput, Pagination,
+    ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
+    ResultQuery, ScanResult, SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task,
+    TaskAction, TaskPage, TaskPort, TaskQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -31,12 +32,18 @@ use gvm_gmp::{
             create_target, delete_target, get_target, get_targets, modify_target, CreateTargetOpts,
             GetTargetsOpts, ModifyTargetOpts,
         },
+        tasks::{
+            create_task, delete_task as delete_task_cmd, get_task as get_task_cmd, get_tasks,
+            modify_task as modify_task_cmd, resume_task as resume_task_cmd,
+            start_task as start_task_cmd, stop_task as stop_task_cmd, CreateTaskOpts, GetTasksOpts,
+            ModifyTaskOpts,
+        },
     },
     responses::{
-        ActionResponse, CreateTargetResponse, GetReportsResponse, GetResultsResponse,
-        GetTargetsResponse,
+        ActionResponse, CreateTargetResponse, CreateTaskResponse, GetReportsResponse,
+        GetResultsResponse, GetTargetsResponse, GetTasksResponse, StartTaskResponse,
     },
-    AliveTest, EntityId,
+    AliveTest, EntityId, HostsOrdering,
 };
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -130,6 +137,62 @@ impl TargetPort for StaticGvmdAdapter {
     async fn delete_target(&self, _: &str, _: &str) -> Result<(), GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl TaskPort for StaticGvmdAdapter {
+    async fn list_tasks(&self, _: &str, _: &TaskQuery) -> Result<TaskPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support tasks".to_string(),
+        ))
+    }
+
+    async fn create_task(&self, _: &str, _: CreateTaskInput) -> Result<String, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support tasks".to_string(),
+        ))
+    }
+
+    async fn get_task(&self, _: &str, _: &str) -> Result<Task, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support tasks".to_string(),
+        ))
+    }
+
+    async fn modify_task(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyTaskInput,
+    ) -> Result<Task, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support tasks".to_string(),
+        ))
+    }
+
+    async fn delete_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support tasks".to_string(),
+        ))
+    }
+
+    async fn start_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support tasks".to_string(),
+        ))
+    }
+
+    async fn stop_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support tasks".to_string(),
+        ))
+    }
+
+    async fn resume_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support tasks".to_string(),
         ))
     }
 }
@@ -419,6 +482,261 @@ impl TargetPort for GvmdAdapter {
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl TaskPort for GvmdAdapter {
+    async fn list_tasks(
+        &self,
+        session_token: &str,
+        query: &TaskQuery,
+    ) -> Result<TaskPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_tasks(GetTasksOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+                schedules_only: None,
+                ignore_pagination: None,
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetTasksResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(task_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.name.cmp(&right.name));
+
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let data = items
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect::<Vec<_>>();
+
+        Ok(TaskPage {
+            data,
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+
+    async fn create_task(
+        &self,
+        session_token: &str,
+        input: CreateTaskInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let config_id = parse_entity_id(&input.scan_config_id)?;
+        let target_id = parse_entity_id(&input.target_id)?;
+        let scanner_id = parse_entity_id(&input.scanner_id)?;
+        let schedule_id = input
+            .schedule_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let alert_ids = input
+            .alert_ids
+            .iter()
+            .map(|id| parse_entity_id(id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let hosts_ordering = input
+            .hosts_ordering
+            .as_deref()
+            .map(parse_hosts_ordering)
+            .transpose()?;
+
+        let response = client
+            .lock()
+            .await
+            .call(create_task(
+                &input.name,
+                &config_id,
+                &target_id,
+                &scanner_id,
+                CreateTaskOpts {
+                    alterable: input.alterable,
+                    hosts_ordering,
+                    schedule_id,
+                    alert_ids,
+                    comment: input.comment,
+                    schedule_periods: input.schedule_periods,
+                    observers: input.observers,
+                    preferences: input.preferences,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateTaskResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_task(&self, session_token: &str, id: &str) -> Result<Task, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_task_cmd(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetTasksResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(task_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("task {id} not found")))
+    }
+
+    async fn modify_task(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyTaskInput,
+    ) -> Result<Task, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let task_id = parse_entity_id(id)?;
+        let target_id = input
+            .target_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let config_id = input
+            .scan_config_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let scanner_id = input
+            .scanner_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let schedule_id = input
+            .schedule_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let alert_ids = input
+            .alert_ids
+            .map(|ids| {
+                ids.iter()
+                    .map(|id| parse_entity_id(id))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?;
+        let hosts_ordering = input
+            .hosts_ordering
+            .as_deref()
+            .map(parse_hosts_ordering)
+            .transpose()?;
+
+        let response = client
+            .lock()
+            .await
+            .call(modify_task_cmd(
+                &task_id,
+                ModifyTaskOpts {
+                    name: input.name,
+                    comment: input.comment,
+                    alterable: None,
+                    hosts_ordering,
+                    schedule_id,
+                    schedule_periods: input.schedule_periods,
+                    target_id,
+                    config_id,
+                    scanner_id,
+                    alert_ids,
+                    observers: input.observers,
+                    preferences: vec![],
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        drop(client);
+        self.get_task(session_token, id).await
+    }
+
+    async fn delete_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_task_cmd(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn start_task(&self, session_token: &str, id: &str) -> Result<TaskAction, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(start_task_cmd(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = StartTaskResponse::from_response(&response).map_err(map_parse_error)?;
+        let report_id = parsed.report_id.map(|id| id.to_string()).ok_or_else(|| {
+            GatewayError::BackendUnavailable("start_task did not return a report_id".to_string())
+        })?;
+        Ok(TaskAction { report_id })
+    }
+
+    async fn stop_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(stop_task_cmd(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn resume_task(&self, session_token: &str, id: &str) -> Result<TaskAction, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(resume_task_cmd(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        // resume_task returns ActionResponse (no report_id field) in rust-gvm,
+        // but the GMP protocol does return a report_id. Parse as StartTaskResponse
+        // which shares the same XML structure.
+        let parsed = StartTaskResponse::from_response(&response).map_err(map_parse_error)?;
+        let report_id = parsed.report_id.map(|id| id.to_string()).ok_or_else(|| {
+            GatewayError::BackendUnavailable("resume_task did not return a report_id".to_string())
+        })?;
+        Ok(TaskAction { report_id })
     }
 }
 
@@ -723,6 +1041,17 @@ fn parse_entity_id(value: &str) -> Result<EntityId, GatewayError> {
 fn parse_alive_test(value: &str) -> Result<AliveTest, GatewayError> {
     AliveTest::from_str(value)
         .map_err(|_| GatewayError::InvalidInput(format!("invalid aliveTest: {value}")))
+}
+
+fn parse_hosts_ordering(value: &str) -> Result<HostsOrdering, GatewayError> {
+    match value {
+        "sequential" => Ok(HostsOrdering::Sequential),
+        "random" => Ok(HostsOrdering::Random),
+        "reverse" => Ok(HostsOrdering::Reverse),
+        _ => Err(GatewayError::InvalidInput(format!(
+            "invalid hostsOrdering: {value}"
+        ))),
+    }
 }
 
 /// Classify a gvmd client error into a protocol-agnostic domain error.

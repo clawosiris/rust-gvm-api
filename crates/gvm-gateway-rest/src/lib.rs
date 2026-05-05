@@ -13,3 +13,4 @@ pub mod results;
 pub mod router;
 pub mod sessions;
 pub mod targets;
+pub mod tasks;

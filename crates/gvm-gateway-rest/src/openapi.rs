@@ -60,6 +60,10 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
             "description": "Scan target management"
         },
         {
+            "name": "Tasks",
+            "description": "Scan task management"
+        },
+        {
             "name": "Reports",
             "description": "Scan report management"
         },
@@ -107,6 +111,36 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         &mut normalized_paths,
         "/api/v1/targets/{id}",
         "/targets/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/tasks",
+        "/tasks",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/tasks/{id}",
+        "/tasks/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/tasks/{id}/start",
+        "/tasks/{id}/start",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/tasks/{id}/stop",
+        "/tasks/{id}/stop",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/tasks/{id}/resume",
+        "/tasks/{id}/resume",
     );
     copy_path(
         &source_paths,
@@ -209,6 +243,8 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
 
     tighten_target_query_parameters(&mut document);
     tighten_target_payload_schemas(&mut document);
+    tighten_task_query_parameters(&mut document);
+    tighten_task_payload_schemas(&mut document);
     tighten_list_query_parameters(&mut document, "/reports");
     tighten_list_query_parameters(&mut document, "/results");
     tighten_list_query_parameters(&mut document, "/reports/{id}/results");
@@ -273,6 +309,42 @@ fn tighten_list_query_parameters(document: &mut Value, path: &str) {
 
 fn tighten_target_payload_schemas(document: &mut Value) {
     document["components"]["schemas"]["CreateTarget"]["properties"]["hosts"]["minItems"] = json!(1);
+}
+
+fn tighten_task_query_parameters(document: &mut Value) {
+    if let Some(parameters) = document["paths"]["/tasks"]["get"]["parameters"].as_array_mut() {
+        for parameter in parameters {
+            match parameter["name"].as_str() {
+                Some("page") => {
+                    parameter["schema"]["minimum"] = json!(1);
+                    parameter["schema"]["default"] = json!(1);
+                }
+                Some("perPage") => {
+                    parameter["schema"]["minimum"] = json!(1);
+                    parameter["schema"]["maximum"] = json!(1000);
+                    parameter["schema"]["default"] = json!(25);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn tighten_task_payload_schemas(document: &mut Value) {
+    let schemas = &mut document["components"]["schemas"];
+    if let Some(create_task) = schemas.get_mut("CreateTask") {
+        if let Some(props) = create_task.get_mut("properties") {
+            if let Some(target_id) = props.get_mut("targetId") {
+                target_id["format"] = json!("uuid");
+            }
+            if let Some(scan_config_id) = props.get_mut("scanConfigId") {
+                scan_config_id["format"] = json!("uuid");
+            }
+            if let Some(scanner_id) = props.get_mut("scannerId") {
+                scanner_id["format"] = json!("uuid");
+            }
+        }
+    }
 }
 
 fn ensure_problem_detail_schema(document: &mut Value) {
@@ -631,6 +703,132 @@ pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperati
     problem_response::<404>(op, "Resource not found")
 }
 
+// -- Task endpoints ----------------------------------------------------------
+
+/// OpenAPI transform for `GET /api/v1/tasks`.
+pub(crate) fn list_tasks_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTasks")
+        .tag("Tasks")
+        .summary("List tasks")
+        .description("Returns a paginated list of tasks.")
+        .security_requirement("bearerAuth")
+        .input::<Query<TaskListQueryDoc>>()
+        .response_with::<200, Json<TaskListDoc>, _>(ok_json("Paginated list of tasks"));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `POST /api/v1/tasks`.
+pub(crate) fn create_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createTask")
+        .tag("Tasks")
+        .summary("Create a task")
+        .description("Creates a new scan task.")
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateTaskDoc>>()
+        .response_with::<201, Json<ResourceCreatedDoc>, _>(ok_json("Task created"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/tasks/{id}`.
+pub(crate) fn get_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTask")
+        .tag("Tasks")
+        .summary("Get a task")
+        .description("Returns the details for a single task.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<TaskDoc>, _>(ok_json("Task details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `PUT /api/v1/tasks/{id}`.
+pub(crate) fn update_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyTask")
+        .tag("Tasks")
+        .summary("Modify a task")
+        .description("Updates an existing task.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyTaskDoc>)>()
+        .response_with::<200, Json<TaskDoc>, _>(ok_json("Task updated"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/tasks/{id}`.
+pub(crate) fn delete_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteTask")
+        .tag("Tasks")
+        .summary("Delete a task")
+        .description("Deletes an existing task.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Task deleted"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `POST /api/v1/tasks/{id}/start`.
+pub(crate) fn start_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("startTask")
+        .tag("Tasks")
+        .summary("Start a task")
+        .description("Starts a scan task. Returns the report identifier created by the action.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<TaskActionDoc>, _>(ok_json("Task started"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    let op = problem_response::<409>(op, "Resource state conflict");
+    problem_response::<504>(op, "Backend service did not respond in time")
+}
+
+/// OpenAPI transform for `POST /api/v1/tasks/{id}/stop`.
+pub(crate) fn stop_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("stopTask")
+        .tag("Tasks")
+        .summary("Stop a running task")
+        .description("Stops a currently running scan task.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, (), _>(|response| response.description("Task stopped"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<409>(op, "Resource state conflict")
+}
+
+/// OpenAPI transform for `POST /api/v1/tasks/{id}/resume`.
+pub(crate) fn resume_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("resumeTask")
+        .tag("Tasks")
+        .summary("Resume a stopped task")
+        .description("Resumes a stopped scan task. Returns the report identifier.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<TaskActionDoc>, _>(ok_json("Task resumed"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<409>(op, "Resource state conflict")
+}
+
 // -- Report endpoints --------------------------------------------------------
 
 /// OpenAPI transform for `GET /api/v1/reports`.
@@ -948,6 +1146,568 @@ enum ReadinessStateDoc {
     NotReady,
 }
 
+// -- Task schemas ------------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "Task")]
+struct TaskDoc {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    status: TaskStatusDoc,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<ResourceRefDoc>,
+    #[serde(rename = "scanConfig", skip_serializing_if = "Option::is_none")]
+    scan_config: Option<ResourceRefDoc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scanner: Option<ResourceRefDoc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schedule: Option<ResourceRefDoc>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    alerts: Vec<ResourceRefDoc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alterable: Option<bool>,
+    #[serde(rename = "hostsOrdering", skip_serializing_if = "Option::is_none")]
+    hosts_ordering: Option<HostsOrderingDoc>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    observers: Vec<String>,
+    #[serde(rename = "schedulePeriods", skip_serializing_if = "Option::is_none")]
+    schedule_periods: Option<u32>,
+    #[serde(rename = "lastReport", skip_serializing_if = "Option::is_none")]
+    last_report: Option<ResourceRefDoc>,
+    #[serde(rename = "currentReport", skip_serializing_if = "Option::is_none")]
+    current_report: Option<ResourceRefDoc>,
+    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
+    result_count: Option<u32>,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+    writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "TaskList")]
+struct TaskListDoc {
+    data: Vec<TaskDoc>,
+    pagination: PaginationDoc,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "CreateTask")]
+struct CreateTaskDoc {
+    name: String,
+    comment: Option<String>,
+    #[serde(rename = "targetId")]
+    target_id: Uuid,
+    #[serde(rename = "scanConfigId")]
+    scan_config_id: Uuid,
+    #[serde(rename = "scannerId")]
+    scanner_id: Uuid,
+    #[serde(rename = "scheduleId")]
+    schedule_id: Option<Uuid>,
+    #[serde(rename = "alertIds")]
+    alert_ids: Option<Vec<Uuid>>,
+    alterable: Option<bool>,
+    #[serde(rename = "hostsOrdering")]
+    hosts_ordering: Option<HostsOrderingDoc>,
+    observers: Option<Vec<String>>,
+    #[serde(rename = "schedulePeriods")]
+    schedule_periods: Option<u32>,
+    preferences: Option<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "ModifyTask")]
+struct ModifyTaskDoc {
+    name: Option<String>,
+    comment: Option<String>,
+    #[serde(rename = "targetId")]
+    target_id: Option<Uuid>,
+    #[serde(rename = "scanConfigId")]
+    scan_config_id: Option<Uuid>,
+    #[serde(rename = "scannerId")]
+    scanner_id: Option<Uuid>,
+    #[serde(rename = "scheduleId")]
+    schedule_id: Option<Uuid>,
+    #[serde(rename = "alertIds")]
+    alert_ids: Option<Vec<Uuid>>,
+    #[serde(rename = "hostsOrdering")]
+    hosts_ordering: Option<HostsOrderingDoc>,
+    observers: Option<Vec<String>>,
+    #[serde(rename = "schedulePeriods")]
+    schedule_periods: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "TaskAction")]
+struct TaskActionDoc {
+    #[serde(rename = "reportId")]
+    report_id: Uuid,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+enum TaskStatusDoc {
+    New,
+    Requested,
+    Running,
+    #[serde(rename = "Stop Requested")]
+    StopRequested,
+    Done,
+    Stopped,
+    #[serde(rename = "Delete Requested")]
+    DeleteRequested,
+    #[serde(rename = "Ultimate Delete Requested")]
+    UltimateDeleteRequested,
+    Container,
+    Interrupted,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+enum HostsOrderingDoc {
+    #[serde(rename = "sequential")]
+    Sequential,
+    #[serde(rename = "random")]
+    Random,
+    #[serde(rename = "reverse")]
+    Reverse,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct TaskListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use async_trait::async_trait;
+    use serde_json::Value;
+
+    use crate::router::build_openapi;
+    use gvm_gateway_domain::{
+        AuthPort, CreateTargetInput, CreateTaskInput, GatewayError, GetReportOpts,
+        ModifyTargetInput, ModifyTaskInput, ReadinessStatus, Report, ReportPage, ReportPort,
+        ReportQuery, ResultPage, ResultPort, ResultQuery, ScanResult, SystemPort, Target,
+        TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
+    };
+
+    struct StubSystem;
+    struct StubTarget;
+    struct StubTask;
+    struct StubAuth;
+    struct StubReport;
+    struct StubResult;
+
+    impl SystemPort for StubSystem {
+        fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        fn gmp_version(&self) -> Result<String, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
+    #[async_trait]
+    impl TargetPort for StubTarget {
+        async fn list_targets(&self, _: &str, _: &TargetQuery) -> Result<TargetPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn create_target(
+            &self,
+            _: &str,
+            _: CreateTargetInput,
+        ) -> Result<String, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn get_target(&self, _: &str, _: &str) -> Result<Target, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn modify_target(
+            &self,
+            _: &str,
+            _: &str,
+            _: ModifyTargetInput,
+        ) -> Result<Target, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn delete_target(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
+    #[async_trait]
+    impl TaskPort for StubTask {
+        async fn list_tasks(&self, _: &str, _: &TaskQuery) -> Result<TaskPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+        async fn create_task(&self, _: &str, _: CreateTaskInput) -> Result<String, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+        async fn get_task(&self, _: &str, _: &str) -> Result<Task, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+        async fn modify_task(
+            &self,
+            _: &str,
+            _: &str,
+            _: ModifyTaskInput,
+        ) -> Result<Task, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+        async fn delete_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+        async fn start_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+        async fn stop_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+        async fn resume_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
+    #[async_trait]
+    impl AuthPort for StubAuth {
+        async fn authenticate_session(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn disconnect_session(&self, _: &str) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
+    #[async_trait]
+    impl ReportPort for StubReport {
+        async fn list_reports(&self, _: &str, _: &ReportQuery) -> Result<ReportPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn get_report(
+            &self,
+            _: &str,
+            _: &str,
+            _: &GetReportOpts,
+        ) -> Result<Report, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn delete_report(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn get_report_results(
+            &self,
+            _: &str,
+            _: &str,
+            _: &ResultQuery,
+        ) -> Result<ResultPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
+    #[async_trait]
+    impl ResultPort for StubResult {
+        async fn list_results(&self, _: &str, _: &ResultQuery) -> Result<ResultPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn get_result(&self, _: &str, _: &str) -> Result<ScanResult, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
+    #[test]
+    fn generated_openapi_subset_matches_curated_spec() {
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubTask, StubAuth, StubReport, StubResult>();
+        let system_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
+        let targets_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
+        let sessions_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
+        let tasks_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/tasks.yaml")).unwrap();
+        let reports_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/reports.yaml")).unwrap();
+        let results_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/results.yaml")).unwrap();
+
+        let checks = [
+            ("/health", "get", &system_spec, "/health", &["200"] as &[_]),
+            ("/ready", "get", &system_spec, "/ready", &["200", "503"]),
+            ("/version", "get", &system_spec, "/version", &["200", "502"]),
+            (
+                "/openapi.json",
+                "get",
+                &system_spec,
+                "/openapi.json",
+                &["200"],
+            ),
+            (
+                "/sessions",
+                "post",
+                &sessions_spec,
+                "/sessions",
+                &["201", "401", "502"],
+            ),
+            (
+                "/sessions/{token}",
+                "get",
+                &sessions_spec,
+                "/sessions/{token}",
+                &["200", "404"],
+            ),
+            (
+                "/sessions/{token}",
+                "delete",
+                &sessions_spec,
+                "/sessions/{token}",
+                &["204", "404"],
+            ),
+            (
+                "/targets",
+                "get",
+                &targets_spec,
+                "/targets",
+                &["200", "401"],
+            ),
+            (
+                "/targets",
+                "post",
+                &targets_spec,
+                "/targets",
+                &["201", "400", "401"],
+            ),
+            (
+                "/targets/{id}",
+                "get",
+                &targets_spec,
+                "/targets/{id}",
+                &["200", "401", "404"],
+            ),
+            (
+                "/targets/{id}",
+                "put",
+                &targets_spec,
+                "/targets/{id}",
+                &["200", "400", "401", "404"],
+            ),
+            (
+                "/targets/{id}",
+                "delete",
+                &targets_spec,
+                "/targets/{id}",
+                &["204", "401", "404"],
+            ),
+            ("/tasks", "get", &tasks_spec, "/tasks", &["200", "401"]),
+            (
+                "/tasks",
+                "post",
+                &tasks_spec,
+                "/tasks",
+                &["201", "400", "401"],
+            ),
+            (
+                "/tasks/{id}",
+                "get",
+                &tasks_spec,
+                "/tasks/{id}",
+                &["200", "401", "404"],
+            ),
+            (
+                "/tasks/{id}",
+                "put",
+                &tasks_spec,
+                "/tasks/{id}",
+                &["200", "400", "401", "404"],
+            ),
+            (
+                "/tasks/{id}",
+                "delete",
+                &tasks_spec,
+                "/tasks/{id}",
+                &["204", "401", "404"],
+            ),
+            (
+                "/tasks/{id}/start",
+                "post",
+                &tasks_spec,
+                "/tasks/{id}/start",
+                &["200", "401", "404", "409", "504"],
+            ),
+            (
+                "/tasks/{id}/stop",
+                "post",
+                &tasks_spec,
+                "/tasks/{id}/stop",
+                &["200", "401", "404", "409"],
+            ),
+            (
+                "/tasks/{id}/resume",
+                "post",
+                &tasks_spec,
+                "/tasks/{id}/resume",
+                &["200", "401", "404", "409"],
+            ),
+            (
+                "/reports",
+                "get",
+                &reports_spec,
+                "/reports",
+                &["200", "401"],
+            ),
+            (
+                "/reports/{id}",
+                "get",
+                &reports_spec,
+                "/reports/{id}",
+                &["200", "401", "404"],
+            ),
+            (
+                "/reports/{id}",
+                "delete",
+                &reports_spec,
+                "/reports/{id}",
+                &["204", "401", "404"],
+            ),
+            (
+                "/reports/{id}/results",
+                "get",
+                &reports_spec,
+                "/reports/{id}/results",
+                &["200", "401", "404"],
+            ),
+            (
+                "/results",
+                "get",
+                &results_spec,
+                "/results",
+                &["200", "401"],
+            ),
+            (
+                "/results/{id}",
+                "get",
+                &results_spec,
+                "/results/{id}",
+                &["200", "401", "404"],
+            ),
+        ];
+
+        for (generated_path, method, curated_doc, curated_path, statuses) in checks {
+            let generated_op = op(&generated, generated_path, method);
+            let curated_op = op(curated_doc, curated_path, method);
+
+            assert_eq!(
+                generated_op["operationId"], curated_op["operationId"],
+                "operationId drift for {method} {generated_path}"
+            );
+
+            let generated_statuses = response_statuses(generated_op);
+            for status in statuses {
+                assert!(
+                    generated_statuses.contains(status),
+                    "missing generated status {status} for {method} {generated_path}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn generated_openapi_preserves_key_schema_fields() {
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubTask, StubAuth, StubReport, StubResult>();
+
+        let target_props = &generated["components"]["schemas"]["Target"]["properties"];
+        assert!(target_props.get("excludeHosts").is_some());
+        assert!(target_props.get("aliveTest").is_some());
+        assert!(target_props.get("portList").is_some());
+        assert_eq!(target_props["id"]["format"], "uuid");
+
+        let pagination_props = &generated["components"]["schemas"]["Pagination"]["properties"];
+        assert!(pagination_props.get("perPage").is_some());
+        assert!(pagination_props.get("totalPages").is_some());
+
+        let create_target_required = generated["components"]["schemas"]["CreateTarget"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<BTreeSet<_>>();
+        assert!(create_target_required.contains("name"));
+        assert!(create_target_required.contains("hosts"));
+    }
+
+    #[test]
+    fn generated_openapi_includes_session_schemas() {
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubTask, StubAuth, StubReport, StubResult>();
+        let schemas = generated["components"]["schemas"].as_object().unwrap();
+
+        assert!(
+            schemas.contains_key("SessionCreated"),
+            "missing SessionCreated schema"
+        );
+        assert!(
+            schemas.contains_key("SessionInfo"),
+            "missing SessionInfo schema"
+        );
+    }
+
+    #[test]
+    fn generated_openapi_includes_task_schemas() {
+        let generated =
+            build_openapi::<StubSystem, StubTarget, StubTask, StubAuth, StubReport, StubResult>();
+        let schemas = generated["components"]["schemas"].as_object().unwrap();
+
+        assert!(schemas.contains_key("Task"), "missing Task schema");
+        assert!(schemas.contains_key("TaskList"), "missing TaskList schema");
+        assert!(
+            schemas.contains_key("CreateTask"),
+            "missing CreateTask schema"
+        );
+        assert!(
+            schemas.contains_key("ModifyTask"),
+            "missing ModifyTask schema"
+        );
+        assert!(
+            schemas.contains_key("TaskAction"),
+            "missing TaskAction schema"
+        );
+    }
+
+    fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {
+        &doc["paths"][path][method]
+    }
+
+    fn response_statuses(operation: &Value) -> BTreeSet<&str> {
+        operation["responses"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect()
+    }
+}
 // -- Report schemas ----------------------------------------------------------
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -1108,327 +1868,4 @@ enum AliveTestDoc {
     IcmpTcpAckServiceArpPing,
     #[serde(rename = "Consider Alive")]
     ConsiderAlive,
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-
-    use async_trait::async_trait;
-    use serde_json::Value;
-
-    use crate::router::build_openapi;
-    use gvm_gateway_domain::{
-        AuthPort, CreateTargetInput, GatewayError, GetReportOpts, ModifyTargetInput,
-        ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
-        ResultQuery, ScanResult, SystemPort, Target, TargetPage, TargetPort, TargetQuery,
-    };
-
-    struct StubSystem;
-    struct StubTarget;
-    struct StubAuth;
-    struct StubReport;
-    struct StubResult;
-
-    impl SystemPort for StubSystem {
-        fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        fn gmp_version(&self) -> Result<String, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl TargetPort for StubTarget {
-        async fn list_targets(&self, _: &str, _: &TargetQuery) -> Result<TargetPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn create_target(
-            &self,
-            _: &str,
-            _: CreateTargetInput,
-        ) -> Result<String, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn get_target(&self, _: &str, _: &str) -> Result<Target, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn modify_target(
-            &self,
-            _: &str,
-            _: &str,
-            _: ModifyTargetInput,
-        ) -> Result<Target, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn delete_target(&self, _: &str, _: &str) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl AuthPort for StubAuth {
-        async fn authenticate_session(
-            &self,
-            _: &str,
-            _: &str,
-            _: &str,
-        ) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn disconnect_session(&self, _: &str) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl ReportPort for StubReport {
-        async fn list_reports(&self, _: &str, _: &ReportQuery) -> Result<ReportPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn get_report(
-            &self,
-            _: &str,
-            _: &str,
-            _: &GetReportOpts,
-        ) -> Result<Report, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn delete_report(&self, _: &str, _: &str) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn get_report_results(
-            &self,
-            _: &str,
-            _: &str,
-            _: &ResultQuery,
-        ) -> Result<ResultPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl ResultPort for StubResult {
-        async fn list_results(&self, _: &str, _: &ResultQuery) -> Result<ResultPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn get_result(&self, _: &str, _: &str) -> Result<ScanResult, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    /// The generated OpenAPI document must include the curated operationIds and
-    /// response status codes for every implemented endpoint so that the served
-    /// contract stays aligned with the repository specification.
-    #[test]
-    fn generated_openapi_subset_matches_curated_spec() {
-        let generated = build_openapi::<StubSystem, StubTarget, StubAuth, StubReport, StubResult>();
-        let system_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
-        let targets_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
-        let sessions_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
-        let reports_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/reports.yaml")).unwrap();
-        let results_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/results.yaml")).unwrap();
-
-        let checks = [
-            ("/health", "get", &system_spec, "/health", &["200"] as &[_]),
-            ("/ready", "get", &system_spec, "/ready", &["200", "503"]),
-            ("/version", "get", &system_spec, "/version", &["200", "502"]),
-            (
-                "/openapi.json",
-                "get",
-                &system_spec,
-                "/openapi.json",
-                &["200"],
-            ),
-            // Sessions
-            (
-                "/sessions",
-                "post",
-                &sessions_spec,
-                "/sessions",
-                &["201", "401", "502"],
-            ),
-            (
-                "/sessions/{token}",
-                "get",
-                &sessions_spec,
-                "/sessions/{token}",
-                &["200", "404"],
-            ),
-            (
-                "/sessions/{token}",
-                "delete",
-                &sessions_spec,
-                "/sessions/{token}",
-                &["204", "404"],
-            ),
-            // Targets
-            (
-                "/targets",
-                "get",
-                &targets_spec,
-                "/targets",
-                &["200", "401"],
-            ),
-            (
-                "/targets",
-                "post",
-                &targets_spec,
-                "/targets",
-                &["201", "400", "401"],
-            ),
-            (
-                "/targets/{id}",
-                "get",
-                &targets_spec,
-                "/targets/{id}",
-                &["200", "401", "404"],
-            ),
-            (
-                "/targets/{id}",
-                "put",
-                &targets_spec,
-                "/targets/{id}",
-                &["200", "400", "401", "404"],
-            ),
-            (
-                "/targets/{id}",
-                "delete",
-                &targets_spec,
-                "/targets/{id}",
-                &["204", "401", "404"],
-            ),
-            // Reports
-            (
-                "/reports",
-                "get",
-                &reports_spec,
-                "/reports",
-                &["200", "401"],
-            ),
-            (
-                "/reports/{id}",
-                "get",
-                &reports_spec,
-                "/reports/{id}",
-                &["200", "401", "404"],
-            ),
-            (
-                "/reports/{id}",
-                "delete",
-                &reports_spec,
-                "/reports/{id}",
-                &["204", "401", "404"],
-            ),
-            (
-                "/reports/{id}/results",
-                "get",
-                &reports_spec,
-                "/reports/{id}/results",
-                &["200", "401", "404"],
-            ),
-            // Results
-            (
-                "/results",
-                "get",
-                &results_spec,
-                "/results",
-                &["200", "401"],
-            ),
-            (
-                "/results/{id}",
-                "get",
-                &results_spec,
-                "/results/{id}",
-                &["200", "401", "404"],
-            ),
-        ];
-
-        for (generated_path, method, curated_doc, curated_path, statuses) in checks {
-            let generated_op = op(&generated, generated_path, method);
-            let curated_op = op(curated_doc, curated_path, method);
-
-            assert_eq!(
-                generated_op["operationId"], curated_op["operationId"],
-                "operationId drift for {method} {generated_path}"
-            );
-
-            let generated_statuses = response_statuses(generated_op);
-            for status in statuses {
-                assert!(
-                    generated_statuses.contains(status),
-                    "missing generated status {status} for {method} {generated_path}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn generated_openapi_preserves_key_schema_fields() {
-        let generated = build_openapi::<StubSystem, StubTarget, StubAuth, StubReport, StubResult>();
-
-        let target_props = &generated["components"]["schemas"]["Target"]["properties"];
-        assert!(target_props.get("excludeHosts").is_some());
-        assert!(target_props.get("aliveTest").is_some());
-        assert!(target_props.get("portList").is_some());
-        assert_eq!(target_props["id"]["format"], "uuid");
-
-        let pagination_props = &generated["components"]["schemas"]["Pagination"]["properties"];
-        assert!(pagination_props.get("perPage").is_some());
-        assert!(pagination_props.get("totalPages").is_some());
-
-        let create_target_required = generated["components"]["schemas"]["CreateTarget"]["required"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<BTreeSet<_>>();
-        assert!(create_target_required.contains("name"));
-        assert!(create_target_required.contains("hosts"));
-    }
-
-    /// Session schemas are present in the generated document.
-    #[test]
-    fn generated_openapi_includes_session_schemas() {
-        let generated = build_openapi::<StubSystem, StubTarget, StubAuth, StubReport, StubResult>();
-        let schemas = generated["components"]["schemas"].as_object().unwrap();
-
-        assert!(
-            schemas.contains_key("SessionCreated"),
-            "missing SessionCreated schema"
-        );
-        assert!(
-            schemas.contains_key("SessionInfo"),
-            "missing SessionInfo schema"
-        );
-    }
-
-    fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {
-        &doc["paths"][path][method]
-    }
-
-    fn response_statuses(operation: &Value) -> BTreeSet<&str> {
-        operation["responses"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect()
-    }
 }

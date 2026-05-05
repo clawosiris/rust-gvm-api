@@ -32,12 +32,14 @@ async fn spawn_server(
 ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
+    let task_adapter = StaticGvmdAdapter::ready("22.7");
     let auth_adapter = StaticGvmdAdapter::ready("22.7");
     let report_adapter = StaticGvmdAdapter::ready("22.7");
     let result_adapter = StaticGvmdAdapter::ready("22.7");
     let service = GatewayService::new(
         Arc::new(system_adapter),
         Arc::new(target_adapter),
+        Arc::new(task_adapter),
         Arc::new(auth_adapter),
         Arc::new(report_adapter),
         Arc::new(result_adapter),
@@ -315,6 +317,8 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
     let targets_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
+    let tasks_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/tasks.yaml")).unwrap();
     let reports_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/reports.yaml")).unwrap();
     let results_spec: Value =
@@ -327,6 +331,7 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         system: &system_spec,
         sessions: &sessions_spec,
         targets: &targets_spec,
+        tasks: &tasks_spec,
         reports: &reports_spec,
         results: &results_spec,
         common: &common_spec,
@@ -349,6 +354,11 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/sessions/{token}",
             "/targets",
             "/targets/{id}",
+            "/tasks",
+            "/tasks/{id}",
+            "/tasks/{id}/start",
+            "/tasks/{id}/stop",
+            "/tasks/{id}/resume",
             "/version",
         ])
     );
@@ -376,6 +386,29 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         ("/targets/{id}", "get", DocName::Targets, "/targets/{id}"),
         ("/targets/{id}", "put", DocName::Targets, "/targets/{id}"),
         ("/targets/{id}", "delete", DocName::Targets, "/targets/{id}"),
+        ("/tasks", "get", DocName::Tasks, "/tasks"),
+        ("/tasks", "post", DocName::Tasks, "/tasks"),
+        ("/tasks/{id}", "get", DocName::Tasks, "/tasks/{id}"),
+        ("/tasks/{id}", "put", DocName::Tasks, "/tasks/{id}"),
+        ("/tasks/{id}", "delete", DocName::Tasks, "/tasks/{id}"),
+        (
+            "/tasks/{id}/start",
+            "post",
+            DocName::Tasks,
+            "/tasks/{id}/start",
+        ),
+        (
+            "/tasks/{id}/stop",
+            "post",
+            DocName::Tasks,
+            "/tasks/{id}/stop",
+        ),
+        (
+            "/tasks/{id}/resume",
+            "post",
+            DocName::Tasks,
+            "/tasks/{id}/resume",
+        ),
         ("/reports", "get", DocName::Reports, "/reports"),
         ("/reports/{id}", "get", DocName::Reports, "/reports/{id}"),
         ("/reports/{id}", "delete", DocName::Reports, "/reports/{id}"),
@@ -402,6 +435,7 @@ enum DocName {
     System,
     Sessions,
     Targets,
+    Tasks,
     Reports,
     Results,
     Common,
@@ -412,6 +446,7 @@ struct SpecDocs<'a> {
     system: &'a Value,
     sessions: &'a Value,
     targets: &'a Value,
+    tasks: &'a Value,
     reports: &'a Value,
     results: &'a Value,
     common: &'a Value,
@@ -854,6 +889,7 @@ fn parse_ref(current_doc: DocName, reference: &str) -> (DocName, String) {
         "./common.yaml" => DocName::Common,
         "./system.yaml" => DocName::System,
         "./targets.yaml" => DocName::Targets,
+        "./tasks.yaml" => DocName::Tasks,
         "./reports.yaml" => DocName::Reports,
         "./results.yaml" => DocName::Results,
         other => panic!("unsupported ref document `{other}`"),
@@ -874,6 +910,7 @@ fn doc<'a>(docs: &'a SpecDocs<'a>, name: DocName) -> &'a Value {
         DocName::System => docs.system,
         DocName::Sessions => docs.sessions,
         DocName::Targets => docs.targets,
+        DocName::Tasks => docs.tasks,
         DocName::Reports => docs.reports,
         DocName::Results => docs.results,
         DocName::Common => docs.common,
@@ -1376,6 +1413,7 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
     let target_adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
     let service = GatewayService::new(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),

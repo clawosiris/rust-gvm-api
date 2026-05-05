@@ -9,27 +9,30 @@
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
-    AuthPort, CreateTargetInput, GatewayError, GetReportOpts, HealthStatus, ModifyTargetInput,
-    ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
-    ResultQuery, ScanResult, SessionCreated, SessionInfo, SessionManager, SystemPort, Target,
-    TargetPage, TargetPort, TargetQuery, VersionInfo,
+    AuthPort, CreateTargetInput, CreateTaskInput, GatewayError, GetReportOpts, HealthStatus,
+    ModifyTargetInput, ModifyTaskInput, ReadinessStatus, Report, ReportPage, ReportPort,
+    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanResult, SessionCreated, SessionInfo,
+    SessionManager, SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
+    TaskPage, TaskPort, TaskQuery, VersionInfo,
 };
 
 /// Application services exposed to adapters.
-pub struct GatewayService<S, T, A, R, Re> {
+pub struct GatewayService<S, T, K, A, R, Re> {
     system: Arc<S>,
     targets: Arc<T>,
+    tasks: Arc<K>,
     auth: Arc<A>,
     reports: Arc<R>,
     results: Arc<Re>,
     sessions: Arc<SessionManager>,
 }
 
-impl<S, T, A, R, Re> GatewayService<S, T, A, R, Re> {
+impl<S, T, K, A, R, Re> GatewayService<S, T, K, A, R, Re> {
     /// Creates a new service backed by the provided ports.
     pub fn new(
         system: Arc<S>,
         targets: Arc<T>,
+        tasks: Arc<K>,
         auth: Arc<A>,
         reports: Arc<R>,
         results: Arc<Re>,
@@ -37,6 +40,7 @@ impl<S, T, A, R, Re> GatewayService<S, T, A, R, Re> {
         Self {
             system,
             targets,
+            tasks,
             auth,
             reports,
             results,
@@ -50,11 +54,12 @@ impl<S, T, A, R, Re> GatewayService<S, T, A, R, Re> {
     }
 }
 
-impl<S, T, A, R, Re> Clone for GatewayService<S, T, A, R, Re> {
+impl<S, T, K, A, R, Re> Clone for GatewayService<S, T, K, A, R, Re> {
     fn clone(&self) -> Self {
         Self {
             system: Arc::clone(&self.system),
             targets: Arc::clone(&self.targets),
+            tasks: Arc::clone(&self.tasks),
             auth: Arc::clone(&self.auth),
             reports: Arc::clone(&self.reports),
             results: Arc::clone(&self.results),
@@ -63,10 +68,11 @@ impl<S, T, A, R, Re> Clone for GatewayService<S, T, A, R, Re> {
     }
 }
 
-impl<S, T, A, R, Re> GatewayService<S, T, A, R, Re>
+impl<S, T, K, A, R, Re> GatewayService<S, T, K, A, R, Re>
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: Send + Sync + 'static,
     Re: Send + Sync + 'static,
@@ -181,12 +187,86 @@ where
         let session = self.sessions.touch(session_token)?;
         self.targets.delete_target(&session.token, id).await
     }
+
+    // ------------------------------------------------------------------
+    // Tasks
+    // ------------------------------------------------------------------
+
+    /// Lists tasks for an authenticated session.
+    pub async fn list_tasks(
+        &self,
+        session_token: &str,
+        query: TaskQuery,
+    ) -> Result<TaskPage, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.tasks.list_tasks(&session.token, &query).await
+    }
+
+    /// Creates a new task for an authenticated session.
+    pub async fn create_task(
+        &self,
+        session_token: &str,
+        input: CreateTaskInput,
+    ) -> Result<String, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.tasks.create_task(&session.token, input).await
+    }
+
+    /// Fetches a task for an authenticated session.
+    pub async fn get_task(&self, session_token: &str, id: &str) -> Result<Task, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.tasks.get_task(&session.token, id).await
+    }
+
+    /// Modifies a task for an authenticated session.
+    pub async fn modify_task(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyTaskInput,
+    ) -> Result<Task, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.tasks.modify_task(&session.token, id, input).await
+    }
+
+    /// Deletes a task for an authenticated session.
+    pub async fn delete_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.tasks.delete_task(&session.token, id).await
+    }
+
+    /// Starts a task for an authenticated session.
+    pub async fn start_task(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<TaskAction, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.tasks.start_task(&session.token, id).await
+    }
+
+    /// Stops a running task for an authenticated session.
+    pub async fn stop_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.tasks.stop_task(&session.token, id).await
+    }
+
+    /// Resumes a stopped task for an authenticated session.
+    pub async fn resume_task(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<TaskAction, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.tasks.resume_task(&session.token, id).await
+    }
 }
 
-impl<S, T, A, R, Re> GatewayService<S, T, A, R, Re>
+impl<S, T, K, A, R, Re> GatewayService<S, T, K, A, R, Re>
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -393,6 +473,81 @@ mod tests {
         }
     }
 
+    // Mock task port for testing
+    #[derive(Clone, Default)]
+    struct MockTaskPort;
+
+    #[async_trait]
+    impl TaskPort for MockTaskPort {
+        async fn list_tasks(&self, _: &str, query: &TaskQuery) -> Result<TaskPage, GatewayError> {
+            Ok(TaskPage {
+                data: vec![],
+                pagination: gvm_gateway_domain::Pagination {
+                    page: query.page,
+                    per_page: query.per_page,
+                    total: 0,
+                    total_pages: 0,
+                },
+            })
+        }
+
+        async fn create_task(&self, _: &str, _: CreateTaskInput) -> Result<String, GatewayError> {
+            Ok("00000000-0000-0000-0000-000000000001".to_string())
+        }
+
+        async fn get_task(&self, _: &str, id: &str) -> Result<Task, GatewayError> {
+            Err(GatewayError::NotFound(format!("task {id} not found")))
+        }
+
+        async fn modify_task(
+            &self,
+            _: &str,
+            id: &str,
+            input: ModifyTaskInput,
+        ) -> Result<Task, GatewayError> {
+            Ok(Task {
+                id: id.to_string(),
+                name: input.name.unwrap_or_else(|| "Modified Task".to_string()),
+                comment: input.comment,
+                status: "New".to_string(),
+                target: None,
+                scan_config: None,
+                scanner: None,
+                schedule: None,
+                alerts: vec![],
+                alterable: None,
+                hosts_ordering: input.hosts_ordering,
+                observers: input.observers,
+                schedule_periods: input.schedule_periods,
+                last_report: None,
+                current_report: None,
+                result_count: None,
+                in_use: false,
+                writable: true,
+            })
+        }
+
+        async fn delete_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+            Ok(())
+        }
+
+        async fn start_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+            Ok(TaskAction {
+                report_id: "00000000-0000-0000-0000-000000000002".to_string(),
+            })
+        }
+
+        async fn stop_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+            Ok(())
+        }
+
+        async fn resume_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+            Ok(TaskAction {
+                report_id: "00000000-0000-0000-0000-000000000003".to_string(),
+            })
+        }
+    }
+
     // Mock auth port for testing
     #[derive(Clone, Default)]
     struct MockAuthPort {
@@ -500,15 +655,21 @@ mod tests {
         }
     }
 
-    fn create_test_service(
-    ) -> GatewayService<MockSystemPort, MockTargetPort, MockAuthPort, MockReportPort, MockResultPort>
-    {
+    fn create_test_service() -> GatewayService<
+        MockSystemPort,
+        MockTargetPort,
+        MockTaskPort,
+        MockAuthPort,
+        MockReportPort,
+        MockResultPort,
+    > {
         GatewayService::new(
             Arc::new(MockSystemPort {
                 ready: true,
                 gmp_version: "22.7".to_string(),
             }),
             Arc::new(MockTargetPort::default()),
+            Arc::new(MockTaskPort),
             Arc::new(MockAuthPort::default()),
             Arc::new(MockReportPort),
             Arc::new(MockResultPort),
@@ -542,6 +703,7 @@ mod tests {
                 gmp_version: "22.7".to_string(),
             }),
             Arc::new(MockTargetPort::default()),
+            Arc::new(MockTaskPort),
             Arc::new(MockAuthPort::default()),
             Arc::new(MockReportPort),
             Arc::new(MockResultPort),
@@ -680,6 +842,7 @@ mod tests {
                 gmp_version: "22.7".to_string(),
             }),
             Arc::new(MockTargetPort::default()),
+            Arc::new(MockTaskPort),
             Arc::new(MockAuthPort { should_fail: true }),
             Arc::new(MockReportPort),
             Arc::new(MockResultPort),

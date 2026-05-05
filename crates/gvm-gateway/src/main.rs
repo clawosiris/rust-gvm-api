@@ -26,12 +26,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind(&config.bind).await?;
     let system_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
     let target_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
+    let task_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
     let auth_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
     let report_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
     let result_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
     let service = GatewayService::new(
         system_adapter,
         target_adapter,
+        task_adapter,
         auth_adapter,
         report_adapter,
         result_adapter,
