@@ -164,8 +164,230 @@ pub struct ModifyTargetInput {
 }
 
 // ============================================================================
+// Report Domain Types
+// ============================================================================
+
+/// Domain report representation.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Report {
+    /// Report identifier.
+    pub id: String,
+    /// Associated task reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task: Option<ResourceRef>,
+    /// Scan start timestamp.
+    #[serde(rename = "scanStart", skip_serializing_if = "Option::is_none")]
+    pub scan_start: Option<String>,
+    /// Scan end timestamp.
+    #[serde(rename = "scanEnd", skip_serializing_if = "Option::is_none")]
+    pub scan_end: Option<String>,
+    /// Highest severity found in the report.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<f64>,
+    /// Result counts by severity category.
+    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
+    pub result_count: Option<ResultCount>,
+    /// Embedded results (when fetching a single report).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub results: Vec<ScanResult>,
+}
+
+/// Result counts by severity category for a report.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ResultCount {
+    /// Total number of results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<u32>,
+    /// Number of high-severity results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub high: Option<u32>,
+    /// Number of medium-severity results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub medium: Option<u32>,
+    /// Number of low-severity results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub low: Option<u32>,
+    /// Number of log-level results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log: Option<u32>,
+    /// Number of false-positive results.
+    #[serde(rename = "falsePositive", skip_serializing_if = "Option::is_none")]
+    pub false_positive: Option<u32>,
+}
+
+/// Paginated report list response.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ReportPage {
+    /// Page items.
+    pub data: Vec<Report>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Report list query options.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ReportQuery {
+    /// Optional GMP filter string.
+    pub filter_string: Option<String>,
+    /// Optional saved filter identifier.
+    pub filter_id: Option<String>,
+    /// Requested page number.
+    pub page: u32,
+    /// Requested page size.
+    pub per_page: u32,
+}
+
+/// Options for fetching a single report.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GetReportOpts {
+    /// Whether to ignore pagination and return all results.
+    pub ignore_pagination: bool,
+}
+
+// ============================================================================
+// Result Domain Types
+// ============================================================================
+
+/// Domain scan result representation.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ScanResult {
+    /// Result identifier.
+    pub id: String,
+    /// NVT name.
+    pub name: String,
+    /// Target host.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    /// Target port.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<String>,
+    /// Severity score.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<f64>,
+    /// Threat level.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threat: Option<String>,
+    /// NVT reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvt: Option<NvtRef>,
+    /// Result description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Associated task reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task: Option<ResourceRef>,
+    /// Associated report reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub report: Option<ResourceRef>,
+}
+
+/// NVT (Network Vulnerability Test) reference.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct NvtRef {
+    /// NVT OID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oid: Option<String>,
+    /// NVT name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// NVT family.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    /// CVSS base score.
+    #[serde(rename = "cvssBase", skip_serializing_if = "Option::is_none")]
+    pub cvss_base: Option<f64>,
+    /// CVE identifiers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cves: Vec<String>,
+    /// NVT tags.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<String>,
+}
+
+/// Paginated result list response.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ResultPage {
+    /// Page items.
+    pub data: Vec<ScanResult>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Result list query options.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ResultQuery {
+    /// Optional GMP filter string.
+    pub filter_string: Option<String>,
+    /// Optional saved filter identifier.
+    pub filter_id: Option<String>,
+    /// Requested page number.
+    pub page: u32,
+    /// Requested page size.
+    pub per_page: u32,
+}
+
+// ============================================================================
 // Conversion Utilities
 // ============================================================================
+
+/// Convert a typed rust-gvm report into the domain representation.
+pub fn report_from_gmp(report: gvm_gmp::responses::Report) -> Report {
+    let severity = report
+        .severity
+        .as_ref()
+        .and_then(|s| s.full.as_deref())
+        .and_then(|v| v.parse::<f64>().ok());
+
+    Report {
+        id: report.meta.id.to_string(),
+        task: report.task.map(|t| ResourceRef {
+            id: t.id.to_string(),
+            name: Some(t.name),
+        }),
+        scan_start: report.scan_start,
+        scan_end: report.scan_end,
+        severity,
+        result_count: report.result_count.map(|rc| ResultCount {
+            total: rc.full,
+            high: None,
+            medium: None,
+            low: None,
+            log: None,
+            false_positive: None,
+        }),
+        results: vec![],
+    }
+}
+
+/// Convert a typed rust-gvm scan result into the domain representation.
+pub fn result_from_gmp(result: gvm_gmp::responses::ScanResult) -> ScanResult {
+    let severity = result
+        .severity
+        .as_deref()
+        .and_then(|v| v.parse::<f64>().ok());
+
+    let nvt = result.nvt.map(|n| NvtRef {
+        oid: Some(n.oid),
+        name: n.name,
+        family: n.family,
+        cvss_base: n.cvss_base.as_deref().and_then(|v| v.parse::<f64>().ok()),
+        cves: vec![],
+        tags: None,
+    });
+
+    ScanResult {
+        id: result.meta.id.to_string(),
+        name: result.meta.name,
+        host: result.host,
+        port: result.port,
+        severity,
+        threat: result.threat,
+        nvt,
+        description: result.description,
+        task: None,
+        report: None,
+    }
+}
 
 /// Convert a typed rust-gvm target into the domain representation.
 pub fn target_from_gmp(target: gvm_gmp::responses::Target) -> Target {
@@ -473,6 +695,50 @@ pub trait AuthPort: Send + Sync + 'static {
 
     /// Disconnect and clean up the backend connection for a session.
     async fn disconnect_session(&self, session_token: &str) -> Result<(), GatewayError>;
+}
+
+/// Port for report operations.
+#[async_trait]
+pub trait ReportPort: Send + Sync + 'static {
+    /// List reports for the session.
+    async fn list_reports(
+        &self,
+        session_token: &str,
+        query: &ReportQuery,
+    ) -> Result<ReportPage, GatewayError>;
+
+    /// Fetch a report by identifier, optionally with embedded results.
+    async fn get_report(
+        &self,
+        session_token: &str,
+        id: &str,
+        opts: &GetReportOpts,
+    ) -> Result<Report, GatewayError>;
+
+    /// Delete a report by identifier.
+    async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// List results for a specific report.
+    async fn get_report_results(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError>;
+}
+
+/// Port for result operations.
+#[async_trait]
+pub trait ResultPort: Send + Sync + 'static {
+    /// List results for the session.
+    async fn list_results(
+        &self,
+        session_token: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError>;
+
+    /// Fetch a result by identifier.
+    async fn get_result(&self, session_token: &str, id: &str) -> Result<ScanResult, GatewayError>;
 }
 
 /// Port for target CRUD operations.
@@ -876,5 +1142,120 @@ mod tests {
         };
         let json = serde_json::to_string(&without_name).unwrap();
         assert!(!json.contains("\"name\""));
+    }
+
+    // ------------------------------------------------------------------------
+    // Report domain type tests
+    // ------------------------------------------------------------------------
+
+    /// Report serializes camelCase fields and omits None/empty values.
+    #[test]
+    fn report_serializes_camel_case() {
+        let report = Report {
+            id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            task: Some(ResourceRef {
+                id: "task-1".to_string(),
+                name: Some("Scan".to_string()),
+            }),
+            scan_start: Some("2026-01-01T00:00:00Z".to_string()),
+            scan_end: None,
+            severity: Some(7.5),
+            result_count: Some(ResultCount {
+                total: Some(10),
+                high: Some(2),
+                medium: Some(3),
+                low: Some(1),
+                log: Some(4),
+                false_positive: None,
+            }),
+            results: vec![],
+        };
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("\"scanStart\""));
+        assert!(!json.contains("\"scanEnd\""));
+        assert!(json.contains("\"resultCount\""));
+        assert!(!json.contains("\"falsePositive\""));
+        assert!(!json.contains("\"results\""));
+    }
+
+    /// ResultCount omits None fields.
+    #[test]
+    fn result_count_omits_none_fields() {
+        let rc = ResultCount {
+            total: Some(5),
+            high: None,
+            medium: None,
+            low: None,
+            log: None,
+            false_positive: None,
+        };
+        let json = serde_json::to_string(&rc).unwrap();
+        assert!(json.contains("\"total\""));
+        assert!(!json.contains("\"high\""));
+    }
+
+    /// ReportQuery defaults to zero page/per_page.
+    #[test]
+    fn report_query_default() {
+        let query = ReportQuery::default();
+        assert_eq!(query.page, 0);
+        assert_eq!(query.per_page, 0);
+        assert!(query.filter_string.is_none());
+    }
+
+    // ------------------------------------------------------------------------
+    // ScanResult domain type tests
+    // ------------------------------------------------------------------------
+
+    /// ScanResult serializes with camelCase fields and omits None.
+    #[test]
+    fn scan_result_serializes_camel_case() {
+        let result = ScanResult {
+            id: "result-1".to_string(),
+            name: "Test NVT".to_string(),
+            host: Some("192.168.1.1".to_string()),
+            port: Some("443/tcp".to_string()),
+            severity: Some(9.8),
+            threat: Some("High".to_string()),
+            nvt: Some(NvtRef {
+                oid: Some("1.3.6.1.4.1.25623.1.0.12345".to_string()),
+                name: Some("Test NVT".to_string()),
+                family: Some("Test Family".to_string()),
+                cvss_base: Some(9.8),
+                cves: vec!["CVE-2024-1234".to_string()],
+                tags: None,
+            }),
+            description: Some("A vulnerability was found.".to_string()),
+            task: None,
+            report: None,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"cvssBase\""));
+        assert!(!json.contains("\"tags\""));
+        assert!(!json.contains("\"task\""));
+    }
+
+    /// NvtRef omits empty cves array.
+    #[test]
+    fn nvt_ref_omits_empty_cves() {
+        let nvt = NvtRef {
+            oid: Some("1.2.3".to_string()),
+            name: None,
+            family: None,
+            cvss_base: None,
+            cves: vec![],
+            tags: None,
+        };
+        let json = serde_json::to_string(&nvt).unwrap();
+        assert!(!json.contains("\"cves\""));
+    }
+
+    /// ResultQuery defaults to zero page/per_page.
+    #[test]
+    fn result_query_default() {
+        let query = ResultQuery::default();
+        assert_eq!(query.page, 0);
+        assert_eq!(query.per_page, 0);
+        assert!(query.filter_string.is_none());
     }
 }

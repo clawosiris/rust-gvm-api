@@ -33,10 +33,14 @@ async fn spawn_server(
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let auth_adapter = StaticGvmdAdapter::ready("22.7");
+    let report_adapter = StaticGvmdAdapter::ready("22.7");
+    let result_adapter = StaticGvmdAdapter::ready("22.7");
     let service = GatewayService::new(
         Arc::new(system_adapter),
         Arc::new(target_adapter),
         Arc::new(auth_adapter),
+        Arc::new(report_adapter),
+        Arc::new(result_adapter),
     );
     let app = build_router(service);
     let handle = tokio::spawn(async move {
@@ -311,6 +315,10 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
     let targets_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
+    let reports_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/reports.yaml")).unwrap();
+    let results_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/results.yaml")).unwrap();
     let common_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/common.yaml")).unwrap();
 
@@ -319,6 +327,8 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         system: &system_spec,
         sessions: &sessions_spec,
         targets: &targets_spec,
+        reports: &reports_spec,
+        results: &results_spec,
         common: &common_spec,
     };
 
@@ -330,6 +340,11 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/health",
             "/openapi.json",
             "/ready",
+            "/reports",
+            "/reports/{id}",
+            "/reports/{id}/results",
+            "/results",
+            "/results/{id}",
             "/sessions",
             "/sessions/{token}",
             "/targets",
@@ -361,6 +376,17 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         ("/targets/{id}", "get", DocName::Targets, "/targets/{id}"),
         ("/targets/{id}", "put", DocName::Targets, "/targets/{id}"),
         ("/targets/{id}", "delete", DocName::Targets, "/targets/{id}"),
+        ("/reports", "get", DocName::Reports, "/reports"),
+        ("/reports/{id}", "get", DocName::Reports, "/reports/{id}"),
+        ("/reports/{id}", "delete", DocName::Reports, "/reports/{id}"),
+        (
+            "/reports/{id}/results",
+            "get",
+            DocName::Reports,
+            "/reports/{id}/results",
+        ),
+        ("/results", "get", DocName::Results, "/results"),
+        ("/results/{id}", "get", DocName::Results, "/results/{id}"),
     ];
 
     for (generated_path, method, curated_doc, curated_path) in checks {
@@ -376,6 +402,8 @@ enum DocName {
     System,
     Sessions,
     Targets,
+    Reports,
+    Results,
     Common,
 }
 
@@ -384,6 +412,8 @@ struct SpecDocs<'a> {
     system: &'a Value,
     sessions: &'a Value,
     targets: &'a Value,
+    reports: &'a Value,
+    results: &'a Value,
     common: &'a Value,
 }
 
@@ -824,6 +854,8 @@ fn parse_ref(current_doc: DocName, reference: &str) -> (DocName, String) {
         "./common.yaml" => DocName::Common,
         "./system.yaml" => DocName::System,
         "./targets.yaml" => DocName::Targets,
+        "./reports.yaml" => DocName::Reports,
+        "./results.yaml" => DocName::Results,
         other => panic!("unsupported ref document `{other}`"),
     };
 
@@ -842,6 +874,8 @@ fn doc<'a>(docs: &'a SpecDocs<'a>, name: DocName) -> &'a Value {
         DocName::System => docs.system,
         DocName::Sessions => docs.sessions,
         DocName::Targets => docs.targets,
+        DocName::Reports => docs.reports,
+        DocName::Results => docs.results,
         DocName::Common => docs.common,
     }
 }
@@ -1342,6 +1376,8 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
     let target_adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
     let service = GatewayService::new(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
     );

@@ -9,26 +9,37 @@
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
-    AuthPort, CreateTargetInput, GatewayError, HealthStatus, ModifyTargetInput, ReadinessStatus,
-    SessionCreated, SessionInfo, SessionManager, SystemPort, Target, TargetPage, TargetPort,
-    TargetQuery, VersionInfo,
+    AuthPort, CreateTargetInput, GatewayError, GetReportOpts, HealthStatus, ModifyTargetInput,
+    ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
+    ResultQuery, ScanResult, SessionCreated, SessionInfo, SessionManager, SystemPort, Target,
+    TargetPage, TargetPort, TargetQuery, VersionInfo,
 };
 
 /// Application services exposed to adapters.
-pub struct GatewayService<S, T, A> {
+pub struct GatewayService<S, T, A, R, Re> {
     system: Arc<S>,
     targets: Arc<T>,
     auth: Arc<A>,
+    reports: Arc<R>,
+    results: Arc<Re>,
     sessions: Arc<SessionManager>,
 }
 
-impl<S, T, A> GatewayService<S, T, A> {
+impl<S, T, A, R, Re> GatewayService<S, T, A, R, Re> {
     /// Creates a new service backed by the provided ports.
-    pub fn new(system: Arc<S>, targets: Arc<T>, auth: Arc<A>) -> Self {
+    pub fn new(
+        system: Arc<S>,
+        targets: Arc<T>,
+        auth: Arc<A>,
+        reports: Arc<R>,
+        results: Arc<Re>,
+    ) -> Self {
         Self {
             system,
             targets,
             auth,
+            reports,
+            results,
             sessions: Arc::new(SessionManager::default()),
         }
     }
@@ -39,22 +50,26 @@ impl<S, T, A> GatewayService<S, T, A> {
     }
 }
 
-impl<S, T, A> Clone for GatewayService<S, T, A> {
+impl<S, T, A, R, Re> Clone for GatewayService<S, T, A, R, Re> {
     fn clone(&self) -> Self {
         Self {
             system: Arc::clone(&self.system),
             targets: Arc::clone(&self.targets),
             auth: Arc::clone(&self.auth),
+            reports: Arc::clone(&self.reports),
+            results: Arc::clone(&self.results),
             sessions: Arc::clone(&self.sessions),
         }
     }
 }
 
-impl<S, T, A> GatewayService<S, T, A>
+impl<S, T, A, R, Re> GatewayService<S, T, A, R, Re>
 where
     S: SystemPort,
     T: TargetPort,
     A: AuthPort,
+    R: Send + Sync + 'static,
+    Re: Send + Sync + 'static,
 {
     /// Returns liveness information.
     pub fn health(&self) -> HealthStatus {
@@ -165,6 +180,83 @@ where
     pub async fn delete_target(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.targets.delete_target(&session.token, id).await
+    }
+}
+
+impl<S, T, A, R, Re> GatewayService<S, T, A, R, Re>
+where
+    S: SystemPort,
+    T: TargetPort,
+    A: AuthPort,
+    R: ReportPort,
+    Re: ResultPort,
+{
+    // ------------------------------------------------------------------
+    // Reports
+    // ------------------------------------------------------------------
+
+    /// Lists reports for an authenticated session.
+    pub async fn list_reports(
+        &self,
+        session_token: &str,
+        query: ReportQuery,
+    ) -> Result<ReportPage, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.reports.list_reports(&session.token, &query).await
+    }
+
+    /// Fetches a report for an authenticated session.
+    pub async fn get_report(
+        &self,
+        session_token: &str,
+        id: &str,
+        opts: GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.reports.get_report(&session.token, id, &opts).await
+    }
+
+    /// Deletes a report for an authenticated session.
+    pub async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.reports.delete_report(&session.token, id).await
+    }
+
+    /// Lists results for a specific report.
+    pub async fn get_report_results(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.reports
+            .get_report_results(&session.token, report_id, &query)
+            .await
+    }
+
+    // ------------------------------------------------------------------
+    // Results
+    // ------------------------------------------------------------------
+
+    /// Lists results for an authenticated session.
+    pub async fn list_results(
+        &self,
+        session_token: &str,
+        query: ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.results.list_results(&session.token, &query).await
+    }
+
+    /// Fetches a result for an authenticated session.
+    pub async fn get_result(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ScanResult, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.results.get_result(&session.token, id).await
     }
 }
 
@@ -328,7 +420,89 @@ mod tests {
         }
     }
 
-    fn create_test_service() -> GatewayService<MockSystemPort, MockTargetPort, MockAuthPort> {
+    // Mock report port for testing
+    #[derive(Clone, Default)]
+    struct MockReportPort;
+
+    #[async_trait]
+    impl ReportPort for MockReportPort {
+        async fn list_reports(
+            &self,
+            _: &str,
+            query: &ReportQuery,
+        ) -> Result<ReportPage, GatewayError> {
+            Ok(ReportPage {
+                data: vec![],
+                pagination: gvm_gateway_domain::Pagination {
+                    page: query.page,
+                    per_page: query.per_page,
+                    total: 0,
+                    total_pages: 0,
+                },
+            })
+        }
+
+        async fn get_report(
+            &self,
+            _: &str,
+            id: &str,
+            _: &GetReportOpts,
+        ) -> Result<Report, GatewayError> {
+            Err(GatewayError::NotFound(format!("report {id} not found")))
+        }
+
+        async fn delete_report(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+            Err(GatewayError::NotFound(format!("report {id} not found")))
+        }
+
+        async fn get_report_results(
+            &self,
+            _: &str,
+            _: &str,
+            query: &ResultQuery,
+        ) -> Result<ResultPage, GatewayError> {
+            Ok(ResultPage {
+                data: vec![],
+                pagination: gvm_gateway_domain::Pagination {
+                    page: query.page,
+                    per_page: query.per_page,
+                    total: 0,
+                    total_pages: 0,
+                },
+            })
+        }
+    }
+
+    // Mock result port for testing
+    #[derive(Clone, Default)]
+    struct MockResultPort;
+
+    #[async_trait]
+    impl ResultPort for MockResultPort {
+        async fn list_results(
+            &self,
+            _: &str,
+            query: &ResultQuery,
+        ) -> Result<ResultPage, GatewayError> {
+            Ok(ResultPage {
+                data: vec![],
+                pagination: gvm_gateway_domain::Pagination {
+                    page: query.page,
+                    per_page: query.per_page,
+                    total: 0,
+                    total_pages: 0,
+                },
+            })
+        }
+
+        async fn get_result(&self, _: &str, id: &str) -> Result<ScanResult, GatewayError> {
+            Err(GatewayError::NotFound(format!("result {id} not found")))
+        }
+    }
+
+    fn create_test_service(
+    ) -> GatewayService<MockSystemPort, MockTargetPort, MockAuthPort, MockReportPort, MockResultPort>
+    {
         GatewayService::new(
             Arc::new(MockSystemPort {
                 ready: true,
@@ -336,6 +510,8 @@ mod tests {
             }),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockAuthPort::default()),
+            Arc::new(MockReportPort),
+            Arc::new(MockResultPort),
         )
     }
 
@@ -367,6 +543,8 @@ mod tests {
             }),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockAuthPort::default()),
+            Arc::new(MockReportPort),
+            Arc::new(MockResultPort),
         );
         let ready = service.ready().unwrap();
         assert_eq!(ready.status, "notReady");
@@ -503,6 +681,8 @@ mod tests {
             }),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockAuthPort { should_fail: true }),
+            Arc::new(MockReportPort),
+            Arc::new(MockResultPort),
         );
 
         let result = service.create_session("admin", "wrong").await;
@@ -548,5 +728,94 @@ mod tests {
         let service = create_test_service();
         let result = service.delete_session("nonexistent").await;
         assert!(matches!(result, Err(GatewayError::NotFound(_))));
+    }
+
+    // ------------------------------------------------------------------------
+    // Report use-case tests
+    // ------------------------------------------------------------------------
+
+    /// list_reports requires a valid session token.
+    #[tokio::test]
+    async fn service_list_reports_requires_valid_session() {
+        let service = create_test_service();
+        let result = service
+            .list_reports("invalid-token", ReportQuery::default())
+            .await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    /// list_reports succeeds with a valid session.
+    #[tokio::test]
+    async fn service_list_reports_with_valid_session() {
+        let service = create_test_service();
+        let session = service.session_manager().create("admin").unwrap();
+        let result = service
+            .list_reports(&session.token, ReportQuery::default())
+            .await;
+        assert!(result.is_ok());
+    }
+
+    /// get_report requires a valid session token.
+    #[tokio::test]
+    async fn service_get_report_requires_valid_session() {
+        let service = create_test_service();
+        let result = service
+            .get_report("invalid-token", "some-id", GetReportOpts::default())
+            .await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    /// delete_report requires a valid session token.
+    #[tokio::test]
+    async fn service_delete_report_requires_valid_session() {
+        let service = create_test_service();
+        let result = service.delete_report("invalid-token", "some-id").await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    // ------------------------------------------------------------------------
+    // Result use-case tests
+    // ------------------------------------------------------------------------
+
+    /// list_results requires a valid session token.
+    #[tokio::test]
+    async fn service_list_results_requires_valid_session() {
+        let service = create_test_service();
+        let result = service
+            .list_results("invalid-token", ResultQuery::default())
+            .await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    /// list_results succeeds with a valid session.
+    #[tokio::test]
+    async fn service_list_results_with_valid_session() {
+        let service = create_test_service();
+        let session = service.session_manager().create("admin").unwrap();
+        let result = service
+            .list_results(&session.token, ResultQuery::default())
+            .await;
+        assert!(result.is_ok());
+    }
+
+    /// get_result requires a valid session token.
+    #[tokio::test]
+    async fn service_get_result_requires_valid_session() {
+        let service = create_test_service();
+        let result = service.get_result("invalid-token", "some-id").await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    /// report/result operations fail with an expired session.
+    #[tokio::test]
+    async fn service_report_operations_fail_with_expired_session() {
+        let service = create_test_service();
+        let session = service.session_manager().create("admin").unwrap();
+        service.session_manager().expire(&session.token).unwrap();
+
+        let result = service
+            .list_reports(&session.token, ReportQuery::default())
+            .await;
+        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
     }
 }

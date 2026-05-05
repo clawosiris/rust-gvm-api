@@ -8,6 +8,8 @@
 
 pub mod error;
 pub mod openapi;
+pub mod reports;
+pub mod results;
 pub mod router;
 pub mod sessions;
 pub mod targets;

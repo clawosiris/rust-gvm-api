@@ -60,6 +60,14 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
             "description": "Scan target management"
         },
         {
+            "name": "Reports",
+            "description": "Scan report management"
+        },
+        {
+            "name": "Results",
+            "description": "Scan result management"
+        },
+        {
             "name": "System",
             "description": "System and health endpoints"
         }
@@ -99,6 +107,36 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         &mut normalized_paths,
         "/api/v1/targets/{id}",
         "/targets/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/reports",
+        "/reports",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/reports/{id}",
+        "/reports/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/reports/{id}/results",
+        "/reports/{id}/results",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/results",
+        "/results",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/results/{id}",
+        "/results/{id}",
     );
     normalized_paths.insert(
         "/openapi.json".to_string(),
@@ -157,6 +195,12 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         ("/targets/{id}", "get"),
         ("/targets/{id}", "put"),
         ("/targets/{id}", "delete"),
+        ("/reports", "get"),
+        ("/reports/{id}", "get"),
+        ("/reports/{id}", "delete"),
+        ("/reports/{id}/results", "get"),
+        ("/results", "get"),
+        ("/results/{id}", "get"),
     ] {
         if let Some(operation) = document["paths"][path][method].as_object_mut() {
             operation.remove("security");
@@ -165,6 +209,10 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
 
     tighten_target_query_parameters(&mut document);
     tighten_target_payload_schemas(&mut document);
+    tighten_list_query_parameters(&mut document, "/reports");
+    tighten_list_query_parameters(&mut document, "/results");
+    tighten_list_query_parameters(&mut document, "/reports/{id}/results");
+    tighten_report_get_parameters(&mut document);
     ensure_problem_detail_schema(&mut document);
     ensure_basic_auth_scheme(&mut document);
     strip_nullable_types(&mut document);
@@ -183,6 +231,39 @@ fn tighten_target_query_parameters(document: &mut Value) {
                     parameter["schema"]["minimum"] = json!(1);
                     parameter["schema"]["maximum"] = json!(1000);
                     parameter["schema"]["default"] = json!(25);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn tighten_report_get_parameters(document: &mut Value) {
+    if let Some(parameters) = document["paths"]["/reports/{id}"]["get"]["parameters"].as_array_mut()
+    {
+        for parameter in parameters {
+            if parameter["name"].as_str() == Some("ignorePagination") {
+                parameter["schema"]["default"] = json!(false);
+            }
+        }
+    }
+}
+
+fn tighten_list_query_parameters(document: &mut Value, path: &str) {
+    if let Some(parameters) = document["paths"][path]["get"]["parameters"].as_array_mut() {
+        for parameter in parameters {
+            match parameter["name"].as_str() {
+                Some("page") => {
+                    parameter["schema"]["minimum"] = json!(1);
+                    parameter["schema"]["default"] = json!(1);
+                }
+                Some("perPage") => {
+                    parameter["schema"]["minimum"] = json!(1);
+                    parameter["schema"]["maximum"] = json!(1000);
+                    parameter["schema"]["default"] = json!(25);
+                }
+                Some("filterId") => {
+                    parameter["schema"]["format"] = json!("uuid");
                 }
                 _ => {}
             }
@@ -361,6 +442,18 @@ pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
             external_docs: None,
             extensions: Default::default(),
         })
+        .tag(Tag {
+            name: "Reports".to_string(),
+            description: Some("Scan report management".to_string()),
+            external_docs: None,
+            extensions: Default::default(),
+        })
+        .tag(Tag {
+            name: "Results".to_string(),
+            description: Some("Scan result management".to_string()),
+            external_docs: None,
+            extensions: Default::default(),
+        })
         .security_scheme(
             "bearerAuth",
             SecurityScheme::Http {
@@ -534,6 +627,98 @@ pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperati
         .response_with::<204, (), _>(|response| response.description("Target deleted"));
 
     let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+// -- Report endpoints --------------------------------------------------------
+
+/// OpenAPI transform for `GET /api/v1/reports`.
+pub(crate) fn list_reports_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReports")
+        .tag("Reports")
+        .summary("List reports")
+        .description("Returns a paginated list of reports.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ReportListQueryDoc>>()
+        .response_with::<200, Json<ReportListDoc>, _>(ok_json("Paginated list of reports"));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}`.
+pub(crate) fn get_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReport")
+        .tag("Reports")
+        .summary("Get a report")
+        .description("Returns the details for a single report with embedded results.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<GetReportQueryDoc>)>()
+        .response_with::<200, Json<ReportDoc>, _>(ok_json("Report details with embedded results"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/reports/{id}`.
+pub(crate) fn delete_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteReport")
+        .tag("Reports")
+        .summary("Delete a report")
+        .description("Deletes an existing report.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Report deleted"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/results`.
+pub(crate) fn get_report_results_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportResults")
+        .tag("Reports")
+        .summary("Get paginated results for a report")
+        .description("Returns a paginated list of results for a specific report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ResultListDoc>, _>(ok_json("Paginated list of results"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+// -- Result endpoints --------------------------------------------------------
+
+/// OpenAPI transform for `GET /api/v1/results`.
+pub(crate) fn list_results_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getResults")
+        .tag("Results")
+        .summary("List results")
+        .description("Returns a paginated list of results.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ResultListQueryDoc>>()
+        .response_with::<200, Json<ResultListDoc>, _>(ok_json("Paginated list of results"));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/results/{id}`.
+pub(crate) fn get_result_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getResult")
+        .tag("Results")
+        .summary("Get a result")
+        .description("Returns the details for a single result.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<ResultDoc>, _>(ok_json("Result details"));
+
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
 }
@@ -763,6 +948,144 @@ enum ReadinessStateDoc {
     NotReady,
 }
 
+// -- Report schemas ----------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "Report")]
+struct ReportDoc {
+    id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task: Option<ResourceRefDoc>,
+    #[serde(rename = "scanStart", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    scan_start: Option<String>,
+    #[serde(rename = "scanEnd", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    scan_end: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<f64>,
+    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
+    result_count: Option<ResultCountDoc>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    results: Vec<ResultDoc>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "ResultCount")]
+struct ResultCountDoc {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    high: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    medium: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    low: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    log: Option<u32>,
+    #[serde(rename = "falsePositive", skip_serializing_if = "Option::is_none")]
+    false_positive: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "ReportList")]
+struct ReportListDoc {
+    data: Vec<ReportDoc>,
+    pagination: PaginationDoc,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct ReportListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct GetReportQueryDoc {
+    #[serde(rename = "ignorePagination")]
+    ignore_pagination: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct ReportResultsQueryDoc {
+    filter: Option<String>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+// -- Result schemas ----------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "Result")]
+struct ResultDoc {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    threat: Option<ThreatDoc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nvt: Option<NvtRefDoc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task: Option<ResourceRefDoc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    report: Option<ResourceRefDoc>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "NvtRef")]
+struct NvtRefDoc {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    family: Option<String>,
+    #[serde(rename = "cvssBase", skip_serializing_if = "Option::is_none")]
+    cvss_base: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    cves: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tags: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+enum ThreatDoc {
+    High,
+    Medium,
+    Low,
+    Log,
+    Alarm,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "ResultList")]
+struct ResultListDoc {
+    data: Vec<ResultDoc>,
+    pagination: PaginationDoc,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct ResultListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 enum AliveTestDoc {
     #[serde(rename = "Scan Config Default")]
@@ -796,13 +1119,16 @@ mod tests {
 
     use crate::router::build_openapi;
     use gvm_gateway_domain::{
-        AuthPort, CreateTargetInput, GatewayError, ModifyTargetInput, ReadinessStatus, SystemPort,
-        Target, TargetPage, TargetPort, TargetQuery,
+        AuthPort, CreateTargetInput, GatewayError, GetReportOpts, ModifyTargetInput,
+        ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
+        ResultQuery, ScanResult, SystemPort, Target, TargetPage, TargetPort, TargetQuery,
     };
 
     struct StubSystem;
     struct StubTarget;
     struct StubAuth;
+    struct StubReport;
+    struct StubResult;
 
     impl SystemPort for StubSystem {
         fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
@@ -862,18 +1188,62 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl ReportPort for StubReport {
+        async fn list_reports(&self, _: &str, _: &ReportQuery) -> Result<ReportPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn get_report(
+            &self,
+            _: &str,
+            _: &str,
+            _: &GetReportOpts,
+        ) -> Result<Report, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn delete_report(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn get_report_results(
+            &self,
+            _: &str,
+            _: &str,
+            _: &ResultQuery,
+        ) -> Result<ResultPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
+    #[async_trait]
+    impl ResultPort for StubResult {
+        async fn list_results(&self, _: &str, _: &ResultQuery) -> Result<ResultPage, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+
+        async fn get_result(&self, _: &str, _: &str) -> Result<ScanResult, GatewayError> {
+            unreachable!("OpenAPI generation does not execute handlers")
+        }
+    }
+
     /// The generated OpenAPI document must include the curated operationIds and
     /// response status codes for every implemented endpoint so that the served
     /// contract stays aligned with the repository specification.
     #[test]
     fn generated_openapi_subset_matches_curated_spec() {
-        let generated = build_openapi::<StubSystem, StubTarget, StubAuth>();
+        let generated = build_openapi::<StubSystem, StubTarget, StubAuth, StubReport, StubResult>();
         let system_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
         let targets_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
         let sessions_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
+        let reports_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/reports.yaml")).unwrap();
+        let results_spec: Value =
+            serde_yaml::from_str(include_str!("../../../spec/rest-api/results.yaml")).unwrap();
 
         let checks = [
             ("/health", "get", &system_spec, "/health", &["200"] as &[_]),
@@ -944,6 +1314,50 @@ mod tests {
                 "/targets/{id}",
                 &["204", "401", "404"],
             ),
+            // Reports
+            (
+                "/reports",
+                "get",
+                &reports_spec,
+                "/reports",
+                &["200", "401"],
+            ),
+            (
+                "/reports/{id}",
+                "get",
+                &reports_spec,
+                "/reports/{id}",
+                &["200", "401", "404"],
+            ),
+            (
+                "/reports/{id}",
+                "delete",
+                &reports_spec,
+                "/reports/{id}",
+                &["204", "401", "404"],
+            ),
+            (
+                "/reports/{id}/results",
+                "get",
+                &reports_spec,
+                "/reports/{id}/results",
+                &["200", "401", "404"],
+            ),
+            // Results
+            (
+                "/results",
+                "get",
+                &results_spec,
+                "/results",
+                &["200", "401"],
+            ),
+            (
+                "/results/{id}",
+                "get",
+                &results_spec,
+                "/results/{id}",
+                &["200", "401", "404"],
+            ),
         ];
 
         for (generated_path, method, curated_doc, curated_path, statuses) in checks {
@@ -967,7 +1381,7 @@ mod tests {
 
     #[test]
     fn generated_openapi_preserves_key_schema_fields() {
-        let generated = build_openapi::<StubSystem, StubTarget, StubAuth>();
+        let generated = build_openapi::<StubSystem, StubTarget, StubAuth, StubReport, StubResult>();
 
         let target_props = &generated["components"]["schemas"]["Target"]["properties"];
         assert!(target_props.get("excludeHosts").is_some());
@@ -992,7 +1406,7 @@ mod tests {
     /// Session schemas are present in the generated document.
     #[test]
     fn generated_openapi_includes_session_schemas() {
-        let generated = build_openapi::<StubSystem, StubTarget, StubAuth>();
+        let generated = build_openapi::<StubSystem, StubTarget, StubAuth, StubReport, StubResult>();
         let schemas = generated["components"]["schemas"].as_object().unwrap();
 
         assert!(
