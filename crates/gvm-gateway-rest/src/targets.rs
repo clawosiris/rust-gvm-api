@@ -11,7 +11,9 @@ use axum::{
     Json,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{AuthPort, GatewayError, ReportPort, ResultPort, SystemPort, TargetPort};
+use gvm_gateway_domain::{
+    AuthPort, GatewayError, ReportPort, ResultPort, SystemPort, TargetPort, TaskPort,
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -197,14 +199,15 @@ impl ModifyTargetRequest {
 }
 
 /// List targets handler.
-pub async fn list_targets<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn list_targets<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -237,8 +240,8 @@ where
 }
 
 /// Create target handler.
-pub async fn create_target<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn create_target<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     uri: OriginalUri,
     body: Bytes,
@@ -246,6 +249,7 @@ pub async fn create_target<S, T, A, R, Re>(
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -277,8 +281,8 @@ where
 }
 
 /// Get target handler.
-pub async fn get_target<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn get_target<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -286,6 +290,7 @@ pub async fn get_target<S, T, A, R, Re>(
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -306,8 +311,8 @@ where
 }
 
 /// Update target handler.
-pub async fn update_target<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn update_target<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -316,6 +321,7 @@ pub async fn update_target<S, T, A, R, Re>(
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -350,8 +356,8 @@ where
 }
 
 /// Delete target handler.
-pub async fn delete_target<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn delete_target<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -359,6 +365,7 @@ pub async fn delete_target<S, T, A, R, Re>(
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,

@@ -80,6 +80,26 @@ impl RestError {
                     instance,
                 },
             },
+            GatewayError::Conflict(detail) => Self {
+                status: StatusCode::CONFLICT,
+                problem: ProblemDetails {
+                    r#type: "urn:gvm-gateway:problem:conflict".to_string(),
+                    title: "Conflict".to_string(),
+                    status: StatusCode::CONFLICT.as_u16(),
+                    detail: Some(detail),
+                    instance,
+                },
+            },
+            GatewayError::GatewayTimeout(detail) => Self {
+                status: StatusCode::GATEWAY_TIMEOUT,
+                problem: ProblemDetails {
+                    r#type: "urn:gvm-gateway:problem:gateway-timeout".to_string(),
+                    title: "Gateway Timeout".to_string(),
+                    status: StatusCode::GATEWAY_TIMEOUT.as_u16(),
+                    detail: Some(detail),
+                    instance,
+                },
+            },
         }
     }
 

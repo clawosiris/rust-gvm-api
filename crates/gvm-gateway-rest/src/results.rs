@@ -11,7 +11,7 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    AuthPort, GatewayError, ReportPort, ResultPort, ResultQuery, SystemPort, TargetPort,
+    AuthPort, GatewayError, ReportPort, ResultPort, ResultQuery, SystemPort, TargetPort, TaskPort,
 };
 
 use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
@@ -80,14 +80,15 @@ impl ResultListQuery {
 }
 
 /// List results handler.
-pub async fn list_results<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn list_results<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
@@ -120,8 +121,8 @@ where
 }
 
 /// Get result handler.
-pub async fn get_result<S, T, A, R, Re>(
-    State(service): State<GatewayService<S, T, A, R, Re>>,
+pub async fn get_result<S, T, K, A, R, Re>(
+    State(service): State<GatewayService<S, T, K, A, R, Re>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -129,6 +130,7 @@ pub async fn get_result<S, T, A, R, Re>(
 where
     S: SystemPort,
     T: TargetPort,
+    K: TaskPort,
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,

@@ -164,6 +164,149 @@ pub struct ModifyTargetInput {
 }
 
 // ============================================================================
+// Task Domain Types
+// ============================================================================
+
+/// Domain task representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Task {
+    /// Task identifier.
+    pub id: String,
+    /// Task name.
+    pub name: String,
+    /// Optional comment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    /// Task status.
+    pub status: String,
+    /// Target reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<ResourceRef>,
+    /// Scan configuration reference.
+    #[serde(rename = "scanConfig", skip_serializing_if = "Option::is_none")]
+    pub scan_config: Option<ResourceRef>,
+    /// Scanner reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scanner: Option<ResourceRef>,
+    /// Schedule reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<ResourceRef>,
+    /// Alert references.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alerts: Vec<ResourceRef>,
+    /// Whether the task is alterable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alterable: Option<bool>,
+    /// Hosts ordering strategy.
+    #[serde(rename = "hostsOrdering", skip_serializing_if = "Option::is_none")]
+    pub hosts_ordering: Option<String>,
+    /// Observer user names.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observers: Vec<String>,
+    /// Number of schedule periods.
+    #[serde(rename = "schedulePeriods", skip_serializing_if = "Option::is_none")]
+    pub schedule_periods: Option<u32>,
+    /// Last report reference.
+    #[serde(rename = "lastReport", skip_serializing_if = "Option::is_none")]
+    pub last_report: Option<ResourceRef>,
+    /// Current (in-progress) report reference.
+    #[serde(rename = "currentReport", skip_serializing_if = "Option::is_none")]
+    pub current_report: Option<ResourceRef>,
+    /// Number of reports/results.
+    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
+    pub result_count: Option<u32>,
+    /// Whether the task is in use.
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    /// Whether the task is writable.
+    pub writable: bool,
+}
+
+/// Paginated task list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TaskPage {
+    /// Page items.
+    pub data: Vec<Task>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Task list query options.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TaskQuery {
+    /// Optional GMP filter string.
+    pub filter_string: Option<String>,
+    /// Optional saved filter identifier.
+    pub filter_id: Option<String>,
+    /// Requested page number.
+    pub page: u32,
+    /// Requested page size.
+    pub per_page: u32,
+}
+
+/// Task create command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateTaskInput {
+    /// Task name.
+    pub name: String,
+    /// Optional comment.
+    pub comment: Option<String>,
+    /// Target identifier (required).
+    pub target_id: String,
+    /// Scan config identifier (required).
+    pub scan_config_id: String,
+    /// Scanner identifier (required).
+    pub scanner_id: String,
+    /// Optional schedule identifier.
+    pub schedule_id: Option<String>,
+    /// Optional alert identifiers.
+    pub alert_ids: Vec<String>,
+    /// Optional alterable flag.
+    pub alterable: Option<bool>,
+    /// Optional hosts ordering.
+    pub hosts_ordering: Option<String>,
+    /// Optional observers.
+    pub observers: Vec<String>,
+    /// Optional schedule periods.
+    pub schedule_periods: Option<u32>,
+    /// Optional key-value scan preferences.
+    pub preferences: Vec<(String, String)>,
+}
+
+/// Task update command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ModifyTaskInput {
+    /// Optional name.
+    pub name: Option<String>,
+    /// Optional comment.
+    pub comment: Option<String>,
+    /// Optional target identifier.
+    pub target_id: Option<String>,
+    /// Optional scan config identifier.
+    pub scan_config_id: Option<String>,
+    /// Optional scanner identifier.
+    pub scanner_id: Option<String>,
+    /// Optional schedule identifier.
+    pub schedule_id: Option<String>,
+    /// Optional alert identifiers.
+    pub alert_ids: Option<Vec<String>>,
+    /// Optional hosts ordering.
+    pub hosts_ordering: Option<String>,
+    /// Optional observers.
+    pub observers: Vec<String>,
+    /// Optional schedule periods.
+    pub schedule_periods: Option<u32>,
+}
+
+/// Result from a start or resume task action containing the report identifier.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TaskAction {
+    /// UUID of the report created by the action.
+    #[serde(rename = "reportId")]
+    pub report_id: String,
+}
+
+// ============================================================================
 // Report Domain Types
 // ============================================================================
 
@@ -329,6 +472,44 @@ pub struct ResultQuery {
 // ============================================================================
 // Conversion Utilities
 // ============================================================================
+
+/// Convert a typed rust-gvm task into the domain representation.
+pub fn task_from_gmp(task: gvm_gmp::responses::Task) -> Task {
+    let named_entity_to_ref = |entity: gvm_gmp::responses::NamedEntity| -> ResourceRef {
+        ResourceRef {
+            id: entity.id.to_string(),
+            name: if entity.name.is_empty() {
+                None
+            } else {
+                Some(entity.name)
+            },
+        }
+    };
+
+    Task {
+        id: task.meta.id.to_string(),
+        name: task.meta.name,
+        comment: task.meta.comment,
+        status: task.status.unwrap_or_else(|| "New".to_string()),
+        target: task.target.map(&named_entity_to_ref),
+        scan_config: task.config.map(&named_entity_to_ref),
+        scanner: task.scanner.map(&named_entity_to_ref),
+        schedule: task.schedule.map(&named_entity_to_ref),
+        alerts: task.alerts.into_iter().map(&named_entity_to_ref).collect(),
+        alterable: None,
+        hosts_ordering: task.hosts_ordering,
+        observers: vec![],
+        schedule_periods: None,
+        last_report: task.last_report.map(|lr| ResourceRef {
+            id: lr.id.to_string(),
+            name: None,
+        }),
+        current_report: None,
+        result_count: task.report_count,
+        in_use: task.meta.in_use,
+        writable: task.meta.writable,
+    }
+}
 
 /// Convert a typed rust-gvm report into the domain representation.
 pub fn report_from_gmp(report: gvm_gmp::responses::Report) -> Report {
@@ -671,6 +852,10 @@ pub enum GatewayError {
     InvalidInput(String),
     /// Session or credentials were invalid.
     Unauthorized(String),
+    /// Resource state conflict (e.g. starting an already-running task).
+    Conflict(String),
+    /// Backend did not respond within the timeout.
+    GatewayTimeout(String),
 }
 
 /// Port for system information needed by the gateway.
@@ -771,6 +956,47 @@ pub trait TargetPort: Send + Sync + 'static {
 
     /// Delete a target by identifier.
     async fn delete_target(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+}
+
+/// Port for task CRUD and lifecycle operations.
+#[async_trait]
+pub trait TaskPort: Send + Sync + 'static {
+    /// List tasks for the session.
+    async fn list_tasks(
+        &self,
+        session_token: &str,
+        query: &TaskQuery,
+    ) -> Result<TaskPage, GatewayError>;
+
+    /// Create a new task.
+    async fn create_task(
+        &self,
+        session_token: &str,
+        input: CreateTaskInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a task by identifier.
+    async fn get_task(&self, session_token: &str, id: &str) -> Result<Task, GatewayError>;
+
+    /// Modify a task by identifier.
+    async fn modify_task(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyTaskInput,
+    ) -> Result<Task, GatewayError>;
+
+    /// Delete a task by identifier.
+    async fn delete_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// Start a task. Returns the report identifier created by the action.
+    async fn start_task(&self, session_token: &str, id: &str) -> Result<TaskAction, GatewayError>;
+
+    /// Stop a running task.
+    async fn stop_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// Resume a stopped task. Returns the report identifier created by the action.
+    async fn resume_task(&self, session_token: &str, id: &str) -> Result<TaskAction, GatewayError>;
 }
 
 // ============================================================================
