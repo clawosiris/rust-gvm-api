@@ -18,3 +18,4 @@ tokio.workspace = true
 
 [dev-dependencies]
 gvm-mock-server.workspace = true
+gvm-protocol.workspace = true

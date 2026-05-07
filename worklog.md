@@ -80,3 +80,125 @@ keep the API surface identical. A `HashMap<TypeId, Box<dyn Any>>` would lose com
 | `crates/gvm-gateway-rest/src/scanners.rs` | Remove generics from 2 handler fns |
 | `crates/gvm-gateway-rest/src/sessions.rs` | Remove generics from 3 handler fns |
 | `crates/gvm-gateway/src/main.rs` | Simplify construction |
+
+---
+
+# Issue #96: Make REST and GMP adapters speak through domain-owned boundaries
+
+## Problem
+
+The domain crate (`gvm-gateway-domain`) depends on `gvm-gmp` and contains
+`*_from_gmp()` conversion functions that take `gvm_gmp::responses::*` types
+as parameters. This violates the hexagonal architecture rule that the domain
+layer must know nothing about GMP or GVMD protocol types.
+
+### Boundary violations found
+
+1. **`gvm-gateway-domain/Cargo.toml`** lists `gvm-gmp` as a dependency.
+2. **`gvm-gateway-domain/src/lib.rs`** defines six public conversion functions
+   (`target_from_gmp`, `task_from_gmp`, `report_from_gmp`, `result_from_gmp`,
+   `scan_config_from_gmp`, `scanner_from_gmp`) whose parameter types come from
+   `gvm_gmp::responses`.
+3. **`gvm-gateway/tests/acceptance.rs`** imports `target_from_gmp` from domain
+   and `GetTargetsResponse` from `gvm_gmp::responses` directly.
+
+### What is already correct
+
+- Port traits (in domain) accept/return only domain types.
+- `gvm-gateway-app` depends only on domain types.
+- `gvm-gateway-rest` does not import `gvm-gmp` at all.
+- `gvm-gateway-gvmd` already does all GMP command building internally.
+
+## Plan
+
+### Step 1 — Move conversion functions to gvmd adapter
+
+Move the six `*_from_gmp()` functions from `gvm-gateway-domain/src/lib.rs`
+to `gvm-gateway-gvmd/src/lib.rs`. They already belong there since the gvmd
+crate is the only consumer.
+
+### Step 2 — Remove gvm-gmp dependency from domain
+
+Remove `gvm-gmp` from `gvm-gateway-domain/Cargo.toml`. Move `serde_json` to
+`[dev-dependencies]` since it is only used in `#[cfg(test)]` blocks.
+
+### Step 3 — Update gvmd adapter imports
+
+Change imports in `gvm-gateway-gvmd/src/lib.rs` from
+`gvm_gateway_domain::{target_from_gmp, ...}` to local function references.
+
+### Step 4 — Update acceptance tests
+
+In `gvm-gateway/tests/acceptance.rs`, change the `target_from_gmp` import
+from `gvm_gateway_domain` to `gvm_gateway_gvmd`.
+
+### Step 5 — Add architectural boundary test
+
+Add a compile-time or test-time check that enforces:
+- `gvm-gateway-domain` does NOT depend on `gvm-gmp`, `gvm-client`, or
+  `gvm-connection`.
+- `gvm-gateway-app` does NOT depend on `gvm-gmp`, `gvm-client`, or
+  `gvm-connection`.
+- `gvm-gateway-rest` does NOT depend on `gvm-gmp`, `gvm-client`, or
+  `gvm-connection`.
+
+This will be implemented as a test that parses Cargo.toml files and asserts
+the absence of banned dependencies.
+
+### Step 6 — Verify
+
+- `cargo check` passes.
+- `cargo test --workspace` passes.
+- `cargo clippy --workspace` passes.
+- OpenAPI contract tests still pass (REST contract is unchanged).
+
+## Risks
+
+- None to REST contract: no handler, DTO, or route changes.
+- The gvmd adapter's public API grows by six `pub fn` conversions, but these
+  are only consumed by the composition-root acceptance tests.
+
+---
+
+# PR #100 Review Feedback (2026-05-07)
+
+## Review comments to address
+
+1. **Make GMP conversion utilities private** — The six `*_from_gmp()` functions
+   and the two `map_*_error()` functions are `pub` but should not be part of
+   the crate's public API. They are implementation details of the gvmd adapter.
+   Change from `pub fn` to `pub(crate) fn`.
+
+2. **Split the large lib.rs** — At ~2 080 lines, `lib.rs` mixes two adapters
+   and a conversion layer. Split into:
+   - `static_adapter.rs` — `StaticGvmdAdapter` + trait impls
+   - `gvmd_adapter.rs` — `GvmdAdapter` + trait impls
+   - `conversions.rs` — `*_from_gmp()`, `map_*_error()`, and private helpers
+
+3. **Move `target_from_gmp` roundtrip test** — The acceptance test at
+   `gvm-gateway/tests/acceptance.rs:1073` imports `target_from_gmp` as a
+   public symbol. Since the function is becoming crate-private, move this test
+   into the gvmd crate's own test module.
+
+## Re-check of issue #96 acceptance criteria
+
+| Criterion | Status |
+|-----------|--------|
+| Move `*_from_gmp()` out of domain crate | Done (PR #100) |
+| Remove `gvm-gmp` from domain `Cargo.toml` | Done (PR #100) |
+| `serde_json` to dev-dependencies in domain | Done (PR #100) |
+| Update gvmd adapter imports | Done (PR #100) |
+| Update acceptance test imports | Done (PR #100) |
+| Architecture boundary test | Done (`architecture.rs`) |
+| Conversion utilities private to adapter | **This fix** |
+
+## Plan
+
+1. Create `crates/gvm-gateway-gvmd/src/static_adapter.rs`
+2. Create `crates/gvm-gateway-gvmd/src/gvmd_adapter.rs`
+3. Create `crates/gvm-gateway-gvmd/src/conversions.rs`
+4. Rewrite `lib.rs` as a thin module root that re-exports public types
+5. Change `*_from_gmp`, `map_gvm_error`, `map_parse_error` to `pub(crate)`
+6. Move `target_from_gmp_roundtrip` test from acceptance.rs into conversions.rs
+7. Remove the `target_from_gmp` import from acceptance.rs
+8. Run `cargo fmt --all --check`, `cargo clippy`, `cargo test --workspace`

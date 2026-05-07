@@ -9,17 +9,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{target_from_gmp, TargetPage};
+use gvm_gateway_domain::TargetPage;
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
 use gvm_gateway_rest::router::build_router;
 use gvm_gateway_rest::targets::{
     build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery,
 };
-use gvm_gmp::responses::GetTargetsResponse;
 use gvm_mock_server::{
     GmpVersion as MockVersion, MockGmpServer, Resource, ResourceStore, ServerMode,
 };
-use gvm_protocol::Response as GmpResponse;
 use http::StatusCode;
 use reqwest::Client;
 use serde_json::Value;
@@ -1063,46 +1061,6 @@ async fn not_found_route_returns_404_problem() {
     assert_eq!(json["instance"], serde_json::json!("/does-not-exist"));
 
     handle.abort();
-}
-
-// ============================================================================
-// Domain Type Unit Tests (moved from adapter)
-// ============================================================================
-
-#[test]
-fn target_from_gmp_roundtrip() {
-    let response = GmpResponse::from(
-        r#"<get_targets_response status="200" status_text="OK">
-            <target id="550e8400-e29b-41d4-a716-446655440000">
-                <owner><name>admin</name></owner>
-                <name>Example Target</name>
-                <comment>demo</comment>
-                <creation_time>2026-03-27T00:00:00Z</creation_time>
-                <modification_time>2026-03-27T00:00:00Z</modification_time>
-                <writable>1</writable>
-                <in_use>0</in_use>
-                <hosts>10.0.0.1,10.0.0.2</hosts>
-                <exclude_hosts>10.0.0.3</exclude_hosts>
-                <alive_tests>ICMP Ping</alive_tests>
-                <reverse_lookup_only>1</reverse_lookup_only>
-                <reverse_lookup_unify>0</reverse_lookup_unify>
-                <port_list id="11111111-1111-1111-1111-111111111111"><name>All TCP</name></port_list>
-            </target>
-        </get_targets_response>"#,
-    );
-    let parsed = GetTargetsResponse::from_response(&response).unwrap();
-
-    let target = target_from_gmp(parsed.items.into_iter().next().unwrap());
-
-    assert_eq!(target.id, "550e8400-e29b-41d4-a716-446655440000");
-    assert_eq!(target.name, "Example Target");
-    assert_eq!(target.comment.as_deref(), Some("demo"));
-    assert_eq!(target.hosts, vec!["10.0.0.1", "10.0.0.2"]);
-    assert_eq!(target.exclude_hosts, vec!["10.0.0.3"]);
-    assert_eq!(target.alive_test.as_deref(), Some("ICMP Ping"));
-    assert!(target.reverse_lookup_only);
-    assert!(!target.reverse_lookup_unify);
-    assert_eq!(target.port_list.unwrap().name.as_deref(), Some("All TCP"));
 }
 
 #[test]

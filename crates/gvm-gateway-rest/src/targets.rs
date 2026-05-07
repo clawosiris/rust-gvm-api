@@ -19,8 +19,7 @@ use crate::{error::RestError, router::bearer_token};
 
 // Re-export domain types for backward compatibility
 pub use gvm_gateway_domain::{
-    target_from_gmp, CreateTargetInput, ModifyTargetInput, Pagination, ResourceRef, Target,
-    TargetPage, TargetQuery,
+    CreateTargetInput, ModifyTargetInput, Pagination, ResourceRef, Target, TargetPage, TargetQuery,
 };
 
 /// Parsed list-targets query from HTTP request.

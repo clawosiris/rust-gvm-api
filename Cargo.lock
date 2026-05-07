@@ -539,9 +539,7 @@ dependencies = [
  "gvm-gateway-domain",
  "gvm-gateway-gvmd",
  "gvm-gateway-rest",
- "gvm-gmp",
  "gvm-mock-server",
- "gvm-protocol",
  "http",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -572,7 +570,6 @@ name = "gvm-gateway-domain"
 version = "0.3.1"
 dependencies = [
  "async-trait",
- "gvm-gmp",
  "serde",
  "serde_json",
  "uuid",
@@ -588,6 +585,7 @@ dependencies = [
  "gvm-gateway-domain",
  "gvm-gmp",
  "gvm-mock-server",
+ "gvm-protocol",
  "tokio",
 ]
 
