@@ -30,13 +30,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let auth_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
     let report_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
     let result_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let service = GatewayService::new(
+    let scan_config_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
+    let scanner_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
+    let service = GatewayService::with_all(
         system_adapter,
         target_adapter,
         task_adapter,
         auth_adapter,
         report_adapter,
         result_adapter,
+        scan_config_adapter,
+        scanner_adapter,
     );
     let app = build_router(service);
 

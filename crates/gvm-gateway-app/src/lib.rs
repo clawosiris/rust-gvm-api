@@ -9,21 +9,25 @@
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
-    AuthPort, CreateTargetInput, CreateTaskInput, GatewayError, GetReportOpts, HealthStatus,
-    ModifyTargetInput, ModifyTaskInput, ReadinessStatus, Report, ReportPage, ReportPort,
-    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanResult, SessionCreated, SessionInfo,
-    SessionManager, SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
-    TaskPage, TaskPort, TaskQuery, VersionInfo,
+    AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput, GatewayError,
+    GetReportOpts, HealthStatus, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput,
+    ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
+    ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
+    ScannerPage, ScannerPort, ScannerQuery, SessionCreated, SessionInfo, SessionManager,
+    SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, VersionInfo,
 };
 
 /// Application services exposed to adapters.
-pub struct GatewayService<S, T, K, A, R, Re> {
+pub struct GatewayService<S, T, K, A, R, Re, Sc = (), Sn = ()> {
     system: Arc<S>,
     targets: Arc<T>,
     tasks: Arc<K>,
     auth: Arc<A>,
     reports: Arc<R>,
     results: Arc<Re>,
+    scan_configs: Arc<Sc>,
+    scanners: Arc<Sn>,
     sessions: Arc<SessionManager>,
 }
 
@@ -44,6 +48,34 @@ impl<S, T, K, A, R, Re> GatewayService<S, T, K, A, R, Re> {
             auth,
             reports,
             results,
+            scan_configs: Arc::new(()),
+            scanners: Arc::new(()),
+            sessions: Arc::new(SessionManager::default()),
+        }
+    }
+}
+
+impl<S, T, K, A, R, Re, Sc, Sn> GatewayService<S, T, K, A, R, Re, Sc, Sn> {
+    /// Creates a new service backed by the provided ports, including scan configs and scanners.
+    pub fn with_all(
+        system: Arc<S>,
+        targets: Arc<T>,
+        tasks: Arc<K>,
+        auth: Arc<A>,
+        reports: Arc<R>,
+        results: Arc<Re>,
+        scan_configs: Arc<Sc>,
+        scanners: Arc<Sn>,
+    ) -> Self {
+        Self {
+            system,
+            targets,
+            tasks,
+            auth,
+            reports,
+            results,
+            scan_configs,
+            scanners,
             sessions: Arc::new(SessionManager::default()),
         }
     }
@@ -54,7 +86,7 @@ impl<S, T, K, A, R, Re> GatewayService<S, T, K, A, R, Re> {
     }
 }
 
-impl<S, T, K, A, R, Re> Clone for GatewayService<S, T, K, A, R, Re> {
+impl<S, T, K, A, R, Re, Sc, Sn> Clone for GatewayService<S, T, K, A, R, Re, Sc, Sn> {
     fn clone(&self) -> Self {
         Self {
             system: Arc::clone(&self.system),
@@ -63,12 +95,14 @@ impl<S, T, K, A, R, Re> Clone for GatewayService<S, T, K, A, R, Re> {
             auth: Arc::clone(&self.auth),
             reports: Arc::clone(&self.reports),
             results: Arc::clone(&self.results),
+            scan_configs: Arc::clone(&self.scan_configs),
+            scanners: Arc::clone(&self.scanners),
             sessions: Arc::clone(&self.sessions),
         }
     }
 }
 
-impl<S, T, K, A, R, Re> GatewayService<S, T, K, A, R, Re>
+impl<S, T, K, A, R, Re, Sc, Sn> GatewayService<S, T, K, A, R, Re, Sc, Sn>
 where
     S: SystemPort,
     T: TargetPort,
@@ -76,6 +110,8 @@ where
     A: AuthPort,
     R: Send + Sync + 'static,
     Re: Send + Sync + 'static,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     /// Returns liveness information.
     pub fn health(&self) -> HealthStatus {
@@ -262,7 +298,7 @@ where
     }
 }
 
-impl<S, T, K, A, R, Re> GatewayService<S, T, K, A, R, Re>
+impl<S, T, K, A, R, Re, Sc, Sn> GatewayService<S, T, K, A, R, Re, Sc, Sn>
 where
     S: SystemPort,
     T: TargetPort,
@@ -270,6 +306,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     // ------------------------------------------------------------------
     // Reports
@@ -337,6 +375,105 @@ where
     ) -> Result<ScanResult, GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.results.get_result(&session.token, id).await
+    }
+}
+
+impl<S, T, K, A, R, Re, Sc, Sn> GatewayService<S, T, K, A, R, Re, Sc, Sn>
+where
+    S: SystemPort,
+    T: TargetPort,
+    K: TaskPort,
+    A: AuthPort,
+    R: Send + Sync + 'static,
+    Re: Send + Sync + 'static,
+    Sc: ScanConfigPort,
+    Sn: ScannerPort,
+{
+    // ------------------------------------------------------------------
+    // Scan Configs
+    // ------------------------------------------------------------------
+
+    /// Lists scan configs for an authenticated session.
+    pub async fn list_scan_configs(
+        &self,
+        session_token: &str,
+        query: ScanConfigQuery,
+    ) -> Result<ScanConfigPage, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs
+            .list_scan_configs(&session.token, &query)
+            .await
+    }
+
+    /// Creates a new scan config for an authenticated session.
+    pub async fn create_scan_config(
+        &self,
+        session_token: &str,
+        input: CreateScanConfigInput,
+    ) -> Result<String, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs
+            .create_scan_config(&session.token, input)
+            .await
+    }
+
+    /// Fetches a scan config for an authenticated session.
+    pub async fn get_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ScanConfig, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs.get_scan_config(&session.token, id).await
+    }
+
+    /// Modifies a scan config for an authenticated session.
+    pub async fn modify_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyScanConfigInput,
+    ) -> Result<ScanConfig, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs
+            .modify_scan_config(&session.token, id, input)
+            .await
+    }
+
+    /// Deletes a scan config for an authenticated session.
+    pub async fn delete_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<(), GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scan_configs
+            .delete_scan_config(&session.token, id)
+            .await
+    }
+
+    // ------------------------------------------------------------------
+    // Scanners
+    // ------------------------------------------------------------------
+
+    /// Lists scanners for an authenticated session.
+    pub async fn list_scanners(
+        &self,
+        session_token: &str,
+        query: ScannerQuery,
+    ) -> Result<ScannerPage, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scanners.list_scanners(&session.token, &query).await
+    }
+
+    /// Fetches a scanner for an authenticated session.
+    pub async fn get_scanner(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<Scanner, GatewayError> {
+        let session = self.sessions.touch(session_token)?;
+        self.scanners.get_scanner(&session.token, id).await
     }
 }
 

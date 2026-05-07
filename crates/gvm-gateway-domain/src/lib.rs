@@ -470,6 +470,125 @@ pub struct ResultQuery {
 }
 
 // ============================================================================
+// Scan Config Domain Types
+// ============================================================================
+
+/// Domain scan configuration representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ScanConfig {
+    /// Scan config identifier.
+    pub id: String,
+    /// Scan config name.
+    pub name: String,
+    /// Optional comment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    /// Number of NVT families selected.
+    #[serde(rename = "familyCount", skip_serializing_if = "Option::is_none")]
+    pub family_count: Option<u32>,
+    /// Number of NVTs selected.
+    #[serde(rename = "nvtCount", skip_serializing_if = "Option::is_none")]
+    pub nvt_count: Option<u32>,
+    /// Config type (0 = standard OpenVAS config, 1 = OSP config).
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub config_type: Option<u32>,
+    /// Whether the scan config is in use.
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    /// Whether the scan config is writable.
+    pub writable: bool,
+}
+
+/// Paginated scan config list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ScanConfigPage {
+    /// Page items.
+    pub data: Vec<ScanConfig>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Scan config list query options.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScanConfigQuery {
+    /// Optional GMP filter string.
+    pub filter_string: Option<String>,
+    /// Optional saved filter identifier.
+    pub filter_id: Option<String>,
+    /// Requested page number.
+    pub page: u32,
+    /// Requested page size.
+    pub per_page: u32,
+}
+
+/// Scan config create command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateScanConfigInput {
+    /// Name.
+    pub name: String,
+    /// Optional comment.
+    pub comment: Option<String>,
+    /// Optional base scan config identifier to copy from.
+    pub base_scan_config_id: Option<String>,
+}
+
+/// Scan config update command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ModifyScanConfigInput {
+    /// Optional name.
+    pub name: Option<String>,
+    /// Optional comment.
+    pub comment: Option<String>,
+}
+
+// ============================================================================
+// Scanner Domain Types
+// ============================================================================
+
+/// Domain scanner representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Scanner {
+    /// Scanner identifier.
+    pub id: String,
+    /// Scanner name.
+    pub name: String,
+    /// Optional comment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    /// Scanner host.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    /// Scanner port.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u32>,
+    /// Scanner type (e.g. "OpenVAS", "CVE", "OSP").
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub scanner_type: Option<String>,
+}
+
+/// Paginated scanner list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ScannerPage {
+    /// Page items.
+    pub data: Vec<Scanner>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Scanner list query options.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScannerQuery {
+    /// Optional GMP filter string.
+    pub filter_string: Option<String>,
+    /// Optional saved filter identifier.
+    pub filter_id: Option<String>,
+    /// Requested page number.
+    pub page: u32,
+    /// Requested page size.
+    pub per_page: u32,
+}
+
+// ============================================================================
 // Conversion Utilities
 // ============================================================================
 
@@ -567,6 +686,32 @@ pub fn result_from_gmp(result: gvm_gmp::responses::ScanResult) -> ScanResult {
         description: result.description,
         task: None,
         report: None,
+    }
+}
+
+/// Convert a typed rust-gvm scan config into the domain representation.
+pub fn scan_config_from_gmp(config: gvm_gmp::responses::ScanConfig) -> ScanConfig {
+    ScanConfig {
+        id: config.meta.id.to_string(),
+        name: config.meta.name,
+        comment: config.meta.comment,
+        family_count: None,
+        nvt_count: None,
+        config_type: None,
+        in_use: config.meta.in_use,
+        writable: config.meta.writable,
+    }
+}
+
+/// Convert a typed rust-gvm scanner into the domain representation.
+pub fn scanner_from_gmp(scanner: gvm_gmp::responses::Scanner) -> Scanner {
+    Scanner {
+        id: scanner.meta.id.to_string(),
+        name: scanner.meta.name,
+        comment: scanner.meta.comment,
+        host: scanner.host,
+        port: scanner.port.map(|p| p as u32),
+        scanner_type: scanner.scanner_type,
     }
 }
 
@@ -924,6 +1069,56 @@ pub trait ResultPort: Send + Sync + 'static {
 
     /// Fetch a result by identifier.
     async fn get_result(&self, session_token: &str, id: &str) -> Result<ScanResult, GatewayError>;
+}
+
+/// Port for scan config CRUD operations.
+#[async_trait]
+pub trait ScanConfigPort: Send + Sync + 'static {
+    /// List scan configs for the session.
+    async fn list_scan_configs(
+        &self,
+        session_token: &str,
+        query: &ScanConfigQuery,
+    ) -> Result<ScanConfigPage, GatewayError>;
+
+    /// Create a new scan config.
+    async fn create_scan_config(
+        &self,
+        session_token: &str,
+        input: CreateScanConfigInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a scan config by identifier.
+    async fn get_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ScanConfig, GatewayError>;
+
+    /// Modify a scan config by identifier.
+    async fn modify_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyScanConfigInput,
+    ) -> Result<ScanConfig, GatewayError>;
+
+    /// Delete a scan config by identifier.
+    async fn delete_scan_config(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+}
+
+/// Port for scanner read operations.
+#[async_trait]
+pub trait ScannerPort: Send + Sync + 'static {
+    /// List scanners for the session.
+    async fn list_scanners(
+        &self,
+        session_token: &str,
+        query: &ScannerQuery,
+    ) -> Result<ScannerPage, GatewayError>;
+
+    /// Fetch a scanner by identifier.
+    async fn get_scanner(&self, session_token: &str, id: &str) -> Result<Scanner, GatewayError>;
 }
 
 /// Port for target CRUD operations.

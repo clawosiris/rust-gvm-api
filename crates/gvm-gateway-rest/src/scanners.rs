@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Greenbone AG
 
-//! Result DTOs, request parsing, handlers, and response mapping for the REST adapter.
+//! Scanner DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
 use axum::{
     extract::{OriginalUri, Path, State},
@@ -11,14 +11,15 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    AuthPort, GatewayError, ReportPort, ResultPort, ResultQuery, SystemPort, TargetPort, TaskPort,
+    AuthPort, GatewayError, ScanConfigPort, ScannerPort, ScannerQuery, SystemPort, TargetPort,
+    TaskPort,
 };
 
 use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
 
-/// Parsed list-results query from HTTP request.
+/// Parsed list-scanners query from HTTP request.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ResultListQuery {
+pub struct ScannerListQuery {
     /// Optional filter string.
     pub filter_string: Option<String>,
     /// Optional filter identifier.
@@ -29,7 +30,7 @@ pub struct ResultListQuery {
     pub per_page: u32,
 }
 
-impl ResultListQuery {
+impl ScannerListQuery {
     /// Parse query parameters from a raw query string.
     pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
         let mut filter_string = None;
@@ -79,8 +80,8 @@ impl ResultListQuery {
     }
 }
 
-/// List results handler.
-pub async fn list_results<S, T, K, A, R, Re, Sc, Sn>(
+/// List scanners handler.
+pub async fn list_scanners<S, T, K, A, R, Re, Sc, Sn>(
     State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     uri: OriginalUri,
@@ -90,25 +91,25 @@ where
     T: TargetPort,
     K: TaskPort,
     A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
+    R: Send + Sync + 'static,
+    Re: Send + Sync + 'static,
+    Sc: ScanConfigPort,
+    Sn: ScannerPort,
 {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    let query = match ResultListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+    let query = match ScannerListQuery::try_from_query_string(uri.query().unwrap_or("")) {
         Ok(query) => query,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
 
     match service
-        .list_results(
+        .list_scanners(
             &session,
-            ResultQuery {
+            ScannerQuery {
                 filter_string: query.filter_string,
                 filter_id: query.filter_id,
                 page: query.page,
@@ -117,13 +118,13 @@ where
         )
         .await
     {
-        Ok(results) => (StatusCode::OK, Json(results)).into_response(),
+        Ok(scanners) => (StatusCode::OK, Json(scanners)).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
 
-/// Get result handler.
-pub async fn get_result<S, T, K, A, R, Re, Sc, Sn>(
+/// Get scanner handler.
+pub async fn get_scanner<S, T, K, A, R, Re, Sc, Sn>(
     State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -134,10 +135,10 @@ where
     T: TargetPort,
     K: TaskPort,
     A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
+    R: Send + Sync + 'static,
+    Re: Send + Sync + 'static,
+    Sc: ScanConfigPort,
+    Sn: ScannerPort,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -148,8 +149,8 @@ where
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
 
-    match service.get_result(&session, &id).await {
-        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+    match service.get_scanner(&session, &id).await {
+        Ok(scanner) => (StatusCode::OK, Json(scanner)).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }

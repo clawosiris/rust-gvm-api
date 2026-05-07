@@ -234,8 +234,8 @@ impl ModifyTaskRequest {
 // ============================================================================
 
 /// List tasks handler.
-pub async fn list_tasks<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn list_tasks<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response
@@ -246,6 +246,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
@@ -275,8 +277,8 @@ where
 }
 
 /// Create task handler.
-pub async fn create_task<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn create_task<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     uri: OriginalUri,
     body: Bytes,
@@ -288,6 +290,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
@@ -316,8 +320,8 @@ where
 }
 
 /// Get task handler.
-pub async fn get_task<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn get_task<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -329,6 +333,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -346,8 +352,8 @@ where
 }
 
 /// Update task handler.
-pub async fn update_task<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn update_task<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -360,6 +366,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -391,8 +399,8 @@ where
 }
 
 /// Delete task handler.
-pub async fn delete_task<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn delete_task<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -404,6 +412,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -421,8 +431,8 @@ where
 }
 
 /// Start task handler.
-pub async fn start_task<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn start_task<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -434,6 +444,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -451,8 +463,8 @@ where
 }
 
 /// Stop task handler.
-pub async fn stop_task<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn stop_task<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -464,6 +476,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -481,8 +495,8 @@ where
 }
 
 /// Resume task handler.
-pub async fn resume_task<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn resume_task<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -494,6 +508,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {

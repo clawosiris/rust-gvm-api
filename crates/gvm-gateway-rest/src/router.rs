@@ -21,21 +21,31 @@ use axum::{
     Json, Router,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{AuthPort, ReportPort, ResultPort, SystemPort, TargetPort, TaskPort};
+use gvm_gateway_domain::{
+    AuthPort, ReportPort, ResultPort, ScanConfigPort, ScannerPort, SystemPort, TargetPort, TaskPort,
+};
 use serde_json::Value;
 
 use crate::{
     error::RestError,
     openapi::{
-        configure as configure_openapi, create_session_docs, create_target_docs, create_task_docs,
-        delete_report_docs, delete_session_docs, delete_target_docs, delete_task_docs,
-        finalize_document, get_report_docs, get_report_results_docs, get_result_docs,
-        get_session_docs, get_target_docs, get_task_docs, health_docs, list_reports_docs,
-        list_results_docs, list_targets_docs, list_tasks_docs, ready_docs, resume_task_docs,
-        start_task_docs, stop_task_docs, update_target_docs, update_task_docs, version_docs,
+        configure as configure_openapi, create_scan_config_docs, create_session_docs,
+        create_target_docs, create_task_docs, delete_report_docs, delete_scan_config_docs,
+        delete_session_docs, delete_target_docs, delete_task_docs, finalize_document,
+        get_report_docs, get_report_results_docs, get_result_docs, get_scan_config_docs,
+        get_scanner_docs, get_session_docs, get_target_docs, get_task_docs, health_docs,
+        list_reports_docs, list_results_docs, list_scan_configs_docs, list_scanners_docs,
+        list_targets_docs, list_tasks_docs, ready_docs, resume_task_docs, start_task_docs,
+        stop_task_docs, update_scan_config_docs, update_target_docs, update_task_docs,
+        version_docs,
     },
     reports::{delete_report, get_report, get_report_results, list_reports},
     results::{get_result, list_results},
+    scan_configs::{
+        create_scan_config, delete_scan_config, get_scan_config, list_scan_configs,
+        update_scan_config,
+    },
+    scanners::{get_scanner, list_scanners},
     sessions::{create_session, delete_session, get_session},
     targets::{create_target, delete_target, get_target, list_targets, update_target},
     tasks::{
@@ -45,7 +55,9 @@ use crate::{
 };
 
 /// Builds the gateway router.
-pub fn build_router<S, T, K, A, R, Re>(state: GatewayService<S, T, K, A, R, Re>) -> Router
+pub fn build_router<S, T, K, A, R, Re, Sc, Sn>(
+    state: GatewayService<S, T, K, A, R, Re, Sc, Sn>,
+) -> Router
 where
     S: SystemPort,
     T: TargetPort,
@@ -53,12 +65,14 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: ScanConfigPort,
+    Sn: ScannerPort,
 {
-    let openapi = build_openapi::<S, T, K, A, R, Re>();
+    let openapi = build_openapi::<S, T, K, A, R, Re, Sc, Sn>();
     let openapi_json =
         Arc::new(serde_json::to_string_pretty(&openapi).expect("generated OpenAPI must serialize"));
 
-    documented_router::<S, T, K, A, R, Re>()
+    documented_router::<S, T, K, A, R, Re, Sc, Sn>()
         .route("/api/v1/openapi.json", get(serve_openapi))
         .fallback(not_found)
         .layer(middleware::from_fn(trace_context_middleware))
@@ -68,7 +82,7 @@ where
 }
 
 /// Builds the generated OpenAPI document for the currently implemented routes.
-pub(crate) fn build_openapi<S, T, K, A, R, Re>() -> Value
+pub(crate) fn build_openapi<S, T, K, A, R, Re, Sc, Sn>() -> Value
 where
     S: SystemPort,
     T: TargetPort,
@@ -76,17 +90,21 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: ScanConfigPort,
+    Sn: ScannerPort,
 {
     let mut api = OpenApi::default();
     aide::generate::extract_schemas(true);
     aide::generate::infer_responses(false);
     aide::generate::inferred_empty_response_status(204);
 
-    let _ = documented_router::<S, T, K, A, R, Re>().finish_api_with(&mut api, configure_openapi);
+    let _ = documented_router::<S, T, K, A, R, Re, Sc, Sn>()
+        .finish_api_with(&mut api, configure_openapi);
     finalize_document(serde_json::to_value(api).expect("generated OpenAPI must serialize"))
 }
 
-fn documented_router<S, T, K, A, R, Re>() -> ApiRouter<GatewayService<S, T, K, A, R, Re>>
+fn documented_router<S, T, K, A, R, Re, Sc, Sn>(
+) -> ApiRouter<GatewayService<S, T, K, A, R, Re, Sc, Sn>>
 where
     S: SystemPort,
     T: TargetPort,
@@ -94,6 +112,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: ScanConfigPort,
+    Sn: ScannerPort,
 {
     ApiRouter::new()
         .api_route("/health", get_with(health, health_docs))
@@ -178,6 +198,36 @@ where
             "/api/v1/results/{id}",
             get_with(get_result, get_result_docs),
         )
+        // Scan Configs
+        .api_route(
+            "/api/v1/scan-configs",
+            get_with(list_scan_configs, list_scan_configs_docs),
+        )
+        .api_route(
+            "/api/v1/scan-configs",
+            post_with(create_scan_config, create_scan_config_docs),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}",
+            get_with(get_scan_config, get_scan_config_docs),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}",
+            put_with(update_scan_config, update_scan_config_docs),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}",
+            delete_with(delete_scan_config, delete_scan_config_docs),
+        )
+        // Scanners
+        .api_route(
+            "/api/v1/scanners",
+            get_with(list_scanners, list_scanners_docs),
+        )
+        .api_route(
+            "/api/v1/scanners/{id}",
+            get_with(get_scanner, get_scanner_docs),
+        )
 }
 
 async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Response {
@@ -189,8 +239,8 @@ async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Respo
         .into_response()
 }
 
-pub(crate) async fn health<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub(crate) async fn health<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
 ) -> Response
 where
     S: SystemPort,
@@ -199,12 +249,14 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: ScanConfigPort,
+    Sn: ScannerPort,
 {
     Json(service.health()).into_response()
 }
 
-pub(crate) async fn ready<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub(crate) async fn ready<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
 ) -> Response
 where
     S: SystemPort,
@@ -213,6 +265,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: ScanConfigPort,
+    Sn: ScannerPort,
 {
     match service.ready() {
         Ok(readiness) if readiness.status == "ready" => {
@@ -223,8 +277,8 @@ where
     }
 }
 
-pub(crate) async fn version<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub(crate) async fn version<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
 ) -> Response
 where
     S: SystemPort,
@@ -233,6 +287,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: ScanConfigPort,
+    Sn: ScannerPort,
 {
     match service.version() {
         Ok(version) => (StatusCode::OK, Json(version)).into_response(),

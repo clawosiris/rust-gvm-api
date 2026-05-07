@@ -56,8 +56,8 @@ struct SessionInfoResponse {
 /// Create a new session via HTTP Basic authentication.
 ///
 /// `POST /api/v1/sessions`
-pub async fn create_session<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn create_session<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response
@@ -68,6 +68,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     let (username, password) = match extract_basic_credentials(&headers) {
@@ -92,8 +94,8 @@ where
 /// Inspect a session.
 ///
 /// `GET /api/v1/sessions/{token}`
-pub async fn get_session<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn get_session<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     Path(token): Path<String>,
     uri: OriginalUri,
 ) -> Response
@@ -104,6 +106,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
 
@@ -127,8 +131,8 @@ where
 /// Close and destroy a session.
 ///
 /// `DELETE /api/v1/sessions/{token}`
-pub async fn delete_session<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn delete_session<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     Path(token): Path<String>,
     uri: OriginalUri,
 ) -> Response
@@ -139,6 +143,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
 

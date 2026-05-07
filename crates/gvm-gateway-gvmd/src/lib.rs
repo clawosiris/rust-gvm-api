@@ -17,17 +17,24 @@ use async_trait::async_trait;
 use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
-    report_from_gmp, result_from_gmp, target_from_gmp, task_from_gmp, AuthPort, CreateTargetInput,
-    CreateTaskInput, GatewayError, GetReportOpts, ModifyTargetInput, ModifyTaskInput, Pagination,
-    ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
-    ResultQuery, ScanResult, SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task,
-    TaskAction, TaskPage, TaskPort, TaskQuery,
+    report_from_gmp, result_from_gmp, scan_config_from_gmp, scanner_from_gmp, target_from_gmp,
+    task_from_gmp, AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput,
+    GatewayError, GetReportOpts, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput,
+    Pagination, ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage,
+    ResultPort, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
+    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, SystemPort, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
 };
 use gvm_gmp::{
     commands::{
         authentication::authenticate,
         reports::{delete_report, get_report, get_reports, GetReportsOpts},
         results::{get_result, get_results, GetResultsOpts},
+        scan_configs::{
+            create_scan_config, delete_scan_config, get_scan_config, get_scan_configs,
+            modify_scan_config, ConfigOpts, GetScanConfigsOpts,
+        },
+        scanners::{get_scanner, get_scanners, GetScannersOpts},
         targets::{
             create_target, delete_target, get_target, get_targets, modify_target, CreateTargetOpts,
             GetTargetsOpts, ModifyTargetOpts,
@@ -40,8 +47,9 @@ use gvm_gmp::{
         },
     },
     responses::{
-        ActionResponse, CreateTargetResponse, CreateTaskResponse, GetReportsResponse,
-        GetResultsResponse, GetTargetsResponse, GetTasksResponse, StartTaskResponse,
+        ActionResponse, CreateScanConfigResponse, CreateTargetResponse, CreateTaskResponse,
+        GetReportsResponse, GetResultsResponse, GetScanConfigsResponse, GetScannersResponse,
+        GetTargetsResponse, GetTasksResponse, StartTaskResponse,
     },
     AliveTest, EntityId, HostsOrdering,
 };
@@ -245,6 +253,67 @@ impl ResultPort for StaticGvmdAdapter {
     async fn get_result(&self, _: &str, _: &str) -> Result<ScanResult, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support results".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl ScanConfigPort for StaticGvmdAdapter {
+    async fn list_scan_configs(
+        &self,
+        _: &str,
+        _: &ScanConfigQuery,
+    ) -> Result<ScanConfigPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+
+    async fn create_scan_config(
+        &self,
+        _: &str,
+        _: CreateScanConfigInput,
+    ) -> Result<String, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+
+    async fn get_scan_config(&self, _: &str, _: &str) -> Result<ScanConfig, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+
+    async fn modify_scan_config(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyScanConfigInput,
+    ) -> Result<ScanConfig, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+
+    async fn delete_scan_config(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scan configs".to_string(),
+        ))
+    }
+}
+
+#[async_trait]
+impl ScannerPort for StaticGvmdAdapter {
+    async fn list_scanners(&self, _: &str, _: &ScannerQuery) -> Result<ScannerPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scanners".to_string(),
+        ))
+    }
+
+    async fn get_scanner(&self, _: &str, _: &str) -> Result<Scanner, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support scanners".to_string(),
         ))
     }
 }
@@ -997,6 +1066,229 @@ impl ResultPort for GvmdAdapter {
             .next()
             .map(result_from_gmp)
             .ok_or_else(|| GatewayError::NotFound(format!("result {id} not found")))
+    }
+}
+
+#[async_trait]
+impl ScanConfigPort for GvmdAdapter {
+    async fn list_scan_configs(
+        &self,
+        session_token: &str,
+        query: &ScanConfigQuery,
+    ) -> Result<ScanConfigPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_scan_configs(GetScanConfigsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetScanConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(scan_config_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.name.cmp(&right.name));
+
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let data = items
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect::<Vec<_>>();
+
+        Ok(ScanConfigPage {
+            data,
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+
+    async fn create_scan_config(
+        &self,
+        session_token: &str,
+        input: CreateScanConfigInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let base_id = input
+            .base_scan_config_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(create_scan_config(
+                &input.name,
+                base_id.as_ref(),
+                ConfigOpts {
+                    comment: input.comment,
+                    usage_type: None,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateScanConfigResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ScanConfig, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_scan_config(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetScanConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(scan_config_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("scan config {id} not found")))
+    }
+
+    async fn modify_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyScanConfigInput,
+    ) -> Result<ScanConfig, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let config_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_scan_config(
+                &config_id,
+                ConfigOpts {
+                    comment: input.comment,
+                    usage_type: None,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        drop(client);
+        self.get_scan_config(session_token, id).await
+    }
+
+    async fn delete_scan_config(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_scan_config(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl ScannerPort for GvmdAdapter {
+    async fn list_scanners(
+        &self,
+        session_token: &str,
+        query: &ScannerQuery,
+    ) -> Result<ScannerPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_scanners(GetScannersOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetScannersResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(scanner_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.name.cmp(&right.name));
+
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let data = items
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect::<Vec<_>>();
+
+        Ok(ScannerPage {
+            data,
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+
+    async fn get_scanner(&self, session_token: &str, id: &str) -> Result<Scanner, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_scanner(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetScannersResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(scanner_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("scanner {id} not found")))
     }
 }
 
