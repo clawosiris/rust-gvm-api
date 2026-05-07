@@ -157,3 +157,48 @@ the absence of banned dependencies.
 - None to REST contract: no handler, DTO, or route changes.
 - The gvmd adapter's public API grows by six `pub fn` conversions, but these
   are only consumed by the composition-root acceptance tests.
+
+---
+
+# PR #100 Review Feedback (2026-05-07)
+
+## Review comments to address
+
+1. **Make GMP conversion utilities private** — The six `*_from_gmp()` functions
+   and the two `map_*_error()` functions are `pub` but should not be part of
+   the crate's public API. They are implementation details of the gvmd adapter.
+   Change from `pub fn` to `pub(crate) fn`.
+
+2. **Split the large lib.rs** — At ~2 080 lines, `lib.rs` mixes two adapters
+   and a conversion layer. Split into:
+   - `static_adapter.rs` — `StaticGvmdAdapter` + trait impls
+   - `gvmd_adapter.rs` — `GvmdAdapter` + trait impls
+   - `conversions.rs` — `*_from_gmp()`, `map_*_error()`, and private helpers
+
+3. **Move `target_from_gmp` roundtrip test** — The acceptance test at
+   `gvm-gateway/tests/acceptance.rs:1073` imports `target_from_gmp` as a
+   public symbol. Since the function is becoming crate-private, move this test
+   into the gvmd crate's own test module.
+
+## Re-check of issue #96 acceptance criteria
+
+| Criterion | Status |
+|-----------|--------|
+| Move `*_from_gmp()` out of domain crate | Done (PR #100) |
+| Remove `gvm-gmp` from domain `Cargo.toml` | Done (PR #100) |
+| `serde_json` to dev-dependencies in domain | Done (PR #100) |
+| Update gvmd adapter imports | Done (PR #100) |
+| Update acceptance test imports | Done (PR #100) |
+| Architecture boundary test | Done (`architecture.rs`) |
+| Conversion utilities private to adapter | **This fix** |
+
+## Plan
+
+1. Create `crates/gvm-gateway-gvmd/src/static_adapter.rs`
+2. Create `crates/gvm-gateway-gvmd/src/gvmd_adapter.rs`
+3. Create `crates/gvm-gateway-gvmd/src/conversions.rs`
+4. Rewrite `lib.rs` as a thin module root that re-exports public types
+5. Change `*_from_gmp`, `map_gvm_error`, `map_parse_error` to `pub(crate)`
+6. Move `target_from_gmp_roundtrip` test from acceptance.rs into conversions.rs
+7. Remove the `target_from_gmp` import from acceptance.rs
+8. Run `cargo fmt --all --check`, `cargo clippy`, `cargo test --workspace`

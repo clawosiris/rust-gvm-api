@@ -539,9 +539,7 @@ dependencies = [
  "gvm-gateway-domain",
  "gvm-gateway-gvmd",
  "gvm-gateway-rest",
- "gvm-gmp",
  "gvm-mock-server",
- "gvm-protocol",
  "http",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -587,6 +585,7 @@ dependencies = [
  "gvm-gateway-domain",
  "gvm-gmp",
  "gvm-mock-server",
+ "gvm-protocol",
  "tokio",
 ]
 

@@ -15,10 +15,7 @@ const BANNED_DEPS: &[&str] = &["gvm-gmp", "gvm-client", "gvm-connection"];
 
 /// Crates that form the inner layers of the hexagonal architecture.
 const INNER_CRATES: &[(&str, &str)] = &[
-    (
-        "gvm-gateway-domain",
-        "crates/gvm-gateway-domain/Cargo.toml",
-    ),
+    ("gvm-gateway-domain", "crates/gvm-gateway-domain/Cargo.toml"),
     ("gvm-gateway-app", "crates/gvm-gateway-app/Cargo.toml"),
     ("gvm-gateway-rest", "crates/gvm-gateway-rest/Cargo.toml"),
 ];
