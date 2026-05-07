@@ -465,12 +465,7 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/scan-configs/{id}",
         ),
         ("/scanners", "get", DocName::Scanners, "/scanners"),
-        (
-            "/scanners/{id}",
-            "get",
-            DocName::Scanners,
-            "/scanners/{id}",
-        ),
+        ("/scanners/{id}", "get", DocName::Scanners, "/scanners/{id}"),
     ];
 
     for (generated_path, method, curated_doc, curated_path) in checks {

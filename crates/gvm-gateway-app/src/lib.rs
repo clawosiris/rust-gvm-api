@@ -13,9 +13,9 @@ use gvm_gateway_domain::{
     GetReportOpts, HealthStatus, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput,
     ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
     ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
-    ScannerPage, ScannerPort, ScannerQuery, SessionCreated, SessionInfo, SessionManager, SystemPort,
-    Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
-    VersionInfo,
+    ScannerPage, ScannerPort, ScannerQuery, SessionCreated, SessionInfo, SessionManager,
+    SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, VersionInfo,
 };
 
 /// Application services exposed to adapters.

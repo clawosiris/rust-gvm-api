@@ -55,7 +55,9 @@ use crate::{
 };
 
 /// Builds the gateway router.
-pub fn build_router<S, T, K, A, R, Re, Sc, Sn>(state: GatewayService<S, T, K, A, R, Re, Sc, Sn>) -> Router
+pub fn build_router<S, T, K, A, R, Re, Sc, Sn>(
+    state: GatewayService<S, T, K, A, R, Re, Sc, Sn>,
+) -> Router
 where
     S: SystemPort,
     T: TargetPort,
@@ -96,11 +98,13 @@ where
     aide::generate::infer_responses(false);
     aide::generate::inferred_empty_response_status(204);
 
-    let _ = documented_router::<S, T, K, A, R, Re, Sc, Sn>().finish_api_with(&mut api, configure_openapi);
+    let _ = documented_router::<S, T, K, A, R, Re, Sc, Sn>()
+        .finish_api_with(&mut api, configure_openapi);
     finalize_document(serde_json::to_value(api).expect("generated OpenAPI must serialize"))
 }
 
-fn documented_router<S, T, K, A, R, Re, Sc, Sn>() -> ApiRouter<GatewayService<S, T, K, A, R, Re, Sc, Sn>>
+fn documented_router<S, T, K, A, R, Re, Sc, Sn>(
+) -> ApiRouter<GatewayService<S, T, K, A, R, Re, Sc, Sn>>
 where
     S: SystemPort,
     T: TargetPort,

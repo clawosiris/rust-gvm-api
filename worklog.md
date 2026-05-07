@@ -44,6 +44,11 @@ with full OpenAPI spec generation and contract validation against the curated YA
 - Extended OpenAPI contract test to validate scan-configs and scanners paths against curated YAML specs
 - Added `DocName::ScanConfigs` and `DocName::Scanners` to the spec comparison infrastructure
 
+## CI Fix (post-PR)
+
+- Ran `cargo fmt --all` to fix formatting across `openapi.rs`, `lib.rs` (app + gvmd), and `acceptance.rs`
+- Renamed `ScannerTypeDoc` enum variants from `OpenVAS`/`CVE`/`OSP` to `OpenVas`/`Cve`/`Osp` with `#[serde(rename = "...")]` to satisfy `clippy::upper_case_acronyms` while preserving the serialized OpenAPI contract
+
 ## Test Results
 
 All 134 tests pass (0 failures).

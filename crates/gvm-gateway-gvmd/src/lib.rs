@@ -305,11 +305,7 @@ impl ScanConfigPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl ScannerPort for StaticGvmdAdapter {
-    async fn list_scanners(
-        &self,
-        _: &str,
-        _: &ScannerQuery,
-    ) -> Result<ScannerPage, GatewayError> {
+    async fn list_scanners(&self, _: &str, _: &ScannerQuery) -> Result<ScannerPage, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support scanners".to_string(),
         ))
@@ -1100,8 +1096,7 @@ impl ScanConfigPort for GvmdAdapter {
             }))
             .await
             .map_err(map_gvm_error)?;
-        let parsed =
-            GetScanConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        let parsed = GetScanConfigsResponse::from_response(&response).map_err(map_parse_error)?;
         let mut items = parsed
             .items
             .into_iter()
@@ -1157,8 +1152,7 @@ impl ScanConfigPort for GvmdAdapter {
             ))
             .await
             .map_err(map_gvm_error)?;
-        let parsed =
-            CreateScanConfigResponse::from_response(&response).map_err(map_parse_error)?;
+        let parsed = CreateScanConfigResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(parsed.id.to_string())
     }
 
@@ -1174,8 +1168,7 @@ impl ScanConfigPort for GvmdAdapter {
             .call(get_scan_config(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
-        let parsed =
-            GetScanConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        let parsed = GetScanConfigsResponse::from_response(&response).map_err(map_parse_error)?;
         parsed
             .items
             .into_iter()
@@ -1209,11 +1202,7 @@ impl ScanConfigPort for GvmdAdapter {
         self.get_scan_config(session_token, id).await
     }
 
-    async fn delete_scan_config(
-        &self,
-        session_token: &str,
-        id: &str,
-    ) -> Result<(), GatewayError> {
+    async fn delete_scan_config(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
@@ -1253,8 +1242,7 @@ impl ScannerPort for GvmdAdapter {
             }))
             .await
             .map_err(map_gvm_error)?;
-        let parsed =
-            GetScannersResponse::from_response(&response).map_err(map_parse_error)?;
+        let parsed = GetScannersResponse::from_response(&response).map_err(map_parse_error)?;
         let mut items = parsed
             .items
             .into_iter()
@@ -1286,11 +1274,7 @@ impl ScannerPort for GvmdAdapter {
         })
     }
 
-    async fn get_scanner(
-        &self,
-        session_token: &str,
-        id: &str,
-    ) -> Result<Scanner, GatewayError> {
+    async fn get_scanner(&self, session_token: &str, id: &str) -> Result<Scanner, GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
@@ -1298,8 +1282,7 @@ impl ScannerPort for GvmdAdapter {
             .call(get_scanner(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
-        let parsed =
-            GetScannersResponse::from_response(&response).map_err(map_parse_error)?;
+        let parsed = GetScannersResponse::from_response(&response).map_err(map_parse_error)?;
         parsed
             .items
             .into_iter()

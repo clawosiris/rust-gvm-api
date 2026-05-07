@@ -1908,8 +1908,16 @@ mod tests {
 
     #[test]
     fn generated_openapi_preserves_key_schema_fields() {
-        let generated =
-            build_openapi::<StubSystem, StubTarget, StubTask, StubAuth, StubReport, StubResult, StubScanConfig, StubScanner>();
+        let generated = build_openapi::<
+            StubSystem,
+            StubTarget,
+            StubTask,
+            StubAuth,
+            StubReport,
+            StubResult,
+            StubScanConfig,
+            StubScanner,
+        >();
 
         let target_props = &generated["components"]["schemas"]["Target"]["properties"];
         assert!(target_props.get("excludeHosts").is_some());
@@ -1933,8 +1941,16 @@ mod tests {
 
     #[test]
     fn generated_openapi_includes_session_schemas() {
-        let generated =
-            build_openapi::<StubSystem, StubTarget, StubTask, StubAuth, StubReport, StubResult, StubScanConfig, StubScanner>();
+        let generated = build_openapi::<
+            StubSystem,
+            StubTarget,
+            StubTask,
+            StubAuth,
+            StubReport,
+            StubResult,
+            StubScanConfig,
+            StubScanner,
+        >();
         let schemas = generated["components"]["schemas"].as_object().unwrap();
 
         assert!(
@@ -1949,8 +1965,16 @@ mod tests {
 
     #[test]
     fn generated_openapi_includes_task_schemas() {
-        let generated =
-            build_openapi::<StubSystem, StubTarget, StubTask, StubAuth, StubReport, StubResult, StubScanConfig, StubScanner>();
+        let generated = build_openapi::<
+            StubSystem,
+            StubTarget,
+            StubTask,
+            StubAuth,
+            StubReport,
+            StubResult,
+            StubScanConfig,
+            StubScanner,
+        >();
         let schemas = generated["components"]["schemas"].as_object().unwrap();
 
         assert!(schemas.contains_key("Task"), "missing Task schema");
@@ -2216,9 +2240,12 @@ struct ScannerDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 enum ScannerTypeDoc {
-    OpenVAS,
-    CVE,
-    OSP,
+    #[serde(rename = "OpenVAS")]
+    OpenVas,
+    #[serde(rename = "CVE")]
+    Cve,
+    #[serde(rename = "OSP")]
+    Osp,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
