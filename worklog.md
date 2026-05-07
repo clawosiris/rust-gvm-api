@@ -80,3 +80,80 @@ keep the API surface identical. A `HashMap<TypeId, Box<dyn Any>>` would lose com
 | `crates/gvm-gateway-rest/src/scanners.rs` | Remove generics from 2 handler fns |
 | `crates/gvm-gateway-rest/src/sessions.rs` | Remove generics from 3 handler fns |
 | `crates/gvm-gateway/src/main.rs` | Simplify construction |
+
+---
+
+# Issue #96: Make REST and GMP adapters speak through domain-owned boundaries
+
+## Problem
+
+The domain crate (`gvm-gateway-domain`) depends on `gvm-gmp` and contains
+`*_from_gmp()` conversion functions that take `gvm_gmp::responses::*` types
+as parameters. This violates the hexagonal architecture rule that the domain
+layer must know nothing about GMP or GVMD protocol types.
+
+### Boundary violations found
+
+1. **`gvm-gateway-domain/Cargo.toml`** lists `gvm-gmp` as a dependency.
+2. **`gvm-gateway-domain/src/lib.rs`** defines six public conversion functions
+   (`target_from_gmp`, `task_from_gmp`, `report_from_gmp`, `result_from_gmp`,
+   `scan_config_from_gmp`, `scanner_from_gmp`) whose parameter types come from
+   `gvm_gmp::responses`.
+3. **`gvm-gateway/tests/acceptance.rs`** imports `target_from_gmp` from domain
+   and `GetTargetsResponse` from `gvm_gmp::responses` directly.
+
+### What is already correct
+
+- Port traits (in domain) accept/return only domain types.
+- `gvm-gateway-app` depends only on domain types.
+- `gvm-gateway-rest` does not import `gvm-gmp` at all.
+- `gvm-gateway-gvmd` already does all GMP command building internally.
+
+## Plan
+
+### Step 1 — Move conversion functions to gvmd adapter
+
+Move the six `*_from_gmp()` functions from `gvm-gateway-domain/src/lib.rs`
+to `gvm-gateway-gvmd/src/lib.rs`. They already belong there since the gvmd
+crate is the only consumer.
+
+### Step 2 — Remove gvm-gmp dependency from domain
+
+Remove `gvm-gmp` from `gvm-gateway-domain/Cargo.toml`. Move `serde_json` to
+`[dev-dependencies]` since it is only used in `#[cfg(test)]` blocks.
+
+### Step 3 — Update gvmd adapter imports
+
+Change imports in `gvm-gateway-gvmd/src/lib.rs` from
+`gvm_gateway_domain::{target_from_gmp, ...}` to local function references.
+
+### Step 4 — Update acceptance tests
+
+In `gvm-gateway/tests/acceptance.rs`, change the `target_from_gmp` import
+from `gvm_gateway_domain` to `gvm_gateway_gvmd`.
+
+### Step 5 — Add architectural boundary test
+
+Add a compile-time or test-time check that enforces:
+- `gvm-gateway-domain` does NOT depend on `gvm-gmp`, `gvm-client`, or
+  `gvm-connection`.
+- `gvm-gateway-app` does NOT depend on `gvm-gmp`, `gvm-client`, or
+  `gvm-connection`.
+- `gvm-gateway-rest` does NOT depend on `gvm-gmp`, `gvm-client`, or
+  `gvm-connection`.
+
+This will be implemented as a test that parses Cargo.toml files and asserts
+the absence of banned dependencies.
+
+### Step 6 — Verify
+
+- `cargo check` passes.
+- `cargo test --workspace` passes.
+- `cargo clippy --workspace` passes.
+- OpenAPI contract tests still pass (REST contract is unchanged).
+
+## Risks
+
+- None to REST contract: no handler, DTO, or route changes.
+- The gvmd adapter's public API grows by six `pub fn` conversions, but these
+  are only consumed by the composition-root acceptance tests.

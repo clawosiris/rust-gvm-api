@@ -9,8 +9,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{target_from_gmp, TargetPage};
-use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
+use gvm_gateway_domain::TargetPage;
+use gvm_gateway_gvmd::{target_from_gmp, GvmdAdapter, StaticGvmdAdapter};
 use gvm_gateway_rest::router::build_router;
 use gvm_gateway_rest::targets::{
     build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery,

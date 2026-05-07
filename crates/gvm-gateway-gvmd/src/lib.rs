@@ -17,13 +17,12 @@ use async_trait::async_trait;
 use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
-    report_from_gmp, result_from_gmp, scan_config_from_gmp, scanner_from_gmp, target_from_gmp,
-    task_from_gmp, AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput,
-    GatewayError, GetReportOpts, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput,
-    Pagination, ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage,
-    ResultPort, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
-    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, SystemPort, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
+    AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput, GatewayError,
+    GetReportOpts, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput, NvtRef, Pagination,
+    ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResourceRef, ResultCount,
+    ResultPage, ResultPort, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, SystemPort,
+    Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -1310,6 +1309,157 @@ impl AuthPort for GvmdAdapter {
             .map_err(|_| GatewayError::BackendUnavailable("session store unavailable".to_string()))?
             .remove(session_token);
         Ok(())
+    }
+}
+
+// ============================================================================
+// GMP → Domain Conversion Utilities
+// ============================================================================
+
+/// Convert a typed rust-gvm target into the domain representation.
+pub fn target_from_gmp(target: gvm_gmp::responses::Target) -> Target {
+    Target {
+        id: target.meta.id.to_string(),
+        name: target.meta.name,
+        comment: target.meta.comment,
+        hosts: target.hosts,
+        exclude_hosts: target.exclude_hosts,
+        alive_test: target.alive_tests,
+        port_list: target.port_list.map(|resource| ResourceRef {
+            id: resource.id.to_string(),
+            name: Some(resource.name),
+        }),
+        reverse_lookup_only: target.reverse_lookup_only,
+        reverse_lookup_unify: target.reverse_lookup_unify,
+        ssh_credential: None,
+        smb_credential: None,
+        esxi_credential: None,
+        snmp_credential: None,
+        in_use: target.meta.in_use,
+        writable: target.meta.writable,
+    }
+}
+
+/// Convert a typed rust-gvm task into the domain representation.
+pub fn task_from_gmp(task: gvm_gmp::responses::Task) -> Task {
+    let named_entity_to_ref = |entity: gvm_gmp::responses::NamedEntity| -> ResourceRef {
+        ResourceRef {
+            id: entity.id.to_string(),
+            name: if entity.name.is_empty() {
+                None
+            } else {
+                Some(entity.name)
+            },
+        }
+    };
+
+    Task {
+        id: task.meta.id.to_string(),
+        name: task.meta.name,
+        comment: task.meta.comment,
+        status: task.status.unwrap_or_else(|| "New".to_string()),
+        target: task.target.map(&named_entity_to_ref),
+        scan_config: task.config.map(&named_entity_to_ref),
+        scanner: task.scanner.map(&named_entity_to_ref),
+        schedule: task.schedule.map(&named_entity_to_ref),
+        alerts: task.alerts.into_iter().map(&named_entity_to_ref).collect(),
+        alterable: None,
+        hosts_ordering: task.hosts_ordering,
+        observers: vec![],
+        schedule_periods: None,
+        last_report: task.last_report.map(|lr| ResourceRef {
+            id: lr.id.to_string(),
+            name: None,
+        }),
+        current_report: None,
+        result_count: task.report_count,
+        in_use: task.meta.in_use,
+        writable: task.meta.writable,
+    }
+}
+
+/// Convert a typed rust-gvm report into the domain representation.
+pub fn report_from_gmp(report: gvm_gmp::responses::Report) -> Report {
+    let severity = report
+        .severity
+        .as_ref()
+        .and_then(|s| s.full.as_deref())
+        .and_then(|v| v.parse::<f64>().ok());
+
+    Report {
+        id: report.meta.id.to_string(),
+        task: report.task.map(|t| ResourceRef {
+            id: t.id.to_string(),
+            name: Some(t.name),
+        }),
+        scan_start: report.scan_start,
+        scan_end: report.scan_end,
+        severity,
+        result_count: report.result_count.map(|rc| ResultCount {
+            total: rc.full,
+            high: None,
+            medium: None,
+            low: None,
+            log: None,
+            false_positive: None,
+        }),
+        results: vec![],
+    }
+}
+
+/// Convert a typed rust-gvm scan result into the domain representation.
+pub fn result_from_gmp(result: gvm_gmp::responses::ScanResult) -> ScanResult {
+    let severity = result
+        .severity
+        .as_deref()
+        .and_then(|v| v.parse::<f64>().ok());
+
+    let nvt = result.nvt.map(|n| NvtRef {
+        oid: Some(n.oid),
+        name: n.name,
+        family: n.family,
+        cvss_base: n.cvss_base.as_deref().and_then(|v| v.parse::<f64>().ok()),
+        cves: vec![],
+        tags: None,
+    });
+
+    ScanResult {
+        id: result.meta.id.to_string(),
+        name: result.meta.name,
+        host: result.host,
+        port: result.port,
+        severity,
+        threat: result.threat,
+        nvt,
+        description: result.description,
+        task: None,
+        report: None,
+    }
+}
+
+/// Convert a typed rust-gvm scan config into the domain representation.
+pub fn scan_config_from_gmp(config: gvm_gmp::responses::ScanConfig) -> ScanConfig {
+    ScanConfig {
+        id: config.meta.id.to_string(),
+        name: config.meta.name,
+        comment: config.meta.comment,
+        family_count: None,
+        nvt_count: None,
+        config_type: None,
+        in_use: config.meta.in_use,
+        writable: config.meta.writable,
+    }
+}
+
+/// Convert a typed rust-gvm scanner into the domain representation.
+pub fn scanner_from_gmp(scanner: gvm_gmp::responses::Scanner) -> Scanner {
+    Scanner {
+        id: scanner.meta.id.to_string(),
+        name: scanner.meta.name,
+        comment: scanner.meta.comment,
+        host: scanner.host,
+        port: scanner.port.map(|p| p as u32),
+        scanner_type: scanner.scanner_type,
     }
 }
 

@@ -572,7 +572,6 @@ name = "gvm-gateway-domain"
 version = "0.3.1"
 dependencies = [
  "async-trait",
- "gvm-gmp",
  "serde",
  "serde_json",
  "uuid",
