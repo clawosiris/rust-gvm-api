@@ -16,12 +16,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
-fn datetime_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-    schemars::json_schema!({
-        "type": "string",
-        "format": "date-time"
-    })
-}
+// Runtime DTO imports — these types own both the JSON wire format and the
+// OpenAPI schema.
+use crate::{
+    dto::ResourceCreatedResponse,
+    reports::{ReportListResponse, ReportResponse},
+    results::{ResultListResponse, ResultResponse},
+    router::{HealthStatusResponse, ReadinessStatusResponse, VersionInfoResponse},
+    scan_configs::{ScanConfigListResponse, ScanConfigResponse},
+    scanners::{ScannerListResponse, ScannerResponse},
+    sessions::{SessionCreatedResponse, SessionInfoResponse},
+    targets::{TargetListResponse, TargetResponse},
+    tasks::{TaskActionResponse, TaskListResponse, TaskResponse},
+};
 
 fn ok_json<T>(
     description: &'static str,
@@ -602,7 +609,7 @@ pub(crate) fn health_docs(op: TransformOperation<'_>) -> TransformOperation<'_> 
         .tag("System")
         .summary("Liveness probe")
         .description("Returns basic process liveness information.")
-        .response_with::<200, Json<HealthStatusDoc>, _>(ok_json("Service is alive"))
+        .response_with::<200, Json<HealthStatusResponse>, _>(ok_json("Service is alive"))
 }
 
 /// OpenAPI transform for `GET /ready`.
@@ -611,8 +618,8 @@ pub(crate) fn ready_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
         .tag("System")
         .summary("Readiness probe")
         .description("Indicates whether the service is ready to handle requests.")
-        .response_with::<200, Json<ReadinessStatusDoc>, _>(ok_json("Service is ready"))
-        .response_with::<503, Json<ReadinessStatusDoc>, _>(ok_json("Service is not ready"))
+        .response_with::<200, Json<ReadinessStatusResponse>, _>(ok_json("Service is ready"))
+        .response_with::<503, Json<ReadinessStatusResponse>, _>(ok_json("Service is not ready"))
 }
 
 /// OpenAPI transform for `GET /api/v1/version`.
@@ -622,7 +629,7 @@ pub(crate) fn version_docs(op: TransformOperation<'_>) -> TransformOperation<'_>
         .tag("System")
         .summary("Get API and GMP version information")
         .description("Returns the gateway API version together with the connected GMP version.")
-        .response_with::<200, Json<VersionInfoDoc>, _>(ok_json("Version information"));
+        .response_with::<200, Json<VersionInfoResponse>, _>(ok_json("Version information"));
 
     problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
@@ -640,7 +647,7 @@ pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperat
              session token. Include the token as a Bearer token on all subsequent requests.",
         )
         .security_requirement("basicAuth")
-        .response_with::<201, Json<SessionCreatedDoc>, _>(ok_json("Session created"));
+        .response_with::<201, Json<SessionCreatedResponse>, _>(ok_json("Session created"));
 
     let op = problem_response::<401>(op, "Authentication failed");
     problem_response::<502>(op, "Backend service unreachable or connection failed")
@@ -655,7 +662,7 @@ pub(crate) fn get_session_docs(op: TransformOperation<'_>) -> TransformOperation
         .description("Returns the current state and metadata for a session.")
         .security_requirement("bearerAuth")
         .input::<Path<SessionTokenPathDoc>>()
-        .response_with::<200, Json<SessionInfoDoc>, _>(ok_json("Session details"));
+        .response_with::<200, Json<SessionInfoResponse>, _>(ok_json("Session details"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Session not found")
@@ -687,7 +694,7 @@ pub(crate) fn list_targets_docs(op: TransformOperation<'_>) -> TransformOperatio
         .description("Returns a paginated list of targets.")
         .security_requirement("bearerAuth")
         .input::<Query<TargetListQueryDoc>>()
-        .response_with::<200, Json<TargetListDoc>, _>(ok_json("Paginated list of targets"));
+        .response_with::<200, Json<TargetListResponse>, _>(ok_json("Paginated list of targets"));
 
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
@@ -702,7 +709,7 @@ pub(crate) fn create_target_docs(op: TransformOperation<'_>) -> TransformOperati
         .description("Creates a new scan target.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateTargetDoc>>()
-        .response_with::<201, Json<ResourceCreatedDoc>, _>(ok_json("Target created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Target created"));
 
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
@@ -717,7 +724,7 @@ pub(crate) fn get_target_docs(op: TransformOperation<'_>) -> TransformOperation<
         .description("Returns the details for a single target.")
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<TargetDoc>, _>(ok_json("Target details"));
+        .response_with::<200, Json<TargetResponse>, _>(ok_json("Target details"));
 
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -733,7 +740,7 @@ pub(crate) fn update_target_docs(op: TransformOperation<'_>) -> TransformOperati
         .description("Updates an existing target.")
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Json<ModifyTargetDoc>)>()
-        .response_with::<200, Json<TargetDoc>, _>(ok_json("Target updated"));
+        .response_with::<200, Json<TargetResponse>, _>(ok_json("Target updated"));
 
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -767,7 +774,7 @@ pub(crate) fn list_tasks_docs(op: TransformOperation<'_>) -> TransformOperation<
         .description("Returns a paginated list of tasks.")
         .security_requirement("bearerAuth")
         .input::<Query<TaskListQueryDoc>>()
-        .response_with::<200, Json<TaskListDoc>, _>(ok_json("Paginated list of tasks"));
+        .response_with::<200, Json<TaskListResponse>, _>(ok_json("Paginated list of tasks"));
 
     problem_response::<401>(op, "Authentication required or session expired")
 }
@@ -781,7 +788,7 @@ pub(crate) fn create_task_docs(op: TransformOperation<'_>) -> TransformOperation
         .description("Creates a new scan task.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateTaskDoc>>()
-        .response_with::<201, Json<ResourceCreatedDoc>, _>(ok_json("Task created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Task created"));
 
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
@@ -796,7 +803,7 @@ pub(crate) fn get_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_
         .description("Returns the details for a single task.")
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<TaskDoc>, _>(ok_json("Task details"));
+        .response_with::<200, Json<TaskResponse>, _>(ok_json("Task details"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
@@ -811,7 +818,7 @@ pub(crate) fn update_task_docs(op: TransformOperation<'_>) -> TransformOperation
         .description("Updates an existing task.")
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Json<ModifyTaskDoc>)>()
-        .response_with::<200, Json<TaskDoc>, _>(ok_json("Task updated"));
+        .response_with::<200, Json<TaskResponse>, _>(ok_json("Task updated"));
 
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -842,7 +849,7 @@ pub(crate) fn start_task_docs(op: TransformOperation<'_>) -> TransformOperation<
         .description("Starts a scan task. Returns the report identifier created by the action.")
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<TaskActionDoc>, _>(ok_json("Task started"));
+        .response_with::<200, Json<TaskActionResponse>, _>(ok_json("Task started"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<404>(op, "Resource not found");
@@ -875,7 +882,7 @@ pub(crate) fn resume_task_docs(op: TransformOperation<'_>) -> TransformOperation
         .description("Resumes a stopped scan task. Returns the report identifier.")
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<TaskActionDoc>, _>(ok_json("Task resumed"));
+        .response_with::<200, Json<TaskActionResponse>, _>(ok_json("Task resumed"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<404>(op, "Resource not found");
@@ -893,7 +900,7 @@ pub(crate) fn list_reports_docs(op: TransformOperation<'_>) -> TransformOperatio
         .description("Returns a paginated list of reports.")
         .security_requirement("bearerAuth")
         .input::<Query<ReportListQueryDoc>>()
-        .response_with::<200, Json<ReportListDoc>, _>(ok_json("Paginated list of reports"));
+        .response_with::<200, Json<ReportListResponse>, _>(ok_json("Paginated list of reports"));
 
     problem_response::<401>(op, "Authentication required or session expired")
 }
@@ -907,7 +914,9 @@ pub(crate) fn get_report_docs(op: TransformOperation<'_>) -> TransformOperation<
         .description("Returns the details for a single report with embedded results.")
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Query<GetReportQueryDoc>)>()
-        .response_with::<200, Json<ReportDoc>, _>(ok_json("Report details with embedded results"));
+        .response_with::<200, Json<ReportResponse>, _>(ok_json(
+            "Report details with embedded results",
+        ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
@@ -937,7 +946,7 @@ pub(crate) fn get_report_results_docs(op: TransformOperation<'_>) -> TransformOp
         .description("Returns a paginated list of results for a specific report.")
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
-        .response_with::<200, Json<ResultListDoc>, _>(ok_json("Paginated list of results"));
+        .response_with::<200, Json<ResultListResponse>, _>(ok_json("Paginated list of results"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
@@ -954,7 +963,7 @@ pub(crate) fn list_results_docs(op: TransformOperation<'_>) -> TransformOperatio
         .description("Returns a paginated list of results.")
         .security_requirement("bearerAuth")
         .input::<Query<ResultListQueryDoc>>()
-        .response_with::<200, Json<ResultListDoc>, _>(ok_json("Paginated list of results"));
+        .response_with::<200, Json<ResultListResponse>, _>(ok_json("Paginated list of results"));
 
     problem_response::<401>(op, "Authentication required or session expired")
 }
@@ -968,7 +977,7 @@ pub(crate) fn get_result_docs(op: TransformOperation<'_>) -> TransformOperation<
         .description("Returns the details for a single result.")
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<ResultDoc>, _>(ok_json("Result details"));
+        .response_with::<200, Json<ResultResponse>, _>(ok_json("Result details"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
@@ -985,7 +994,7 @@ pub(crate) fn list_scan_configs_docs(op: TransformOperation<'_>) -> TransformOpe
         .description("Returns a paginated list of scan configurations.")
         .security_requirement("bearerAuth")
         .input::<Query<ScanConfigListQueryDoc>>()
-        .response_with::<200, Json<ScanConfigListDoc>, _>(ok_json(
+        .response_with::<200, Json<ScanConfigListResponse>, _>(ok_json(
             "Paginated list of scan configs",
         ));
 
@@ -1001,7 +1010,7 @@ pub(crate) fn create_scan_config_docs(op: TransformOperation<'_>) -> TransformOp
         .description("Creates a new scan configuration.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateScanConfigDoc>>()
-        .response_with::<201, Json<ResourceCreatedDoc>, _>(ok_json("Scan config created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Scan config created"));
 
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
@@ -1016,7 +1025,7 @@ pub(crate) fn get_scan_config_docs(op: TransformOperation<'_>) -> TransformOpera
         .description("Returns the details for a single scan configuration.")
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<ScanConfigDoc>, _>(ok_json("Scan config details"));
+        .response_with::<200, Json<ScanConfigResponse>, _>(ok_json("Scan config details"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
@@ -1031,7 +1040,7 @@ pub(crate) fn update_scan_config_docs(op: TransformOperation<'_>) -> TransformOp
         .description("Updates an existing scan configuration.")
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Json<ModifyScanConfigDoc>)>()
-        .response_with::<200, Json<ScanConfigDoc>, _>(ok_json("Scan config updated"));
+        .response_with::<200, Json<ScanConfigResponse>, _>(ok_json("Scan config updated"));
 
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -1064,7 +1073,7 @@ pub(crate) fn list_scanners_docs(op: TransformOperation<'_>) -> TransformOperati
         .description("Returns a paginated list of scanners.")
         .security_requirement("bearerAuth")
         .input::<Query<ScannerListQueryDoc>>()
-        .response_with::<200, Json<ScannerListDoc>, _>(ok_json("Paginated list of scanners"));
+        .response_with::<200, Json<ScannerListResponse>, _>(ok_json("Paginated list of scanners"));
 
     problem_response::<401>(op, "Authentication required or session expired")
 }
@@ -1078,7 +1087,7 @@ pub(crate) fn get_scanner_docs(op: TransformOperation<'_>) -> TransformOperation
         .description("Returns the details for a single scanner.")
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<ScannerDoc>, _>(ok_json("Scanner details"));
+        .response_with::<200, Json<ScannerResponse>, _>(ok_json("Scanner details"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
@@ -1086,6 +1095,12 @@ pub(crate) fn get_scanner_docs(op: TransformOperation<'_>) -> TransformOperation
 
 // ============================================================================
 // OpenAPI document-only schema types
+//
+// These types exist solely for OpenAPI schema generation.  They are NOT used
+// at runtime for serialisation — see the handler modules for runtime DTOs.
+// They are kept because their field shapes intentionally differ from the
+// runtime request/query types (e.g. required vs optional fields, Uuid vs
+// String for IDs).
 // ============================================================================
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -1101,130 +1116,31 @@ struct ProblemDetailDoc {
     instance: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "HealthStatus")]
-struct HealthStatusDoc {
-    status: HealthStateDoc,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ReadinessStatus")]
-struct ReadinessStatusDoc {
-    status: ReadinessStateDoc,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "VersionInfo")]
-struct VersionInfoDoc {
-    #[serde(rename = "apiVersion")]
-    api_version: String,
-    #[serde(rename = "gmpVersion")]
-    gmp_version: String,
-}
-
-// -- Session schemas ---------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "SessionCreated")]
-struct SessionCreatedDoc {
-    #[serde(rename = "sessionToken")]
-    session_token: String,
-    #[serde(rename = "expiresIn")]
-    expires_in: u64,
-    #[serde(rename = "gmpVersion")]
-    gmp_version: String,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "SessionInfo")]
-struct SessionInfoDoc {
-    #[serde(rename = "sessionToken")]
-    session_token: String,
-    user: String,
-    state: SessionStateDoc,
-    #[serde(rename = "createdAt")]
-    #[schemars(schema_with = "datetime_schema")]
-    created_at: String,
-    #[serde(rename = "lastUsedAt")]
-    #[schemars(schema_with = "datetime_schema")]
-    last_used_at: String,
-    #[serde(rename = "expiresIn")]
-    expires_in: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum SessionStateDoc {
-    #[serde(rename = "active")]
-    Active,
-    #[serde(rename = "idle")]
-    Idle,
-    #[serde(rename = "expired")]
-    Expired,
-    #[serde(rename = "closed")]
-    Closed,
-}
+// -- Session path parameter --------------------------------------------------
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 struct SessionTokenPathDoc {
     token: String,
 }
 
-// -- Target schemas ----------------------------------------------------------
+// -- Shared path/query parameter schemas -------------------------------------
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Target")]
-struct TargetDoc {
+struct ResourceIdPathDoc {
     id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    comment: Option<String>,
-    hosts: Vec<String>,
-    #[serde(
-        rename = "excludeHosts",
-        default,
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    exclude_hosts: Vec<String>,
-    #[serde(rename = "aliveTest", skip_serializing_if = "Option::is_none")]
-    alive_test: Option<AliveTestDoc>,
-    #[serde(rename = "portList", skip_serializing_if = "Option::is_none")]
-    port_list: Option<ResourceRefDoc>,
-    #[serde(rename = "reverseLookupOnly")]
-    reverse_lookup_only: bool,
-    #[serde(rename = "reverseLookupUnify")]
-    reverse_lookup_unify: bool,
-    #[serde(rename = "sshCredential", skip_serializing_if = "Option::is_none")]
-    ssh_credential: Option<ResourceRefDoc>,
-    #[serde(rename = "smbCredential", skip_serializing_if = "Option::is_none")]
-    smb_credential: Option<ResourceRefDoc>,
-    #[serde(rename = "esxiCredential", skip_serializing_if = "Option::is_none")]
-    esxi_credential: Option<ResourceRefDoc>,
-    #[serde(rename = "snmpCredential", skip_serializing_if = "Option::is_none")]
-    snmp_credential: Option<ResourceRefDoc>,
-    #[serde(rename = "inUse")]
-    in_use: bool,
-    writable: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "TargetList")]
-struct TargetListDoc {
-    data: Vec<TargetDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Pagination")]
-struct PaginationDoc {
-    page: u32,
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct TargetListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
     #[serde(rename = "perPage")]
-    per_page: u32,
-    total: u32,
-    #[serde(rename = "totalPages")]
-    total_pages: u32,
+    per_page: Option<u32>,
 }
+
+// -- Target request body schemas ---------------------------------------------
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateTarget")]
@@ -1267,92 +1183,39 @@ struct ModifyTargetDoc {
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ResourceCreated")]
-struct ResourceCreatedDoc {
-    id: Uuid,
+enum AliveTestDoc {
+    #[serde(rename = "Scan Config Default")]
+    ScanConfigDefault,
+    #[serde(rename = "ICMP Ping")]
+    IcmpPing,
+    #[serde(rename = "TCP-ACK Service Ping")]
+    TcpAckServicePing,
+    #[serde(rename = "TCP-SYN Service Ping")]
+    TcpSynServicePing,
+    #[serde(rename = "ARP Ping")]
+    ArpPing,
+    #[serde(rename = "ICMP, TCP-ACK Service Ping")]
+    IcmpTcpAckServicePing,
+    #[serde(rename = "ICMP, ARP Ping")]
+    IcmpArpPing,
+    #[serde(rename = "TCP-ACK Service, ARP Ping")]
+    TcpAckServiceArpPing,
+    #[serde(rename = "ICMP, TCP-ACK Service, ARP Ping")]
+    IcmpTcpAckServiceArpPing,
+    #[serde(rename = "Consider Alive")]
+    ConsiderAlive,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ResourceRef")]
-struct ResourceRefDoc {
-    id: Uuid,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-}
+// -- Task request body / query schemas ---------------------------------------
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct TargetListQueryDoc {
+struct TaskListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
     page: Option<u32>,
     #[serde(rename = "perPage")]
     per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-struct ResourceIdPathDoc {
-    id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum HealthStateDoc {
-    #[serde(rename = "ok")]
-    Ok,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum ReadinessStateDoc {
-    #[serde(rename = "ready")]
-    Ready,
-    #[serde(rename = "notReady")]
-    NotReady,
-}
-
-// -- Task schemas ------------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Task")]
-struct TaskDoc {
-    id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    comment: Option<String>,
-    status: TaskStatusDoc,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    target: Option<ResourceRefDoc>,
-    #[serde(rename = "scanConfig", skip_serializing_if = "Option::is_none")]
-    scan_config: Option<ResourceRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    scanner: Option<ResourceRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    schedule: Option<ResourceRefDoc>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    alerts: Vec<ResourceRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    alterable: Option<bool>,
-    #[serde(rename = "hostsOrdering", skip_serializing_if = "Option::is_none")]
-    hosts_ordering: Option<HostsOrderingDoc>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    observers: Vec<String>,
-    #[serde(rename = "schedulePeriods", skip_serializing_if = "Option::is_none")]
-    schedule_periods: Option<u32>,
-    #[serde(rename = "lastReport", skip_serializing_if = "Option::is_none")]
-    last_report: Option<ResourceRefDoc>,
-    #[serde(rename = "currentReport", skip_serializing_if = "Option::is_none")]
-    current_report: Option<ResourceRefDoc>,
-    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
-    result_count: Option<u32>,
-    #[serde(rename = "inUse")]
-    in_use: bool,
-    writable: bool,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "TaskList")]
-struct TaskListDoc {
-    data: Vec<TaskDoc>,
-    pagination: PaginationDoc,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -1402,30 +1265,6 @@ struct ModifyTaskDoc {
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "TaskAction")]
-struct TaskActionDoc {
-    #[serde(rename = "reportId")]
-    report_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum TaskStatusDoc {
-    New,
-    Requested,
-    Running,
-    #[serde(rename = "Stop Requested")]
-    StopRequested,
-    Done,
-    Stopped,
-    #[serde(rename = "Delete Requested")]
-    DeleteRequested,
-    #[serde(rename = "Ultimate Delete Requested")]
-    UltimateDeleteRequested,
-    Container,
-    Interrupted,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 enum HostsOrderingDoc {
     #[serde(rename = "sequential")]
     Sequential,
@@ -1435,8 +1274,10 @@ enum HostsOrderingDoc {
     Reverse,
 }
 
+// -- Report / result query schemas -------------------------------------------
+
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct TaskListQueryDoc {
+struct ReportListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
@@ -1444,6 +1285,74 @@ struct TaskListQueryDoc {
     #[serde(rename = "perPage")]
     per_page: Option<u32>,
 }
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct GetReportQueryDoc {
+    #[serde(rename = "ignorePagination")]
+    ignore_pagination: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct ReportResultsQueryDoc {
+    filter: Option<String>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct ResultListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+// -- Scan config request body / query schemas --------------------------------
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct ScanConfigListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "CreateScanConfig")]
+struct CreateScanConfigDoc {
+    name: String,
+    comment: Option<String>,
+    #[serde(rename = "baseScanConfigId")]
+    base_scan_config_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "ModifyScanConfig")]
+struct ModifyScanConfigDoc {
+    name: Option<String>,
+    comment: Option<String>,
+}
+
+// -- Scanner query schemas ---------------------------------------------------
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+struct ScannerListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -1774,262 +1683,4 @@ mod tests {
             .map(String::as_str)
             .collect()
     }
-}
-// -- Report schemas ----------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Report")]
-struct ReportDoc {
-    id: Uuid,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    task: Option<ResourceRefDoc>,
-    #[serde(rename = "scanStart", skip_serializing_if = "Option::is_none")]
-    #[schemars(schema_with = "datetime_schema")]
-    scan_start: Option<String>,
-    #[serde(rename = "scanEnd", skip_serializing_if = "Option::is_none")]
-    #[schemars(schema_with = "datetime_schema")]
-    scan_end: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    severity: Option<f64>,
-    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
-    result_count: Option<ResultCountDoc>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    results: Vec<ResultDoc>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ResultCount")]
-struct ResultCountDoc {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    total: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    high: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    medium: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    low: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    log: Option<u32>,
-    #[serde(rename = "falsePositive", skip_serializing_if = "Option::is_none")]
-    false_positive: Option<u32>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ReportList")]
-struct ReportListDoc {
-    data: Vec<ReportDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ReportListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct GetReportQueryDoc {
-    #[serde(rename = "ignorePagination")]
-    ignore_pagination: Option<bool>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ReportResultsQueryDoc {
-    filter: Option<String>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
-}
-
-// -- Result schemas ----------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Result")]
-struct ResultDoc {
-    id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    host: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    port: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    severity: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    threat: Option<ThreatDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    nvt: Option<NvtRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    task: Option<ResourceRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    report: Option<ResourceRefDoc>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "NvtRef")]
-struct NvtRefDoc {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    oid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    family: Option<String>,
-    #[serde(rename = "cvssBase", skip_serializing_if = "Option::is_none")]
-    cvss_base: Option<f64>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    cves: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tags: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum ThreatDoc {
-    High,
-    Medium,
-    Low,
-    Log,
-    Alarm,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ResultList")]
-struct ResultListDoc {
-    data: Vec<ResultDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ResultListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum AliveTestDoc {
-    #[serde(rename = "Scan Config Default")]
-    ScanConfigDefault,
-    #[serde(rename = "ICMP Ping")]
-    IcmpPing,
-    #[serde(rename = "TCP-ACK Service Ping")]
-    TcpAckServicePing,
-    #[serde(rename = "TCP-SYN Service Ping")]
-    TcpSynServicePing,
-    #[serde(rename = "ARP Ping")]
-    ArpPing,
-    #[serde(rename = "ICMP, TCP-ACK Service Ping")]
-    IcmpTcpAckServicePing,
-    #[serde(rename = "ICMP, ARP Ping")]
-    IcmpArpPing,
-    #[serde(rename = "TCP-ACK Service, ARP Ping")]
-    TcpAckServiceArpPing,
-    #[serde(rename = "ICMP, TCP-ACK Service, ARP Ping")]
-    IcmpTcpAckServiceArpPing,
-    #[serde(rename = "Consider Alive")]
-    ConsiderAlive,
-}
-
-// -- Scan Config schemas -----------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ScanConfig")]
-struct ScanConfigDoc {
-    id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    comment: Option<String>,
-    #[serde(rename = "familyCount", skip_serializing_if = "Option::is_none")]
-    family_count: Option<u32>,
-    #[serde(rename = "nvtCount", skip_serializing_if = "Option::is_none")]
-    nvt_count: Option<u32>,
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    config_type: Option<u32>,
-    #[serde(rename = "inUse")]
-    in_use: bool,
-    writable: bool,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ScanConfigList")]
-struct ScanConfigListDoc {
-    data: Vec<ScanConfigDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "CreateScanConfig")]
-struct CreateScanConfigDoc {
-    name: String,
-    comment: Option<String>,
-    #[serde(rename = "baseScanConfigId")]
-    base_scan_config_id: Option<Uuid>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ModifyScanConfig")]
-struct ModifyScanConfigDoc {
-    name: Option<String>,
-    comment: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ScanConfigListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
-}
-
-// -- Scanner schemas ---------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Scanner")]
-struct ScannerDoc {
-    id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    comment: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    host: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    port: Option<u32>,
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    scanner_type: Option<ScannerTypeDoc>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum ScannerTypeDoc {
-    #[serde(rename = "OpenVAS")]
-    OpenVas,
-    #[serde(rename = "CVE")]
-    Cve,
-    #[serde(rename = "OSP")]
-    Osp,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ScannerList")]
-struct ScannerListDoc {
-    data: Vec<ScannerDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ScannerListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
 }

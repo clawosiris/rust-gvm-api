@@ -21,6 +21,8 @@ use axum::{
     Json, Router,
 };
 use gvm_gateway_app::GatewayService;
+use schemars::JsonSchema;
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
@@ -193,6 +195,52 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
 }
 
+// ============================================================================
+// System Response DTOs
+// ============================================================================
+
+/// Liveness state.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub(crate) enum HealthState {
+    #[serde(rename = "ok")]
+    Ok,
+}
+
+/// JSON body returned by `GET /health`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "HealthStatus")]
+pub(crate) struct HealthStatusResponse {
+    status: HealthState,
+}
+
+/// Readiness state.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub(crate) enum ReadinessState {
+    #[serde(rename = "ready")]
+    Ready,
+    #[serde(rename = "notReady")]
+    NotReady,
+}
+
+/// JSON body returned by `GET /ready`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReadinessStatus")]
+pub(crate) struct ReadinessStatusResponse {
+    status: ReadinessState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+/// JSON body returned by `GET /api/v1/version`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "VersionInfo")]
+pub(crate) struct VersionInfoResponse {
+    #[serde(rename = "apiVersion")]
+    api_version: String,
+    #[serde(rename = "gmpVersion")]
+    gmp_version: String,
+}
+
 async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Response {
     (
         StatusCode::OK,
@@ -203,22 +251,45 @@ async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Respo
 }
 
 pub(crate) async fn health(State(service): State<GatewayService>) -> Response {
-    Json(service.health()).into_response()
+    let _ = service.health();
+    Json(HealthStatusResponse {
+        status: HealthState::Ok,
+    })
+    .into_response()
 }
 
 pub(crate) async fn ready(State(service): State<GatewayService>) -> Response {
     match service.ready() {
-        Ok(readiness) if readiness.status == "ready" => {
-            (StatusCode::OK, Json(readiness)).into_response()
-        }
-        Ok(readiness) => (StatusCode::SERVICE_UNAVAILABLE, Json(readiness)).into_response(),
+        Ok(readiness) if readiness.status == "ready" => (
+            StatusCode::OK,
+            Json(ReadinessStatusResponse {
+                status: ReadinessState::Ready,
+                reason: readiness.reason,
+            }),
+        )
+            .into_response(),
+        Ok(readiness) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ReadinessStatusResponse {
+                status: ReadinessState::NotReady,
+                reason: readiness.reason,
+            }),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, "/ready").into_response(),
     }
 }
 
 pub(crate) async fn version(State(service): State<GatewayService>) -> Response {
     match service.version() {
-        Ok(version) => (StatusCode::OK, Json(version)).into_response(),
+        Ok(version) => (
+            StatusCode::OK,
+            Json(VersionInfoResponse {
+                api_version: version.api_version,
+                gmp_version: version.gmp_version,
+            }),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, "/api/v1/version").into_response(),
     }
 }

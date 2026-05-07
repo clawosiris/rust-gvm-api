@@ -12,15 +12,128 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::GatewayError;
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::RestError, router::bearer_token};
+use crate::{
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
+    error::RestError,
+    router::bearer_token,
+};
 
 // Re-export domain types for backward compatibility
 pub use gvm_gateway_domain::{
     CreateTargetInput, ModifyTargetInput, Pagination, ResourceRef, Target, TargetPage, TargetQuery,
 };
+
+// ============================================================================
+// Response DTOs
+// ============================================================================
+
+/// Alive-test strategy for a target.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub(crate) enum AliveTest {
+    #[serde(rename = "Scan Config Default")]
+    ScanConfigDefault,
+    #[serde(rename = "ICMP Ping")]
+    IcmpPing,
+    #[serde(rename = "TCP-ACK Service Ping")]
+    TcpAckServicePing,
+    #[serde(rename = "TCP-SYN Service Ping")]
+    TcpSynServicePing,
+    #[serde(rename = "ARP Ping")]
+    ArpPing,
+    #[serde(rename = "ICMP, TCP-ACK Service Ping")]
+    IcmpTcpAckServicePing,
+    #[serde(rename = "ICMP, ARP Ping")]
+    IcmpArpPing,
+    #[serde(rename = "TCP-ACK Service, ARP Ping")]
+    TcpAckServiceArpPing,
+    #[serde(rename = "ICMP, TCP-ACK Service, ARP Ping")]
+    IcmpTcpAckServiceArpPing,
+    #[serde(rename = "Consider Alive")]
+    ConsiderAlive,
+}
+
+fn parse_alive_test(s: &str) -> Option<AliveTest> {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
+}
+
+/// JSON body returned for a single target.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Target")]
+pub(crate) struct TargetResponse {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    hosts: Vec<String>,
+    #[serde(
+        rename = "excludeHosts",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    exclude_hosts: Vec<String>,
+    #[serde(rename = "aliveTest", skip_serializing_if = "Option::is_none")]
+    alive_test: Option<AliveTest>,
+    #[serde(rename = "portList", skip_serializing_if = "Option::is_none")]
+    port_list: Option<ResourceRefResponse>,
+    #[serde(rename = "reverseLookupOnly")]
+    reverse_lookup_only: bool,
+    #[serde(rename = "reverseLookupUnify")]
+    reverse_lookup_unify: bool,
+    #[serde(rename = "sshCredential", skip_serializing_if = "Option::is_none")]
+    ssh_credential: Option<ResourceRefResponse>,
+    #[serde(rename = "smbCredential", skip_serializing_if = "Option::is_none")]
+    smb_credential: Option<ResourceRefResponse>,
+    #[serde(rename = "esxiCredential", skip_serializing_if = "Option::is_none")]
+    esxi_credential: Option<ResourceRefResponse>,
+    #[serde(rename = "snmpCredential", skip_serializing_if = "Option::is_none")]
+    snmp_credential: Option<ResourceRefResponse>,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+    writable: bool,
+}
+
+impl From<gvm_gateway_domain::Target> for TargetResponse {
+    fn from(t: gvm_gateway_domain::Target) -> Self {
+        Self {
+            id: parse_uuid(&t.id),
+            name: t.name,
+            comment: t.comment,
+            hosts: t.hosts,
+            exclude_hosts: t.exclude_hosts,
+            alive_test: t.alive_test.as_deref().and_then(parse_alive_test),
+            port_list: t.port_list.map(ResourceRefResponse::from),
+            reverse_lookup_only: t.reverse_lookup_only,
+            reverse_lookup_unify: t.reverse_lookup_unify,
+            ssh_credential: t.ssh_credential.map(ResourceRefResponse::from),
+            smb_credential: t.smb_credential.map(ResourceRefResponse::from),
+            esxi_credential: t.esxi_credential.map(ResourceRefResponse::from),
+            snmp_credential: t.snmp_credential.map(ResourceRefResponse::from),
+            in_use: t.in_use,
+            writable: t.writable,
+        }
+    }
+}
+
+/// JSON body returned for a paginated list of targets.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TargetList")]
+pub(crate) struct TargetListResponse {
+    data: Vec<TargetResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::TargetPage> for TargetListResponse {
+    fn from(page: gvm_gateway_domain::TargetPage) -> Self {
+        Self {
+            data: page.data.into_iter().map(TargetResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
 
 /// Parsed list-targets query from HTTP request.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -223,7 +336,7 @@ pub async fn list_targets(
         )
         .await
     {
-        Ok(targets) => (StatusCode::OK, Json(targets)).into_response(),
+        Ok(targets) => (StatusCode::OK, Json(TargetListResponse::from(targets))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -256,7 +369,13 @@ pub async fn create_target(
     };
 
     match service.create_target(&session, input).await {
-        Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
+        Ok(id) => (
+            StatusCode::CREATED,
+            Json(ResourceCreatedResponse {
+                id: parse_uuid(&id),
+            }),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -278,7 +397,7 @@ pub async fn get_target(
     };
 
     match service.get_target(&session, &id).await {
-        Ok(target) => (StatusCode::OK, Json(target)).into_response(),
+        Ok(target) => (StatusCode::OK, Json(TargetResponse::from(target))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -315,7 +434,7 @@ pub async fn update_target(
     };
 
     match service.modify_target(&session, &id, input).await {
-        Ok(target) => (StatusCode::OK, Json(target)).into_response(),
+        Ok(target) => (StatusCode::OK, Json(TargetResponse::from(target))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }

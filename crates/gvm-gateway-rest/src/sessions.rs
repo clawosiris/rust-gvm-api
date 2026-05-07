@@ -12,17 +12,19 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{format_rfc3339, GatewayError};
-use serde::Serialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use crate::error::RestError;
+use crate::{dto::datetime_schema, error::RestError};
 
 // ============================================================================
 // Response DTOs
 // ============================================================================
 
 /// JSON body returned by `POST /api/v1/sessions`.
-#[derive(Serialize)]
-struct SessionCreatedResponse {
+#[derive(Serialize, JsonSchema)]
+#[schemars(rename = "SessionCreated")]
+pub(crate) struct SessionCreatedResponse {
     #[serde(rename = "sessionToken")]
     session_token: String,
     #[serde(rename = "expiresIn")]
@@ -31,16 +33,36 @@ struct SessionCreatedResponse {
     gmp_version: String,
 }
 
+/// Session lifecycle state.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub(crate) enum SessionState {
+    #[serde(rename = "active")]
+    Active,
+    #[serde(rename = "idle")]
+    Idle,
+    #[serde(rename = "expired")]
+    Expired,
+    #[serde(rename = "closed")]
+    Closed,
+}
+
+fn parse_session_state(s: &str) -> SessionState {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).unwrap_or(SessionState::Active)
+}
+
 /// JSON body returned by `GET /api/v1/sessions/{token}`.
-#[derive(Serialize)]
-struct SessionInfoResponse {
+#[derive(Serialize, JsonSchema)]
+#[schemars(rename = "SessionInfo")]
+pub(crate) struct SessionInfoResponse {
     #[serde(rename = "sessionToken")]
     session_token: String,
     user: String,
-    state: String,
+    state: SessionState,
     #[serde(rename = "createdAt")]
+    #[schemars(schema_with = "datetime_schema")]
     created_at: String,
     #[serde(rename = "lastUsedAt")]
+    #[schemars(schema_with = "datetime_schema")]
     last_used_at: String,
     #[serde(rename = "expiresIn")]
     expires_in: i64,
@@ -94,7 +116,7 @@ pub async fn get_session(
             Json(SessionInfoResponse {
                 session_token: info.token,
                 user: info.user,
-                state: info.state,
+                state: parse_session_state(&info.state),
                 created_at: format_rfc3339(info.created_at),
                 last_used_at: format_rfc3339(info.last_used_at),
                 expires_in: info.expires_in,

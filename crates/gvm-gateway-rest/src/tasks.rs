@@ -14,15 +14,161 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::GatewayError;
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::RestError, router::bearer_token};
+use crate::{
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
+    error::RestError,
+    router::bearer_token,
+};
 
 // Re-export domain types used by tests and other modules.
 pub use gvm_gateway_domain::{
     CreateTaskInput, ModifyTaskInput, Task, TaskAction, TaskPage, TaskQuery,
 };
+
+// ============================================================================
+// Response DTOs
+// ============================================================================
+
+/// Task lifecycle status.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub(crate) enum TaskStatus {
+    New,
+    Requested,
+    Running,
+    #[serde(rename = "Stop Requested")]
+    StopRequested,
+    Done,
+    Stopped,
+    #[serde(rename = "Delete Requested")]
+    DeleteRequested,
+    #[serde(rename = "Ultimate Delete Requested")]
+    UltimateDeleteRequested,
+    Container,
+    Interrupted,
+}
+
+fn parse_task_status(s: &str) -> TaskStatus {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).unwrap_or(TaskStatus::New)
+}
+
+/// Hosts ordering strategy.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub(crate) enum HostsOrdering {
+    #[serde(rename = "sequential")]
+    Sequential,
+    #[serde(rename = "random")]
+    Random,
+    #[serde(rename = "reverse")]
+    Reverse,
+}
+
+fn parse_hosts_ordering(s: &str) -> Option<HostsOrdering> {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
+}
+
+/// JSON body returned for a single task.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Task")]
+pub(crate) struct TaskResponse {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    status: TaskStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<ResourceRefResponse>,
+    #[serde(rename = "scanConfig", skip_serializing_if = "Option::is_none")]
+    scan_config: Option<ResourceRefResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scanner: Option<ResourceRefResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schedule: Option<ResourceRefResponse>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    alerts: Vec<ResourceRefResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alterable: Option<bool>,
+    #[serde(rename = "hostsOrdering", skip_serializing_if = "Option::is_none")]
+    hosts_ordering: Option<HostsOrdering>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    observers: Vec<String>,
+    #[serde(rename = "schedulePeriods", skip_serializing_if = "Option::is_none")]
+    schedule_periods: Option<u32>,
+    #[serde(rename = "lastReport", skip_serializing_if = "Option::is_none")]
+    last_report: Option<ResourceRefResponse>,
+    #[serde(rename = "currentReport", skip_serializing_if = "Option::is_none")]
+    current_report: Option<ResourceRefResponse>,
+    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
+    result_count: Option<u32>,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+    writable: bool,
+}
+
+impl From<gvm_gateway_domain::Task> for TaskResponse {
+    fn from(t: gvm_gateway_domain::Task) -> Self {
+        Self {
+            id: parse_uuid(&t.id),
+            name: t.name,
+            comment: t.comment,
+            status: parse_task_status(&t.status),
+            target: t.target.map(ResourceRefResponse::from),
+            scan_config: t.scan_config.map(ResourceRefResponse::from),
+            scanner: t.scanner.map(ResourceRefResponse::from),
+            schedule: t.schedule.map(ResourceRefResponse::from),
+            alerts: t
+                .alerts
+                .into_iter()
+                .map(ResourceRefResponse::from)
+                .collect(),
+            alterable: t.alterable,
+            hosts_ordering: t.hosts_ordering.as_deref().and_then(parse_hosts_ordering),
+            observers: t.observers,
+            schedule_periods: t.schedule_periods,
+            last_report: t.last_report.map(ResourceRefResponse::from),
+            current_report: t.current_report.map(ResourceRefResponse::from),
+            result_count: t.result_count,
+            in_use: t.in_use,
+            writable: t.writable,
+        }
+    }
+}
+
+/// JSON body returned for a paginated list of tasks.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TaskList")]
+pub(crate) struct TaskListResponse {
+    data: Vec<TaskResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::TaskPage> for TaskListResponse {
+    fn from(page: gvm_gateway_domain::TaskPage) -> Self {
+        Self {
+            data: page.data.into_iter().map(TaskResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+/// JSON body returned for a task start/resume action.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TaskAction")]
+pub(crate) struct TaskActionResponse {
+    #[serde(rename = "reportId")]
+    report_id: Uuid,
+}
+
+impl From<gvm_gateway_domain::TaskAction> for TaskActionResponse {
+    fn from(a: gvm_gateway_domain::TaskAction) -> Self {
+        Self {
+            report_id: parse_uuid(&a.report_id),
+        }
+    }
+}
 
 /// Parsed list-tasks query from HTTP request.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -259,7 +405,7 @@ pub async fn list_tasks(
         )
         .await
     {
-        Ok(tasks) => (StatusCode::OK, Json(tasks)).into_response(),
+        Ok(tasks) => (StatusCode::OK, Json(TaskListResponse::from(tasks))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -292,7 +438,13 @@ pub async fn create_task(
     };
 
     match service.create_task(&session, input).await {
-        Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
+        Ok(id) => (
+            StatusCode::CREATED,
+            Json(ResourceCreatedResponse {
+                id: parse_uuid(&id),
+            }),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -314,7 +466,7 @@ pub async fn get_task(
     };
 
     match service.get_task(&session, &id).await {
-        Ok(task) => (StatusCode::OK, Json(task)).into_response(),
+        Ok(task) => (StatusCode::OK, Json(TaskResponse::from(task))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -351,7 +503,7 @@ pub async fn update_task(
     };
 
     match service.modify_task(&session, &id, input).await {
-        Ok(task) => (StatusCode::OK, Json(task)).into_response(),
+        Ok(task) => (StatusCode::OK, Json(TaskResponse::from(task))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -395,7 +547,7 @@ pub async fn start_task(
     };
 
     match service.start_task(&session, &id).await {
-        Ok(action) => (StatusCode::OK, Json(action)).into_response(),
+        Ok(action) => (StatusCode::OK, Json(TaskActionResponse::from(action))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -439,7 +591,7 @@ pub async fn resume_task(
     };
 
     match service.resume_task(&session, &id).await {
-        Ok(action) => (StatusCode::OK, Json(action)).into_response(),
+        Ok(action) => (StatusCode::OK, Json(TaskActionResponse::from(action))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }

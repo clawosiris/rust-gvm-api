@@ -6,6 +6,7 @@
 
 //! REST adapter for the GVM gateway.
 
+pub(crate) mod dto;
 pub mod error;
 pub mod openapi;
 pub mod reports;

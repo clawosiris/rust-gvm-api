@@ -11,8 +11,81 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{GatewayError, ScannerQuery};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
+use crate::{
+    dto::{parse_uuid, PaginationResponse},
+    error::RestError,
+    router::bearer_token,
+    targets::validate_uuid,
+};
+
+// ============================================================================
+// Response DTOs
+// ============================================================================
+
+/// Scanner type.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub(crate) enum ScannerType {
+    #[serde(rename = "OpenVAS")]
+    OpenVas,
+    #[serde(rename = "CVE")]
+    Cve,
+    #[serde(rename = "OSP")]
+    Osp,
+}
+
+fn parse_scanner_type(s: &str) -> Option<ScannerType> {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
+}
+
+/// JSON body returned for a single scanner.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Scanner")]
+pub(crate) struct ScannerResponse {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<u32>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    scanner_type: Option<ScannerType>,
+}
+
+impl From<gvm_gateway_domain::Scanner> for ScannerResponse {
+    fn from(s: gvm_gateway_domain::Scanner) -> Self {
+        Self {
+            id: parse_uuid(&s.id),
+            name: s.name,
+            comment: s.comment,
+            host: s.host,
+            port: s.port,
+            scanner_type: s.scanner_type.as_deref().and_then(parse_scanner_type),
+        }
+    }
+}
+
+/// JSON body returned for a paginated list of scanners.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ScannerList")]
+pub(crate) struct ScannerListResponse {
+    data: Vec<ScannerResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::ScannerPage> for ScannerListResponse {
+    fn from(page: gvm_gateway_domain::ScannerPage) -> Self {
+        Self {
+            data: page.data.into_iter().map(ScannerResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
 
 /// Parsed list-scanners query from HTTP request.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -105,7 +178,7 @@ pub async fn list_scanners(
         )
         .await
     {
-        Ok(scanners) => (StatusCode::OK, Json(scanners)).into_response(),
+        Ok(scanners) => (StatusCode::OK, Json(ScannerListResponse::from(scanners))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -127,7 +200,7 @@ pub async fn get_scanner(
     };
 
     match service.get_scanner(&session, &id).await {
-        Ok(scanner) => (StatusCode::OK, Json(scanner)).into_response(),
+        Ok(scanner) => (StatusCode::OK, Json(ScannerResponse::from(scanner))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }

@@ -14,9 +14,75 @@ use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
     CreateScanConfigInput, GatewayError, ModifyScanConfigInput, ScanConfigQuery,
 };
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
+use crate::{
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse},
+    error::RestError,
+    router::bearer_token,
+    targets::validate_uuid,
+};
+
+// ============================================================================
+// Response DTOs
+// ============================================================================
+
+/// JSON body returned for a single scan config.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ScanConfig")]
+pub(crate) struct ScanConfigResponse {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(rename = "familyCount", skip_serializing_if = "Option::is_none")]
+    family_count: Option<u32>,
+    #[serde(rename = "nvtCount", skip_serializing_if = "Option::is_none")]
+    nvt_count: Option<u32>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    config_type: Option<u32>,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+    writable: bool,
+}
+
+impl From<gvm_gateway_domain::ScanConfig> for ScanConfigResponse {
+    fn from(sc: gvm_gateway_domain::ScanConfig) -> Self {
+        Self {
+            id: parse_uuid(&sc.id),
+            name: sc.name,
+            comment: sc.comment,
+            family_count: sc.family_count,
+            nvt_count: sc.nvt_count,
+            config_type: sc.config_type,
+            in_use: sc.in_use,
+            writable: sc.writable,
+        }
+    }
+}
+
+/// JSON body returned for a paginated list of scan configs.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ScanConfigList")]
+pub(crate) struct ScanConfigListResponse {
+    data: Vec<ScanConfigResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::ScanConfigPage> for ScanConfigListResponse {
+    fn from(page: gvm_gateway_domain::ScanConfigPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ScanConfigResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
 
 /// Parsed list-scan-configs query from HTTP request.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -159,7 +225,11 @@ pub async fn list_scan_configs(
         )
         .await
     {
-        Ok(scan_configs) => (StatusCode::OK, Json(scan_configs)).into_response(),
+        Ok(scan_configs) => (
+            StatusCode::OK,
+            Json(ScanConfigListResponse::from(scan_configs)),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -192,7 +262,13 @@ pub async fn create_scan_config(
     };
 
     match service.create_scan_config(&session, input).await {
-        Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
+        Ok(id) => (
+            StatusCode::CREATED,
+            Json(ResourceCreatedResponse {
+                id: parse_uuid(&id),
+            }),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -214,7 +290,9 @@ pub async fn get_scan_config(
     };
 
     match service.get_scan_config(&session, &id).await {
-        Ok(scan_config) => (StatusCode::OK, Json(scan_config)).into_response(),
+        Ok(scan_config) => {
+            (StatusCode::OK, Json(ScanConfigResponse::from(scan_config))).into_response()
+        }
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -251,7 +329,9 @@ pub async fn update_scan_config(
     };
 
     match service.modify_scan_config(&session, &id, input).await {
-        Ok(scan_config) => (StatusCode::OK, Json(scan_config)).into_response(),
+        Ok(scan_config) => {
+            (StatusCode::OK, Json(ScanConfigResponse::from(scan_config))).into_response()
+        }
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
