@@ -21,9 +21,6 @@ use axum::{
     Json, Router,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{
-    AuthPort, ReportPort, ResultPort, ScanConfigPort, ScannerPort, SystemPort, TargetPort, TaskPort,
-};
 use serde_json::Value;
 
 use crate::{
@@ -55,24 +52,12 @@ use crate::{
 };
 
 /// Builds the gateway router.
-pub fn build_router<S, T, K, A, R, Re, Sc, Sn>(
-    state: GatewayService<S, T, K, A, R, Re, Sc, Sn>,
-) -> Router
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
-    let openapi = build_openapi::<S, T, K, A, R, Re, Sc, Sn>();
+pub fn build_router(state: GatewayService) -> Router {
+    let openapi = build_openapi();
     let openapi_json =
         Arc::new(serde_json::to_string_pretty(&openapi).expect("generated OpenAPI must serialize"));
 
-    documented_router::<S, T, K, A, R, Re, Sc, Sn>()
+    documented_router()
         .route("/api/v1/openapi.json", get(serve_openapi))
         .fallback(not_found)
         .layer(middleware::from_fn(trace_context_middleware))
@@ -82,39 +67,17 @@ where
 }
 
 /// Builds the generated OpenAPI document for the currently implemented routes.
-pub(crate) fn build_openapi<S, T, K, A, R, Re, Sc, Sn>() -> Value
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+pub(crate) fn build_openapi() -> Value {
     let mut api = OpenApi::default();
     aide::generate::extract_schemas(true);
     aide::generate::infer_responses(false);
     aide::generate::inferred_empty_response_status(204);
 
-    let _ = documented_router::<S, T, K, A, R, Re, Sc, Sn>()
-        .finish_api_with(&mut api, configure_openapi);
+    let _ = documented_router().finish_api_with(&mut api, configure_openapi);
     finalize_document(serde_json::to_value(api).expect("generated OpenAPI must serialize"))
 }
 
-fn documented_router<S, T, K, A, R, Re, Sc, Sn>(
-) -> ApiRouter<GatewayService<S, T, K, A, R, Re, Sc, Sn>>
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+fn documented_router() -> ApiRouter<GatewayService> {
     ApiRouter::new()
         .api_route("/health", get_with(health, health_docs))
         .api_route("/ready", get_with(ready, ready_docs))
@@ -239,35 +202,11 @@ async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Respo
         .into_response()
 }
 
-pub(crate) async fn health<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+pub(crate) async fn health(State(service): State<GatewayService>) -> Response {
     Json(service.health()).into_response()
 }
 
-pub(crate) async fn ready<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+pub(crate) async fn ready(State(service): State<GatewayService>) -> Response {
     match service.ready() {
         Ok(readiness) if readiness.status == "ready" => {
             (StatusCode::OK, Json(readiness)).into_response()
@@ -277,19 +216,7 @@ where
     }
 }
 
-pub(crate) async fn version<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+pub(crate) async fn version(State(service): State<GatewayService>) -> Response {
     match service.version() {
         Ok(version) => (StatusCode::OK, Json(version)).into_response(),
         Err(error) => RestError::from_gateway_error(error, "/api/v1/version").into_response(),

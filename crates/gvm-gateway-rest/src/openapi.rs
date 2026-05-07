@@ -1449,217 +1449,13 @@ struct TaskListQueryDoc {
 mod tests {
     use std::collections::BTreeSet;
 
-    use async_trait::async_trait;
     use serde_json::Value;
 
     use crate::router::build_openapi;
-    use gvm_gateway_domain::{
-        AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput, GatewayError,
-        GetReportOpts, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput, ReadinessStatus,
-        Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery,
-        ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
-        ScannerPage, ScannerPort, ScannerQuery, SystemPort, Target, TargetPage, TargetPort,
-        TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
-    };
-
-    struct StubSystem;
-    struct StubTarget;
-    struct StubTask;
-    struct StubAuth;
-    struct StubReport;
-    struct StubResult;
-    struct StubScanConfig;
-    struct StubScanner;
-
-    impl SystemPort for StubSystem {
-        fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        fn gmp_version(&self) -> Result<String, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl TargetPort for StubTarget {
-        async fn list_targets(&self, _: &str, _: &TargetQuery) -> Result<TargetPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn create_target(
-            &self,
-            _: &str,
-            _: CreateTargetInput,
-        ) -> Result<String, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn get_target(&self, _: &str, _: &str) -> Result<Target, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn modify_target(
-            &self,
-            _: &str,
-            _: &str,
-            _: ModifyTargetInput,
-        ) -> Result<Target, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn delete_target(&self, _: &str, _: &str) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl TaskPort for StubTask {
-        async fn list_tasks(&self, _: &str, _: &TaskQuery) -> Result<TaskPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn create_task(&self, _: &str, _: CreateTaskInput) -> Result<String, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn get_task(&self, _: &str, _: &str) -> Result<Task, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn modify_task(
-            &self,
-            _: &str,
-            _: &str,
-            _: ModifyTaskInput,
-        ) -> Result<Task, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn delete_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn start_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn stop_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn resume_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl AuthPort for StubAuth {
-        async fn authenticate_session(
-            &self,
-            _: &str,
-            _: &str,
-            _: &str,
-        ) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn disconnect_session(&self, _: &str) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl ReportPort for StubReport {
-        async fn list_reports(&self, _: &str, _: &ReportQuery) -> Result<ReportPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn get_report(
-            &self,
-            _: &str,
-            _: &str,
-            _: &GetReportOpts,
-        ) -> Result<Report, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn delete_report(&self, _: &str, _: &str) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn get_report_results(
-            &self,
-            _: &str,
-            _: &str,
-            _: &ResultQuery,
-        ) -> Result<ResultPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl ResultPort for StubResult {
-        async fn list_results(&self, _: &str, _: &ResultQuery) -> Result<ResultPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-
-        async fn get_result(&self, _: &str, _: &str) -> Result<ScanResult, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl ScanConfigPort for StubScanConfig {
-        async fn list_scan_configs(
-            &self,
-            _: &str,
-            _: &ScanConfigQuery,
-        ) -> Result<ScanConfigPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn create_scan_config(
-            &self,
-            _: &str,
-            _: CreateScanConfigInput,
-        ) -> Result<String, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn get_scan_config(&self, _: &str, _: &str) -> Result<ScanConfig, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn modify_scan_config(
-            &self,
-            _: &str,
-            _: &str,
-            _: ModifyScanConfigInput,
-        ) -> Result<ScanConfig, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn delete_scan_config(&self, _: &str, _: &str) -> Result<(), GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
-
-    #[async_trait]
-    impl ScannerPort for StubScanner {
-        async fn list_scanners(
-            &self,
-            _: &str,
-            _: &ScannerQuery,
-        ) -> Result<ScannerPage, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-        async fn get_scanner(&self, _: &str, _: &str) -> Result<Scanner, GatewayError> {
-            unreachable!("OpenAPI generation does not execute handlers")
-        }
-    }
 
     #[test]
     fn generated_openapi_subset_matches_curated_spec() {
-        let generated = build_openapi::<
-            StubSystem,
-            StubTarget,
-            StubTask,
-            StubAuth,
-            StubReport,
-            StubResult,
-            StubScanConfig,
-            StubScanner,
-        >();
+        let generated = build_openapi();
         let system_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
         let targets_spec: Value =
@@ -1908,16 +1704,7 @@ mod tests {
 
     #[test]
     fn generated_openapi_preserves_key_schema_fields() {
-        let generated = build_openapi::<
-            StubSystem,
-            StubTarget,
-            StubTask,
-            StubAuth,
-            StubReport,
-            StubResult,
-            StubScanConfig,
-            StubScanner,
-        >();
+        let generated = build_openapi();
 
         let target_props = &generated["components"]["schemas"]["Target"]["properties"];
         assert!(target_props.get("excludeHosts").is_some());
@@ -1941,16 +1728,7 @@ mod tests {
 
     #[test]
     fn generated_openapi_includes_session_schemas() {
-        let generated = build_openapi::<
-            StubSystem,
-            StubTarget,
-            StubTask,
-            StubAuth,
-            StubReport,
-            StubResult,
-            StubScanConfig,
-            StubScanner,
-        >();
+        let generated = build_openapi();
         let schemas = generated["components"]["schemas"].as_object().unwrap();
 
         assert!(
@@ -1965,16 +1743,7 @@ mod tests {
 
     #[test]
     fn generated_openapi_includes_task_schemas() {
-        let generated = build_openapi::<
-            StubSystem,
-            StubTarget,
-            StubTask,
-            StubAuth,
-            StubReport,
-            StubResult,
-            StubScanConfig,
-            StubScanner,
-        >();
+        let generated = build_openapi();
         let schemas = generated["components"]["schemas"].as_object().unwrap();
 
         assert!(schemas.contains_key("Task"), "missing Task schema");

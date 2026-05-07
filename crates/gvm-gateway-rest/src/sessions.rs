@@ -11,10 +11,7 @@ use axum::{
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{
-    format_rfc3339, AuthPort, GatewayError, ReportPort, ResultPort, SystemPort, TargetPort,
-    TaskPort,
-};
+use gvm_gateway_domain::{format_rfc3339, GatewayError};
 use serde::Serialize;
 
 use crate::error::RestError;
@@ -56,21 +53,11 @@ struct SessionInfoResponse {
 /// Create a new session via HTTP Basic authentication.
 ///
 /// `POST /api/v1/sessions`
-pub async fn create_session<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn create_session(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
-{
+) -> Response {
     let instance = uri.path().to_string();
     let (username, password) = match extract_basic_credentials(&headers) {
         Ok(creds) => creds,
@@ -94,21 +81,11 @@ where
 /// Inspect a session.
 ///
 /// `GET /api/v1/sessions/{token}`
-pub async fn get_session<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn get_session(
+    State(service): State<GatewayService>,
     Path(token): Path<String>,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
-{
+) -> Response {
     let instance = uri.path().to_string();
 
     match service.get_session(&token) {
@@ -131,21 +108,11 @@ where
 /// Close and destroy a session.
 ///
 /// `DELETE /api/v1/sessions/{token}`
-pub async fn delete_session<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn delete_session(
+    State(service): State<GatewayService>,
     Path(token): Path<String>,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
-{
+) -> Response {
     let instance = uri.path().to_string();
 
     match service.delete_session(&token).await {

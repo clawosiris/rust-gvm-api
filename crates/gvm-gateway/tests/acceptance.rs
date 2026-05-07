@@ -38,7 +38,7 @@ async fn spawn_server(
     let result_adapter = StaticGvmdAdapter::ready("22.7");
     let scan_config_adapter = StaticGvmdAdapter::ready("22.7");
     let scanner_adapter = StaticGvmdAdapter::ready("22.7");
-    let service = GatewayService::with_all(
+    let service = GatewayService::new(
         Arc::new(system_adapter),
         Arc::new(target_adapter),
         Arc::new(task_adapter),
@@ -1465,7 +1465,7 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
         .unwrap();
 
     let target_adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
-    let service = GatewayService::with_all(
+    let service = GatewayService::new(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),

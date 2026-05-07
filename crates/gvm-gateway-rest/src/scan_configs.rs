@@ -12,8 +12,7 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    AuthPort, CreateScanConfigInput, GatewayError, ModifyScanConfigInput, ScanConfigPort,
-    ScanConfigQuery, ScannerPort, SystemPort, TargetPort, TaskPort,
+    CreateScanConfigInput, GatewayError, ModifyScanConfigInput, ScanConfigQuery,
 };
 use serde::Deserialize;
 
@@ -133,21 +132,11 @@ impl ModifyScanConfigRequest {
 }
 
 /// List scan configs handler.
-pub async fn list_scan_configs<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn list_scan_configs(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: Send + Sync + 'static,
-    Re: Send + Sync + 'static,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+) -> Response {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
         Ok(session) => session,
@@ -176,22 +165,12 @@ where
 }
 
 /// Create scan config handler.
-pub async fn create_scan_config<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn create_scan_config(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     uri: OriginalUri,
     body: Bytes,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: Send + Sync + 'static,
-    Re: Send + Sync + 'static,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+) -> Response {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
         Ok(session) => session,
@@ -219,22 +198,12 @@ where
 }
 
 /// Get scan config handler.
-pub async fn get_scan_config<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn get_scan_config(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: Send + Sync + 'static,
-    Re: Send + Sync + 'static,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+) -> Response {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
         return RestError::from_gateway_error(error, instance).into_response();
@@ -251,23 +220,13 @@ where
 }
 
 /// Update scan config handler.
-pub async fn update_scan_config<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn update_scan_config(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
     body: Bytes,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: Send + Sync + 'static,
-    Re: Send + Sync + 'static,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+) -> Response {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
         return RestError::from_gateway_error(error, instance).into_response();
@@ -298,22 +257,12 @@ where
 }
 
 /// Delete scan config handler.
-pub async fn delete_scan_config<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn delete_scan_config(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: Send + Sync + 'static,
-    Re: Send + Sync + 'static,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+) -> Response {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
         return RestError::from_gateway_error(error, instance).into_response();

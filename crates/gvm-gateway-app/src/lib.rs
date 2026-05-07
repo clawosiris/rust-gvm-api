@@ -19,53 +19,32 @@ use gvm_gateway_domain::{
 };
 
 /// Application services exposed to adapters.
-pub struct GatewayService<S, T, K, A, R, Re, Sc = (), Sn = ()> {
-    system: Arc<S>,
-    targets: Arc<T>,
-    tasks: Arc<K>,
-    auth: Arc<A>,
-    reports: Arc<R>,
-    results: Arc<Re>,
-    scan_configs: Arc<Sc>,
-    scanners: Arc<Sn>,
+///
+/// Ports are held as trait objects so that adding a new resource does not
+/// require touching unrelated handler signatures.
+pub struct GatewayService {
+    system: Arc<dyn SystemPort>,
+    targets: Arc<dyn TargetPort>,
+    tasks: Arc<dyn TaskPort>,
+    auth: Arc<dyn AuthPort>,
+    reports: Arc<dyn ReportPort>,
+    results: Arc<dyn ResultPort>,
+    scan_configs: Arc<dyn ScanConfigPort>,
+    scanners: Arc<dyn ScannerPort>,
     sessions: Arc<SessionManager>,
 }
 
-impl<S, T, K, A, R, Re> GatewayService<S, T, K, A, R, Re> {
+impl GatewayService {
     /// Creates a new service backed by the provided ports.
     pub fn new(
-        system: Arc<S>,
-        targets: Arc<T>,
-        tasks: Arc<K>,
-        auth: Arc<A>,
-        reports: Arc<R>,
-        results: Arc<Re>,
-    ) -> Self {
-        Self {
-            system,
-            targets,
-            tasks,
-            auth,
-            reports,
-            results,
-            scan_configs: Arc::new(()),
-            scanners: Arc::new(()),
-            sessions: Arc::new(SessionManager::default()),
-        }
-    }
-}
-
-impl<S, T, K, A, R, Re, Sc, Sn> GatewayService<S, T, K, A, R, Re, Sc, Sn> {
-    /// Creates a new service backed by the provided ports, including scan configs and scanners.
-    pub fn with_all(
-        system: Arc<S>,
-        targets: Arc<T>,
-        tasks: Arc<K>,
-        auth: Arc<A>,
-        reports: Arc<R>,
-        results: Arc<Re>,
-        scan_configs: Arc<Sc>,
-        scanners: Arc<Sn>,
+        system: Arc<dyn SystemPort>,
+        targets: Arc<dyn TargetPort>,
+        tasks: Arc<dyn TaskPort>,
+        auth: Arc<dyn AuthPort>,
+        reports: Arc<dyn ReportPort>,
+        results: Arc<dyn ResultPort>,
+        scan_configs: Arc<dyn ScanConfigPort>,
+        scanners: Arc<dyn ScannerPort>,
     ) -> Self {
         Self {
             system,
@@ -84,35 +63,11 @@ impl<S, T, K, A, R, Re, Sc, Sn> GatewayService<S, T, K, A, R, Re, Sc, Sn> {
     pub fn session_manager(&self) -> Arc<SessionManager> {
         Arc::clone(&self.sessions)
     }
-}
 
-impl<S, T, K, A, R, Re, Sc, Sn> Clone for GatewayService<S, T, K, A, R, Re, Sc, Sn> {
-    fn clone(&self) -> Self {
-        Self {
-            system: Arc::clone(&self.system),
-            targets: Arc::clone(&self.targets),
-            tasks: Arc::clone(&self.tasks),
-            auth: Arc::clone(&self.auth),
-            reports: Arc::clone(&self.reports),
-            results: Arc::clone(&self.results),
-            scan_configs: Arc::clone(&self.scan_configs),
-            scanners: Arc::clone(&self.scanners),
-            sessions: Arc::clone(&self.sessions),
-        }
-    }
-}
+    // ------------------------------------------------------------------
+    // Health & system
+    // ------------------------------------------------------------------
 
-impl<S, T, K, A, R, Re, Sc, Sn> GatewayService<S, T, K, A, R, Re, Sc, Sn>
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: Send + Sync + 'static,
-    Re: Send + Sync + 'static,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
-{
     /// Returns liveness information.
     pub fn health(&self) -> HealthStatus {
         HealthStatus { status: "ok" }
@@ -296,19 +251,7 @@ where
         let session = self.sessions.touch(session_token)?;
         self.tasks.resume_task(&session.token, id).await
     }
-}
 
-impl<S, T, K, A, R, Re, Sc, Sn> GatewayService<S, T, K, A, R, Re, Sc, Sn>
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
-{
     // ------------------------------------------------------------------
     // Reports
     // ------------------------------------------------------------------
@@ -376,19 +319,7 @@ where
         let session = self.sessions.touch(session_token)?;
         self.results.get_result(&session.token, id).await
     }
-}
 
-impl<S, T, K, A, R, Re, Sc, Sn> GatewayService<S, T, K, A, R, Re, Sc, Sn>
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: Send + Sync + 'static,
-    Re: Send + Sync + 'static,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
     // ------------------------------------------------------------------
     // Scan Configs
     // ------------------------------------------------------------------
@@ -474,6 +405,22 @@ where
     ) -> Result<Scanner, GatewayError> {
         let session = self.sessions.touch(session_token)?;
         self.scanners.get_scanner(&session.token, id).await
+    }
+}
+
+impl Clone for GatewayService {
+    fn clone(&self) -> Self {
+        Self {
+            system: Arc::clone(&self.system),
+            targets: Arc::clone(&self.targets),
+            tasks: Arc::clone(&self.tasks),
+            auth: Arc::clone(&self.auth),
+            reports: Arc::clone(&self.reports),
+            results: Arc::clone(&self.results),
+            scan_configs: Arc::clone(&self.scan_configs),
+            scanners: Arc::clone(&self.scanners),
+            sessions: Arc::clone(&self.sessions),
+        }
     }
 }
 
@@ -792,14 +739,88 @@ mod tests {
         }
     }
 
-    fn create_test_service() -> GatewayService<
-        MockSystemPort,
-        MockTargetPort,
-        MockTaskPort,
-        MockAuthPort,
-        MockReportPort,
-        MockResultPort,
-    > {
+    // Mock scan config port for testing
+    #[derive(Clone, Default)]
+    struct MockScanConfigPort;
+
+    #[async_trait]
+    impl ScanConfigPort for MockScanConfigPort {
+        async fn list_scan_configs(
+            &self,
+            _: &str,
+            query: &ScanConfigQuery,
+        ) -> Result<ScanConfigPage, GatewayError> {
+            Ok(ScanConfigPage {
+                data: vec![],
+                pagination: gvm_gateway_domain::Pagination {
+                    page: query.page,
+                    per_page: query.per_page,
+                    total: 0,
+                    total_pages: 0,
+                },
+            })
+        }
+
+        async fn create_scan_config(
+            &self,
+            _: &str,
+            _: CreateScanConfigInput,
+        ) -> Result<String, GatewayError> {
+            Ok("mock-scan-config-id".to_string())
+        }
+
+        async fn get_scan_config(&self, _: &str, id: &str) -> Result<ScanConfig, GatewayError> {
+            Err(GatewayError::NotFound(format!(
+                "scan config {id} not found"
+            )))
+        }
+
+        async fn modify_scan_config(
+            &self,
+            _: &str,
+            id: &str,
+            _: ModifyScanConfigInput,
+        ) -> Result<ScanConfig, GatewayError> {
+            Err(GatewayError::NotFound(format!(
+                "scan config {id} not found"
+            )))
+        }
+
+        async fn delete_scan_config(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+            Err(GatewayError::NotFound(format!(
+                "scan config {id} not found"
+            )))
+        }
+    }
+
+    // Mock scanner port for testing
+    #[derive(Clone, Default)]
+    struct MockScannerPort;
+
+    #[async_trait]
+    impl ScannerPort for MockScannerPort {
+        async fn list_scanners(
+            &self,
+            _: &str,
+            query: &ScannerQuery,
+        ) -> Result<ScannerPage, GatewayError> {
+            Ok(ScannerPage {
+                data: vec![],
+                pagination: gvm_gateway_domain::Pagination {
+                    page: query.page,
+                    per_page: query.per_page,
+                    total: 0,
+                    total_pages: 0,
+                },
+            })
+        }
+
+        async fn get_scanner(&self, _: &str, id: &str) -> Result<Scanner, GatewayError> {
+            Err(GatewayError::NotFound(format!("scanner {id} not found")))
+        }
+    }
+
+    fn create_test_service() -> GatewayService {
         GatewayService::new(
             Arc::new(MockSystemPort {
                 ready: true,
@@ -810,6 +831,8 @@ mod tests {
             Arc::new(MockAuthPort::default()),
             Arc::new(MockReportPort),
             Arc::new(MockResultPort),
+            Arc::new(MockScanConfigPort),
+            Arc::new(MockScannerPort),
         )
     }
 
@@ -844,6 +867,8 @@ mod tests {
             Arc::new(MockAuthPort::default()),
             Arc::new(MockReportPort),
             Arc::new(MockResultPort),
+            Arc::new(MockScanConfigPort),
+            Arc::new(MockScannerPort),
         );
         let ready = service.ready().unwrap();
         assert_eq!(ready.status, "notReady");
@@ -983,6 +1008,8 @@ mod tests {
             Arc::new(MockAuthPort { should_fail: true }),
             Arc::new(MockReportPort),
             Arc::new(MockResultPort),
+            Arc::new(MockScanConfigPort),
+            Arc::new(MockScannerPort),
         );
 
         let result = service.create_session("admin", "wrong").await;

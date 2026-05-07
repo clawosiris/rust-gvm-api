@@ -10,10 +10,7 @@ use axum::{
     Json,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{
-    AuthPort, GatewayError, GetReportOpts, ReportPort, ReportQuery, ResultPort, ResultQuery,
-    SystemPort, TargetPort, TaskPort,
-};
+use gvm_gateway_domain::{GatewayError, GetReportOpts, ReportQuery, ResultQuery};
 
 use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
 
@@ -161,21 +158,11 @@ impl ReportResultsQuery {
 }
 
 /// List reports handler.
-pub async fn list_reports<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn list_reports(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
-{
+) -> Response {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
         Ok(session) => session,
@@ -204,22 +191,12 @@ where
 }
 
 /// Get report handler.
-pub async fn get_report<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn get_report(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
-{
+) -> Response {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
         return RestError::from_gateway_error(error, instance).into_response();
@@ -246,22 +223,12 @@ where
 }
 
 /// Delete report handler.
-pub async fn delete_report<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn delete_report(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
-{
+) -> Response {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
         return RestError::from_gateway_error(error, instance).into_response();
@@ -278,22 +245,12 @@ where
 }
 
 /// Get report results handler.
-pub async fn get_report_results<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn get_report_results(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: ReportPort,
-    Re: ResultPort,
-    Sc: Send + Sync + 'static,
-    Sn: Send + Sync + 'static,
-{
+) -> Response {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
         return RestError::from_gateway_error(error, instance).into_response();
