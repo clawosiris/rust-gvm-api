@@ -161,8 +161,8 @@ impl ReportResultsQuery {
 }
 
 /// List reports handler.
-pub async fn list_reports<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn list_reports<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response
@@ -173,6 +173,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
@@ -202,8 +204,8 @@ where
 }
 
 /// Get report handler.
-pub async fn get_report<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn get_report<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -215,6 +217,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -242,8 +246,8 @@ where
 }
 
 /// Delete report handler.
-pub async fn delete_report<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn delete_report<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -255,6 +259,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
@@ -272,8 +278,8 @@ where
 }
 
 /// Get report results handler.
-pub async fn get_report_results<S, T, K, A, R, Re>(
-    State(service): State<GatewayService<S, T, K, A, R, Re>>,
+pub async fn get_report_results<S, T, K, A, R, Re, Sc, Sn>(
+    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
@@ -285,6 +291,8 @@ where
     A: AuthPort,
     R: ReportPort,
     Re: ResultPort,
+    Sc: Send + Sync + 'static,
+    Sn: Send + Sync + 'static,
 {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
