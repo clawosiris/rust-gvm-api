@@ -1,66 +1,82 @@
-# Phase 2d Work Log — Scan Configs, Scanners, OpenAPI Spec Generation
+# Refactor: Remove Per-Resource Generic Sprawl from Gateway State
 
 ## Issue
 
-clawosiris/rust-gvm-api#7: feat(rest): Phase 2d — Scan Configs, Scanners, OpenAPI spec generation
+clawosiris/rust-gvm-api#95: refactor(architecture): remove per-resource generic sprawl from gateway state
 
-## Summary
+Stacked on top of PR #94 (`feat/phase-2d-scan-configs-scanners`), which introduced `Sc`/`Sn` type params
+and made the 8-generic-parameter sprawl painfully visible.
 
-Added REST endpoints for **scan configuration CRUD** and **scanner read** operations,
-with full OpenAPI spec generation and contract validation against the curated YAML specs.
+## Problem
 
-## Changes by Layer
+`GatewayService<S, T, K, A, R, Re, Sc, Sn>` carries 8 generic type parameters that propagate
+through every handler function, router helper, and test constructor. Each new resource requires
+touching every existing handler's generic signature even when that handler doesn't use the new port.
+This violates the open/closed principle: adding a resource should not require modifying unrelated handlers.
 
-### Domain (`gvm-gateway-domain`)
-- Added `ScanConfig`, `ScanConfigPage`, `ScanConfigQuery`, `CreateScanConfigInput`, `ModifyScanConfigInput` types
-- Added `Scanner`, `ScannerPage`, `ScannerQuery` types
-- Added `ScanConfigPort` trait (list, create, get, modify, delete)
-- Added `ScannerPort` trait (list, get)
-- Added `scan_config_from_gmp()` and `scanner_from_gmp()` conversion functions
+## Approach: Trait-Object Erasure (Dynamic Dispatch)
 
-### Application (`gvm-gateway-app`)
-- Extended `GatewayService` with `Sc` and `Sn` generic type parameters (with `()` defaults for backward compat)
-- Added `with_all()` constructor accepting all 8 port implementations
-- Added scan config service methods: `list_scan_configs`, `create_scan_config`, `get_scan_config`, `modify_scan_config`, `delete_scan_config`
-- Added scanner service methods: `list_scanners`, `get_scanner`
+Replace the 8 generic type parameters with `Arc<dyn XxxPort>` trait objects inside `GatewayService`.
+This makes `GatewayService` a concrete type, so handlers, routers, and tests no longer carry or
+propagate generics.
 
-### REST Adapter (`gvm-gateway-rest`)
-- **New:** `scan_configs.rs` — handlers, DTOs, query parsing for scan config CRUD
-- **New:** `scanners.rs` — handlers, DTOs, query parsing for scanner reads
-- Updated `router.rs` — added routes for `/api/v1/scan-configs`, `/api/v1/scan-configs/{id}`, `/api/v1/scanners`, `/api/v1/scanners/{id}`
-- Updated `openapi.rs` — added doc transform functions, schema types, tags, path normalization, query parameter tightening for new endpoints
-- Updated all existing handler files to use 8 generic type params (`S, T, K, A, R, Re, Sc, Sn`)
+**Trade-offs:**
+- Adds one vtable indirection per port call (negligible for network-bound I/O).
+- Slightly more allocation at construction time (already using Arc, so no new heap allocs).
+- Static dispatch can be reintroduced later via a `GatewayServiceTyped<S, T, ...>` if profiling demands it.
+- Trait-object service boundary is reusable by a future gRPC adapter (same `GatewayService` value).
 
-### GMP Adapter (`gvm-gateway-gvmd`)
-- `StaticGvmdAdapter` implements `ScanConfigPort` and `ScannerPort` (returns BackendUnavailable)
-- `GvmdAdapter` implements `ScanConfigPort` using `gvm_gmp::commands::scan_configs::*`
-- `GvmdAdapter` implements `ScannerPort` using `gvm_gmp::commands::scanners::*`
+**Why not a registry/map approach:**
+Trait objects are idiomatic Rust for this pattern, preserve type safety at the port boundary, and
+keep the API surface identical. A `HashMap<TypeId, Box<dyn Any>>` would lose compile-time guarantees.
 
-### Main Binary (`gvm-gateway`)
-- Updated `main.rs` to use `GatewayService::with_all()` with scan config and scanner adapters
+## Implementation Plan
 
-### Acceptance Tests
-- Updated `spawn_server()` and `target_harness()` to wire scan config and scanner ports
-- Extended OpenAPI contract test to validate scan-configs and scanners paths against curated YAML specs
-- Added `DocName::ScanConfigs` and `DocName::Scanners` to the spec comparison infrastructure
+### Step 1: Make `GatewayService` concrete (gvm-gateway-app)
 
-## CI Fix (post-PR)
+- Remove all generic type parameters from `GatewayService`.
+- Store each port as `Arc<dyn XxxPort>` (e.g. `system: Arc<dyn SystemPort>`).
+- Replace `new()` and `with_all()` constructors to accept `Arc<dyn XxxPort>` arguments.
+- Merge the three separate `impl` blocks (split by different trait bounds) into one.
+- Derive `Clone` manually since all fields are `Arc`.
+- Update all unit tests — mock types stay the same, but construction uses `Arc::new(mock) as Arc<dyn XxxPort>`.
 
-- Ran `cargo fmt --all` to fix formatting across `openapi.rs`, `lib.rs` (app + gvmd), and `acceptance.rs`
-- Renamed `ScannerTypeDoc` enum variants from `OpenVAS`/`CVE`/`OSP` to `OpenVas`/`Cve`/`Osp` with `#[serde(rename = "...")]` to satisfy `clippy::upper_case_acronyms` while preserving the serialized OpenAPI contract
+### Step 2: Remove generics from REST handlers (gvm-gateway-rest)
 
-## Test Results
+- In `router.rs`: remove `<S, T, K, A, R, Re, Sc, Sn>` from `build_router`, `build_openapi`,
+  `documented_router`, `health`, `ready`, `version`. Accept/return concrete `GatewayService`.
+- In each handler module (`targets.rs`, `tasks.rs`, `reports.rs`, `results.rs`, `scan_configs.rs`,
+  `scanners.rs`, `sessions.rs`): remove all generic type parameters and trait bounds from every
+  handler function. Use `State(service): State<GatewayService>`.
 
-All 134 tests pass (0 failures).
+### Step 3: Update binary entrypoint (gvm-gateway)
 
-## New REST Endpoints
+- In `main.rs`: remove turbofish annotations, use `Arc::new(adapter) as Arc<dyn XxxPort>` at
+  construction site.
 
-| Method | Path                      | Description                    |
-|--------|---------------------------|--------------------------------|
-| GET    | /api/v1/scan-configs      | List scan configurations       |
-| POST   | /api/v1/scan-configs      | Create a scan configuration    |
-| GET    | /api/v1/scan-configs/{id} | Get a scan configuration       |
-| PUT    | /api/v1/scan-configs/{id} | Modify a scan configuration    |
-| DELETE | /api/v1/scan-configs/{id} | Delete a scan configuration    |
-| GET    | /api/v1/scanners          | List scanners                  |
-| GET    | /api/v1/scanners/{id}     | Get a scanner                  |
+### Step 4: Update tests
+
+- Unit tests in `gvm-gateway-app`: update `create_test_service()` to construct concrete `GatewayService`.
+- Acceptance/integration tests: update any test harness constructors.
+
+### Step 5: Verify
+
+- `cargo fmt --all`
+- `cargo clippy --workspace --all-targets`
+- `cargo test --workspace`
+- `cargo build --workspace`
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `crates/gvm-gateway-app/src/lib.rs` | Remove generics from `GatewayService`, merge impl blocks |
+| `crates/gvm-gateway-rest/src/router.rs` | Remove generics from router + utility handlers |
+| `crates/gvm-gateway-rest/src/targets.rs` | Remove generics from 5 handler fns |
+| `crates/gvm-gateway-rest/src/tasks.rs` | Remove generics from 8 handler fns |
+| `crates/gvm-gateway-rest/src/reports.rs` | Remove generics from 4 handler fns |
+| `crates/gvm-gateway-rest/src/results.rs` | Remove generics from 2 handler fns |
+| `crates/gvm-gateway-rest/src/scan_configs.rs` | Remove generics from 5 handler fns |
+| `crates/gvm-gateway-rest/src/scanners.rs` | Remove generics from 2 handler fns |
+| `crates/gvm-gateway-rest/src/sessions.rs` | Remove generics from 3 handler fns |
+| `crates/gvm-gateway/src/main.rs` | Simplify construction |

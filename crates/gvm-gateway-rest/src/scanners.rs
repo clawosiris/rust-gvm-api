@@ -10,10 +10,7 @@ use axum::{
     Json,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{
-    AuthPort, GatewayError, ScanConfigPort, ScannerPort, ScannerQuery, SystemPort, TargetPort,
-    TaskPort,
-};
+use gvm_gateway_domain::{GatewayError, ScannerQuery};
 
 use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
 
@@ -81,21 +78,11 @@ impl ScannerListQuery {
 }
 
 /// List scanners handler.
-pub async fn list_scanners<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn list_scanners(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: Send + Sync + 'static,
-    Re: Send + Sync + 'static,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+) -> Response {
     let instance = uri.path().to_string();
     let session = match bearer_token(&headers) {
         Ok(session) => session,
@@ -124,22 +111,12 @@ where
 }
 
 /// Get scanner handler.
-pub async fn get_scanner<S, T, K, A, R, Re, Sc, Sn>(
-    State(service): State<GatewayService<S, T, K, A, R, Re, Sc, Sn>>,
+pub async fn get_scanner(
+    State(service): State<GatewayService>,
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
-) -> Response
-where
-    S: SystemPort,
-    T: TargetPort,
-    K: TaskPort,
-    A: AuthPort,
-    R: Send + Sync + 'static,
-    Re: Send + Sync + 'static,
-    Sc: ScanConfigPort,
-    Sn: ScannerPort,
-{
+) -> Response {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
         return RestError::from_gateway_error(error, instance).into_response();

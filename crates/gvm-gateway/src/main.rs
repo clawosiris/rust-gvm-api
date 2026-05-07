@@ -24,23 +24,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     init_tracing(&config)?;
 
     let listener = TcpListener::bind(&config.bind).await?;
-    let system_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let target_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let task_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let auth_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let report_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let result_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let scan_config_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let scanner_adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
-    let service = GatewayService::with_all(
-        system_adapter,
-        target_adapter,
-        task_adapter,
-        auth_adapter,
-        report_adapter,
-        result_adapter,
-        scan_config_adapter,
-        scanner_adapter,
+    let adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
+    let service = GatewayService::new(
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter,
     );
     let app = build_router(service);
 
