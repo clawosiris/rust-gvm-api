@@ -37,6 +37,7 @@ async fn spawn_server(
     let result_adapter = StaticGvmdAdapter::ready("22.7");
     let scan_config_adapter = StaticGvmdAdapter::ready("22.7");
     let scanner_adapter = StaticGvmdAdapter::ready("22.7");
+    let sessions = Arc::new(SessionManager::default());
     let service = GatewayService::new(
         Arc::new(system_adapter),
         Arc::new(target_adapter),
@@ -46,6 +47,7 @@ async fn spawn_server(
         Arc::new(result_adapter),
         Arc::new(scan_config_adapter),
         Arc::new(scanner_adapter),
+        sessions,
     );
     let app = build_router(service);
     let handle = tokio::spawn(async move {
@@ -282,7 +284,7 @@ async fn session_reaper_cleans_up_expired_sessions() {
     // Use a very short idle timeout (0 seconds = immediately expired).
     let sessions = Arc::new(SessionManager::new(0));
     let arc_adapter: Arc<StaticGvmdAdapter> = Arc::new(adapter);
-    let service = GatewayService::with_session_manager(
+    let service = GatewayService::new(
         arc_adapter.clone(),
         arc_adapter.clone(),
         arc_adapter.clone(),
@@ -1483,6 +1485,7 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
         .unwrap();
 
     let target_adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let sessions = Arc::new(SessionManager::default());
     let service = GatewayService::new(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(target_adapter.clone()),
@@ -1492,6 +1495,7 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
+        sessions,
     );
     let token = service.session_manager().create("admin").unwrap().token;
     target_adapter

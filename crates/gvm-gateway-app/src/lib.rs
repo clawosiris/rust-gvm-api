@@ -6,19 +6,17 @@
 
 //! Application use cases for the GVM gateway.
 
-use std::sync::Arc;
-use std::time::Duration;
+mod session;
 
-use tokio::task::JoinHandle;
+use std::sync::Arc;
 
 use gvm_gateway_domain::{
     AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput, GatewayError,
     GetReportOpts, HealthStatus, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput,
     ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
     ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
-    ScannerPage, ScannerPort, ScannerQuery, SessionCreated, SessionInfo, SessionManager,
-    SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
-    TaskQuery, VersionInfo,
+    ScannerPage, ScannerPort, ScannerQuery, SessionManager, SystemPort, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, VersionInfo,
 };
 
 /// Application services exposed to adapters.
@@ -38,34 +36,9 @@ pub struct GatewayService {
 }
 
 impl GatewayService {
-    /// Creates a new service backed by the provided ports.
-    pub fn new(
-        system: Arc<dyn SystemPort>,
-        targets: Arc<dyn TargetPort>,
-        tasks: Arc<dyn TaskPort>,
-        auth: Arc<dyn AuthPort>,
-        reports: Arc<dyn ReportPort>,
-        results: Arc<dyn ResultPort>,
-        scan_configs: Arc<dyn ScanConfigPort>,
-        scanners: Arc<dyn ScannerPort>,
-    ) -> Self {
-        Self {
-            system,
-            targets,
-            tasks,
-            auth,
-            reports,
-            results,
-            scan_configs,
-            scanners,
-            sessions: Arc::new(SessionManager::default()),
-        }
-    }
-
-    /// Creates a new service backed by the provided ports and a custom session
-    /// manager (e.g. with a non-default idle timeout).
+    /// Creates a new service backed by the provided ports and session manager.
     #[allow(clippy::too_many_arguments)]
-    pub fn with_session_manager(
+    pub fn new(
         system: Arc<dyn SystemPort>,
         targets: Arc<dyn TargetPort>,
         tasks: Arc<dyn TaskPort>,
@@ -89,11 +62,6 @@ impl GatewayService {
         }
     }
 
-    /// Borrow the shared session manager.
-    pub fn session_manager(&self) -> Arc<SessionManager> {
-        Arc::clone(&self.sessions)
-    }
-
     // ------------------------------------------------------------------
     // Health & system
     // ------------------------------------------------------------------
@@ -115,51 +83,6 @@ impl GatewayService {
             api_version: env!("CARGO_PKG_VERSION").to_string(),
             gmp_version,
         })
-    }
-
-    // ------------------------------------------------------------------
-    // Session lifecycle
-    // ------------------------------------------------------------------
-
-    /// Authenticates with the supplied credentials, creates a domain session,
-    /// and establishes a backend connection bound to the new token.
-    pub async fn create_session(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<SessionCreated, GatewayError> {
-        let session = self.sessions.create(username)?;
-        if let Err(err) = self
-            .auth
-            .authenticate_session(&session.token, username, password)
-            .await
-        {
-            // Roll back the domain session when backend auth fails.
-            let _ = self.sessions.remove(&session.token);
-            return Err(err);
-        }
-        let gmp_version = self.system.gmp_version()?;
-        Ok(SessionCreated {
-            token: session.token,
-            expires_in: self.sessions.idle_timeout_secs(),
-            gmp_version,
-        })
-    }
-
-    /// Returns detailed session information without extending the idle timer.
-    pub fn get_session(&self, token: &str) -> Result<SessionInfo, GatewayError> {
-        self.sessions.get_info(token)
-    }
-
-    /// Closes and destroys a session, disconnecting the backend connection.
-    pub async fn delete_session(&self, token: &str) -> Result<(), GatewayError> {
-        let removed = self.sessions.remove(token)?;
-        if removed.is_none() {
-            return Err(GatewayError::NotFound("session not found".to_string()));
-        }
-        // Best-effort backend disconnect; ignore errors.
-        let _ = self.auth.disconnect_session(token).await;
-        Ok(())
     }
 
     // ------------------------------------------------------------------
@@ -436,52 +359,6 @@ impl GatewayService {
         let session = self.sessions.touch(session_token)?;
         self.scanners.get_scanner(&session.token, id).await
     }
-
-    // ------------------------------------------------------------------
-    // Session reaper
-    // ------------------------------------------------------------------
-
-    /// Spawns a background task that periodically drains idle-expired sessions
-    /// and disconnects their backend connections.
-    ///
-    /// The returned `JoinHandle` can be aborted to stop the reaper (e.g. on
-    /// server shutdown).  The default sweep interval is half the idle timeout
-    /// so that expired sessions are reaped within one full timeout period.
-    pub fn spawn_reaper(&self) -> JoinHandle<()> {
-        let interval = Duration::from_secs(self.sessions.idle_timeout_secs() / 2);
-        self.spawn_reaper_with_interval(interval)
-    }
-
-    /// Like [`spawn_reaper`](Self::spawn_reaper) but with an explicit sweep
-    /// interval (useful for testing).
-    pub fn spawn_reaper_with_interval(&self, interval: Duration) -> JoinHandle<()> {
-        let sessions = Arc::clone(&self.sessions);
-        let auth = Arc::clone(&self.auth);
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(interval);
-            loop {
-                tick.tick().await;
-                let tokens = match sessions.drain_expired() {
-                    Ok(t) => t,
-                    Err(err) => {
-                        tracing::warn!(?err, "session reaper: drain_expired failed");
-                        continue;
-                    }
-                };
-                for token in &tokens {
-                    if let Err(err) = auth.disconnect_session(token).await {
-                        tracing::warn!(token, ?err, "session reaper: disconnect_session failed");
-                    }
-                }
-                if !tokens.is_empty() {
-                    tracing::info!(
-                        count = tokens.len(),
-                        "session reaper: cleaned up expired sessions"
-                    );
-                }
-            }
-        })
-    }
 }
 
 impl Clone for GatewayService {
@@ -508,6 +385,7 @@ impl Clone for GatewayService {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use std::time::Duration;
 
     // Mock system port for testing
     #[derive(Clone)]
@@ -914,6 +792,7 @@ mod tests {
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
             Arc::new(MockScannerPort),
+            Arc::new(SessionManager::default()),
         )
     }
 
@@ -950,6 +829,7 @@ mod tests {
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
             Arc::new(MockScannerPort),
+            Arc::new(SessionManager::default()),
         );
         let ready = service.ready().unwrap();
         assert_eq!(ready.status, "notReady");
@@ -1094,6 +974,7 @@ mod tests {
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
             Arc::new(MockScannerPort),
+            Arc::new(SessionManager::default()),
         );
 
         let result = service.create_session("admin", "wrong").await;
@@ -1247,6 +1128,7 @@ mod tests {
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
             Arc::new(MockScannerPort),
+            Arc::new(SessionManager::default()),
         )
     }
 

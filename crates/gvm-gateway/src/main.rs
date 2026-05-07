@@ -10,6 +10,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use clap::Parser;
 use gvm_gateway_app::GatewayService;
+use gvm_gateway_domain::SessionManager;
 use gvm_gateway_gvmd::StaticGvmdAdapter;
 use gvm_gateway_rest::router::build_router;
 use tokio::net::TcpListener;
@@ -25,6 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let listener = TcpListener::bind(&config.bind).await?;
     let adapter = Arc::new(StaticGvmdAdapter::ready("unknown"));
+    let sessions = Arc::new(SessionManager::default());
     let service = GatewayService::new(
         adapter.clone(),
         adapter.clone(),
@@ -34,6 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         adapter.clone(),
         adapter.clone(),
         adapter,
+        sessions,
     );
     let _reaper = service.spawn_reaper();
     let app = build_router(service);
