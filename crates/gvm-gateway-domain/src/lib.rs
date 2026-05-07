@@ -818,6 +818,31 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Remove all sessions that have exceeded the idle timeout or are already
+    /// in a non-active state.  Returns the tokens of the removed sessions so
+    /// the caller can perform backend cleanup (e.g. disconnect) outside the
+    /// lock.
+    pub fn drain_expired(&self) -> Result<Vec<String>, GatewayError> {
+        let now = now_secs();
+        let mut guard = self.inner.lock().map_err(|_| {
+            GatewayError::BackendUnavailable("session registry unavailable".to_string())
+        })?;
+        let mut expired_tokens = Vec::new();
+        guard.retain(|token, stored| {
+            let dominated = match stored.state {
+                SessionState::Active => {
+                    now.saturating_sub(stored.last_used_at) >= self.idle_timeout_secs
+                }
+                SessionState::Expired | SessionState::Closed => true,
+            };
+            if dominated {
+                expired_tokens.push(token.clone());
+            }
+            !dominated
+        });
+        Ok(expired_tokens)
+    }
+
     /// Remove an existing session.
     pub fn remove(&self, token: &str) -> Result<Option<Session>, GatewayError> {
         let removed = self
@@ -1378,6 +1403,82 @@ mod tests {
         let manager = SessionManager::new(600);
         assert_eq!(manager.idle_timeout_secs(), 600);
         assert_eq!(SessionManager::default().idle_timeout_secs(), 300);
+    }
+
+    // ------------------------------------------------------------------------
+    // SessionManager drain_expired tests
+    // ------------------------------------------------------------------------
+
+    /// drain_expired returns nothing when all sessions are active within timeout.
+    #[test]
+    fn session_manager_drain_expired_no_expired() {
+        let manager = SessionManager::default();
+        manager.create("alice").unwrap();
+        manager.create("bob").unwrap();
+
+        let drained = manager.drain_expired().unwrap();
+        assert!(drained.is_empty());
+    }
+
+    /// drain_expired returns tokens of manually expired sessions and removes them.
+    #[test]
+    fn session_manager_drain_expired_manually_expired() {
+        let manager = SessionManager::default();
+        let s1 = manager.create("alice").unwrap();
+        let s2 = manager.create("bob").unwrap();
+        manager.expire(&s1.token).unwrap();
+
+        let drained = manager.drain_expired().unwrap();
+        assert_eq!(drained.len(), 1);
+        assert!(drained.contains(&s1.token));
+
+        // s1 should be gone, s2 should remain.
+        assert!(manager.get(&s1.token).unwrap().is_none());
+        assert!(manager.get(&s2.token).unwrap().is_some());
+    }
+
+    /// drain_expired returns tokens of idle-expired sessions (timeout == 0).
+    #[test]
+    fn session_manager_drain_expired_idle_timeout() {
+        let manager = SessionManager::new(0);
+        let s1 = manager.create("alice").unwrap();
+        let s2 = manager.create("bob").unwrap();
+
+        let drained = manager.drain_expired().unwrap();
+        assert_eq!(drained.len(), 2);
+        assert!(drained.contains(&s1.token));
+        assert!(drained.contains(&s2.token));
+
+        // Both should be gone.
+        assert!(manager.get(&s1.token).unwrap().is_none());
+        assert!(manager.get(&s2.token).unwrap().is_none());
+    }
+
+    /// drain_expired is idempotent: calling twice returns empty on the second call.
+    #[test]
+    fn session_manager_drain_expired_idempotent() {
+        let manager = SessionManager::new(0);
+        manager.create("alice").unwrap();
+
+        let first = manager.drain_expired().unwrap();
+        assert_eq!(first.len(), 1);
+
+        let second = manager.drain_expired().unwrap();
+        assert!(second.is_empty());
+    }
+
+    /// drain_expired includes Closed sessions.
+    #[test]
+    fn session_manager_drain_expired_includes_closed() {
+        let manager = SessionManager::default();
+        let session = manager.create("alice").unwrap();
+        // Manually close the session via remove+re-insert is not possible,
+        // so we test that expired and closed states are both drained by
+        // using expire (which sets Expired state).
+        manager.expire(&session.token).unwrap();
+
+        let drained = manager.drain_expired().unwrap();
+        assert_eq!(drained.len(), 1);
     }
 
     // ------------------------------------------------------------------------

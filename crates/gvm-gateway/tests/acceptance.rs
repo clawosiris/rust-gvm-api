@@ -7,9 +7,10 @@
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::TargetPage;
+use gvm_gateway_domain::{SessionManager, TargetPage};
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
 use gvm_gateway_rest::router::build_router;
 use gvm_gateway_rest::targets::{
@@ -268,6 +269,65 @@ async fn delete_session_closes_and_invalidates() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
+    handle.abort();
+}
+
+/// Session reaper removes expired sessions so that GET returns 404.
+#[tokio::test]
+async fn session_reaper_cleans_up_expired_sessions() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    // Use a very short idle timeout (0 seconds = immediately expired).
+    let sessions = Arc::new(SessionManager::new(0));
+    let arc_adapter: Arc<StaticGvmdAdapter> = Arc::new(adapter);
+    let service = GatewayService::with_session_manager(
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter,
+        sessions,
+    );
+
+    // Spawn the reaper with a very short interval.
+    let reaper = service.spawn_reaper_with_interval(Duration::from_millis(20));
+    let app = build_router(service);
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let client = Client::new();
+
+    // Create a session — it's immediately idle-expired due to timeout=0.
+    let create_resp = client
+        .post(format!("http://{addr}/api/v1/sessions"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+    let token = create_resp.json::<serde_json::Value>().await.unwrap()["sessionToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Wait for the reaper to sweep.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // The session should now be gone.
+    let response = client
+        .get(format!("http://{addr}/api/v1/sessions/{token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    reaper.abort();
     handle.abort();
 }
 

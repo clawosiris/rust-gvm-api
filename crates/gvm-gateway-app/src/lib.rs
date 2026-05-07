@@ -7,6 +7,9 @@
 //! Application use cases for the GVM gateway.
 
 use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::task::JoinHandle;
 
 use gvm_gateway_domain::{
     AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput, GatewayError,
@@ -56,6 +59,33 @@ impl GatewayService {
             scan_configs,
             scanners,
             sessions: Arc::new(SessionManager::default()),
+        }
+    }
+
+    /// Creates a new service backed by the provided ports and a custom session
+    /// manager (e.g. with a non-default idle timeout).
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_session_manager(
+        system: Arc<dyn SystemPort>,
+        targets: Arc<dyn TargetPort>,
+        tasks: Arc<dyn TaskPort>,
+        auth: Arc<dyn AuthPort>,
+        reports: Arc<dyn ReportPort>,
+        results: Arc<dyn ResultPort>,
+        scan_configs: Arc<dyn ScanConfigPort>,
+        scanners: Arc<dyn ScannerPort>,
+        sessions: Arc<SessionManager>,
+    ) -> Self {
+        Self {
+            system,
+            targets,
+            tasks,
+            auth,
+            reports,
+            results,
+            scan_configs,
+            scanners,
+            sessions,
         }
     }
 
@@ -406,6 +436,52 @@ impl GatewayService {
         let session = self.sessions.touch(session_token)?;
         self.scanners.get_scanner(&session.token, id).await
     }
+
+    // ------------------------------------------------------------------
+    // Session reaper
+    // ------------------------------------------------------------------
+
+    /// Spawns a background task that periodically drains idle-expired sessions
+    /// and disconnects their backend connections.
+    ///
+    /// The returned `JoinHandle` can be aborted to stop the reaper (e.g. on
+    /// server shutdown).  The default sweep interval is half the idle timeout
+    /// so that expired sessions are reaped within one full timeout period.
+    pub fn spawn_reaper(&self) -> JoinHandle<()> {
+        let interval = Duration::from_secs(self.sessions.idle_timeout_secs() / 2);
+        self.spawn_reaper_with_interval(interval)
+    }
+
+    /// Like [`spawn_reaper`](Self::spawn_reaper) but with an explicit sweep
+    /// interval (useful for testing).
+    pub fn spawn_reaper_with_interval(&self, interval: Duration) -> JoinHandle<()> {
+        let sessions = Arc::clone(&self.sessions);
+        let auth = Arc::clone(&self.auth);
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(interval);
+            loop {
+                tick.tick().await;
+                let tokens = match sessions.drain_expired() {
+                    Ok(t) => t,
+                    Err(err) => {
+                        tracing::warn!(?err, "session reaper: drain_expired failed");
+                        continue;
+                    }
+                };
+                for token in &tokens {
+                    if let Err(err) = auth.disconnect_session(token).await {
+                        tracing::warn!(token, ?err, "session reaper: disconnect_session failed");
+                    }
+                }
+                if !tokens.is_empty() {
+                    tracing::info!(
+                        count = tokens.len(),
+                        "session reaper: cleaned up expired sessions"
+                    );
+                }
+            }
+        })
+    }
 }
 
 impl Clone for GatewayService {
@@ -636,6 +712,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct MockAuthPort {
         should_fail: bool,
+        disconnected: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     #[async_trait]
@@ -654,7 +731,11 @@ mod tests {
             Ok(())
         }
 
-        async fn disconnect_session(&self, _session_token: &str) -> Result<(), GatewayError> {
+        async fn disconnect_session(&self, session_token: &str) -> Result<(), GatewayError> {
+            self.disconnected
+                .lock()
+                .unwrap()
+                .push(session_token.to_string());
             Ok(())
         }
     }
@@ -1005,7 +1086,10 @@ mod tests {
             }),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockTaskPort),
-            Arc::new(MockAuthPort { should_fail: true }),
+            Arc::new(MockAuthPort {
+                should_fail: true,
+                ..Default::default()
+            }),
             Arc::new(MockReportPort),
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
@@ -1144,5 +1228,91 @@ mod tests {
             .list_reports(&session.token, ReportQuery::default())
             .await;
         assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    // ------------------------------------------------------------------------
+    // Session reaper tests
+    // ------------------------------------------------------------------------
+
+    fn create_test_service_with_auth(auth: MockAuthPort) -> GatewayService {
+        GatewayService::new(
+            Arc::new(MockSystemPort {
+                ready: true,
+                gmp_version: "22.7".to_string(),
+            }),
+            Arc::new(MockTargetPort::default()),
+            Arc::new(MockTaskPort),
+            Arc::new(auth),
+            Arc::new(MockReportPort),
+            Arc::new(MockResultPort),
+            Arc::new(MockScanConfigPort),
+            Arc::new(MockScannerPort),
+        )
+    }
+
+    /// The reaper disconnects expired sessions within one sweep interval.
+    #[tokio::test]
+    async fn reaper_disconnects_expired_sessions() {
+        let auth = MockAuthPort::default();
+        let disconnected = Arc::clone(&auth.disconnected);
+        let service = create_test_service_with_auth(auth);
+
+        // Create a session and immediately expire it.
+        let session = service.session_manager().create("admin").unwrap();
+        service.session_manager().expire(&session.token).unwrap();
+
+        // Spawn reaper with a very short interval.
+        let handle = service.spawn_reaper_with_interval(Duration::from_millis(10));
+
+        // Wait long enough for at least one sweep.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        handle.abort();
+
+        let tokens = disconnected.lock().unwrap();
+        assert!(tokens.contains(&session.token));
+    }
+
+    /// The reaper does not disconnect active sessions.
+    #[tokio::test]
+    async fn reaper_ignores_active_sessions() {
+        let auth = MockAuthPort::default();
+        let disconnected = Arc::clone(&auth.disconnected);
+        let service = create_test_service_with_auth(auth);
+
+        // Create a session but don't expire it.
+        service.session_manager().create("admin").unwrap();
+
+        let handle = service.spawn_reaper_with_interval(Duration::from_millis(10));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        handle.abort();
+
+        assert!(disconnected.lock().unwrap().is_empty());
+    }
+
+    /// The reaper and delete_session are safe to race: if delete wins, the
+    /// reaper simply does not find the token; if the reaper wins, delete
+    /// returns NotFound.
+    #[tokio::test]
+    async fn reaper_and_delete_session_race_safe() {
+        let auth = MockAuthPort::default();
+        let disconnected = Arc::clone(&auth.disconnected);
+        let service = create_test_service_with_auth(auth);
+
+        let session = service.session_manager().create("admin").unwrap();
+        service.session_manager().expire(&session.token).unwrap();
+
+        // Delete before the reaper runs.
+        let result = service.delete_session(&session.token).await;
+        assert!(result.is_ok());
+
+        // Reaper should find nothing to drain.
+        let handle = service.spawn_reaper_with_interval(Duration::from_millis(10));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        handle.abort();
+
+        // disconnect_session is called once by delete_session.
+        // The reaper should not have found the session (already removed).
+        let tokens = disconnected.lock().unwrap();
+        assert_eq!(tokens.len(), 1); // only the one from delete_session
     }
 }

@@ -35,6 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         adapter.clone(),
         adapter,
     );
+    let _reaper = service.spawn_reaper();
     let app = build_router(service);
 
     axum::serve(listener, app).await?;
