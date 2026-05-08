@@ -7,10 +7,10 @@
 //! Domain types and ports for the GVM gateway.
 
 mod session;
+mod time;
 
-pub use session::{
-    format_rfc3339, Session, SessionCreated, SessionInfo, SessionManager, SessionState,
-};
+pub use session::{Session, SessionCreated, SessionInfo, SessionManager, SessionState};
+pub use time::format_rfc3339;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

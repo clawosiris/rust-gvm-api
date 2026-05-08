@@ -380,20 +380,19 @@ impl Clone for GatewayService {
 }
 
 // ============================================================================
-// Unit Tests
+// Shared test support (mocks + service factory)
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod test_support {
     use super::*;
     use async_trait::async_trait;
-    use std::time::Duration;
 
     // Mock system port for testing
     #[derive(Clone)]
-    struct MockSystemPort {
-        ready: bool,
-        gmp_version: String,
+    pub(crate) struct MockSystemPort {
+        pub(crate) ready: bool,
+        pub(crate) gmp_version: String,
     }
 
     impl SystemPort for MockSystemPort {
@@ -418,8 +417,8 @@ mod tests {
 
     // Mock target port for testing
     #[derive(Clone, Default)]
-    struct MockTargetPort {
-        should_fail: bool,
+    pub(crate) struct MockTargetPort {
+        pub(crate) should_fail: bool,
     }
 
     #[async_trait]
@@ -454,7 +453,11 @@ mod tests {
             Ok("mock-target-id".to_string())
         }
 
-        async fn get_target(&self, _session_token: &str, id: &str) -> Result<Target, GatewayError> {
+        async fn get_target(
+            &self,
+            _session_token: &str,
+            id: &str,
+        ) -> Result<Target, GatewayError> {
             if self.should_fail {
                 return Err(GatewayError::NotFound(format!("target {id} not found")));
             }
@@ -505,7 +508,11 @@ mod tests {
             })
         }
 
-        async fn delete_target(&self, _session_token: &str, id: &str) -> Result<(), GatewayError> {
+        async fn delete_target(
+            &self,
+            _session_token: &str,
+            id: &str,
+        ) -> Result<(), GatewayError> {
             if self.should_fail {
                 return Err(GatewayError::NotFound(format!("target {id} not found")));
             }
@@ -515,7 +522,7 @@ mod tests {
 
     // Mock task port for testing
     #[derive(Clone, Default)]
-    struct MockTaskPort;
+    pub(crate) struct MockTaskPort;
 
     #[async_trait]
     impl TaskPort for MockTaskPort {
@@ -531,7 +538,11 @@ mod tests {
             })
         }
 
-        async fn create_task(&self, _: &str, _: CreateTaskInput) -> Result<String, GatewayError> {
+        async fn create_task(
+            &self,
+            _: &str,
+            _: CreateTaskInput,
+        ) -> Result<String, GatewayError> {
             Ok("00000000-0000-0000-0000-000000000001".to_string())
         }
 
@@ -590,9 +601,9 @@ mod tests {
 
     // Mock auth port for testing
     #[derive(Clone, Default)]
-    struct MockAuthPort {
-        should_fail: bool,
-        disconnected: Arc<std::sync::Mutex<Vec<String>>>,
+    pub(crate) struct MockAuthPort {
+        pub(crate) should_fail: bool,
+        pub(crate) disconnected: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     #[async_trait]
@@ -622,7 +633,7 @@ mod tests {
 
     // Mock report port for testing
     #[derive(Clone, Default)]
-    struct MockReportPort;
+    pub(crate) struct MockReportPort;
 
     #[async_trait]
     impl ReportPort for MockReportPort {
@@ -675,7 +686,7 @@ mod tests {
 
     // Mock result port for testing
     #[derive(Clone, Default)]
-    struct MockResultPort;
+    pub(crate) struct MockResultPort;
 
     #[async_trait]
     impl ResultPort for MockResultPort {
@@ -702,7 +713,7 @@ mod tests {
 
     // Mock scan config port for testing
     #[derive(Clone, Default)]
-    struct MockScanConfigPort;
+    pub(crate) struct MockScanConfigPort;
 
     #[async_trait]
     impl ScanConfigPort for MockScanConfigPort {
@@ -756,7 +767,7 @@ mod tests {
 
     // Mock scanner port for testing
     #[derive(Clone, Default)]
-    struct MockScannerPort;
+    pub(crate) struct MockScannerPort;
 
     #[async_trait]
     impl ScannerPort for MockScannerPort {
@@ -781,7 +792,7 @@ mod tests {
         }
     }
 
-    fn create_test_service() -> GatewayService {
+    pub(crate) fn create_test_service() -> GatewayService {
         GatewayService::new(
             Arc::new(MockSystemPort {
                 ready: true,
@@ -797,6 +808,16 @@ mod tests {
             Arc::new(SessionManager::default()),
         )
     }
+}
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::*;
 
     // ------------------------------------------------------------------------
     // GatewayService tests
@@ -844,27 +865,6 @@ mod tests {
         let version = service.version().unwrap();
         assert_eq!(version.gmp_version, "22.7");
         assert!(!version.api_version.is_empty());
-    }
-
-    #[test]
-    fn service_session_manager_shared() {
-        let service = create_test_service();
-        let manager1 = service.session_manager();
-        let manager2 = service.session_manager();
-
-        let session = manager1.create("user").unwrap();
-        let found = manager2.get(&session.token).unwrap();
-        assert!(found.is_some());
-    }
-
-    #[test]
-    fn service_clone_shares_state() {
-        let service = create_test_service();
-        let cloned = service.clone();
-
-        let session = service.session_manager().create("user").unwrap();
-        let found = cloned.session_manager().get(&session.token).unwrap();
-        assert!(found.is_some());
     }
 
     #[tokio::test]
@@ -940,88 +940,6 @@ mod tests {
             .list_targets(&session.token, TargetQuery::default())
             .await;
         assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-    }
-
-    // ------------------------------------------------------------------------
-    // Session lifecycle use-case tests
-    // ------------------------------------------------------------------------
-
-    /// create_session returns a token, idle timeout, and GMP version
-    /// when backend authentication succeeds.
-    #[tokio::test]
-    async fn service_create_session_success() {
-        let service = create_test_service();
-        let created = service.create_session("admin", "secret").await.unwrap();
-
-        assert!(created.token.starts_with("gvm_sess_"));
-        assert_eq!(created.expires_in, 300);
-        assert_eq!(created.gmp_version, "22.7");
-    }
-
-    /// create_session rolls back the domain session when backend auth fails.
-    #[tokio::test]
-    async fn service_create_session_auth_failure_rolls_back() {
-        let service = GatewayService::new(
-            Arc::new(MockSystemPort {
-                ready: true,
-                gmp_version: "22.7".to_string(),
-            }),
-            Arc::new(MockTargetPort::default()),
-            Arc::new(MockTaskPort),
-            Arc::new(MockAuthPort {
-                should_fail: true,
-                ..Default::default()
-            }),
-            Arc::new(MockReportPort),
-            Arc::new(MockResultPort),
-            Arc::new(MockScanConfigPort),
-            Arc::new(MockScannerPort),
-            Arc::new(SessionManager::default()),
-        );
-
-        let result = service.create_session("admin", "wrong").await;
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-    }
-
-    /// get_session returns session info for an active session.
-    #[tokio::test]
-    async fn service_get_session_active() {
-        let service = create_test_service();
-        let created = service.create_session("admin", "secret").await.unwrap();
-        let info = service.get_session(&created.token).unwrap();
-
-        assert_eq!(info.token, created.token);
-        assert_eq!(info.user, "admin");
-        assert_eq!(info.state, "active");
-        assert!(info.expires_in > 0);
-    }
-
-    /// get_session returns NotFound for unknown tokens.
-    #[tokio::test]
-    async fn service_get_session_not_found() {
-        let service = create_test_service();
-        let result = service.get_session("nonexistent");
-        assert!(matches!(result, Err(GatewayError::NotFound(_))));
-    }
-
-    /// delete_session removes the session so subsequent gets fail.
-    #[tokio::test]
-    async fn service_delete_session_success() {
-        let service = create_test_service();
-        let created = service.create_session("admin", "secret").await.unwrap();
-
-        service.delete_session(&created.token).await.unwrap();
-
-        let result = service.get_session(&created.token);
-        assert!(matches!(result, Err(GatewayError::NotFound(_))));
-    }
-
-    /// delete_session fails with NotFound for unknown tokens.
-    #[tokio::test]
-    async fn service_delete_session_not_found() {
-        let service = create_test_service();
-        let result = service.delete_session("nonexistent").await;
-        assert!(matches!(result, Err(GatewayError::NotFound(_))));
     }
 
     // ------------------------------------------------------------------------
@@ -1111,103 +1029,5 @@ mod tests {
             .list_reports(&session.token, ReportQuery::default())
             .await;
         assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-    }
-
-    // ------------------------------------------------------------------------
-    // Session reaper tests
-    // ------------------------------------------------------------------------
-
-    fn create_test_service_with_auth_and_sessions(
-        auth: Arc<MockAuthPort>,
-        sessions: Arc<SessionManager>,
-    ) -> GatewayService {
-        GatewayService::new(
-            Arc::new(MockSystemPort {
-                ready: true,
-                gmp_version: "22.7".to_string(),
-            }),
-            Arc::new(MockTargetPort::default()),
-            Arc::new(MockTaskPort),
-            auth,
-            Arc::new(MockReportPort),
-            Arc::new(MockResultPort),
-            Arc::new(MockScanConfigPort),
-            Arc::new(MockScannerPort),
-            sessions,
-        )
-    }
-
-    /// The reaper disconnects expired sessions within one sweep interval.
-    #[tokio::test]
-    async fn reaper_disconnects_expired_sessions() {
-        let auth = MockAuthPort::default();
-        let disconnected = Arc::clone(&auth.disconnected);
-        let sessions = Arc::new(SessionManager::default());
-        let reaper = SessionReaper::new(Arc::clone(&sessions), Arc::new(auth));
-
-        // Create a session and immediately expire it.
-        let session = sessions.create("admin").unwrap();
-        sessions.expire(&session.token).unwrap();
-
-        // Spawn reaper with a very short interval.
-        let handle = reaper.spawn_with_interval(Duration::from_millis(10));
-
-        // Wait long enough for at least one sweep.
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        handle.abort();
-
-        let tokens = disconnected.lock().unwrap();
-        assert!(tokens.contains(&session.token));
-    }
-
-    /// The reaper does not disconnect active sessions.
-    #[tokio::test]
-    async fn reaper_ignores_active_sessions() {
-        let auth = MockAuthPort::default();
-        let disconnected = Arc::clone(&auth.disconnected);
-        let sessions = Arc::new(SessionManager::default());
-        let reaper = SessionReaper::new(Arc::clone(&sessions), Arc::new(auth));
-
-        // Create a session but don't expire it.
-        sessions.create("admin").unwrap();
-
-        let handle = reaper.spawn_with_interval(Duration::from_millis(10));
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        handle.abort();
-
-        assert!(disconnected.lock().unwrap().is_empty());
-    }
-
-    /// The reaper and delete_session are safe to race: if delete wins, the
-    /// reaper simply does not find the token; if the reaper wins, delete
-    /// returns NotFound.
-    #[tokio::test]
-    async fn reaper_and_delete_session_race_safe() {
-        let auth = MockAuthPort::default();
-        let disconnected = Arc::clone(&auth.disconnected);
-        let auth_arc: Arc<MockAuthPort> = Arc::new(auth);
-        let sessions = Arc::new(SessionManager::default());
-        let service = create_test_service_with_auth_and_sessions(
-            Arc::clone(&auth_arc),
-            Arc::clone(&sessions),
-        );
-        let reaper = SessionReaper::new(Arc::clone(&sessions), auth_arc);
-
-        let session = sessions.create("admin").unwrap();
-        sessions.expire(&session.token).unwrap();
-
-        // Delete before the reaper runs.
-        let result = service.delete_session(&session.token).await;
-        assert!(result.is_ok());
-
-        // Reaper should find nothing to drain.
-        let handle = reaper.spawn_with_interval(Duration::from_millis(10));
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        handle.abort();
-
-        // disconnect_session is called once by delete_session.
-        // The reaper should not have found the session (already removed).
-        let tokens = disconnected.lock().unwrap();
-        assert_eq!(tokens.len(), 1); // only the one from delete_session
     }
 }
