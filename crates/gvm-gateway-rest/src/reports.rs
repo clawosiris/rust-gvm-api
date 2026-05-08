@@ -3,16 +3,117 @@
 
 //! Report DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{GatewayError, GetReportOpts, ReportQuery, ResultQuery};
+use schemars::JsonSchema;
+use serde::Serialize;
+use uuid::Uuid;
 
-use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
+use crate::{
+    dto::{datetime_schema, parse_uuid, PaginationResponse, ResourceRefResponse},
+    error::RestError,
+    openapi::{
+        ok_json, problem_response, GetReportQueryDoc, ReportListQueryDoc, ReportResultsQueryDoc,
+        ResourceIdPathDoc,
+    },
+    results::{ResultListResponse, ResultResponse},
+    router::bearer_token,
+    targets::validate_uuid,
+};
+
+// ============================================================================
+// Response DTOs
+// ============================================================================
+
+/// Result counts by severity category.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ResultCount")]
+pub(crate) struct ResultCountResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    high: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    medium: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    low: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    log: Option<u32>,
+    #[serde(rename = "falsePositive", skip_serializing_if = "Option::is_none")]
+    false_positive: Option<u32>,
+}
+
+impl From<gvm_gateway_domain::ResultCount> for ResultCountResponse {
+    fn from(rc: gvm_gateway_domain::ResultCount) -> Self {
+        Self {
+            total: rc.total,
+            high: rc.high,
+            medium: rc.medium,
+            low: rc.low,
+            log: rc.log,
+            false_positive: rc.false_positive,
+        }
+    }
+}
+
+/// JSON body returned for a single report.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Report")]
+pub(crate) struct ReportResponse {
+    id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task: Option<ResourceRefResponse>,
+    #[serde(rename = "scanStart", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    scan_start: Option<String>,
+    #[serde(rename = "scanEnd", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    scan_end: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<f64>,
+    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
+    result_count: Option<ResultCountResponse>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    results: Vec<ResultResponse>,
+}
+
+impl From<gvm_gateway_domain::Report> for ReportResponse {
+    fn from(r: gvm_gateway_domain::Report) -> Self {
+        Self {
+            id: parse_uuid(&r.id),
+            task: r.task.map(ResourceRefResponse::from),
+            scan_start: r.scan_start,
+            scan_end: r.scan_end,
+            severity: r.severity,
+            result_count: r.result_count.map(ResultCountResponse::from),
+            results: r.results.into_iter().map(ResultResponse::from).collect(),
+        }
+    }
+}
+
+/// JSON body returned for a paginated list of reports.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportList")]
+pub(crate) struct ReportListResponse {
+    data: Vec<ReportResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::ReportPage> for ReportListResponse {
+    fn from(page: gvm_gateway_domain::ReportPage) -> Self {
+        Self {
+            data: page.data.into_iter().map(ReportResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
 
 /// Parsed list-reports query from HTTP request.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -185,7 +286,7 @@ pub async fn list_reports(
         )
         .await
     {
-        Ok(reports) => (StatusCode::OK, Json(reports)).into_response(),
+        Ok(reports) => (StatusCode::OK, Json(ReportListResponse::from(reports))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -217,7 +318,7 @@ pub async fn get_report(
         )
         .await
     {
-        Ok(report) => (StatusCode::OK, Json(report)).into_response(),
+        Ok(report) => (StatusCode::OK, Json(ReportResponse::from(report))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -277,7 +378,76 @@ pub async fn get_report_results(
         )
         .await
     {
-        Ok(results) => (StatusCode::OK, Json(results)).into_response(),
+        Ok(results) => (
+            StatusCode::OK,
+            Json(crate::results::ResultListResponse::from(results)),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `GET /api/v1/reports`.
+pub(crate) fn list_reports_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReports")
+        .tag("Reports")
+        .summary("List reports")
+        .description("Returns a paginated list of reports.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ReportListQueryDoc>>()
+        .response_with::<200, Json<ReportListResponse>, _>(ok_json("Paginated list of reports"));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}`.
+pub(crate) fn get_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReport")
+        .tag("Reports")
+        .summary("Get a report")
+        .description("Returns the details for a single report with embedded results.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<GetReportQueryDoc>)>()
+        .response_with::<200, Json<ReportResponse>, _>(ok_json(
+            "Report details with embedded results",
+        ));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/reports/{id}`.
+pub(crate) fn delete_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteReport")
+        .tag("Reports")
+        .summary("Delete a report")
+        .description("Deletes an existing report.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Report deleted"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/results`.
+pub(crate) fn get_report_results_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportResults")
+        .tag("Reports")
+        .summary("Get paginated results for a report")
+        .description("Returns a paginated list of results for a specific report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ResultListResponse>, _>(ok_json("Paginated list of results"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }

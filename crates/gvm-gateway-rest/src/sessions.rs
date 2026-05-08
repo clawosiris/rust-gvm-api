@@ -3,6 +3,7 @@
 
 //! Session lifecycle handlers for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
     extract::{OriginalUri, Path, State},
     http::{HeaderMap, StatusCode},
@@ -12,17 +13,23 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{format_rfc3339, GatewayError};
-use serde::Serialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use crate::error::RestError;
+use crate::{
+    dto::datetime_schema,
+    error::RestError,
+    openapi::{ok_json, problem_response, SessionTokenPathDoc},
+};
 
 // ============================================================================
 // Response DTOs
 // ============================================================================
 
 /// JSON body returned by `POST /api/v1/sessions`.
-#[derive(Serialize)]
-struct SessionCreatedResponse {
+#[derive(Serialize, JsonSchema)]
+#[schemars(rename = "SessionCreated")]
+pub(crate) struct SessionCreatedResponse {
     #[serde(rename = "sessionToken")]
     session_token: String,
     #[serde(rename = "expiresIn")]
@@ -31,16 +38,36 @@ struct SessionCreatedResponse {
     gmp_version: String,
 }
 
+/// Session lifecycle state.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub(crate) enum SessionState {
+    #[serde(rename = "active")]
+    Active,
+    #[serde(rename = "idle")]
+    Idle,
+    #[serde(rename = "expired")]
+    Expired,
+    #[serde(rename = "closed")]
+    Closed,
+}
+
+fn parse_session_state(s: &str) -> SessionState {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).unwrap_or(SessionState::Active)
+}
+
 /// JSON body returned by `GET /api/v1/sessions/{token}`.
-#[derive(Serialize)]
-struct SessionInfoResponse {
+#[derive(Serialize, JsonSchema)]
+#[schemars(rename = "SessionInfo")]
+pub(crate) struct SessionInfoResponse {
     #[serde(rename = "sessionToken")]
     session_token: String,
     user: String,
-    state: String,
+    state: SessionState,
     #[serde(rename = "createdAt")]
+    #[schemars(schema_with = "datetime_schema")]
     created_at: String,
     #[serde(rename = "lastUsedAt")]
+    #[schemars(schema_with = "datetime_schema")]
     last_used_at: String,
     #[serde(rename = "expiresIn")]
     expires_in: i64,
@@ -94,7 +121,7 @@ pub async fn get_session(
             Json(SessionInfoResponse {
                 session_token: info.token,
                 user: info.user,
-                state: info.state,
+                state: parse_session_state(&info.state),
                 created_at: format_rfc3339(info.created_at),
                 last_used_at: format_rfc3339(info.last_used_at),
                 expires_in: info.expires_in,
@@ -154,6 +181,57 @@ fn extract_basic_credentials(headers: &HeaderMap) -> Result<(String, String), Ga
     }
 
     Ok((username.to_string(), password.to_string()))
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `POST /api/v1/sessions`.
+pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createSession")
+        .tag("Sessions")
+        .summary("Create a new session")
+        .description(
+            "Authenticates with the supplied Basic credentials and returns an opaque \
+             session token. Include the token as a Bearer token on all subsequent requests.",
+        )
+        .security_requirement("basicAuth")
+        .response_with::<201, Json<SessionCreatedResponse>, _>(ok_json("Session created"));
+
+    let op = problem_response::<401>(op, "Authentication failed");
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
+}
+
+/// OpenAPI transform for `GET /api/v1/sessions/{token}`.
+pub(crate) fn get_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getSession")
+        .tag("Sessions")
+        .summary("Inspect a session")
+        .description("Returns the current state and metadata for a session.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SessionTokenPathDoc>>()
+        .response_with::<200, Json<SessionInfoResponse>, _>(ok_json("Session details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Session not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/sessions/{token}`.
+pub(crate) fn delete_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteSession")
+        .tag("Sessions")
+        .summary("Close and destroy a session")
+        .description("Ends the session and invalidates the token immediately.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SessionTokenPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Session closed"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Session not found")
 }
 
 // ============================================================================

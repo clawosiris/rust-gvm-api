@@ -1,204 +1,207 @@
-# Refactor: Remove Per-Resource Generic Sprawl from Gateway State
-
-## Issue
-
-clawosiris/rust-gvm-api#95: refactor(architecture): remove per-resource generic sprawl from gateway state
-
-Stacked on top of PR #94 (`feat/phase-2d-scan-configs-scanners`), which introduced `Sc`/`Sn` type params
-and made the 8-generic-parameter sprawl painfully visible.
+# Issue #101: Introduce explicit REST DTOs and remove schema-only duplicates
 
 ## Problem
 
-`GatewayService<S, T, K, A, R, Re, Sc, Sn>` carries 8 generic type parameters that propagate
-through every handler function, router helper, and test constructor. Each new resource requires
-touching every existing handler's generic signature even when that handler doesn't use the new port.
-This violates the open/closed principle: adding a resource should not require modifying unrelated handlers.
+Handlers in the REST adapter return domain models directly (e.g. `Json(target)` where
+`target: Target`). OpenAPI schema is maintained through a separate set of `*Doc` types in
+`openapi.rs` that duplicate the domain model shape with richer typing (Uuid instead of String,
+typed enums instead of strings). This duplication means:
 
-## Approach: Trait-Object Erasure (Dynamic Dispatch)
+1. Domain model changes can silently drift from the REST contract.
+2. Schema types are never used at runtime, so bugs in the schema are invisible until
+   the OpenAPI spec test catches them (or doesn't).
+3. Adding a new field requires editing both the domain type and the Doc type.
 
-Replace the 8 generic type parameters with `Arc<dyn XxxPort>` trait objects inside `GatewayService`.
-This makes `GatewayService` a concrete type, so handlers, routers, and tests no longer carry or
-propagate generics.
+## Approach
 
-**Trade-offs:**
-- Adds one vtable indirection per port call (negligible for network-bound I/O).
-- Slightly more allocation at construction time (already using Arc, so no new heap allocs).
-- Static dispatch can be reintroduced later via a `GatewayServiceTyped<S, T, ...>` if profiling demands it.
-- Trait-object service boundary is reusable by a future gRPC adapter (same `GatewayService` value).
+Introduce **runtime REST DTOs** that own both the JSON serialization shape and the
+JsonSchema/OpenAPI contract. Each handler converts domain -> DTO before returning.
+Doc types that are fully replaced by a runtime DTO are removed.
 
-**Why not a registry/map approach:**
-Trait objects are idiomatic Rust for this pattern, preserve type safety at the port boundary, and
-keep the API surface identical. A `HashMap<TypeId, Box<dyn Any>>` would lose compile-time guarantees.
+Doc types that intentionally differ from their runtime counterpart (request body schemas
+where required fields are modeled as `Option` in the runtime request type for validation,
+query parameter schemas, path parameter schemas) are kept.
+
+### Trade-offs
+
+- Adds a thin conversion layer (From impls) between domain and REST. This is intentional:
+  the REST adapter should own the wire format.
+- Response DTOs use `Uuid` for ID fields and typed enums for string-encoded enums. The
+  conversion from domain String -> Uuid uses `parse_str` with a nil-UUID fallback.
+- The external REST/OpenAPI contract does not change.
 
 ## Implementation Plan
 
-### Step 1: Make `GatewayService` concrete (gvm-gateway-app)
+### Step 1: Create `dto.rs` — shared response types
 
-- Remove all generic type parameters from `GatewayService`.
-- Store each port as `Arc<dyn XxxPort>` (e.g. `system: Arc<dyn SystemPort>`).
-- Replace `new()` and `with_all()` constructors to accept `Arc<dyn XxxPort>` arguments.
-- Merge the three separate `impl` blocks (split by different trait bounds) into one.
-- Derive `Clone` manually since all fields are `Arc`.
-- Update all unit tests — mock types stay the same, but construction uses `Arc::new(mock) as Arc<dyn XxxPort>`.
+New module `crates/gvm-gateway-rest/src/dto.rs` with:
+- `PaginationResponse` (replaces `PaginationDoc`)
+- `ResourceRefResponse` (replaces `ResourceRefDoc`)
+- `ResourceCreatedResponse` (replaces `ResourceCreatedDoc`)
+- `datetime_schema()` helper (moved from `openapi.rs`)
+- `parse_uuid()` helper
 
-### Step 2: Remove generics from REST handlers (gvm-gateway-rest)
+### Step 2: Add response DTOs to each handler module
 
-- In `router.rs`: remove `<S, T, K, A, R, Re, Sc, Sn>` from `build_router`, `build_openapi`,
-  `documented_router`, `health`, `ready`, `version`. Accept/return concrete `GatewayService`.
-- In each handler module (`targets.rs`, `tasks.rs`, `reports.rs`, `results.rs`, `scan_configs.rs`,
-  `scanners.rs`, `sessions.rs`): remove all generic type parameters and trait bounds from every
-  handler function. Use `State(service): State<GatewayService>`.
+For each resource (targets, tasks, reports, results, scan_configs, scanners):
+- Define response DTO structs with `#[derive(Serialize, JsonSchema)]`
+- Define typed enums where Doc types had them (AliveTest, TaskStatus, etc.)
+- Implement `From<DomainType>` for each DTO
+- Update handler return expressions to convert domain -> DTO
 
-### Step 3: Update binary entrypoint (gvm-gateway)
+For sessions:
+- Add `JsonSchema` derive to existing `SessionCreatedResponse`, `SessionInfoResponse`
+- Add `SessionState` enum, use it in `SessionInfoResponse`
+- Make types `pub(crate)` for openapi.rs access
 
-- In `main.rs`: remove turbofish annotations, use `Arc::new(adapter) as Arc<dyn XxxPort>` at
-  construction site.
+For system endpoints (health, ready, version):
+- Add DTOs in `router.rs` with `JsonSchema`
 
-### Step 4: Update tests
+### Step 3: Update `openapi.rs`
 
-- Unit tests in `gvm-gateway-app`: update `create_test_service()` to construct concrete `GatewayService`.
-- Acceptance/integration tests: update any test harness constructors.
+- Import runtime DTOs from handler modules
+- Replace Doc type references in doc transforms with runtime DTOs
+- Remove all Doc types that have been replaced
+- Keep: ProblemDetailDoc, path/query Doc types, request body Doc types
 
-### Step 5: Verify
+### Step 4: Verify
 
-- `cargo fmt --all`
+- `cargo fmt --all --check`
 - `cargo clippy --workspace --all-targets`
 - `cargo test --workspace`
-- `cargo build --workspace`
+- OpenAPI contract tests still pass
 
-## Files Changed
+## Types promoted from Doc to runtime DTO
 
-| File | Change |
-|------|--------|
-| `crates/gvm-gateway-app/src/lib.rs` | Remove generics from `GatewayService`, merge impl blocks |
-| `crates/gvm-gateway-rest/src/router.rs` | Remove generics from router + utility handlers |
-| `crates/gvm-gateway-rest/src/targets.rs` | Remove generics from 5 handler fns |
-| `crates/gvm-gateway-rest/src/tasks.rs` | Remove generics from 8 handler fns |
-| `crates/gvm-gateway-rest/src/reports.rs` | Remove generics from 4 handler fns |
-| `crates/gvm-gateway-rest/src/results.rs` | Remove generics from 2 handler fns |
-| `crates/gvm-gateway-rest/src/scan_configs.rs` | Remove generics from 5 handler fns |
-| `crates/gvm-gateway-rest/src/scanners.rs` | Remove generics from 2 handler fns |
-| `crates/gvm-gateway-rest/src/sessions.rs` | Remove generics from 3 handler fns |
-| `crates/gvm-gateway/src/main.rs` | Simplify construction |
+| Doc type removed | Runtime DTO | Location |
+|-----------------|-------------|----------|
+| PaginationDoc | PaginationResponse | dto.rs |
+| ResourceRefDoc | ResourceRefResponse | dto.rs |
+| ResourceCreatedDoc | ResourceCreatedResponse | dto.rs |
+| HealthStatusDoc, HealthStateDoc | HealthStatusResponse, HealthState | router.rs |
+| ReadinessStatusDoc, ReadinessStateDoc | ReadinessStatusResponse, ReadinessState | router.rs |
+| VersionInfoDoc | VersionInfoResponse | router.rs |
+| SessionCreatedDoc | SessionCreatedResponse | sessions.rs |
+| SessionInfoDoc, SessionStateDoc | SessionInfoResponse, SessionState | sessions.rs |
+| TargetDoc | TargetResponse | targets.rs |
+| TargetListDoc | TargetListResponse | targets.rs |
+| AliveTestDoc | AliveTest | targets.rs |
+| TaskDoc | TaskResponse | tasks.rs |
+| TaskListDoc | TaskListResponse | tasks.rs |
+| TaskStatusDoc | TaskStatus | tasks.rs |
+| HostsOrderingDoc | HostsOrdering | tasks.rs |
+| TaskActionDoc | TaskActionResponse | tasks.rs |
+| ReportDoc | ReportResponse | reports.rs |
+| ResultCountDoc | ResultCountResponse | reports.rs |
+| ReportListDoc | ReportListResponse | reports.rs |
+| ResultDoc | ResultResponse | results.rs |
+| NvtRefDoc | NvtRefResponse | results.rs |
+| ThreatDoc | Threat | results.rs |
+| ResultListDoc | ResultListResponse | results.rs |
+| ScanConfigDoc | ScanConfigResponse | scan_configs.rs |
+| ScanConfigListDoc | ScanConfigListResponse | scan_configs.rs |
+| ScannerDoc | ScannerResponse | scanners.rs |
+| ScannerTypeDoc | ScannerType | scanners.rs |
+| ScannerListDoc | ScannerListResponse | scanners.rs |
 
----
+## Doc types kept (no runtime equivalent or intentionally different)
 
-# Issue #96: Make REST and GMP adapters speak through domain-owned boundaries
-
-## Problem
-
-The domain crate (`gvm-gateway-domain`) depends on `gvm-gmp` and contains
-`*_from_gmp()` conversion functions that take `gvm_gmp::responses::*` types
-as parameters. This violates the hexagonal architecture rule that the domain
-layer must know nothing about GMP or GVMD protocol types.
-
-### Boundary violations found
-
-1. **`gvm-gateway-domain/Cargo.toml`** lists `gvm-gmp` as a dependency.
-2. **`gvm-gateway-domain/src/lib.rs`** defines six public conversion functions
-   (`target_from_gmp`, `task_from_gmp`, `report_from_gmp`, `result_from_gmp`,
-   `scan_config_from_gmp`, `scanner_from_gmp`) whose parameter types come from
-   `gvm_gmp::responses`.
-3. **`gvm-gateway/tests/acceptance.rs`** imports `target_from_gmp` from domain
-   and `GetTargetsResponse` from `gvm_gmp::responses` directly.
-
-### What is already correct
-
-- Port traits (in domain) accept/return only domain types.
-- `gvm-gateway-app` depends only on domain types.
-- `gvm-gateway-rest` does not import `gvm-gmp` at all.
-- `gvm-gateway-gvmd` already does all GMP command building internally.
-
-## Plan
-
-### Step 1 — Move conversion functions to gvmd adapter
-
-Move the six `*_from_gmp()` functions from `gvm-gateway-domain/src/lib.rs`
-to `gvm-gateway-gvmd/src/lib.rs`. They already belong there since the gvmd
-crate is the only consumer.
-
-### Step 2 — Remove gvm-gmp dependency from domain
-
-Remove `gvm-gmp` from `gvm-gateway-domain/Cargo.toml`. Move `serde_json` to
-`[dev-dependencies]` since it is only used in `#[cfg(test)]` blocks.
-
-### Step 3 — Update gvmd adapter imports
-
-Change imports in `gvm-gateway-gvmd/src/lib.rs` from
-`gvm_gateway_domain::{target_from_gmp, ...}` to local function references.
-
-### Step 4 — Update acceptance tests
-
-In `gvm-gateway/tests/acceptance.rs`, change the `target_from_gmp` import
-from `gvm_gateway_domain` to `gvm_gateway_gvmd`.
-
-### Step 5 — Add architectural boundary test
-
-Add a compile-time or test-time check that enforces:
-- `gvm-gateway-domain` does NOT depend on `gvm-gmp`, `gvm-client`, or
-  `gvm-connection`.
-- `gvm-gateway-app` does NOT depend on `gvm-gmp`, `gvm-client`, or
-  `gvm-connection`.
-- `gvm-gateway-rest` does NOT depend on `gvm-gmp`, `gvm-client`, or
-  `gvm-connection`.
-
-This will be implemented as a test that parses Cargo.toml files and asserts
-the absence of banned dependencies.
-
-### Step 6 — Verify
-
-- `cargo check` passes.
-- `cargo test --workspace` passes.
-- `cargo clippy --workspace` passes.
-- OpenAPI contract tests still pass (REST contract is unchanged).
+- ProblemDetailDoc
+- SessionTokenPathDoc, ResourceIdPathDoc
+- TargetListQueryDoc, TaskListQueryDoc, ReportListQueryDoc, GetReportQueryDoc,
+  ReportResultsQueryDoc, ResultListQueryDoc, ScanConfigListQueryDoc, ScannerListQueryDoc
+- CreateTargetDoc, ModifyTargetDoc, CreateTaskDoc, ModifyTaskDoc,
+  CreateScanConfigDoc, ModifyScanConfigDoc
 
 ## Risks
 
-- None to REST contract: no handler, DTO, or route changes.
-- The gvmd adapter's public API grows by six `pub fn` conversions, but these
-  are only consumed by the composition-root acceptance tests.
+- None to REST contract: all schema names, field names, and types remain identical.
+- The `From` impls parse String -> Uuid; if a backend ever returns a non-UUID identifier
+  the DTO will fall back to the nil UUID. This matches the existing Doc-type assumption.
 
 ---
 
-# PR #100 Review Feedback (2026-05-07)
+## PR #103 Review Follow-up: Structural Reorganization
 
-## Review comments to address
+### Review Feedback
+1. "Move the system related responses, handlers etc. to a dedicated file"
+2. "Move the transforms in the same files as the handlers"
 
-1. **Make GMP conversion utilities private** — The six `*_from_gmp()` functions
-   and the two `map_*_error()` functions are `pub` but should not be part of
-   the crate's public API. They are implementation details of the gvmd adapter.
-   Change from `pub fn` to `pub(crate) fn`.
+### Plan
 
-2. **Split the large lib.rs** — At ~2 080 lines, `lib.rs` mixes two adapters
-   and a conversion layer. Split into:
-   - `static_adapter.rs` — `StaticGvmdAdapter` + trait impls
-   - `gvmd_adapter.rs` — `GvmdAdapter` + trait impls
-   - `conversions.rs` — `*_from_gmp()`, `map_*_error()`, and private helpers
+#### 1. Create `system.rs` — dedicated system module
+Move from `router.rs`:
+- System DTOs: `HealthState`, `HealthStatusResponse`, `ReadinessState`, `ReadinessStatusResponse`, `VersionInfoResponse`
+- System handlers: `health()`, `ready()`, `version()`
 
-3. **Move `target_from_gmp` roundtrip test** — The acceptance test at
-   `gvm-gateway/tests/acceptance.rs:1073` imports `target_from_gmp` as a
-   public symbol. Since the function is becoming crate-private, move this test
-   into the gvmd crate's own test module.
+Move from `openapi.rs`:
+- System transforms: `health_docs()`, `ready_docs()`, `version_docs()`
 
-## Re-check of issue #96 acceptance criteria
+#### 2. Co-locate OpenAPI transforms with their handlers
+Move from `openapi.rs` into the respective handler modules:
+- Session transforms (`create_session_docs`, `get_session_docs`, `delete_session_docs`) → `sessions.rs`
+- Target transforms → `targets.rs`
+- Task transforms → `tasks.rs`
+- Report transforms → `reports.rs`
+- Result transforms → `results.rs`
+- Scan config transforms → `scan_configs.rs`
+- Scanner transforms → `scanners.rs`
 
-| Criterion | Status |
-|-----------|--------|
-| Move `*_from_gmp()` out of domain crate | Done (PR #100) |
-| Remove `gvm-gmp` from domain `Cargo.toml` | Done (PR #100) |
-| `serde_json` to dev-dependencies in domain | Done (PR #100) |
-| Update gvmd adapter imports | Done (PR #100) |
-| Update acceptance test imports | Done (PR #100) |
-| Architecture boundary test | Done (`architecture.rs`) |
-| Conversion utilities private to adapter | **This fix** |
+#### 3. Keep in `openapi.rs`
+- Shared infrastructure: `ok_json`, `problem_response`, `configure`, `finalize_document`
+- Doc-only schema types (request bodies, query/path parameters, ProblemDetailDoc)
+- Document post-processing functions (`tighten_*`, `ensure_*`, `strip_nullable_types`, etc.)
+- Make `ok_json`, `problem_response`, and Doc types `pub(crate)` for handler module access
 
-## Plan
+#### 4. Update `router.rs`
+- Import system handlers and transforms from `system` module
+- Remove system DTOs and handlers
 
-1. Create `crates/gvm-gateway-gvmd/src/static_adapter.rs`
-2. Create `crates/gvm-gateway-gvmd/src/gvmd_adapter.rs`
-3. Create `crates/gvm-gateway-gvmd/src/conversions.rs`
-4. Rewrite `lib.rs` as a thin module root that re-exports public types
-5. Change `*_from_gmp`, `map_gvm_error`, `map_parse_error` to `pub(crate)`
-6. Move `target_from_gmp_roundtrip` test from acceptance.rs into conversions.rs
-7. Remove the `target_from_gmp` import from acceptance.rs
-8. Run `cargo fmt --all --check`, `cargo clippy`, `cargo test --workspace`
+#### 5. Update `lib.rs`
+- Declare `pub mod system;`
+
+#### Invariant
+External REST/OpenAPI contract remains unchanged.
+
+---
+
+## 2026-05-08 — Session 2: Resume and complete
+
+Resuming from dirty working tree left by previous session. Inspected all local
+changes and confirmed the draft refactor is complete and correct:
+
+- `system.rs` contains system DTOs, handlers, and OpenAPI transforms
+- Each handler module (`sessions.rs`, `targets.rs`, `tasks.rs`, `reports.rs`,
+  `results.rs`, `scan_configs.rs`, `scanners.rs`) now has its OpenAPI transforms
+  colocated with the handlers
+- `openapi.rs` retains only shared infrastructure (`ok_json`, `problem_response`,
+  `configure`, `finalize_document`) and doc-only schema types
+- `router.rs` imports system handlers/transforms from `system` module
+- `lib.rs` declares `pub(crate) mod system;`
+
+Proceeding to: rebase, commit, push, and reply to PR review threads.
+
+---
+
+## 2026-05-08 — Round 2: Merge remaining Doc types into DTO modules
+
+### Review Feedback
+1. "`CreateScanConfigDoc` and `ModifyScanConfigDoc` should be merged with the DTOs"
+2. "`ScannerListQueryDoc` should be merged with the DTO"
+
+### Changes
+
+- `scan_configs.rs`: Added `JsonSchema + Serialize` to `CreateScanConfigRequest` and
+  `ModifyScanConfigRequest`. Added `#[schemars(rename = "CreateScanConfig/ModifyScanConfig")]`
+  and `#[schemars(with = "Option<Uuid>")]` on `base_scan_config_id` for proper uuid format.
+  Transforms now reference the request types directly instead of the Doc aliases.
+
+- `scanners.rs`: Added `ScannerListQueryParams` struct (OpenAPI schema type, same shape as the
+  removed `ScannerListQueryDoc`). The runtime `ScannerListQuery` stays as-is (manual parsing,
+  structurally different field types). Transform now uses `Query<ScannerListQueryParams>`.
+
+- `openapi.rs`: Removed `CreateScanConfigDoc`, `ModifyScanConfigDoc`, `ScannerListQueryDoc`.
+  Added `tighten_scan_config_payload_schemas` to inject `required: ["name"]` on `CreateScanConfig`
+  (compensates for `name: Option<String>` in the runtime request type).
+
+External REST/OpenAPI contract unchanged.

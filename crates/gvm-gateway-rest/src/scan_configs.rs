@@ -3,9 +3,10 @@
 
 //! Scan config DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -14,9 +15,76 @@ use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
     CreateScanConfigInput, GatewayError, ModifyScanConfigInput, ScanConfigQuery,
 };
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{error::RestError, router::bearer_token, targets::validate_uuid};
+use crate::{
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse},
+    error::RestError,
+    openapi::{ok_json, problem_response, ResourceIdPathDoc, ScanConfigListQueryDoc},
+    router::bearer_token,
+    targets::validate_uuid,
+};
+
+// ============================================================================
+// Response DTOs
+// ============================================================================
+
+/// JSON body returned for a single scan config.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ScanConfig")]
+pub(crate) struct ScanConfigResponse {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(rename = "familyCount", skip_serializing_if = "Option::is_none")]
+    family_count: Option<u32>,
+    #[serde(rename = "nvtCount", skip_serializing_if = "Option::is_none")]
+    nvt_count: Option<u32>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    config_type: Option<u32>,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+    writable: bool,
+}
+
+impl From<gvm_gateway_domain::ScanConfig> for ScanConfigResponse {
+    fn from(sc: gvm_gateway_domain::ScanConfig) -> Self {
+        Self {
+            id: parse_uuid(&sc.id),
+            name: sc.name,
+            comment: sc.comment,
+            family_count: sc.family_count,
+            nvt_count: sc.nvt_count,
+            config_type: sc.config_type,
+            in_use: sc.in_use,
+            writable: sc.writable,
+        }
+    }
+}
+
+/// JSON body returned for a paginated list of scan configs.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ScanConfigList")]
+pub(crate) struct ScanConfigListResponse {
+    data: Vec<ScanConfigResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::ScanConfigPage> for ScanConfigListResponse {
+    fn from(page: gvm_gateway_domain::ScanConfigPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ScanConfigResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
 
 /// Parsed list-scan-configs query from HTTP request.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -82,7 +150,8 @@ impl ScanConfigListQuery {
 }
 
 /// Create-scan-config request payload.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[schemars(rename = "CreateScanConfig")]
 pub struct CreateScanConfigRequest {
     /// Optional name so validation can return RFC 9457 instead of extractor failures.
     pub name: Option<String>,
@@ -90,6 +159,7 @@ pub struct CreateScanConfigRequest {
     pub comment: Option<String>,
     /// Optional base scan config identifier to copy from.
     #[serde(rename = "baseScanConfigId")]
+    #[schemars(with = "Option<Uuid>")]
     pub base_scan_config_id: Option<String>,
 }
 
@@ -113,7 +183,8 @@ impl CreateScanConfigRequest {
 }
 
 /// Modify-scan-config request payload.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[schemars(rename = "ModifyScanConfig")]
 pub struct ModifyScanConfigRequest {
     /// Optional name.
     pub name: Option<String>,
@@ -159,7 +230,11 @@ pub async fn list_scan_configs(
         )
         .await
     {
-        Ok(scan_configs) => (StatusCode::OK, Json(scan_configs)).into_response(),
+        Ok(scan_configs) => (
+            StatusCode::OK,
+            Json(ScanConfigListResponse::from(scan_configs)),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -192,7 +267,13 @@ pub async fn create_scan_config(
     };
 
     match service.create_scan_config(&session, input).await {
-        Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
+        Ok(id) => (
+            StatusCode::CREATED,
+            Json(ResourceCreatedResponse {
+                id: parse_uuid(&id),
+            }),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -214,7 +295,9 @@ pub async fn get_scan_config(
     };
 
     match service.get_scan_config(&session, &id).await {
-        Ok(scan_config) => (StatusCode::OK, Json(scan_config)).into_response(),
+        Ok(scan_config) => {
+            (StatusCode::OK, Json(ScanConfigResponse::from(scan_config))).into_response()
+        }
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -251,7 +334,9 @@ pub async fn update_scan_config(
     };
 
     match service.modify_scan_config(&session, &id, input).await {
-        Ok(scan_config) => (StatusCode::OK, Json(scan_config)).into_response(),
+        Ok(scan_config) => {
+            (StatusCode::OK, Json(ScanConfigResponse::from(scan_config))).into_response()
+        }
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -276,4 +361,85 @@ pub async fn delete_scan_config(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `GET /api/v1/scan-configs`.
+pub(crate) fn list_scan_configs_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanConfigs")
+        .tag("Scan Configs")
+        .summary("List scan configurations")
+        .description("Returns a paginated list of scan configurations.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ScanConfigListQueryDoc>>()
+        .response_with::<200, Json<ScanConfigListResponse>, _>(ok_json(
+            "Paginated list of scan configs",
+        ));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `POST /api/v1/scan-configs`.
+pub(crate) fn create_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createScanConfig")
+        .tag("Scan Configs")
+        .summary("Create a scan configuration")
+        .description("Creates a new scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateScanConfigRequest>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Scan config created"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/scan-configs/{id}`.
+pub(crate) fn get_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanConfig")
+        .tag("Scan Configs")
+        .summary("Get a scan configuration")
+        .description("Returns the details for a single scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<ScanConfigResponse>, _>(ok_json("Scan config details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `PUT /api/v1/scan-configs/{id}`.
+pub(crate) fn update_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyScanConfig")
+        .tag("Scan Configs")
+        .summary("Modify a scan configuration")
+        .description("Updates an existing scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyScanConfigRequest>)>()
+        .response_with::<200, Json<ScanConfigResponse>, _>(ok_json("Scan config updated"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/scan-configs/{id}`.
+pub(crate) fn delete_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteScanConfig")
+        .tag("Scan Configs")
+        .summary("Delete a scan configuration")
+        .description("Deletes an existing scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Scan config deleted"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }

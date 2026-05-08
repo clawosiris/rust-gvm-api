@@ -7,29 +7,22 @@ use aide::{
     openapi::{License, SecurityScheme, Server, Tag},
     transform::{TransformOpenApi, TransformOperation, TransformResponse},
 };
-use axum::{
-    extract::{Path, Query},
-    Json,
-};
+use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
-fn datetime_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-    schemars::json_schema!({
-        "type": "string",
-        "format": "date-time"
-    })
-}
+// Runtime DTO imports are no longer needed centrally — OpenAPI transforms
+// now live alongside their handlers in each module.
 
-fn ok_json<T>(
+pub(crate) fn ok_json<T>(
     description: &'static str,
 ) -> impl FnOnce(TransformResponse<T>) -> TransformResponse<T> {
     move |response| response.description(description)
 }
 
-fn problem_response<'a, const N: u16>(
+pub(crate) fn problem_response<'a, const N: u16>(
     op: TransformOperation<'a>,
     description: &'static str,
 ) -> TransformOperation<'a> {
@@ -284,6 +277,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     tighten_target_payload_schemas(&mut document);
     tighten_task_query_parameters(&mut document);
     tighten_task_payload_schemas(&mut document);
+    tighten_scan_config_payload_schemas(&mut document);
     tighten_list_query_parameters(&mut document, "/reports");
     tighten_list_query_parameters(&mut document, "/results");
     tighten_list_query_parameters(&mut document, "/reports/{id}/results");
@@ -368,6 +362,14 @@ fn tighten_task_query_parameters(document: &mut Value) {
                 _ => {}
             }
         }
+    }
+}
+
+fn tighten_scan_config_payload_schemas(document: &mut Value) {
+    // `CreateScanConfigRequest.name` is `Option<String>` at runtime (for graceful validation),
+    // so schemars omits it from `required`. Inject it here to keep the contract intact.
+    if let Some(schema) = document["components"]["schemas"].get_mut("CreateScanConfig") {
+        schema["required"] = json!(["name"]);
     }
 }
 
@@ -593,504 +595,18 @@ pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
 }
 
 // ============================================================================
-// OpenAPI endpoint documentation transforms
-// ============================================================================
-
-/// OpenAPI transform for `GET /health`.
-pub(crate) fn health_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("getHealth")
-        .tag("System")
-        .summary("Liveness probe")
-        .description("Returns basic process liveness information.")
-        .response_with::<200, Json<HealthStatusDoc>, _>(ok_json("Service is alive"))
-}
-
-/// OpenAPI transform for `GET /ready`.
-pub(crate) fn ready_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("getReadiness")
-        .tag("System")
-        .summary("Readiness probe")
-        .description("Indicates whether the service is ready to handle requests.")
-        .response_with::<200, Json<ReadinessStatusDoc>, _>(ok_json("Service is ready"))
-        .response_with::<503, Json<ReadinessStatusDoc>, _>(ok_json("Service is not ready"))
-}
-
-/// OpenAPI transform for `GET /api/v1/version`.
-pub(crate) fn version_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getVersion")
-        .tag("System")
-        .summary("Get API and GMP version information")
-        .description("Returns the gateway API version together with the connected GMP version.")
-        .response_with::<200, Json<VersionInfoDoc>, _>(ok_json("Version information"));
-
-    problem_response::<502>(op, "Backend service unreachable or connection failed")
-}
-
-// -- Session endpoints -------------------------------------------------------
-
-/// OpenAPI transform for `POST /api/v1/sessions`.
-pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("createSession")
-        .tag("Sessions")
-        .summary("Create a new session")
-        .description(
-            "Authenticates with the supplied Basic credentials and returns an opaque \
-             session token. Include the token as a Bearer token on all subsequent requests.",
-        )
-        .security_requirement("basicAuth")
-        .response_with::<201, Json<SessionCreatedDoc>, _>(ok_json("Session created"));
-
-    let op = problem_response::<401>(op, "Authentication failed");
-    problem_response::<502>(op, "Backend service unreachable or connection failed")
-}
-
-/// OpenAPI transform for `GET /api/v1/sessions/{token}`.
-pub(crate) fn get_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getSession")
-        .tag("Sessions")
-        .summary("Inspect a session")
-        .description("Returns the current state and metadata for a session.")
-        .security_requirement("bearerAuth")
-        .input::<Path<SessionTokenPathDoc>>()
-        .response_with::<200, Json<SessionInfoDoc>, _>(ok_json("Session details"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Session not found")
-}
-
-/// OpenAPI transform for `DELETE /api/v1/sessions/{token}`.
-pub(crate) fn delete_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("deleteSession")
-        .tag("Sessions")
-        .summary("Close and destroy a session")
-        .description("Ends the session and invalidates the token immediately.")
-        .security_requirement("bearerAuth")
-        .input::<Path<SessionTokenPathDoc>>()
-        .response_with::<204, (), _>(|response| response.description("Session closed"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Session not found")
-}
-
-// -- Target endpoints --------------------------------------------------------
-
-/// OpenAPI transform for `GET /api/v1/targets`.
-pub(crate) fn list_targets_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getTargets")
-        .tag("Targets")
-        .summary("List targets")
-        .description("Returns a paginated list of targets.")
-        .security_requirement("bearerAuth")
-        .input::<Query<TargetListQueryDoc>>()
-        .response_with::<200, Json<TargetListDoc>, _>(ok_json("Paginated list of targets"));
-
-    let op = problem_response::<400>(op, "Invalid request");
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
-/// OpenAPI transform for `POST /api/v1/targets`.
-pub(crate) fn create_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("createTarget")
-        .tag("Targets")
-        .summary("Create a target")
-        .description("Creates a new scan target.")
-        .security_requirement("bearerAuth")
-        .input::<Json<CreateTargetDoc>>()
-        .response_with::<201, Json<ResourceCreatedDoc>, _>(ok_json("Target created"));
-
-    let op = problem_response::<400>(op, "Invalid request");
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
-/// OpenAPI transform for `GET /api/v1/targets/{id}`.
-pub(crate) fn get_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getTarget")
-        .tag("Targets")
-        .summary("Get a target")
-        .description("Returns the details for a single target.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<TargetDoc>, _>(ok_json("Target details"));
-
-    let op = problem_response::<400>(op, "Invalid request");
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-/// OpenAPI transform for `PUT /api/v1/targets/{id}`.
-pub(crate) fn update_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("modifyTarget")
-        .tag("Targets")
-        .summary("Modify a target")
-        .description("Updates an existing target.")
-        .security_requirement("bearerAuth")
-        .input::<(Path<ResourceIdPathDoc>, Json<ModifyTargetDoc>)>()
-        .response_with::<200, Json<TargetDoc>, _>(ok_json("Target updated"));
-
-    let op = problem_response::<400>(op, "Invalid request");
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-/// OpenAPI transform for `DELETE /api/v1/targets/{id}`.
-pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("deleteTarget")
-        .tag("Targets")
-        .summary("Delete a target")
-        .description("Deletes an existing target.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<204, (), _>(|response| response.description("Target deleted"));
-
-    let op = problem_response::<400>(op, "Invalid request");
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-// -- Task endpoints ----------------------------------------------------------
-
-/// OpenAPI transform for `GET /api/v1/tasks`.
-pub(crate) fn list_tasks_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getTasks")
-        .tag("Tasks")
-        .summary("List tasks")
-        .description("Returns a paginated list of tasks.")
-        .security_requirement("bearerAuth")
-        .input::<Query<TaskListQueryDoc>>()
-        .response_with::<200, Json<TaskListDoc>, _>(ok_json("Paginated list of tasks"));
-
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
-/// OpenAPI transform for `POST /api/v1/tasks`.
-pub(crate) fn create_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("createTask")
-        .tag("Tasks")
-        .summary("Create a task")
-        .description("Creates a new scan task.")
-        .security_requirement("bearerAuth")
-        .input::<Json<CreateTaskDoc>>()
-        .response_with::<201, Json<ResourceCreatedDoc>, _>(ok_json("Task created"));
-
-    let op = problem_response::<400>(op, "Invalid request");
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
-/// OpenAPI transform for `GET /api/v1/tasks/{id}`.
-pub(crate) fn get_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getTask")
-        .tag("Tasks")
-        .summary("Get a task")
-        .description("Returns the details for a single task.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<TaskDoc>, _>(ok_json("Task details"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-/// OpenAPI transform for `PUT /api/v1/tasks/{id}`.
-pub(crate) fn update_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("modifyTask")
-        .tag("Tasks")
-        .summary("Modify a task")
-        .description("Updates an existing task.")
-        .security_requirement("bearerAuth")
-        .input::<(Path<ResourceIdPathDoc>, Json<ModifyTaskDoc>)>()
-        .response_with::<200, Json<TaskDoc>, _>(ok_json("Task updated"));
-
-    let op = problem_response::<400>(op, "Invalid request");
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-/// OpenAPI transform for `DELETE /api/v1/tasks/{id}`.
-pub(crate) fn delete_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("deleteTask")
-        .tag("Tasks")
-        .summary("Delete a task")
-        .description("Deletes an existing task.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<204, (), _>(|response| response.description("Task deleted"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-/// OpenAPI transform for `POST /api/v1/tasks/{id}/start`.
-pub(crate) fn start_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("startTask")
-        .tag("Tasks")
-        .summary("Start a task")
-        .description("Starts a scan task. Returns the report identifier created by the action.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<TaskActionDoc>, _>(ok_json("Task started"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    let op = problem_response::<404>(op, "Resource not found");
-    let op = problem_response::<409>(op, "Resource state conflict");
-    problem_response::<504>(op, "Backend service did not respond in time")
-}
-
-/// OpenAPI transform for `POST /api/v1/tasks/{id}/stop`.
-pub(crate) fn stop_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("stopTask")
-        .tag("Tasks")
-        .summary("Stop a running task")
-        .description("Stops a currently running scan task.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, (), _>(|response| response.description("Task stopped"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    let op = problem_response::<404>(op, "Resource not found");
-    problem_response::<409>(op, "Resource state conflict")
-}
-
-/// OpenAPI transform for `POST /api/v1/tasks/{id}/resume`.
-pub(crate) fn resume_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("resumeTask")
-        .tag("Tasks")
-        .summary("Resume a stopped task")
-        .description("Resumes a stopped scan task. Returns the report identifier.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<TaskActionDoc>, _>(ok_json("Task resumed"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    let op = problem_response::<404>(op, "Resource not found");
-    problem_response::<409>(op, "Resource state conflict")
-}
-
-// -- Report endpoints --------------------------------------------------------
-
-/// OpenAPI transform for `GET /api/v1/reports`.
-pub(crate) fn list_reports_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getReports")
-        .tag("Reports")
-        .summary("List reports")
-        .description("Returns a paginated list of reports.")
-        .security_requirement("bearerAuth")
-        .input::<Query<ReportListQueryDoc>>()
-        .response_with::<200, Json<ReportListDoc>, _>(ok_json("Paginated list of reports"));
-
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
-/// OpenAPI transform for `GET /api/v1/reports/{id}`.
-pub(crate) fn get_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getReport")
-        .tag("Reports")
-        .summary("Get a report")
-        .description("Returns the details for a single report with embedded results.")
-        .security_requirement("bearerAuth")
-        .input::<(Path<ResourceIdPathDoc>, Query<GetReportQueryDoc>)>()
-        .response_with::<200, Json<ReportDoc>, _>(ok_json("Report details with embedded results"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-/// OpenAPI transform for `DELETE /api/v1/reports/{id}`.
-pub(crate) fn delete_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("deleteReport")
-        .tag("Reports")
-        .summary("Delete a report")
-        .description("Deletes an existing report.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<204, (), _>(|response| response.description("Report deleted"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-/// OpenAPI transform for `GET /api/v1/reports/{id}/results`.
-pub(crate) fn get_report_results_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getReportResults")
-        .tag("Reports")
-        .summary("Get paginated results for a report")
-        .description("Returns a paginated list of results for a specific report.")
-        .security_requirement("bearerAuth")
-        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
-        .response_with::<200, Json<ResultListDoc>, _>(ok_json("Paginated list of results"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-// -- Result endpoints --------------------------------------------------------
-
-/// OpenAPI transform for `GET /api/v1/results`.
-pub(crate) fn list_results_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getResults")
-        .tag("Results")
-        .summary("List results")
-        .description("Returns a paginated list of results.")
-        .security_requirement("bearerAuth")
-        .input::<Query<ResultListQueryDoc>>()
-        .response_with::<200, Json<ResultListDoc>, _>(ok_json("Paginated list of results"));
-
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
-/// OpenAPI transform for `GET /api/v1/results/{id}`.
-pub(crate) fn get_result_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getResult")
-        .tag("Results")
-        .summary("Get a result")
-        .description("Returns the details for a single result.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<ResultDoc>, _>(ok_json("Result details"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-// -- Scan Config endpoints ---------------------------------------------------
-
-/// OpenAPI transform for `GET /api/v1/scan-configs`.
-pub(crate) fn list_scan_configs_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getScanConfigs")
-        .tag("Scan Configs")
-        .summary("List scan configurations")
-        .description("Returns a paginated list of scan configurations.")
-        .security_requirement("bearerAuth")
-        .input::<Query<ScanConfigListQueryDoc>>()
-        .response_with::<200, Json<ScanConfigListDoc>, _>(ok_json(
-            "Paginated list of scan configs",
-        ));
-
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
-/// OpenAPI transform for `POST /api/v1/scan-configs`.
-pub(crate) fn create_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("createScanConfig")
-        .tag("Scan Configs")
-        .summary("Create a scan configuration")
-        .description("Creates a new scan configuration.")
-        .security_requirement("bearerAuth")
-        .input::<Json<CreateScanConfigDoc>>()
-        .response_with::<201, Json<ResourceCreatedDoc>, _>(ok_json("Scan config created"));
-
-    let op = problem_response::<400>(op, "Invalid request");
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
-/// OpenAPI transform for `GET /api/v1/scan-configs/{id}`.
-pub(crate) fn get_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getScanConfig")
-        .tag("Scan Configs")
-        .summary("Get a scan configuration")
-        .description("Returns the details for a single scan configuration.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<ScanConfigDoc>, _>(ok_json("Scan config details"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-/// OpenAPI transform for `PUT /api/v1/scan-configs/{id}`.
-pub(crate) fn update_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("modifyScanConfig")
-        .tag("Scan Configs")
-        .summary("Modify a scan configuration")
-        .description("Updates an existing scan configuration.")
-        .security_requirement("bearerAuth")
-        .input::<(Path<ResourceIdPathDoc>, Json<ModifyScanConfigDoc>)>()
-        .response_with::<200, Json<ScanConfigDoc>, _>(ok_json("Scan config updated"));
-
-    let op = problem_response::<400>(op, "Invalid request");
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-/// OpenAPI transform for `DELETE /api/v1/scan-configs/{id}`.
-pub(crate) fn delete_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("deleteScanConfig")
-        .tag("Scan Configs")
-        .summary("Delete a scan configuration")
-        .description("Deletes an existing scan configuration.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<204, (), _>(|response| response.description("Scan config deleted"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-// -- Scanner endpoints -------------------------------------------------------
-
-/// OpenAPI transform for `GET /api/v1/scanners`.
-pub(crate) fn list_scanners_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getScanners")
-        .tag("Scanners")
-        .summary("List scanners")
-        .description("Returns a paginated list of scanners.")
-        .security_requirement("bearerAuth")
-        .input::<Query<ScannerListQueryDoc>>()
-        .response_with::<200, Json<ScannerListDoc>, _>(ok_json("Paginated list of scanners"));
-
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
-/// OpenAPI transform for `GET /api/v1/scanners/{id}`.
-pub(crate) fn get_scanner_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("getScanner")
-        .tag("Scanners")
-        .summary("Get a scanner")
-        .description("Returns the details for a single scanner.")
-        .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<ScannerDoc>, _>(ok_json("Scanner details"));
-
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
-}
-
-// ============================================================================
 // OpenAPI document-only schema types
+//
+// These types exist solely for OpenAPI schema generation.  They are NOT used
+// at runtime for serialisation — see the handler modules for runtime DTOs.
+// They are kept because their field shapes intentionally differ from the
+// runtime request/query types (e.g. required vs optional fields, Uuid vs
+// String for IDs).
 // ============================================================================
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ProblemDetail")]
-struct ProblemDetailDoc {
+pub(crate) struct ProblemDetailDoc {
     #[serde(rename = "type")]
     r#type: String,
     title: String,
@@ -1101,134 +617,35 @@ struct ProblemDetailDoc {
     instance: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "HealthStatus")]
-struct HealthStatusDoc {
-    status: HealthStateDoc,
-}
+// -- Session path parameter --------------------------------------------------
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ReadinessStatus")]
-struct ReadinessStatusDoc {
-    status: ReadinessStateDoc,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "VersionInfo")]
-struct VersionInfoDoc {
-    #[serde(rename = "apiVersion")]
-    api_version: String,
-    #[serde(rename = "gmpVersion")]
-    gmp_version: String,
-}
-
-// -- Session schemas ---------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "SessionCreated")]
-struct SessionCreatedDoc {
-    #[serde(rename = "sessionToken")]
-    session_token: String,
-    #[serde(rename = "expiresIn")]
-    expires_in: u64,
-    #[serde(rename = "gmpVersion")]
-    gmp_version: String,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "SessionInfo")]
-struct SessionInfoDoc {
-    #[serde(rename = "sessionToken")]
-    session_token: String,
-    user: String,
-    state: SessionStateDoc,
-    #[serde(rename = "createdAt")]
-    #[schemars(schema_with = "datetime_schema")]
-    created_at: String,
-    #[serde(rename = "lastUsedAt")]
-    #[schemars(schema_with = "datetime_schema")]
-    last_used_at: String,
-    #[serde(rename = "expiresIn")]
-    expires_in: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum SessionStateDoc {
-    #[serde(rename = "active")]
-    Active,
-    #[serde(rename = "idle")]
-    Idle,
-    #[serde(rename = "expired")]
-    Expired,
-    #[serde(rename = "closed")]
-    Closed,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-struct SessionTokenPathDoc {
+pub(crate) struct SessionTokenPathDoc {
     token: String,
 }
 
-// -- Target schemas ----------------------------------------------------------
+// -- Shared path/query parameter schemas -------------------------------------
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Target")]
-struct TargetDoc {
+pub(crate) struct ResourceIdPathDoc {
     id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    comment: Option<String>,
-    hosts: Vec<String>,
-    #[serde(
-        rename = "excludeHosts",
-        default,
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    exclude_hosts: Vec<String>,
-    #[serde(rename = "aliveTest", skip_serializing_if = "Option::is_none")]
-    alive_test: Option<AliveTestDoc>,
-    #[serde(rename = "portList", skip_serializing_if = "Option::is_none")]
-    port_list: Option<ResourceRefDoc>,
-    #[serde(rename = "reverseLookupOnly")]
-    reverse_lookup_only: bool,
-    #[serde(rename = "reverseLookupUnify")]
-    reverse_lookup_unify: bool,
-    #[serde(rename = "sshCredential", skip_serializing_if = "Option::is_none")]
-    ssh_credential: Option<ResourceRefDoc>,
-    #[serde(rename = "smbCredential", skip_serializing_if = "Option::is_none")]
-    smb_credential: Option<ResourceRefDoc>,
-    #[serde(rename = "esxiCredential", skip_serializing_if = "Option::is_none")]
-    esxi_credential: Option<ResourceRefDoc>,
-    #[serde(rename = "snmpCredential", skip_serializing_if = "Option::is_none")]
-    snmp_credential: Option<ResourceRefDoc>,
-    #[serde(rename = "inUse")]
-    in_use: bool,
-    writable: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "TargetList")]
-struct TargetListDoc {
-    data: Vec<TargetDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Pagination")]
-struct PaginationDoc {
-    page: u32,
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct TargetListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
     #[serde(rename = "perPage")]
-    per_page: u32,
-    total: u32,
-    #[serde(rename = "totalPages")]
-    total_pages: u32,
+    per_page: Option<u32>,
 }
+
+// -- Target request body schemas ---------------------------------------------
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateTarget")]
-struct CreateTargetDoc {
+pub(crate) struct CreateTargetDoc {
     name: String,
     comment: Option<String>,
     hosts: Vec<String>,
@@ -1254,7 +671,7 @@ struct CreateTargetDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyTarget")]
-struct ModifyTargetDoc {
+pub(crate) struct ModifyTargetDoc {
     name: Option<String>,
     comment: Option<String>,
     hosts: Option<Vec<String>>,
@@ -1267,21 +684,33 @@ struct ModifyTargetDoc {
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ResourceCreated")]
-struct ResourceCreatedDoc {
-    id: Uuid,
+pub(crate) enum AliveTestDoc {
+    #[serde(rename = "Scan Config Default")]
+    ScanConfigDefault,
+    #[serde(rename = "ICMP Ping")]
+    IcmpPing,
+    #[serde(rename = "TCP-ACK Service Ping")]
+    TcpAckServicePing,
+    #[serde(rename = "TCP-SYN Service Ping")]
+    TcpSynServicePing,
+    #[serde(rename = "ARP Ping")]
+    ArpPing,
+    #[serde(rename = "ICMP, TCP-ACK Service Ping")]
+    IcmpTcpAckServicePing,
+    #[serde(rename = "ICMP, ARP Ping")]
+    IcmpArpPing,
+    #[serde(rename = "TCP-ACK Service, ARP Ping")]
+    TcpAckServiceArpPing,
+    #[serde(rename = "ICMP, TCP-ACK Service, ARP Ping")]
+    IcmpTcpAckServiceArpPing,
+    #[serde(rename = "Consider Alive")]
+    ConsiderAlive,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ResourceRef")]
-struct ResourceRefDoc {
-    id: Uuid,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-}
+// -- Task request body / query schemas ---------------------------------------
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct TargetListQueryDoc {
+pub(crate) struct TaskListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
@@ -1291,73 +720,8 @@ struct TargetListQueryDoc {
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-struct ResourceIdPathDoc {
-    id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum HealthStateDoc {
-    #[serde(rename = "ok")]
-    Ok,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum ReadinessStateDoc {
-    #[serde(rename = "ready")]
-    Ready,
-    #[serde(rename = "notReady")]
-    NotReady,
-}
-
-// -- Task schemas ------------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Task")]
-struct TaskDoc {
-    id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    comment: Option<String>,
-    status: TaskStatusDoc,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    target: Option<ResourceRefDoc>,
-    #[serde(rename = "scanConfig", skip_serializing_if = "Option::is_none")]
-    scan_config: Option<ResourceRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    scanner: Option<ResourceRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    schedule: Option<ResourceRefDoc>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    alerts: Vec<ResourceRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    alterable: Option<bool>,
-    #[serde(rename = "hostsOrdering", skip_serializing_if = "Option::is_none")]
-    hosts_ordering: Option<HostsOrderingDoc>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    observers: Vec<String>,
-    #[serde(rename = "schedulePeriods", skip_serializing_if = "Option::is_none")]
-    schedule_periods: Option<u32>,
-    #[serde(rename = "lastReport", skip_serializing_if = "Option::is_none")]
-    last_report: Option<ResourceRefDoc>,
-    #[serde(rename = "currentReport", skip_serializing_if = "Option::is_none")]
-    current_report: Option<ResourceRefDoc>,
-    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
-    result_count: Option<u32>,
-    #[serde(rename = "inUse")]
-    in_use: bool,
-    writable: bool,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "TaskList")]
-struct TaskListDoc {
-    data: Vec<TaskDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateTask")]
-struct CreateTaskDoc {
+pub(crate) struct CreateTaskDoc {
     name: String,
     comment: Option<String>,
     #[serde(rename = "targetId")]
@@ -1381,7 +745,7 @@ struct CreateTaskDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyTask")]
-struct ModifyTaskDoc {
+pub(crate) struct ModifyTaskDoc {
     name: Option<String>,
     comment: Option<String>,
     #[serde(rename = "targetId")]
@@ -1402,31 +766,7 @@ struct ModifyTaskDoc {
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "TaskAction")]
-struct TaskActionDoc {
-    #[serde(rename = "reportId")]
-    report_id: Uuid,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum TaskStatusDoc {
-    New,
-    Requested,
-    Running,
-    #[serde(rename = "Stop Requested")]
-    StopRequested,
-    Done,
-    Stopped,
-    #[serde(rename = "Delete Requested")]
-    DeleteRequested,
-    #[serde(rename = "Ultimate Delete Requested")]
-    UltimateDeleteRequested,
-    Container,
-    Interrupted,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum HostsOrderingDoc {
+pub(crate) enum HostsOrderingDoc {
     #[serde(rename = "sequential")]
     Sequential,
     #[serde(rename = "random")]
@@ -1435,8 +775,10 @@ enum HostsOrderingDoc {
     Reverse,
 }
 
+// -- Report / result query schemas -------------------------------------------
+
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct TaskListQueryDoc {
+pub(crate) struct ReportListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
@@ -1444,6 +786,46 @@ struct TaskListQueryDoc {
     #[serde(rename = "perPage")]
     per_page: Option<u32>,
 }
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct GetReportQueryDoc {
+    #[serde(rename = "ignorePagination")]
+    ignore_pagination: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct ReportResultsQueryDoc {
+    filter: Option<String>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct ResultListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+// -- Scan config query schema ------------------------------------------------
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct ScanConfigListQueryDoc {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -1774,262 +1156,4 @@ mod tests {
             .map(String::as_str)
             .collect()
     }
-}
-// -- Report schemas ----------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Report")]
-struct ReportDoc {
-    id: Uuid,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    task: Option<ResourceRefDoc>,
-    #[serde(rename = "scanStart", skip_serializing_if = "Option::is_none")]
-    #[schemars(schema_with = "datetime_schema")]
-    scan_start: Option<String>,
-    #[serde(rename = "scanEnd", skip_serializing_if = "Option::is_none")]
-    #[schemars(schema_with = "datetime_schema")]
-    scan_end: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    severity: Option<f64>,
-    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
-    result_count: Option<ResultCountDoc>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    results: Vec<ResultDoc>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ResultCount")]
-struct ResultCountDoc {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    total: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    high: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    medium: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    low: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    log: Option<u32>,
-    #[serde(rename = "falsePositive", skip_serializing_if = "Option::is_none")]
-    false_positive: Option<u32>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ReportList")]
-struct ReportListDoc {
-    data: Vec<ReportDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ReportListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct GetReportQueryDoc {
-    #[serde(rename = "ignorePagination")]
-    ignore_pagination: Option<bool>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ReportResultsQueryDoc {
-    filter: Option<String>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
-}
-
-// -- Result schemas ----------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Result")]
-struct ResultDoc {
-    id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    host: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    port: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    severity: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    threat: Option<ThreatDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    nvt: Option<NvtRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    task: Option<ResourceRefDoc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    report: Option<ResourceRefDoc>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "NvtRef")]
-struct NvtRefDoc {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    oid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    family: Option<String>,
-    #[serde(rename = "cvssBase", skip_serializing_if = "Option::is_none")]
-    cvss_base: Option<f64>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    cves: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tags: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum ThreatDoc {
-    High,
-    Medium,
-    Low,
-    Log,
-    Alarm,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ResultList")]
-struct ResultListDoc {
-    data: Vec<ResultDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ResultListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum AliveTestDoc {
-    #[serde(rename = "Scan Config Default")]
-    ScanConfigDefault,
-    #[serde(rename = "ICMP Ping")]
-    IcmpPing,
-    #[serde(rename = "TCP-ACK Service Ping")]
-    TcpAckServicePing,
-    #[serde(rename = "TCP-SYN Service Ping")]
-    TcpSynServicePing,
-    #[serde(rename = "ARP Ping")]
-    ArpPing,
-    #[serde(rename = "ICMP, TCP-ACK Service Ping")]
-    IcmpTcpAckServicePing,
-    #[serde(rename = "ICMP, ARP Ping")]
-    IcmpArpPing,
-    #[serde(rename = "TCP-ACK Service, ARP Ping")]
-    TcpAckServiceArpPing,
-    #[serde(rename = "ICMP, TCP-ACK Service, ARP Ping")]
-    IcmpTcpAckServiceArpPing,
-    #[serde(rename = "Consider Alive")]
-    ConsiderAlive,
-}
-
-// -- Scan Config schemas -----------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ScanConfig")]
-struct ScanConfigDoc {
-    id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    comment: Option<String>,
-    #[serde(rename = "familyCount", skip_serializing_if = "Option::is_none")]
-    family_count: Option<u32>,
-    #[serde(rename = "nvtCount", skip_serializing_if = "Option::is_none")]
-    nvt_count: Option<u32>,
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    config_type: Option<u32>,
-    #[serde(rename = "inUse")]
-    in_use: bool,
-    writable: bool,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ScanConfigList")]
-struct ScanConfigListDoc {
-    data: Vec<ScanConfigDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "CreateScanConfig")]
-struct CreateScanConfigDoc {
-    name: String,
-    comment: Option<String>,
-    #[serde(rename = "baseScanConfigId")]
-    base_scan_config_id: Option<Uuid>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ModifyScanConfig")]
-struct ModifyScanConfigDoc {
-    name: Option<String>,
-    comment: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ScanConfigListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
-}
-
-// -- Scanner schemas ---------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "Scanner")]
-struct ScannerDoc {
-    id: Uuid,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    comment: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    host: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    port: Option<u32>,
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    scanner_type: Option<ScannerTypeDoc>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum ScannerTypeDoc {
-    #[serde(rename = "OpenVAS")]
-    OpenVas,
-    #[serde(rename = "CVE")]
-    Cve,
-    #[serde(rename = "OSP")]
-    Osp,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ScannerList")]
-struct ScannerListDoc {
-    data: Vec<ScannerDoc>,
-    pagination: PaginationDoc,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-struct ScannerListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
 }

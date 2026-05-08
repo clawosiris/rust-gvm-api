@@ -13,41 +13,43 @@ use aide::{
     openapi::OpenApi,
 };
 use axum::{
-    extract::{Extension, OriginalUri, Request, State},
+    extract::{Extension, OriginalUri, Request},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, patch},
-    Json, Router,
+    Router,
 };
 use gvm_gateway_app::GatewayService;
 use serde_json::Value;
 
 use crate::{
     error::RestError,
-    openapi::{
-        configure as configure_openapi, create_scan_config_docs, create_session_docs,
-        create_target_docs, create_task_docs, delete_report_docs, delete_scan_config_docs,
-        delete_session_docs, delete_target_docs, delete_task_docs, finalize_document,
-        get_report_docs, get_report_results_docs, get_result_docs, get_scan_config_docs,
-        get_scanner_docs, get_session_docs, get_target_docs, get_task_docs, health_docs,
-        list_reports_docs, list_results_docs, list_scan_configs_docs, list_scanners_docs,
-        list_targets_docs, list_tasks_docs, ready_docs, resume_task_docs, start_task_docs,
-        stop_task_docs, update_scan_config_docs, update_target_docs, update_task_docs,
-        version_docs,
+    openapi::{configure as configure_openapi, finalize_document},
+    reports::{
+        delete_report, delete_report_docs, get_report, get_report_docs, get_report_results,
+        get_report_results_docs, list_reports, list_reports_docs,
     },
-    reports::{delete_report, get_report, get_report_results, list_reports},
-    results::{get_result, list_results},
+    results::{get_result, get_result_docs, list_results, list_results_docs},
     scan_configs::{
-        create_scan_config, delete_scan_config, get_scan_config, list_scan_configs,
-        update_scan_config,
+        create_scan_config, create_scan_config_docs, delete_scan_config, delete_scan_config_docs,
+        get_scan_config, get_scan_config_docs, list_scan_configs, list_scan_configs_docs,
+        update_scan_config, update_scan_config_docs,
     },
-    scanners::{get_scanner, list_scanners},
-    sessions::{create_session, delete_session, get_session},
-    targets::{create_target, delete_target, get_target, list_targets, update_target},
+    scanners::{get_scanner, get_scanner_docs, list_scanners, list_scanners_docs},
+    sessions::{
+        create_session, create_session_docs, delete_session, delete_session_docs, get_session,
+        get_session_docs,
+    },
+    system::{health, health_docs, ready, ready_docs, version, version_docs},
+    targets::{
+        create_target, create_target_docs, delete_target, delete_target_docs, get_target,
+        get_target_docs, list_targets, list_targets_docs, update_target, update_target_docs,
+    },
     tasks::{
-        create_task, delete_task, get_task, list_tasks, resume_task, start_task, stop_task,
-        update_task,
+        create_task, create_task_docs, delete_task, delete_task_docs, get_task, get_task_docs,
+        list_tasks, list_tasks_docs, resume_task, resume_task_docs, start_task, start_task_docs,
+        stop_task, stop_task_docs, update_task, update_task_docs,
     },
 };
 
@@ -200,27 +202,6 @@ async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Respo
         (*openapi_json).clone(),
     )
         .into_response()
-}
-
-pub(crate) async fn health(State(service): State<GatewayService>) -> Response {
-    Json(service.health()).into_response()
-}
-
-pub(crate) async fn ready(State(service): State<GatewayService>) -> Response {
-    match service.ready() {
-        Ok(readiness) if readiness.status == "ready" => {
-            (StatusCode::OK, Json(readiness)).into_response()
-        }
-        Ok(readiness) => (StatusCode::SERVICE_UNAVAILABLE, Json(readiness)).into_response(),
-        Err(error) => RestError::from_gateway_error(error, "/ready").into_response(),
-    }
-}
-
-pub(crate) async fn version(State(service): State<GatewayService>) -> Response {
-    match service.version() {
-        Ok(version) => (StatusCode::OK, Json(version)).into_response(),
-        Err(error) => RestError::from_gateway_error(error, "/api/v1/version").into_response(),
-    }
 }
 
 pub(crate) async fn method_not_allowed_collection(uri: OriginalUri) -> Response {

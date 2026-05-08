@@ -3,24 +3,142 @@
 
 //! Target DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::GatewayError;
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::RestError, router::bearer_token};
+use crate::{
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
+    error::RestError,
+    openapi::{
+        ok_json, problem_response, CreateTargetDoc, ModifyTargetDoc, ResourceIdPathDoc,
+        TargetListQueryDoc,
+    },
+    router::bearer_token,
+};
 
 // Re-export domain types for backward compatibility
 pub use gvm_gateway_domain::{
     CreateTargetInput, ModifyTargetInput, Pagination, ResourceRef, Target, TargetPage, TargetQuery,
 };
+
+// ============================================================================
+// Response DTOs
+// ============================================================================
+
+/// Alive-test strategy for a target.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub(crate) enum AliveTest {
+    #[serde(rename = "Scan Config Default")]
+    ScanConfigDefault,
+    #[serde(rename = "ICMP Ping")]
+    IcmpPing,
+    #[serde(rename = "TCP-ACK Service Ping")]
+    TcpAckServicePing,
+    #[serde(rename = "TCP-SYN Service Ping")]
+    TcpSynServicePing,
+    #[serde(rename = "ARP Ping")]
+    ArpPing,
+    #[serde(rename = "ICMP, TCP-ACK Service Ping")]
+    IcmpTcpAckServicePing,
+    #[serde(rename = "ICMP, ARP Ping")]
+    IcmpArpPing,
+    #[serde(rename = "TCP-ACK Service, ARP Ping")]
+    TcpAckServiceArpPing,
+    #[serde(rename = "ICMP, TCP-ACK Service, ARP Ping")]
+    IcmpTcpAckServiceArpPing,
+    #[serde(rename = "Consider Alive")]
+    ConsiderAlive,
+}
+
+fn parse_alive_test(s: &str) -> Option<AliveTest> {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
+}
+
+/// JSON body returned for a single target.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Target")]
+pub(crate) struct TargetResponse {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    hosts: Vec<String>,
+    #[serde(
+        rename = "excludeHosts",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    exclude_hosts: Vec<String>,
+    #[serde(rename = "aliveTest", skip_serializing_if = "Option::is_none")]
+    alive_test: Option<AliveTest>,
+    #[serde(rename = "portList", skip_serializing_if = "Option::is_none")]
+    port_list: Option<ResourceRefResponse>,
+    #[serde(rename = "reverseLookupOnly")]
+    reverse_lookup_only: bool,
+    #[serde(rename = "reverseLookupUnify")]
+    reverse_lookup_unify: bool,
+    #[serde(rename = "sshCredential", skip_serializing_if = "Option::is_none")]
+    ssh_credential: Option<ResourceRefResponse>,
+    #[serde(rename = "smbCredential", skip_serializing_if = "Option::is_none")]
+    smb_credential: Option<ResourceRefResponse>,
+    #[serde(rename = "esxiCredential", skip_serializing_if = "Option::is_none")]
+    esxi_credential: Option<ResourceRefResponse>,
+    #[serde(rename = "snmpCredential", skip_serializing_if = "Option::is_none")]
+    snmp_credential: Option<ResourceRefResponse>,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+    writable: bool,
+}
+
+impl From<gvm_gateway_domain::Target> for TargetResponse {
+    fn from(t: gvm_gateway_domain::Target) -> Self {
+        Self {
+            id: parse_uuid(&t.id),
+            name: t.name,
+            comment: t.comment,
+            hosts: t.hosts,
+            exclude_hosts: t.exclude_hosts,
+            alive_test: t.alive_test.as_deref().and_then(parse_alive_test),
+            port_list: t.port_list.map(ResourceRefResponse::from),
+            reverse_lookup_only: t.reverse_lookup_only,
+            reverse_lookup_unify: t.reverse_lookup_unify,
+            ssh_credential: t.ssh_credential.map(ResourceRefResponse::from),
+            smb_credential: t.smb_credential.map(ResourceRefResponse::from),
+            esxi_credential: t.esxi_credential.map(ResourceRefResponse::from),
+            snmp_credential: t.snmp_credential.map(ResourceRefResponse::from),
+            in_use: t.in_use,
+            writable: t.writable,
+        }
+    }
+}
+
+/// JSON body returned for a paginated list of targets.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TargetList")]
+pub(crate) struct TargetListResponse {
+    data: Vec<TargetResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::TargetPage> for TargetListResponse {
+    fn from(page: gvm_gateway_domain::TargetPage) -> Self {
+        Self {
+            data: page.data.into_iter().map(TargetResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
 
 /// Parsed list-targets query from HTTP request.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -223,7 +341,7 @@ pub async fn list_targets(
         )
         .await
     {
-        Ok(targets) => (StatusCode::OK, Json(targets)).into_response(),
+        Ok(targets) => (StatusCode::OK, Json(TargetListResponse::from(targets))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -256,7 +374,13 @@ pub async fn create_target(
     };
 
     match service.create_target(&session, input).await {
-        Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
+        Ok(id) => (
+            StatusCode::CREATED,
+            Json(ResourceCreatedResponse {
+                id: parse_uuid(&id),
+            }),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -278,7 +402,7 @@ pub async fn get_target(
     };
 
     match service.get_target(&session, &id).await {
-        Ok(target) => (StatusCode::OK, Json(target)).into_response(),
+        Ok(target) => (StatusCode::OK, Json(TargetResponse::from(target))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -315,7 +439,7 @@ pub async fn update_target(
     };
 
     match service.modify_target(&session, &id, input).await {
-        Ok(target) => (StatusCode::OK, Json(target)).into_response(),
+        Ok(target) => (StatusCode::OK, Json(TargetResponse::from(target))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -362,4 +486,86 @@ pub fn validate_uuid(field: &str, value: &str) -> Result<(), GatewayError> {
     Uuid::parse_str(value)
         .map(|_| ())
         .map_err(|_| GatewayError::InvalidInput(format!("{field} must be a valid UUID")))
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `GET /api/v1/targets`.
+pub(crate) fn list_targets_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTargets")
+        .tag("Targets")
+        .summary("List targets")
+        .description("Returns a paginated list of targets.")
+        .security_requirement("bearerAuth")
+        .input::<Query<TargetListQueryDoc>>()
+        .response_with::<200, Json<TargetListResponse>, _>(ok_json("Paginated list of targets"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `POST /api/v1/targets`.
+pub(crate) fn create_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createTarget")
+        .tag("Targets")
+        .summary("Create a target")
+        .description("Creates a new scan target.")
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateTargetDoc>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Target created"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/targets/{id}`.
+pub(crate) fn get_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTarget")
+        .tag("Targets")
+        .summary("Get a target")
+        .description("Returns the details for a single target.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<TargetResponse>, _>(ok_json("Target details"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `PUT /api/v1/targets/{id}`.
+pub(crate) fn update_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyTarget")
+        .tag("Targets")
+        .summary("Modify a target")
+        .description("Updates an existing target.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyTargetDoc>)>()
+        .response_with::<200, Json<TargetResponse>, _>(ok_json("Target updated"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/targets/{id}`.
+pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteTarget")
+        .tag("Targets")
+        .summary("Delete a target")
+        .description("Deletes an existing target.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Target deleted"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }

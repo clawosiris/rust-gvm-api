@@ -6,6 +6,7 @@
 
 //! REST adapter for the GVM gateway.
 
+pub(crate) mod dto;
 pub mod error;
 pub mod openapi;
 pub mod reports;
@@ -14,5 +15,6 @@ pub mod router;
 pub mod scan_configs;
 pub mod scanners;
 pub mod sessions;
+pub(crate) mod system;
 pub mod targets;
 pub mod tasks;
