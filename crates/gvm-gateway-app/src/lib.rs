@@ -8,6 +8,8 @@
 
 mod session;
 
+pub use session::SessionReaper;
+
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
@@ -1115,7 +1117,10 @@ mod tests {
     // Session reaper tests
     // ------------------------------------------------------------------------
 
-    fn create_test_service_with_auth(auth: MockAuthPort) -> GatewayService {
+    fn create_test_service_with_auth_and_sessions(
+        auth: Arc<MockAuthPort>,
+        sessions: Arc<SessionManager>,
+    ) -> GatewayService {
         GatewayService::new(
             Arc::new(MockSystemPort {
                 ready: true,
@@ -1123,12 +1128,12 @@ mod tests {
             }),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockTaskPort),
-            Arc::new(auth),
+            auth,
             Arc::new(MockReportPort),
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
             Arc::new(MockScannerPort),
-            Arc::new(SessionManager::default()),
+            sessions,
         )
     }
 
@@ -1137,14 +1142,15 @@ mod tests {
     async fn reaper_disconnects_expired_sessions() {
         let auth = MockAuthPort::default();
         let disconnected = Arc::clone(&auth.disconnected);
-        let service = create_test_service_with_auth(auth);
+        let sessions = Arc::new(SessionManager::default());
+        let reaper = SessionReaper::new(Arc::clone(&sessions), Arc::new(auth));
 
         // Create a session and immediately expire it.
-        let session = service.session_manager().create("admin").unwrap();
-        service.session_manager().expire(&session.token).unwrap();
+        let session = sessions.create("admin").unwrap();
+        sessions.expire(&session.token).unwrap();
 
         // Spawn reaper with a very short interval.
-        let handle = service.spawn_reaper_with_interval(Duration::from_millis(10));
+        let handle = reaper.spawn_with_interval(Duration::from_millis(10));
 
         // Wait long enough for at least one sweep.
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1159,12 +1165,13 @@ mod tests {
     async fn reaper_ignores_active_sessions() {
         let auth = MockAuthPort::default();
         let disconnected = Arc::clone(&auth.disconnected);
-        let service = create_test_service_with_auth(auth);
+        let sessions = Arc::new(SessionManager::default());
+        let reaper = SessionReaper::new(Arc::clone(&sessions), Arc::new(auth));
 
         // Create a session but don't expire it.
-        service.session_manager().create("admin").unwrap();
+        sessions.create("admin").unwrap();
 
-        let handle = service.spawn_reaper_with_interval(Duration::from_millis(10));
+        let handle = reaper.spawn_with_interval(Duration::from_millis(10));
         tokio::time::sleep(Duration::from_millis(50)).await;
         handle.abort();
 
@@ -1178,17 +1185,23 @@ mod tests {
     async fn reaper_and_delete_session_race_safe() {
         let auth = MockAuthPort::default();
         let disconnected = Arc::clone(&auth.disconnected);
-        let service = create_test_service_with_auth(auth);
+        let auth_arc: Arc<MockAuthPort> = Arc::new(auth);
+        let sessions = Arc::new(SessionManager::default());
+        let service = create_test_service_with_auth_and_sessions(
+            Arc::clone(&auth_arc),
+            Arc::clone(&sessions),
+        );
+        let reaper = SessionReaper::new(Arc::clone(&sessions), auth_arc);
 
-        let session = service.session_manager().create("admin").unwrap();
-        service.session_manager().expire(&session.token).unwrap();
+        let session = sessions.create("admin").unwrap();
+        sessions.expire(&session.token).unwrap();
 
         // Delete before the reaper runs.
         let result = service.delete_session(&session.token).await;
         assert!(result.is_ok());
 
         // Reaper should find nothing to drain.
-        let handle = service.spawn_reaper_with_interval(Duration::from_millis(10));
+        let handle = reaper.spawn_with_interval(Duration::from_millis(10));
         tokio::time::sleep(Duration::from_millis(50)).await;
         handle.abort();
 

@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use gvm_gateway_app::GatewayService;
+use gvm_gateway_app::{GatewayService, SessionReaper};
 use gvm_gateway_domain::{SessionManager, TargetPage};
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
 use gvm_gateway_rest::router::build_router;
@@ -284,6 +284,7 @@ async fn session_reaper_cleans_up_expired_sessions() {
     // Use a very short idle timeout (0 seconds = immediately expired).
     let sessions = Arc::new(SessionManager::new(0));
     let arc_adapter: Arc<StaticGvmdAdapter> = Arc::new(adapter);
+    let reaper = SessionReaper::new(Arc::clone(&sessions), arc_adapter.clone());
     let service = GatewayService::new(
         arc_adapter.clone(),
         arc_adapter.clone(),
@@ -297,7 +298,7 @@ async fn session_reaper_cleans_up_expired_sessions() {
     );
 
     // Spawn the reaper with a very short interval.
-    let reaper = service.spawn_reaper_with_interval(Duration::from_millis(20));
+    let reaper = reaper.spawn_with_interval(Duration::from_millis(20));
     let app = build_router(service);
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();

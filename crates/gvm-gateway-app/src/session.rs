@@ -8,19 +8,19 @@ use std::time::Duration;
 
 use tokio::task::JoinHandle;
 
-use gvm_gateway_domain::{GatewayError, SessionCreated, SessionInfo};
+use gvm_gateway_domain::{AuthPort, GatewayError, SessionCreated, SessionInfo, SessionManager};
 
 use crate::GatewayService;
 
+// ============================================================================
+// Session lifecycle use cases
+// ============================================================================
+
 impl GatewayService {
     /// Borrow the shared session manager.
-    pub fn session_manager(&self) -> Arc<gvm_gateway_domain::SessionManager> {
+    pub fn session_manager(&self) -> Arc<SessionManager> {
         Arc::clone(&self.sessions)
     }
-
-    // ------------------------------------------------------------------
-    // Session lifecycle
-    // ------------------------------------------------------------------
 
     /// Authenticates with the supplied credentials, creates a domain session,
     /// and establishes a backend connection bound to the new token.
@@ -62,25 +62,44 @@ impl GatewayService {
         let _ = self.auth.disconnect_session(token).await;
         Ok(())
     }
+}
 
-    // ------------------------------------------------------------------
-    // Session reaper
-    // ------------------------------------------------------------------
+// ============================================================================
+// Session Reaper
+// ============================================================================
 
-    /// Spawns a background task that periodically drains idle-expired sessions
-    /// and disconnects their backend connections.
-    ///
-    /// The returned `JoinHandle` can be aborted to stop the reaper (e.g. on
-    /// server shutdown).  The default sweep interval is half the idle timeout
-    /// so that expired sessions are reaped within one full timeout period.
-    pub fn spawn_reaper(&self) -> JoinHandle<()> {
-        let interval = Duration::from_secs(self.sessions.idle_timeout_secs() / 2);
-        self.spawn_reaper_with_interval(interval)
+/// Background task that periodically drains idle-expired sessions and
+/// disconnects their backend connections.
+///
+/// This is a dedicated type that encapsulates the reaper lifecycle.
+/// Construct it with [`SessionReaper::new`] and spawn it with
+/// [`SessionReaper::spawn`].
+pub struct SessionReaper {
+    sessions: Arc<SessionManager>,
+    auth: Arc<dyn AuthPort>,
+}
+
+impl SessionReaper {
+    /// Create a new session reaper that will drain expired sessions from the
+    /// given manager and disconnect them via the given auth port.
+    pub fn new(sessions: Arc<SessionManager>, auth: Arc<dyn AuthPort>) -> Self {
+        Self { sessions, auth }
     }
 
-    /// Like [`spawn_reaper`](Self::spawn_reaper) but with an explicit sweep
-    /// interval (useful for testing).
-    pub fn spawn_reaper_with_interval(&self, interval: Duration) -> JoinHandle<()> {
+    /// Spawn the reaper as a background Tokio task.
+    ///
+    /// The default sweep interval is half the idle timeout so that expired
+    /// sessions are reaped within one full timeout period.  The returned
+    /// [`JoinHandle`] can be aborted to stop the reaper (e.g. on server
+    /// shutdown).
+    pub fn spawn(&self) -> JoinHandle<()> {
+        let interval = Duration::from_secs(self.sessions.idle_timeout_secs() / 2);
+        self.spawn_with_interval(interval)
+    }
+
+    /// Like [`spawn`](Self::spawn) but with an explicit sweep interval
+    /// (useful for testing).
+    pub fn spawn_with_interval(&self, interval: Duration) -> JoinHandle<()> {
         let sessions = Arc::clone(&self.sessions);
         let auth = Arc::clone(&self.auth);
         tokio::spawn(async move {
