@@ -19,7 +19,7 @@ use uuid::Uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse},
     error::RestError,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc, ScannerListQueryDoc},
+    openapi::{ok_json, problem_response, ResourceIdPathDoc},
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -87,6 +87,20 @@ impl From<gvm_gateway_domain::ScannerPage> for ScannerListResponse {
             pagination: PaginationResponse::from(page.pagination),
         }
     }
+}
+
+/// OpenAPI query parameter schema for the list-scanners endpoint.
+///
+/// This struct drives the generated OpenAPI schema. The runtime handler uses
+/// [`ScannerListQuery`] with manual parsing from [`OriginalUri`] instead.
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct ScannerListQueryParams {
+    filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
 }
 
 /// Parsed list-scanners query from HTTP request.
@@ -219,7 +233,7 @@ pub(crate) fn list_scanners_docs(op: TransformOperation<'_>) -> TransformOperati
         .summary("List scanners")
         .description("Returns a paginated list of scanners.")
         .security_requirement("bearerAuth")
-        .input::<Query<ScannerListQueryDoc>>()
+        .input::<Query<ScannerListQueryParams>>()
         .response_with::<200, Json<ScannerListResponse>, _>(ok_json("Paginated list of scanners"));
 
     problem_response::<401>(op, "Authentication required or session expired")

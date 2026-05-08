@@ -22,10 +22,7 @@ use uuid::Uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse},
     error::RestError,
-    openapi::{
-        ok_json, problem_response, CreateScanConfigDoc, ModifyScanConfigDoc, ResourceIdPathDoc,
-        ScanConfigListQueryDoc,
-    },
+    openapi::{ok_json, problem_response, ResourceIdPathDoc, ScanConfigListQueryDoc},
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -153,7 +150,8 @@ impl ScanConfigListQuery {
 }
 
 /// Create-scan-config request payload.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[schemars(rename = "CreateScanConfig")]
 pub struct CreateScanConfigRequest {
     /// Optional name so validation can return RFC 9457 instead of extractor failures.
     pub name: Option<String>,
@@ -161,6 +159,7 @@ pub struct CreateScanConfigRequest {
     pub comment: Option<String>,
     /// Optional base scan config identifier to copy from.
     #[serde(rename = "baseScanConfigId")]
+    #[schemars(with = "Option<Uuid>")]
     pub base_scan_config_id: Option<String>,
 }
 
@@ -184,7 +183,8 @@ impl CreateScanConfigRequest {
 }
 
 /// Modify-scan-config request payload.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[schemars(rename = "ModifyScanConfig")]
 pub struct ModifyScanConfigRequest {
     /// Optional name.
     pub name: Option<String>,
@@ -391,7 +391,7 @@ pub(crate) fn create_scan_config_docs(op: TransformOperation<'_>) -> TransformOp
         .summary("Create a scan configuration")
         .description("Creates a new scan configuration.")
         .security_requirement("bearerAuth")
-        .input::<Json<CreateScanConfigDoc>>()
+        .input::<Json<CreateScanConfigRequest>>()
         .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Scan config created"));
 
     let op = problem_response::<400>(op, "Invalid request");
@@ -421,7 +421,7 @@ pub(crate) fn update_scan_config_docs(op: TransformOperation<'_>) -> TransformOp
         .summary("Modify a scan configuration")
         .description("Updates an existing scan configuration.")
         .security_requirement("bearerAuth")
-        .input::<(Path<ResourceIdPathDoc>, Json<ModifyScanConfigDoc>)>()
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyScanConfigRequest>)>()
         .response_with::<200, Json<ScanConfigResponse>, _>(ok_json("Scan config updated"));
 
     let op = problem_response::<400>(op, "Invalid request");

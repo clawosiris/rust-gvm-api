@@ -277,6 +277,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     tighten_target_payload_schemas(&mut document);
     tighten_task_query_parameters(&mut document);
     tighten_task_payload_schemas(&mut document);
+    tighten_scan_config_payload_schemas(&mut document);
     tighten_list_query_parameters(&mut document, "/reports");
     tighten_list_query_parameters(&mut document, "/results");
     tighten_list_query_parameters(&mut document, "/reports/{id}/results");
@@ -361,6 +362,14 @@ fn tighten_task_query_parameters(document: &mut Value) {
                 _ => {}
             }
         }
+    }
+}
+
+fn tighten_scan_config_payload_schemas(document: &mut Value) {
+    // `CreateScanConfigRequest.name` is `Option<String>` at runtime (for graceful validation),
+    // so schemars omits it from `required`. Inject it here to keep the contract intact.
+    if let Some(schema) = document["components"]["schemas"].get_mut("CreateScanConfig") {
+        schema["required"] = json!(["name"]);
     }
 }
 
@@ -802,38 +811,10 @@ pub(crate) struct ResultListQueryDoc {
     per_page: Option<u32>,
 }
 
-// -- Scan config request body / query schemas --------------------------------
+// -- Scan config query schema ------------------------------------------------
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 pub(crate) struct ScanConfigListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "CreateScanConfig")]
-pub(crate) struct CreateScanConfigDoc {
-    name: String,
-    comment: Option<String>,
-    #[serde(rename = "baseScanConfigId")]
-    base_scan_config_id: Option<Uuid>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ModifyScanConfig")]
-pub(crate) struct ModifyScanConfigDoc {
-    name: Option<String>,
-    comment: Option<String>,
-}
-
-// -- Scanner query schemas ---------------------------------------------------
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct ScannerListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,

@@ -180,3 +180,28 @@ changes and confirmed the draft refactor is complete and correct:
 - `lib.rs` declares `pub(crate) mod system;`
 
 Proceeding to: rebase, commit, push, and reply to PR review threads.
+
+---
+
+## 2026-05-08 — Round 2: Merge remaining Doc types into DTO modules
+
+### Review Feedback
+1. "`CreateScanConfigDoc` and `ModifyScanConfigDoc` should be merged with the DTOs"
+2. "`ScannerListQueryDoc` should be merged with the DTO"
+
+### Changes
+
+- `scan_configs.rs`: Added `JsonSchema + Serialize` to `CreateScanConfigRequest` and
+  `ModifyScanConfigRequest`. Added `#[schemars(rename = "CreateScanConfig/ModifyScanConfig")]`
+  and `#[schemars(with = "Option<Uuid>")]` on `base_scan_config_id` for proper uuid format.
+  Transforms now reference the request types directly instead of the Doc aliases.
+
+- `scanners.rs`: Added `ScannerListQueryParams` struct (OpenAPI schema type, same shape as the
+  removed `ScannerListQueryDoc`). The runtime `ScannerListQuery` stays as-is (manual parsing,
+  structurally different field types). Transform now uses `Query<ScannerListQueryParams>`.
+
+- `openapi.rs`: Removed `CreateScanConfigDoc`, `ModifyScanConfigDoc`, `ScannerListQueryDoc`.
+  Added `tighten_scan_config_payload_schemas` to inject `required: ["name"]` on `CreateScanConfig`
+  (compensates for `name: Option<String>` in the runtime request type).
+
+External REST/OpenAPI contract unchanged.
