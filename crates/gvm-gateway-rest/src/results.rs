@@ -3,8 +3,9 @@
 
 //! Result DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -18,6 +19,7 @@ use uuid::Uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceRefResponse},
     error::RestError,
+    openapi::{ok_json, problem_response, ResourceIdPathDoc, ResultListQueryDoc},
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -245,4 +247,37 @@ pub async fn get_result(
         Ok(result) => (StatusCode::OK, Json(ResultResponse::from(result))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `GET /api/v1/results`.
+pub(crate) fn list_results_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getResults")
+        .tag("Results")
+        .summary("List results")
+        .description("Returns a paginated list of results.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ResultListQueryDoc>>()
+        .response_with::<200, Json<ResultListResponse>, _>(ok_json("Paginated list of results"));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/results/{id}`.
+pub(crate) fn get_result_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getResult")
+        .tag("Results")
+        .summary("Get a result")
+        .description("Returns the details for a single result.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<ResultResponse>, _>(ok_json("Result details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }

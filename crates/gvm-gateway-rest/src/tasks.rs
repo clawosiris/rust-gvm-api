@@ -5,9 +5,10 @@
 
 use std::collections::HashMap;
 
+use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -21,6 +22,10 @@ use uuid::Uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
     error::RestError,
+    openapi::{
+        ok_json, problem_response, CreateTaskDoc, ModifyTaskDoc, ResourceIdPathDoc,
+        TaskListQueryDoc,
+    },
     router::bearer_token,
 };
 
@@ -612,4 +617,132 @@ pub fn validate_uuid(field: &str, value: &str) -> Result<(), GatewayError> {
     Uuid::parse_str(value)
         .map(|_| ())
         .map_err(|_| GatewayError::InvalidInput(format!("{field} must be a valid UUID")))
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `GET /api/v1/tasks`.
+pub(crate) fn list_tasks_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTasks")
+        .tag("Tasks")
+        .summary("List tasks")
+        .description("Returns a paginated list of tasks.")
+        .security_requirement("bearerAuth")
+        .input::<Query<TaskListQueryDoc>>()
+        .response_with::<200, Json<TaskListResponse>, _>(ok_json("Paginated list of tasks"));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `POST /api/v1/tasks`.
+pub(crate) fn create_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createTask")
+        .tag("Tasks")
+        .summary("Create a task")
+        .description("Creates a new scan task.")
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateTaskDoc>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Task created"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/tasks/{id}`.
+pub(crate) fn get_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTask")
+        .tag("Tasks")
+        .summary("Get a task")
+        .description("Returns the details for a single task.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<TaskResponse>, _>(ok_json("Task details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `PUT /api/v1/tasks/{id}`.
+pub(crate) fn update_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyTask")
+        .tag("Tasks")
+        .summary("Modify a task")
+        .description("Updates an existing task.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyTaskDoc>)>()
+        .response_with::<200, Json<TaskResponse>, _>(ok_json("Task updated"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/tasks/{id}`.
+pub(crate) fn delete_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteTask")
+        .tag("Tasks")
+        .summary("Delete a task")
+        .description("Deletes an existing task.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Task deleted"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `POST /api/v1/tasks/{id}/start`.
+pub(crate) fn start_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("startTask")
+        .tag("Tasks")
+        .summary("Start a task")
+        .description("Starts a scan task. Returns the report identifier created by the action.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<TaskActionResponse>, _>(ok_json("Task started"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    let op = problem_response::<409>(op, "Resource state conflict");
+    problem_response::<504>(op, "Backend service did not respond in time")
+}
+
+/// OpenAPI transform for `POST /api/v1/tasks/{id}/stop`.
+pub(crate) fn stop_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("stopTask")
+        .tag("Tasks")
+        .summary("Stop a running task")
+        .description("Stops a currently running scan task.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, (), _>(|response| response.description("Task stopped"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<409>(op, "Resource state conflict")
+}
+
+/// OpenAPI transform for `POST /api/v1/tasks/{id}/resume`.
+pub(crate) fn resume_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("resumeTask")
+        .tag("Tasks")
+        .summary("Resume a stopped task")
+        .description("Resumes a stopped scan task. Returns the report identifier.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<TaskActionResponse>, _>(ok_json("Task resumed"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<409>(op, "Resource state conflict")
 }

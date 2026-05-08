@@ -3,9 +3,10 @@
 
 //! Scan config DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -21,6 +22,10 @@ use uuid::Uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse},
     error::RestError,
+    openapi::{
+        ok_json, problem_response, CreateScanConfigDoc, ModifyScanConfigDoc, ResourceIdPathDoc,
+        ScanConfigListQueryDoc,
+    },
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -356,4 +361,85 @@ pub async fn delete_scan_config(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `GET /api/v1/scan-configs`.
+pub(crate) fn list_scan_configs_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanConfigs")
+        .tag("Scan Configs")
+        .summary("List scan configurations")
+        .description("Returns a paginated list of scan configurations.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ScanConfigListQueryDoc>>()
+        .response_with::<200, Json<ScanConfigListResponse>, _>(ok_json(
+            "Paginated list of scan configs",
+        ));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `POST /api/v1/scan-configs`.
+pub(crate) fn create_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createScanConfig")
+        .tag("Scan Configs")
+        .summary("Create a scan configuration")
+        .description("Creates a new scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateScanConfigDoc>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Scan config created"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/scan-configs/{id}`.
+pub(crate) fn get_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanConfig")
+        .tag("Scan Configs")
+        .summary("Get a scan configuration")
+        .description("Returns the details for a single scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<ScanConfigResponse>, _>(ok_json("Scan config details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `PUT /api/v1/scan-configs/{id}`.
+pub(crate) fn update_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyScanConfig")
+        .tag("Scan Configs")
+        .summary("Modify a scan configuration")
+        .description("Updates an existing scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyScanConfigDoc>)>()
+        .response_with::<200, Json<ScanConfigResponse>, _>(ok_json("Scan config updated"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/scan-configs/{id}`.
+pub(crate) fn delete_scan_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteScanConfig")
+        .tag("Scan Configs")
+        .summary("Delete a scan configuration")
+        .description("Deletes an existing scan configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Scan config deleted"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }

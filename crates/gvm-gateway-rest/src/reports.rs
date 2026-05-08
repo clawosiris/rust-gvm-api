@@ -3,8 +3,9 @@
 
 //! Report DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -18,7 +19,11 @@ use uuid::Uuid;
 use crate::{
     dto::{datetime_schema, parse_uuid, PaginationResponse, ResourceRefResponse},
     error::RestError,
-    results::ResultResponse,
+    openapi::{
+        ok_json, problem_response, GetReportQueryDoc, ReportListQueryDoc, ReportResultsQueryDoc,
+        ResourceIdPathDoc,
+    },
+    results::{ResultListResponse, ResultResponse},
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -380,4 +385,69 @@ pub async fn get_report_results(
             .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `GET /api/v1/reports`.
+pub(crate) fn list_reports_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReports")
+        .tag("Reports")
+        .summary("List reports")
+        .description("Returns a paginated list of reports.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ReportListQueryDoc>>()
+        .response_with::<200, Json<ReportListResponse>, _>(ok_json("Paginated list of reports"));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}`.
+pub(crate) fn get_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReport")
+        .tag("Reports")
+        .summary("Get a report")
+        .description("Returns the details for a single report with embedded results.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<GetReportQueryDoc>)>()
+        .response_with::<200, Json<ReportResponse>, _>(ok_json(
+            "Report details with embedded results",
+        ));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/reports/{id}`.
+pub(crate) fn delete_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteReport")
+        .tag("Reports")
+        .summary("Delete a report")
+        .description("Deletes an existing report.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Report deleted"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/results`.
+pub(crate) fn get_report_results_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportResults")
+        .tag("Reports")
+        .summary("Get paginated results for a report")
+        .description("Returns a paginated list of results for a specific report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ResultListResponse>, _>(ok_json("Paginated list of results"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }

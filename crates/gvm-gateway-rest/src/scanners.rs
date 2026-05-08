@@ -3,8 +3,9 @@
 
 //! Scanner DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -18,6 +19,7 @@ use uuid::Uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse},
     error::RestError,
+    openapi::{ok_json, problem_response, ResourceIdPathDoc, ScannerListQueryDoc},
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -203,4 +205,37 @@ pub async fn get_scanner(
         Ok(scanner) => (StatusCode::OK, Json(ScannerResponse::from(scanner))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `GET /api/v1/scanners`.
+pub(crate) fn list_scanners_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanners")
+        .tag("Scanners")
+        .summary("List scanners")
+        .description("Returns a paginated list of scanners.")
+        .security_requirement("bearerAuth")
+        .input::<Query<ScannerListQueryDoc>>()
+        .response_with::<200, Json<ScannerListResponse>, _>(ok_json("Paginated list of scanners"));
+
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/scanners/{id}`.
+pub(crate) fn get_scanner_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getScanner")
+        .tag("Scanners")
+        .summary("Get a scanner")
+        .description("Returns the details for a single scanner.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<ScannerResponse>, _>(ok_json("Scanner details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }

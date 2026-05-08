@@ -3,9 +3,10 @@
 
 //! Target DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -19,6 +20,10 @@ use uuid::Uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
     error::RestError,
+    openapi::{
+        ok_json, problem_response, CreateTargetDoc, ModifyTargetDoc, ResourceIdPathDoc,
+        TargetListQueryDoc,
+    },
     router::bearer_token,
 };
 
@@ -481,4 +486,86 @@ pub fn validate_uuid(field: &str, value: &str) -> Result<(), GatewayError> {
     Uuid::parse_str(value)
         .map(|_| ())
         .map_err(|_| GatewayError::InvalidInput(format!("{field} must be a valid UUID")))
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `GET /api/v1/targets`.
+pub(crate) fn list_targets_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTargets")
+        .tag("Targets")
+        .summary("List targets")
+        .description("Returns a paginated list of targets.")
+        .security_requirement("bearerAuth")
+        .input::<Query<TargetListQueryDoc>>()
+        .response_with::<200, Json<TargetListResponse>, _>(ok_json("Paginated list of targets"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `POST /api/v1/targets`.
+pub(crate) fn create_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createTarget")
+        .tag("Targets")
+        .summary("Create a target")
+        .description("Creates a new scan target.")
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateTargetDoc>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Target created"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/targets/{id}`.
+pub(crate) fn get_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTarget")
+        .tag("Targets")
+        .summary("Get a target")
+        .description("Returns the details for a single target.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<TargetResponse>, _>(ok_json("Target details"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `PUT /api/v1/targets/{id}`.
+pub(crate) fn update_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyTarget")
+        .tag("Targets")
+        .summary("Modify a target")
+        .description("Updates an existing target.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyTargetDoc>)>()
+        .response_with::<200, Json<TargetResponse>, _>(ok_json("Target updated"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/targets/{id}`.
+pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteTarget")
+        .tag("Targets")
+        .summary("Delete a target")
+        .description("Deletes an existing target.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Target deleted"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }

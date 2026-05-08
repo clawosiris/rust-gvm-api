@@ -15,5 +15,6 @@ pub mod router;
 pub mod scan_configs;
 pub mod scanners;
 pub mod sessions;
+pub(crate) mod system;
 pub mod targets;
 pub mod tasks;

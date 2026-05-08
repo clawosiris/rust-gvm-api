@@ -3,6 +3,7 @@
 
 //! Session lifecycle handlers for the REST adapter.
 
+use aide::transform::TransformOperation;
 use axum::{
     extract::{OriginalUri, Path, State},
     http::{HeaderMap, StatusCode},
@@ -15,7 +16,11 @@ use gvm_gateway_domain::{format_rfc3339, GatewayError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{dto::datetime_schema, error::RestError};
+use crate::{
+    dto::datetime_schema,
+    error::RestError,
+    openapi::{ok_json, problem_response, SessionTokenPathDoc},
+};
 
 // ============================================================================
 // Response DTOs
@@ -176,6 +181,57 @@ fn extract_basic_credentials(headers: &HeaderMap) -> Result<(String, String), Ga
     }
 
     Ok((username.to_string(), password.to_string()))
+}
+
+// ============================================================================
+// OpenAPI transforms
+// ============================================================================
+
+/// OpenAPI transform for `POST /api/v1/sessions`.
+pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createSession")
+        .tag("Sessions")
+        .summary("Create a new session")
+        .description(
+            "Authenticates with the supplied Basic credentials and returns an opaque \
+             session token. Include the token as a Bearer token on all subsequent requests.",
+        )
+        .security_requirement("basicAuth")
+        .response_with::<201, Json<SessionCreatedResponse>, _>(ok_json("Session created"));
+
+    let op = problem_response::<401>(op, "Authentication failed");
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
+}
+
+/// OpenAPI transform for `GET /api/v1/sessions/{token}`.
+pub(crate) fn get_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getSession")
+        .tag("Sessions")
+        .summary("Inspect a session")
+        .description("Returns the current state and metadata for a session.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SessionTokenPathDoc>>()
+        .response_with::<200, Json<SessionInfoResponse>, _>(ok_json("Session details"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Session not found")
+}
+
+/// OpenAPI transform for `DELETE /api/v1/sessions/{token}`.
+pub(crate) fn delete_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteSession")
+        .tag("Sessions")
+        .summary("Close and destroy a session")
+        .description("Ends the session and invalidates the token immediately.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SessionTokenPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Session closed"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Session not found")
 }
 
 // ============================================================================

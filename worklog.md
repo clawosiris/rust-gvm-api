@@ -118,3 +118,65 @@ For system endpoints (health, ready, version):
 - None to REST contract: all schema names, field names, and types remain identical.
 - The `From` impls parse String -> Uuid; if a backend ever returns a non-UUID identifier
   the DTO will fall back to the nil UUID. This matches the existing Doc-type assumption.
+
+---
+
+## PR #103 Review Follow-up: Structural Reorganization
+
+### Review Feedback
+1. "Move the system related responses, handlers etc. to a dedicated file"
+2. "Move the transforms in the same files as the handlers"
+
+### Plan
+
+#### 1. Create `system.rs` — dedicated system module
+Move from `router.rs`:
+- System DTOs: `HealthState`, `HealthStatusResponse`, `ReadinessState`, `ReadinessStatusResponse`, `VersionInfoResponse`
+- System handlers: `health()`, `ready()`, `version()`
+
+Move from `openapi.rs`:
+- System transforms: `health_docs()`, `ready_docs()`, `version_docs()`
+
+#### 2. Co-locate OpenAPI transforms with their handlers
+Move from `openapi.rs` into the respective handler modules:
+- Session transforms (`create_session_docs`, `get_session_docs`, `delete_session_docs`) → `sessions.rs`
+- Target transforms → `targets.rs`
+- Task transforms → `tasks.rs`
+- Report transforms → `reports.rs`
+- Result transforms → `results.rs`
+- Scan config transforms → `scan_configs.rs`
+- Scanner transforms → `scanners.rs`
+
+#### 3. Keep in `openapi.rs`
+- Shared infrastructure: `ok_json`, `problem_response`, `configure`, `finalize_document`
+- Doc-only schema types (request bodies, query/path parameters, ProblemDetailDoc)
+- Document post-processing functions (`tighten_*`, `ensure_*`, `strip_nullable_types`, etc.)
+- Make `ok_json`, `problem_response`, and Doc types `pub(crate)` for handler module access
+
+#### 4. Update `router.rs`
+- Import system handlers and transforms from `system` module
+- Remove system DTOs and handlers
+
+#### 5. Update `lib.rs`
+- Declare `pub mod system;`
+
+#### Invariant
+External REST/OpenAPI contract remains unchanged.
+
+---
+
+## 2026-05-08 — Session 2: Resume and complete
+
+Resuming from dirty working tree left by previous session. Inspected all local
+changes and confirmed the draft refactor is complete and correct:
+
+- `system.rs` contains system DTOs, handlers, and OpenAPI transforms
+- Each handler module (`sessions.rs`, `targets.rs`, `tasks.rs`, `reports.rs`,
+  `results.rs`, `scan_configs.rs`, `scanners.rs`) now has its OpenAPI transforms
+  colocated with the handlers
+- `openapi.rs` retains only shared infrastructure (`ok_json`, `problem_response`,
+  `configure`, `finalize_document`) and doc-only schema types
+- `router.rs` imports system handlers/transforms from `system` module
+- `lib.rs` declares `pub(crate) mod system;`
+
+Proceeding to: rebase, commit, push, and reply to PR review threads.
