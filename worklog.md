@@ -1,207 +1,27 @@
-# Issue #101: Introduce explicit REST DTOs and remove schema-only duplicates
+# Worklog: issue-99-observability-tracing
+**Last Updated:** 2026-05-12 02:32 UTC
 
-## Problem
+## Mission
+Implement structured audit logging and OpenTelemetry tracing in the shared session/execution core for rust-gvm-api issue #99.
 
-Handlers in the REST adapter return domain models directly (e.g. `Json(target)` where
-`target: Target`). OpenAPI schema is maintained through a separate set of `*Doc` types in
-`openapi.rs` that duplicate the domain model shape with richer typing (Uuid instead of String,
-typed enums instead of strings). This duplication means:
+## Progress Summary
+✅ Read task brief and repo context
+✅ Inspected session/execution architecture and existing tracing hooks
+✅ Implemented audit logging and tracing in the shared app/session execution path
+✅ Added targeted tests for redaction, audit emission, and span lifecycle
+🔄 Running final verification and preparing rebase/push/PR
+⬜ Rebase, push, and open stacked PR
 
-1. Domain model changes can silently drift from the REST contract.
-2. Schema types are never used at runtime, so bugs in the schema are invisible until
-   the OpenAPI spec test catches them (or doesn't).
-3. Adding a new field requires editing both the domain type and the Doc type.
+## Current State
+The shared `gvm-gateway-app` layer now emits structured audit events and tracing spans for session lifecycle and representative command execution paths. Session tokens are redacted to a safe suffix-based identifier, and tests verify that raw passwords/tokens are not logged.
 
-## Approach
+## Key Learnings
+- The cleanest shared insertion point is `GatewayService`, not the REST layer, because it covers session lifecycle plus command dispatch across adapters.
+- Existing W3C trace context propagation already exists at the REST edge; adding spans in `GatewayService` preserves downstream correlation without reworking adapters.
+- `tracing` field names with dots are awkward in macros here, so underscore field names were used for stable structured output.
 
-Introduce **runtime REST DTOs** that own both the JSON serialization shape and the
-JsonSchema/OpenAPI contract. Each handler converts domain -> DTO before returning.
-Doc types that are fully replaced by a runtime DTO are removed.
-
-Doc types that intentionally differ from their runtime counterpart (request body schemas
-where required fields are modeled as `Option` in the runtime request type for validation,
-query parameter schemas, path parameter schemas) are kept.
-
-### Trade-offs
-
-- Adds a thin conversion layer (From impls) between domain and REST. This is intentional:
-  the REST adapter should own the wire format.
-- Response DTOs use `Uuid` for ID fields and typed enums for string-encoded enums. The
-  conversion from domain String -> Uuid uses `parse_str` with a nil-UUID fallback.
-- The external REST/OpenAPI contract does not change.
-
-## Implementation Plan
-
-### Step 1: Create `dto.rs` — shared response types
-
-New module `crates/gvm-gateway-rest/src/dto.rs` with:
-- `PaginationResponse` (replaces `PaginationDoc`)
-- `ResourceRefResponse` (replaces `ResourceRefDoc`)
-- `ResourceCreatedResponse` (replaces `ResourceCreatedDoc`)
-- `datetime_schema()` helper (moved from `openapi.rs`)
-- `parse_uuid()` helper
-
-### Step 2: Add response DTOs to each handler module
-
-For each resource (targets, tasks, reports, results, scan_configs, scanners):
-- Define response DTO structs with `#[derive(Serialize, JsonSchema)]`
-- Define typed enums where Doc types had them (AliveTest, TaskStatus, etc.)
-- Implement `From<DomainType>` for each DTO
-- Update handler return expressions to convert domain -> DTO
-
-For sessions:
-- Add `JsonSchema` derive to existing `SessionCreatedResponse`, `SessionInfoResponse`
-- Add `SessionState` enum, use it in `SessionInfoResponse`
-- Make types `pub(crate)` for openapi.rs access
-
-For system endpoints (health, ready, version):
-- Add DTOs in `router.rs` with `JsonSchema`
-
-### Step 3: Update `openapi.rs`
-
-- Import runtime DTOs from handler modules
-- Replace Doc type references in doc transforms with runtime DTOs
-- Remove all Doc types that have been replaced
-- Keep: ProblemDetailDoc, path/query Doc types, request body Doc types
-
-### Step 4: Verify
-
-- `cargo fmt --all --check`
-- `cargo clippy --workspace --all-targets`
-- `cargo test --workspace`
-- OpenAPI contract tests still pass
-
-## Types promoted from Doc to runtime DTO
-
-| Doc type removed | Runtime DTO | Location |
-|-----------------|-------------|----------|
-| PaginationDoc | PaginationResponse | dto.rs |
-| ResourceRefDoc | ResourceRefResponse | dto.rs |
-| ResourceCreatedDoc | ResourceCreatedResponse | dto.rs |
-| HealthStatusDoc, HealthStateDoc | HealthStatusResponse, HealthState | router.rs |
-| ReadinessStatusDoc, ReadinessStateDoc | ReadinessStatusResponse, ReadinessState | router.rs |
-| VersionInfoDoc | VersionInfoResponse | router.rs |
-| SessionCreatedDoc | SessionCreatedResponse | sessions.rs |
-| SessionInfoDoc, SessionStateDoc | SessionInfoResponse, SessionState | sessions.rs |
-| TargetDoc | TargetResponse | targets.rs |
-| TargetListDoc | TargetListResponse | targets.rs |
-| AliveTestDoc | AliveTest | targets.rs |
-| TaskDoc | TaskResponse | tasks.rs |
-| TaskListDoc | TaskListResponse | tasks.rs |
-| TaskStatusDoc | TaskStatus | tasks.rs |
-| HostsOrderingDoc | HostsOrdering | tasks.rs |
-| TaskActionDoc | TaskActionResponse | tasks.rs |
-| ReportDoc | ReportResponse | reports.rs |
-| ResultCountDoc | ResultCountResponse | reports.rs |
-| ReportListDoc | ReportListResponse | reports.rs |
-| ResultDoc | ResultResponse | results.rs |
-| NvtRefDoc | NvtRefResponse | results.rs |
-| ThreatDoc | Threat | results.rs |
-| ResultListDoc | ResultListResponse | results.rs |
-| ScanConfigDoc | ScanConfigResponse | scan_configs.rs |
-| ScanConfigListDoc | ScanConfigListResponse | scan_configs.rs |
-| ScannerDoc | ScannerResponse | scanners.rs |
-| ScannerTypeDoc | ScannerType | scanners.rs |
-| ScannerListDoc | ScannerListResponse | scanners.rs |
-
-## Doc types kept (no runtime equivalent or intentionally different)
-
-- ProblemDetailDoc
-- SessionTokenPathDoc, ResourceIdPathDoc
-- TargetListQueryDoc, TaskListQueryDoc, ReportListQueryDoc, GetReportQueryDoc,
-  ReportResultsQueryDoc, ResultListQueryDoc, ScanConfigListQueryDoc, ScannerListQueryDoc
-- CreateTargetDoc, ModifyTargetDoc, CreateTaskDoc, ModifyTaskDoc,
-  CreateScanConfigDoc, ModifyScanConfigDoc
-
-## Risks
-
-- None to REST contract: all schema names, field names, and types remain identical.
-- The `From` impls parse String -> Uuid; if a backend ever returns a non-UUID identifier
-  the DTO will fall back to the nil UUID. This matches the existing Doc-type assumption.
-
----
-
-## PR #103 Review Follow-up: Structural Reorganization
-
-### Review Feedback
-1. "Move the system related responses, handlers etc. to a dedicated file"
-2. "Move the transforms in the same files as the handlers"
-
-### Plan
-
-#### 1. Create `system.rs` — dedicated system module
-Move from `router.rs`:
-- System DTOs: `HealthState`, `HealthStatusResponse`, `ReadinessState`, `ReadinessStatusResponse`, `VersionInfoResponse`
-- System handlers: `health()`, `ready()`, `version()`
-
-Move from `openapi.rs`:
-- System transforms: `health_docs()`, `ready_docs()`, `version_docs()`
-
-#### 2. Co-locate OpenAPI transforms with their handlers
-Move from `openapi.rs` into the respective handler modules:
-- Session transforms (`create_session_docs`, `get_session_docs`, `delete_session_docs`) → `sessions.rs`
-- Target transforms → `targets.rs`
-- Task transforms → `tasks.rs`
-- Report transforms → `reports.rs`
-- Result transforms → `results.rs`
-- Scan config transforms → `scan_configs.rs`
-- Scanner transforms → `scanners.rs`
-
-#### 3. Keep in `openapi.rs`
-- Shared infrastructure: `ok_json`, `problem_response`, `configure`, `finalize_document`
-- Doc-only schema types (request bodies, query/path parameters, ProblemDetailDoc)
-- Document post-processing functions (`tighten_*`, `ensure_*`, `strip_nullable_types`, etc.)
-- Make `ok_json`, `problem_response`, and Doc types `pub(crate)` for handler module access
-
-#### 4. Update `router.rs`
-- Import system handlers and transforms from `system` module
-- Remove system DTOs and handlers
-
-#### 5. Update `lib.rs`
-- Declare `pub mod system;`
-
-#### Invariant
-External REST/OpenAPI contract remains unchanged.
-
----
-
-## 2026-05-08 — Session 2: Resume and complete
-
-Resuming from dirty working tree left by previous session. Inspected all local
-changes and confirmed the draft refactor is complete and correct:
-
-- `system.rs` contains system DTOs, handlers, and OpenAPI transforms
-- Each handler module (`sessions.rs`, `targets.rs`, `tasks.rs`, `reports.rs`,
-  `results.rs`, `scan_configs.rs`, `scanners.rs`) now has its OpenAPI transforms
-  colocated with the handlers
-- `openapi.rs` retains only shared infrastructure (`ok_json`, `problem_response`,
-  `configure`, `finalize_document`) and doc-only schema types
-- `router.rs` imports system handlers/transforms from `system` module
-- `lib.rs` declares `pub(crate) mod system;`
-
-Proceeding to: rebase, commit, push, and reply to PR review threads.
-
----
-
-## 2026-05-08 — Round 2: Merge remaining Doc types into DTO modules
-
-### Review Feedback
-1. "`CreateScanConfigDoc` and `ModifyScanConfigDoc` should be merged with the DTOs"
-2. "`ScannerListQueryDoc` should be merged with the DTO"
-
-### Changes
-
-- `scan_configs.rs`: Added `JsonSchema + Serialize` to `CreateScanConfigRequest` and
-  `ModifyScanConfigRequest`. Added `#[schemars(rename = "CreateScanConfig/ModifyScanConfig")]`
-  and `#[schemars(with = "Option<Uuid>")]` on `base_scan_config_id` for proper uuid format.
-  Transforms now reference the request types directly instead of the Doc aliases.
-
-- `scanners.rs`: Added `ScannerListQueryParams` struct (OpenAPI schema type, same shape as the
-  removed `ScannerListQueryDoc`). The runtime `ScannerListQuery` stays as-is (manual parsing,
-  structurally different field types). Transform now uses `Query<ScannerListQueryParams>`.
-
-- `openapi.rs`: Removed `CreateScanConfigDoc`, `ModifyScanConfigDoc`, `ScannerListQueryDoc`.
-  Added `tighten_scan_config_payload_schemas` to inject `required: ["name"]` on `CreateScanConfig`
-  (compensates for `name: Option<String>` in the runtime request type).
-
-External REST/OpenAPI contract unchanged.
+## Next Steps
+1. Run a broader verification pass if needed.
+2. Inspect diff for cleanliness.
+3. Rebase onto latest `refactor/rest-dtos-issue101`.
+4. Push branch and open stacked PR.

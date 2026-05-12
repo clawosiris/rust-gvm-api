@@ -563,6 +563,8 @@ dependencies = [
  "async-trait",
  "gvm-gateway-domain",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
