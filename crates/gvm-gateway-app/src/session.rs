@@ -11,7 +11,10 @@ use tracing::{field, info_span, Instrument};
 
 use gvm_gateway_domain::{AuthPort, GatewayError, SessionCreated, SessionInfo, SessionManager};
 
-use crate::{emit_audit_event, safe_session_id, GatewayService};
+use crate::{
+    service::{emit_audit_event, safe_session_id},
+    GatewayService,
+};
 
 // ============================================================================
 // Session lifecycle use cases
@@ -472,6 +475,7 @@ mod tests {
 
     #[tokio::test]
     async fn reaper_emits_audit_for_expiry_and_disconnect_failure() {
+        let _trace_lock = lock_tracing();
         let logs = capture_tracing();
         let auth = MockAuthPort {
             disconnect_should_fail: true,
