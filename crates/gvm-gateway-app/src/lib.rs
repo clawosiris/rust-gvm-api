@@ -6,6 +6,10 @@
 
 //! Application use cases for the GVM gateway.
 
+mod session;
+
+pub use session::SessionReaper;
+
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
@@ -13,9 +17,8 @@ use gvm_gateway_domain::{
     GetReportOpts, HealthStatus, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput,
     ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
     ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
-    ScannerPage, ScannerPort, ScannerQuery, SessionCreated, SessionInfo, SessionManager,
-    SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
-    TaskQuery, VersionInfo,
+    ScannerPage, ScannerPort, ScannerQuery, SessionManager, SystemPort, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, VersionInfo,
 };
 
 /// Application services exposed to adapters.
@@ -35,7 +38,8 @@ pub struct GatewayService {
 }
 
 impl GatewayService {
-    /// Creates a new service backed by the provided ports.
+    /// Creates a new service backed by the provided ports and session manager.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         system: Arc<dyn SystemPort>,
         targets: Arc<dyn TargetPort>,
@@ -45,6 +49,7 @@ impl GatewayService {
         results: Arc<dyn ResultPort>,
         scan_configs: Arc<dyn ScanConfigPort>,
         scanners: Arc<dyn ScannerPort>,
+        sessions: Arc<SessionManager>,
     ) -> Self {
         Self {
             system,
@@ -55,13 +60,8 @@ impl GatewayService {
             results,
             scan_configs,
             scanners,
-            sessions: Arc::new(SessionManager::default()),
+            sessions,
         }
-    }
-
-    /// Borrow the shared session manager.
-    pub fn session_manager(&self) -> Arc<SessionManager> {
-        Arc::clone(&self.sessions)
     }
 
     // ------------------------------------------------------------------
@@ -85,51 +85,6 @@ impl GatewayService {
             api_version: env!("CARGO_PKG_VERSION").to_string(),
             gmp_version,
         })
-    }
-
-    // ------------------------------------------------------------------
-    // Session lifecycle
-    // ------------------------------------------------------------------
-
-    /// Authenticates with the supplied credentials, creates a domain session,
-    /// and establishes a backend connection bound to the new token.
-    pub async fn create_session(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<SessionCreated, GatewayError> {
-        let session = self.sessions.create(username)?;
-        if let Err(err) = self
-            .auth
-            .authenticate_session(&session.token, username, password)
-            .await
-        {
-            // Roll back the domain session when backend auth fails.
-            let _ = self.sessions.remove(&session.token);
-            return Err(err);
-        }
-        let gmp_version = self.system.gmp_version()?;
-        Ok(SessionCreated {
-            token: session.token,
-            expires_in: self.sessions.idle_timeout_secs(),
-            gmp_version,
-        })
-    }
-
-    /// Returns detailed session information without extending the idle timer.
-    pub fn get_session(&self, token: &str) -> Result<SessionInfo, GatewayError> {
-        self.sessions.get_info(token)
-    }
-
-    /// Closes and destroys a session, disconnecting the backend connection.
-    pub async fn delete_session(&self, token: &str) -> Result<(), GatewayError> {
-        let removed = self.sessions.remove(token)?;
-        if removed.is_none() {
-            return Err(GatewayError::NotFound("session not found".to_string()));
-        }
-        // Best-effort backend disconnect; ignore errors.
-        let _ = self.auth.disconnect_session(token).await;
-        Ok(())
     }
 
     // ------------------------------------------------------------------
@@ -425,19 +380,19 @@ impl Clone for GatewayService {
 }
 
 // ============================================================================
-// Unit Tests
+// Shared test support (mocks + service factory)
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod test_support {
     use super::*;
     use async_trait::async_trait;
 
     // Mock system port for testing
     #[derive(Clone)]
-    struct MockSystemPort {
-        ready: bool,
-        gmp_version: String,
+    pub(crate) struct MockSystemPort {
+        pub(crate) ready: bool,
+        pub(crate) gmp_version: String,
     }
 
     impl SystemPort for MockSystemPort {
@@ -462,8 +417,8 @@ mod tests {
 
     // Mock target port for testing
     #[derive(Clone, Default)]
-    struct MockTargetPort {
-        should_fail: bool,
+    pub(crate) struct MockTargetPort {
+        pub(crate) should_fail: bool,
     }
 
     #[async_trait]
@@ -559,7 +514,7 @@ mod tests {
 
     // Mock task port for testing
     #[derive(Clone, Default)]
-    struct MockTaskPort;
+    pub(crate) struct MockTaskPort;
 
     #[async_trait]
     impl TaskPort for MockTaskPort {
@@ -634,8 +589,9 @@ mod tests {
 
     // Mock auth port for testing
     #[derive(Clone, Default)]
-    struct MockAuthPort {
-        should_fail: bool,
+    pub(crate) struct MockAuthPort {
+        pub(crate) should_fail: bool,
+        pub(crate) disconnected: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     #[async_trait]
@@ -654,14 +610,18 @@ mod tests {
             Ok(())
         }
 
-        async fn disconnect_session(&self, _session_token: &str) -> Result<(), GatewayError> {
+        async fn disconnect_session(&self, session_token: &str) -> Result<(), GatewayError> {
+            self.disconnected
+                .lock()
+                .unwrap()
+                .push(session_token.to_string());
             Ok(())
         }
     }
 
     // Mock report port for testing
     #[derive(Clone, Default)]
-    struct MockReportPort;
+    pub(crate) struct MockReportPort;
 
     #[async_trait]
     impl ReportPort for MockReportPort {
@@ -714,7 +674,7 @@ mod tests {
 
     // Mock result port for testing
     #[derive(Clone, Default)]
-    struct MockResultPort;
+    pub(crate) struct MockResultPort;
 
     #[async_trait]
     impl ResultPort for MockResultPort {
@@ -741,7 +701,7 @@ mod tests {
 
     // Mock scan config port for testing
     #[derive(Clone, Default)]
-    struct MockScanConfigPort;
+    pub(crate) struct MockScanConfigPort;
 
     #[async_trait]
     impl ScanConfigPort for MockScanConfigPort {
@@ -795,7 +755,7 @@ mod tests {
 
     // Mock scanner port for testing
     #[derive(Clone, Default)]
-    struct MockScannerPort;
+    pub(crate) struct MockScannerPort;
 
     #[async_trait]
     impl ScannerPort for MockScannerPort {
@@ -820,7 +780,7 @@ mod tests {
         }
     }
 
-    fn create_test_service() -> GatewayService {
+    pub(crate) fn create_test_service() -> GatewayService {
         GatewayService::new(
             Arc::new(MockSystemPort {
                 ready: true,
@@ -833,8 +793,19 @@ mod tests {
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
             Arc::new(MockScannerPort),
+            Arc::new(SessionManager::default()),
         )
     }
+}
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::*;
 
     // ------------------------------------------------------------------------
     // GatewayService tests
@@ -869,6 +840,7 @@ mod tests {
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
             Arc::new(MockScannerPort),
+            Arc::new(SessionManager::default()),
         );
         let ready = service.ready().unwrap();
         assert_eq!(ready.status, "notReady");
@@ -881,27 +853,6 @@ mod tests {
         let version = service.version().unwrap();
         assert_eq!(version.gmp_version, "22.7");
         assert!(!version.api_version.is_empty());
-    }
-
-    #[test]
-    fn service_session_manager_shared() {
-        let service = create_test_service();
-        let manager1 = service.session_manager();
-        let manager2 = service.session_manager();
-
-        let session = manager1.create("user").unwrap();
-        let found = manager2.get(&session.token).unwrap();
-        assert!(found.is_some());
-    }
-
-    #[test]
-    fn service_clone_shares_state() {
-        let service = create_test_service();
-        let cloned = service.clone();
-
-        let session = service.session_manager().create("user").unwrap();
-        let found = cloned.session_manager().get(&session.token).unwrap();
-        assert!(found.is_some());
     }
 
     #[tokio::test]
@@ -977,84 +928,6 @@ mod tests {
             .list_targets(&session.token, TargetQuery::default())
             .await;
         assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-    }
-
-    // ------------------------------------------------------------------------
-    // Session lifecycle use-case tests
-    // ------------------------------------------------------------------------
-
-    /// create_session returns a token, idle timeout, and GMP version
-    /// when backend authentication succeeds.
-    #[tokio::test]
-    async fn service_create_session_success() {
-        let service = create_test_service();
-        let created = service.create_session("admin", "secret").await.unwrap();
-
-        assert!(created.token.starts_with("gvm_sess_"));
-        assert_eq!(created.expires_in, 300);
-        assert_eq!(created.gmp_version, "22.7");
-    }
-
-    /// create_session rolls back the domain session when backend auth fails.
-    #[tokio::test]
-    async fn service_create_session_auth_failure_rolls_back() {
-        let service = GatewayService::new(
-            Arc::new(MockSystemPort {
-                ready: true,
-                gmp_version: "22.7".to_string(),
-            }),
-            Arc::new(MockTargetPort::default()),
-            Arc::new(MockTaskPort),
-            Arc::new(MockAuthPort { should_fail: true }),
-            Arc::new(MockReportPort),
-            Arc::new(MockResultPort),
-            Arc::new(MockScanConfigPort),
-            Arc::new(MockScannerPort),
-        );
-
-        let result = service.create_session("admin", "wrong").await;
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-    }
-
-    /// get_session returns session info for an active session.
-    #[tokio::test]
-    async fn service_get_session_active() {
-        let service = create_test_service();
-        let created = service.create_session("admin", "secret").await.unwrap();
-        let info = service.get_session(&created.token).unwrap();
-
-        assert_eq!(info.token, created.token);
-        assert_eq!(info.user, "admin");
-        assert_eq!(info.state, "active");
-        assert!(info.expires_in > 0);
-    }
-
-    /// get_session returns NotFound for unknown tokens.
-    #[tokio::test]
-    async fn service_get_session_not_found() {
-        let service = create_test_service();
-        let result = service.get_session("nonexistent");
-        assert!(matches!(result, Err(GatewayError::NotFound(_))));
-    }
-
-    /// delete_session removes the session so subsequent gets fail.
-    #[tokio::test]
-    async fn service_delete_session_success() {
-        let service = create_test_service();
-        let created = service.create_session("admin", "secret").await.unwrap();
-
-        service.delete_session(&created.token).await.unwrap();
-
-        let result = service.get_session(&created.token);
-        assert!(matches!(result, Err(GatewayError::NotFound(_))));
-    }
-
-    /// delete_session fails with NotFound for unknown tokens.
-    #[tokio::test]
-    async fn service_delete_session_not_found() {
-        let service = create_test_service();
-        let result = service.delete_session("nonexistent").await;
-        assert!(matches!(result, Err(GatewayError::NotFound(_))));
     }
 
     // ------------------------------------------------------------------------

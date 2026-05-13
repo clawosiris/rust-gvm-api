@@ -7,9 +7,10 @@
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
-use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::TargetPage;
+use gvm_gateway_app::{GatewayService, SessionReaper};
+use gvm_gateway_domain::{SessionManager, TargetPage};
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
 use gvm_gateway_rest::router::build_router;
 use gvm_gateway_rest::targets::{
@@ -36,6 +37,7 @@ async fn spawn_server(
     let result_adapter = StaticGvmdAdapter::ready("22.7");
     let scan_config_adapter = StaticGvmdAdapter::ready("22.7");
     let scanner_adapter = StaticGvmdAdapter::ready("22.7");
+    let sessions = Arc::new(SessionManager::default());
     let service = GatewayService::new(
         Arc::new(system_adapter),
         Arc::new(target_adapter),
@@ -45,6 +47,7 @@ async fn spawn_server(
         Arc::new(result_adapter),
         Arc::new(scan_config_adapter),
         Arc::new(scanner_adapter),
+        sessions,
     );
     let app = build_router(service);
     let handle = tokio::spawn(async move {
@@ -268,6 +271,66 @@ async fn delete_session_closes_and_invalidates() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
+    handle.abort();
+}
+
+/// Session reaper removes expired sessions so that GET returns 404.
+#[tokio::test]
+async fn session_reaper_cleans_up_expired_sessions() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    // Use a very short idle timeout (0 seconds = immediately expired).
+    let sessions = Arc::new(SessionManager::new(0));
+    let arc_adapter: Arc<StaticGvmdAdapter> = Arc::new(adapter);
+    let reaper = SessionReaper::new(Arc::clone(&sessions), arc_adapter.clone());
+    let service = GatewayService::new(
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter,
+        sessions,
+    );
+
+    // Spawn the reaper with a very short interval.
+    let reaper = reaper.spawn_with_interval(Duration::from_millis(20));
+    let app = build_router(service);
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let client = Client::new();
+
+    // Create a session — it's immediately idle-expired due to timeout=0.
+    let create_resp = client
+        .post(format!("http://{addr}/api/v1/sessions"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+    let token = create_resp.json::<serde_json::Value>().await.unwrap()["sessionToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Wait for the reaper to sweep.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // The session should now be gone.
+    let response = client
+        .get(format!("http://{addr}/api/v1/sessions/{token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    reaper.abort();
     handle.abort();
 }
 
@@ -1423,6 +1486,7 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
         .unwrap();
 
     let target_adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let sessions = Arc::new(SessionManager::default());
     let service = GatewayService::new(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(target_adapter.clone()),
@@ -1432,6 +1496,7 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
+        sessions,
     );
     let token = service.session_manager().create("admin").unwrap().token;
     target_adapter

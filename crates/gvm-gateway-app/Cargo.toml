@@ -10,6 +10,8 @@ authors.workspace = true
 
 [dependencies]
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
+tokio = { workspace = true, features = ["rt", "time"] }
+tracing.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
