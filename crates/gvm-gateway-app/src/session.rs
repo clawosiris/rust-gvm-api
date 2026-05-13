@@ -475,7 +475,7 @@ mod tests {
 
     #[tokio::test]
     async fn reaper_emits_audit_for_expiry_and_disconnect_failure() {
-        let _trace_lock = lock_tracing();
+        let _trace_lock = lock_tracing().await;
         let logs = capture_tracing();
         let auth = MockAuthPort {
             disconnect_should_fail: true,

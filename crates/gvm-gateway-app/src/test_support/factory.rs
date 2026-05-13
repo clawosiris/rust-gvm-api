@@ -3,10 +3,11 @@
 
 use std::{
     io,
-    sync::{Arc, Mutex, MutexGuard, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use gvm_gateway_domain::SessionManager;
+use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
     prelude::*,
@@ -92,7 +93,7 @@ pub(crate) fn capture_tracing() -> Arc<Mutex<Vec<u8>>> {
 }
 
 /// Serializes tests that assert on the shared global tracing buffer.
-pub(crate) fn lock_tracing() -> MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+pub(crate) async fn lock_tracing() -> AsyncMutexGuard<'static, ()> {
+    static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| AsyncMutex::new(())).lock().await
 }

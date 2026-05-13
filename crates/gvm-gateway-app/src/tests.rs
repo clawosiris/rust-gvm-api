@@ -226,7 +226,7 @@ async fn service_report_operations_fail_with_expired_session() {
 /// Audit logs record auth failures without leaking credentials or raw session tokens.
 #[tokio::test]
 async fn audit_logs_redact_sensitive_fields_and_record_session_creation_failure() {
-    let _trace_lock = lock_tracing();
+    let _trace_lock = lock_tracing().await;
     let logs = capture_tracing();
     let service = GatewayService::new(
         Arc::new(MockSystemPort {
@@ -262,7 +262,7 @@ async fn audit_logs_redact_sensitive_fields_and_record_session_creation_failure(
 /// Audit logs tie command failures back to session expiry without exposing raw tokens.
 #[tokio::test]
 async fn audit_logs_command_execution_and_session_expiry_events() {
-    let _trace_lock = lock_tracing();
+    let _trace_lock = lock_tracing().await;
     let logs = capture_tracing();
     let service = create_test_service();
     let session = service.create_session("admin", "secret").await.unwrap();
@@ -282,7 +282,7 @@ async fn audit_logs_command_execution_and_session_expiry_events() {
 /// Spans are emitted for both session lifecycle and resource command execution.
 #[tokio::test]
 async fn spans_are_emitted_for_session_and_command_lifecycle() {
-    let _trace_lock = lock_tracing();
+    let _trace_lock = lock_tracing().await;
     let logs = capture_tracing();
     let service = GatewayService::new(
         Arc::new(MockSystemPort {
