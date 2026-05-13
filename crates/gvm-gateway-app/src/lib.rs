@@ -453,11 +453,7 @@ pub(crate) mod test_support {
             Ok("mock-target-id".to_string())
         }
 
-        async fn get_target(
-            &self,
-            _session_token: &str,
-            id: &str,
-        ) -> Result<Target, GatewayError> {
+        async fn get_target(&self, _session_token: &str, id: &str) -> Result<Target, GatewayError> {
             if self.should_fail {
                 return Err(GatewayError::NotFound(format!("target {id} not found")));
             }
@@ -508,11 +504,7 @@ pub(crate) mod test_support {
             })
         }
 
-        async fn delete_target(
-            &self,
-            _session_token: &str,
-            id: &str,
-        ) -> Result<(), GatewayError> {
+        async fn delete_target(&self, _session_token: &str, id: &str) -> Result<(), GatewayError> {
             if self.should_fail {
                 return Err(GatewayError::NotFound(format!("target {id} not found")));
             }
@@ -538,11 +530,7 @@ pub(crate) mod test_support {
             })
         }
 
-        async fn create_task(
-            &self,
-            _: &str,
-            _: CreateTaskInput,
-        ) -> Result<String, GatewayError> {
+        async fn create_task(&self, _: &str, _: CreateTaskInput) -> Result<String, GatewayError> {
             Ok("00000000-0000-0000-0000-000000000001".to_string())
         }
 

@@ -510,5 +510,4 @@ mod tests {
         let drained = manager.drain_expired().unwrap();
         assert_eq!(drained.len(), 1);
     }
-
 }
