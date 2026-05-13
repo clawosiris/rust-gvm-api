@@ -20,6 +20,9 @@ use gvm_gateway_domain::{
     ScannerPage, ScannerPort, ScannerQuery, SessionManager, SystemPort, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, VersionInfo,
 };
+use tracing::{field, info_span, Instrument};
+
+pub(crate) const AUDIT_TARGET: &str = "gvm_gateway_app::audit";
 
 /// Application services exposed to adapters.
 ///
@@ -97,8 +100,15 @@ impl GatewayService {
         session_token: &str,
         query: TargetQuery,
     ) -> Result<TargetPage, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.targets.list_targets(&session.token, &query).await
+        self.execute_with_resource(
+            "targets.list",
+            session_token,
+            "list",
+            "target",
+            None,
+            |session| async move { self.targets.list_targets(&session.token, &query).await },
+        )
+        .await
     }
 
     /// Creates a new target for an authenticated session.
@@ -107,14 +117,28 @@ impl GatewayService {
         session_token: &str,
         input: CreateTargetInput,
     ) -> Result<String, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.targets.create_target(&session.token, input).await
+        self.execute_with_resource(
+            "targets.create",
+            session_token,
+            "create",
+            "target",
+            None,
+            |session| async move { self.targets.create_target(&session.token, input).await },
+        )
+        .await
     }
 
     /// Fetches a target for an authenticated session.
     pub async fn get_target(&self, session_token: &str, id: &str) -> Result<Target, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.targets.get_target(&session.token, id).await
+        self.execute_with_resource(
+            "targets.get",
+            session_token,
+            "read",
+            "target",
+            Some(id),
+            |session| async move { self.targets.get_target(&session.token, id).await },
+        )
+        .await
     }
 
     /// Modifies a target for an authenticated session.
@@ -124,14 +148,28 @@ impl GatewayService {
         id: &str,
         input: ModifyTargetInput,
     ) -> Result<Target, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.targets.modify_target(&session.token, id, input).await
+        self.execute_with_resource(
+            "targets.modify",
+            session_token,
+            "modify",
+            "target",
+            Some(id),
+            |session| async move { self.targets.modify_target(&session.token, id, input).await },
+        )
+        .await
     }
 
     /// Deletes a target for an authenticated session.
     pub async fn delete_target(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.targets.delete_target(&session.token, id).await
+        self.execute_with_resource(
+            "targets.delete",
+            session_token,
+            "delete",
+            "target",
+            Some(id),
+            |session| async move { self.targets.delete_target(&session.token, id).await },
+        )
+        .await
     }
 
     // ------------------------------------------------------------------
@@ -144,8 +182,15 @@ impl GatewayService {
         session_token: &str,
         query: TaskQuery,
     ) -> Result<TaskPage, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.tasks.list_tasks(&session.token, &query).await
+        self.execute_with_resource(
+            "tasks.list",
+            session_token,
+            "list",
+            "task",
+            None,
+            |session| async move { self.tasks.list_tasks(&session.token, &query).await },
+        )
+        .await
     }
 
     /// Creates a new task for an authenticated session.
@@ -154,14 +199,28 @@ impl GatewayService {
         session_token: &str,
         input: CreateTaskInput,
     ) -> Result<String, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.tasks.create_task(&session.token, input).await
+        self.execute_with_resource(
+            "tasks.create",
+            session_token,
+            "create",
+            "task",
+            None,
+            |session| async move { self.tasks.create_task(&session.token, input).await },
+        )
+        .await
     }
 
     /// Fetches a task for an authenticated session.
     pub async fn get_task(&self, session_token: &str, id: &str) -> Result<Task, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.tasks.get_task(&session.token, id).await
+        self.execute_with_resource(
+            "tasks.get",
+            session_token,
+            "read",
+            "task",
+            Some(id),
+            |session| async move { self.tasks.get_task(&session.token, id).await },
+        )
+        .await
     }
 
     /// Modifies a task for an authenticated session.
@@ -171,14 +230,28 @@ impl GatewayService {
         id: &str,
         input: ModifyTaskInput,
     ) -> Result<Task, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.tasks.modify_task(&session.token, id, input).await
+        self.execute_with_resource(
+            "tasks.modify",
+            session_token,
+            "modify",
+            "task",
+            Some(id),
+            |session| async move { self.tasks.modify_task(&session.token, id, input).await },
+        )
+        .await
     }
 
     /// Deletes a task for an authenticated session.
     pub async fn delete_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.tasks.delete_task(&session.token, id).await
+        self.execute_with_resource(
+            "tasks.delete",
+            session_token,
+            "delete",
+            "task",
+            Some(id),
+            |session| async move { self.tasks.delete_task(&session.token, id).await },
+        )
+        .await
     }
 
     /// Starts a task for an authenticated session.
@@ -187,14 +260,28 @@ impl GatewayService {
         session_token: &str,
         id: &str,
     ) -> Result<TaskAction, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.tasks.start_task(&session.token, id).await
+        self.execute_with_resource(
+            "tasks.start",
+            session_token,
+            "start",
+            "task",
+            Some(id),
+            |session| async move { self.tasks.start_task(&session.token, id).await },
+        )
+        .await
     }
 
     /// Stops a running task for an authenticated session.
     pub async fn stop_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.tasks.stop_task(&session.token, id).await
+        self.execute_with_resource(
+            "tasks.stop",
+            session_token,
+            "stop",
+            "task",
+            Some(id),
+            |session| async move { self.tasks.stop_task(&session.token, id).await },
+        )
+        .await
     }
 
     /// Resumes a stopped task for an authenticated session.
@@ -203,8 +290,15 @@ impl GatewayService {
         session_token: &str,
         id: &str,
     ) -> Result<TaskAction, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.tasks.resume_task(&session.token, id).await
+        self.execute_with_resource(
+            "tasks.resume",
+            session_token,
+            "resume",
+            "task",
+            Some(id),
+            |session| async move { self.tasks.resume_task(&session.token, id).await },
+        )
+        .await
     }
 
     // ------------------------------------------------------------------
@@ -217,8 +311,15 @@ impl GatewayService {
         session_token: &str,
         query: ReportQuery,
     ) -> Result<ReportPage, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.reports.list_reports(&session.token, &query).await
+        self.execute_with_resource(
+            "reports.list",
+            session_token,
+            "list",
+            "report",
+            None,
+            |session| async move { self.reports.list_reports(&session.token, &query).await },
+        )
+        .await
     }
 
     /// Fetches a report for an authenticated session.
@@ -228,14 +329,28 @@ impl GatewayService {
         id: &str,
         opts: GetReportOpts,
     ) -> Result<Report, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.reports.get_report(&session.token, id, &opts).await
+        self.execute_with_resource(
+            "reports.get",
+            session_token,
+            "read",
+            "report",
+            Some(id),
+            |session| async move { self.reports.get_report(&session.token, id, &opts).await },
+        )
+        .await
     }
 
     /// Deletes a report for an authenticated session.
     pub async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.reports.delete_report(&session.token, id).await
+        self.execute_with_resource(
+            "reports.delete",
+            session_token,
+            "delete",
+            "report",
+            Some(id),
+            |session| async move { self.reports.delete_report(&session.token, id).await },
+        )
+        .await
     }
 
     /// Lists results for a specific report.
@@ -245,10 +360,19 @@ impl GatewayService {
         report_id: &str,
         query: ResultQuery,
     ) -> Result<ResultPage, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.reports
-            .get_report_results(&session.token, report_id, &query)
-            .await
+        self.execute_with_resource(
+            "reports.results.list",
+            session_token,
+            "list",
+            "report_result",
+            Some(report_id),
+            |session| async move {
+                self.reports
+                    .get_report_results(&session.token, report_id, &query)
+                    .await
+            },
+        )
+        .await
     }
 
     // ------------------------------------------------------------------
@@ -261,8 +385,15 @@ impl GatewayService {
         session_token: &str,
         query: ResultQuery,
     ) -> Result<ResultPage, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.results.list_results(&session.token, &query).await
+        self.execute_with_resource(
+            "results.list",
+            session_token,
+            "list",
+            "result",
+            None,
+            |session| async move { self.results.list_results(&session.token, &query).await },
+        )
+        .await
     }
 
     /// Fetches a result for an authenticated session.
@@ -271,8 +402,15 @@ impl GatewayService {
         session_token: &str,
         id: &str,
     ) -> Result<ScanResult, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.results.get_result(&session.token, id).await
+        self.execute_with_resource(
+            "results.get",
+            session_token,
+            "read",
+            "result",
+            Some(id),
+            |session| async move { self.results.get_result(&session.token, id).await },
+        )
+        .await
     }
 
     // ------------------------------------------------------------------
@@ -285,10 +423,19 @@ impl GatewayService {
         session_token: &str,
         query: ScanConfigQuery,
     ) -> Result<ScanConfigPage, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.scan_configs
-            .list_scan_configs(&session.token, &query)
-            .await
+        self.execute_with_resource(
+            "scan_configs.list",
+            session_token,
+            "list",
+            "scan_config",
+            None,
+            |session| async move {
+                self.scan_configs
+                    .list_scan_configs(&session.token, &query)
+                    .await
+            },
+        )
+        .await
     }
 
     /// Creates a new scan config for an authenticated session.
@@ -297,10 +444,19 @@ impl GatewayService {
         session_token: &str,
         input: CreateScanConfigInput,
     ) -> Result<String, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.scan_configs
-            .create_scan_config(&session.token, input)
-            .await
+        self.execute_with_resource(
+            "scan_configs.create",
+            session_token,
+            "create",
+            "scan_config",
+            None,
+            |session| async move {
+                self.scan_configs
+                    .create_scan_config(&session.token, input)
+                    .await
+            },
+        )
+        .await
     }
 
     /// Fetches a scan config for an authenticated session.
@@ -309,8 +465,15 @@ impl GatewayService {
         session_token: &str,
         id: &str,
     ) -> Result<ScanConfig, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.scan_configs.get_scan_config(&session.token, id).await
+        self.execute_with_resource(
+            "scan_configs.get",
+            session_token,
+            "read",
+            "scan_config",
+            Some(id),
+            |session| async move { self.scan_configs.get_scan_config(&session.token, id).await },
+        )
+        .await
     }
 
     /// Modifies a scan config for an authenticated session.
@@ -320,10 +483,19 @@ impl GatewayService {
         id: &str,
         input: ModifyScanConfigInput,
     ) -> Result<ScanConfig, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.scan_configs
-            .modify_scan_config(&session.token, id, input)
-            .await
+        self.execute_with_resource(
+            "scan_configs.modify",
+            session_token,
+            "modify",
+            "scan_config",
+            Some(id),
+            |session| async move {
+                self.scan_configs
+                    .modify_scan_config(&session.token, id, input)
+                    .await
+            },
+        )
+        .await
     }
 
     /// Deletes a scan config for an authenticated session.
@@ -332,10 +504,19 @@ impl GatewayService {
         session_token: &str,
         id: &str,
     ) -> Result<(), GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.scan_configs
-            .delete_scan_config(&session.token, id)
-            .await
+        self.execute_with_resource(
+            "scan_configs.delete",
+            session_token,
+            "delete",
+            "scan_config",
+            Some(id),
+            |session| async move {
+                self.scan_configs
+                    .delete_scan_config(&session.token, id)
+                    .await
+            },
+        )
+        .await
     }
 
     // ------------------------------------------------------------------
@@ -348,8 +529,15 @@ impl GatewayService {
         session_token: &str,
         query: ScannerQuery,
     ) -> Result<ScannerPage, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.scanners.list_scanners(&session.token, &query).await
+        self.execute_with_resource(
+            "scanners.list",
+            session_token,
+            "list",
+            "scanner",
+            None,
+            |session| async move { self.scanners.list_scanners(&session.token, &query).await },
+        )
+        .await
     }
 
     /// Fetches a scanner for an authenticated session.
@@ -358,9 +546,188 @@ impl GatewayService {
         session_token: &str,
         id: &str,
     ) -> Result<Scanner, GatewayError> {
-        let session = self.sessions.touch(session_token)?;
-        self.scanners.get_scanner(&session.token, id).await
+        self.execute_with_resource(
+            "scanners.get",
+            session_token,
+            "read",
+            "scanner",
+            Some(id),
+            |session| async move { self.scanners.get_scanner(&session.token, id).await },
+        )
+        .await
     }
+}
+
+impl GatewayService {
+    pub(crate) fn get_username_for_audit(&self, session_token: &str) -> Option<String> {
+        self.sessions
+            .get(session_token)
+            .ok()
+            .flatten()
+            .map(|session| session.user)
+    }
+
+    pub(crate) fn touch_session_with_audit(
+        &self,
+        session_token: &str,
+    ) -> Result<gvm_gateway_domain::Session, GatewayError> {
+        match self.sessions.touch(session_token) {
+            Ok(session) => Ok(session),
+            Err(err) => {
+                let reason = match &err {
+                    GatewayError::Unauthorized(message) if message.contains("expired") => {
+                        "session.expired"
+                    }
+                    GatewayError::Unauthorized(message) if message.contains("missing") => {
+                        "session.invalidated"
+                    }
+                    _ => "session.lookup_failed",
+                };
+                emit_audit_event(
+                    reason,
+                    "failure",
+                    self.get_username_for_audit(session_token)
+                        .as_deref()
+                        .unwrap_or("unknown"),
+                    Some(session_token),
+                    None,
+                    None,
+                    Some(&err),
+                );
+                Err(err)
+            }
+        }
+    }
+
+    async fn execute_with_resource<F, Fut, T>(
+        &self,
+        span_name: &'static str,
+        session_token: &str,
+        action: &'static str,
+        resource: &'static str,
+        resource_id: Option<&str>,
+        operation: F,
+    ) -> Result<T, GatewayError>
+    where
+        F: FnOnce(gvm_gateway_domain::Session) -> Fut,
+        Fut: std::future::Future<Output = Result<T, GatewayError>>,
+    {
+        let user = self.get_username_for_audit(session_token);
+        let span = execution_span(span_name, session_token, user.as_deref(), action, resource);
+        span.record("resource_id", resource_id.unwrap_or(""));
+
+        async move {
+            emit_audit_event(
+                "command.execution",
+                "start",
+                user.as_deref().unwrap_or("unknown"),
+                Some(session_token),
+                Some(resource),
+                Some(action),
+                None,
+            );
+
+            let session = self.touch_session_with_audit(session_token)?;
+            let username = session.user.clone();
+
+            match operation(session).await {
+                Ok(result) => {
+                    emit_audit_event(
+                        "command.execution",
+                        "success",
+                        &username,
+                        Some(session_token),
+                        Some(resource),
+                        Some(action),
+                        None,
+                    );
+                    Ok(result)
+                }
+                Err(err) => {
+                    emit_audit_event(
+                        "command.execution",
+                        "failure",
+                        &username,
+                        Some(session_token),
+                        Some(resource),
+                        Some(action),
+                        Some(&err),
+                    );
+                    Err(err)
+                }
+            }
+        }
+        .instrument(span)
+        .await
+    }
+}
+
+pub(crate) fn execution_span(
+    name: &'static str,
+    session_token: &str,
+    username: Option<&str>,
+    action: &'static str,
+    resource: &'static str,
+) -> tracing::Span {
+    info_span!(
+        "command.execution",
+        otel_name = name,
+        gvmd_username = %username.unwrap_or("unknown"),
+        session_id = %safe_session_id(session_token),
+        audit_action = action,
+        audit_resource = resource,
+        resource_id = field::Empty
+    )
+}
+
+pub(crate) fn safe_session_id(token: &str) -> String {
+    let suffix: String = token
+        .chars()
+        .rev()
+        .take(8)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    format!("session:{suffix}")
+}
+
+fn error_category(error: &GatewayError) -> &'static str {
+    match error {
+        GatewayError::BackendUnavailable(_) => "backend_unavailable",
+        GatewayError::NotFound(_) => "not_found",
+        GatewayError::InvalidInput(_) => "invalid_input",
+        GatewayError::Unauthorized(message) if message.contains("expired") => "session_expired",
+        GatewayError::Unauthorized(message) if message.contains("missing") => "session_invalidated",
+        GatewayError::Unauthorized(_) => "unauthorized",
+        GatewayError::Conflict(_) => "conflict",
+        GatewayError::GatewayTimeout(_) => "gateway_timeout",
+    }
+}
+
+pub(crate) fn emit_audit_event(
+    event: &str,
+    outcome: &str,
+    username: &str,
+    session_token: Option<&str>,
+    resource: Option<&str>,
+    action: Option<&str>,
+    error: Option<&GatewayError>,
+) {
+    tracing::info!(
+        target: AUDIT_TARGET,
+        audit_event = event,
+        audit_outcome = outcome,
+        gvmd_username = username,
+        session_id = session_token
+            .map(safe_session_id)
+            .unwrap_or_else(|| "session:unknown".to_string()),
+        resource = resource.unwrap_or("session"),
+        action = action.unwrap_or("none"),
+        error_category = error.map(error_category).unwrap_or("none"),
+        error = error.map(|err| format!("{err:?}")).unwrap_or_default(),
+        "audit_event"
+    );
 }
 
 impl Clone for GatewayService {
@@ -387,6 +754,15 @@ impl Clone for GatewayService {
 pub(crate) mod test_support {
     use super::*;
     use async_trait::async_trait;
+    use std::{
+        io,
+        sync::{Mutex, OnceLock},
+    };
+    use tracing_subscriber::{
+        fmt::{self, format::FmtSpan},
+        prelude::*,
+        EnvFilter,
+    };
 
     // Mock system port for testing
     #[derive(Clone)]
@@ -591,6 +967,7 @@ pub(crate) mod test_support {
     #[derive(Clone, Default)]
     pub(crate) struct MockAuthPort {
         pub(crate) should_fail: bool,
+        pub(crate) disconnect_should_fail: bool,
         pub(crate) disconnected: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
@@ -611,6 +988,11 @@ pub(crate) mod test_support {
         }
 
         async fn disconnect_session(&self, session_token: &str) -> Result<(), GatewayError> {
+            if self.disconnect_should_fail {
+                return Err(GatewayError::BackendUnavailable(
+                    "disconnect failed".to_string(),
+                ));
+            }
             self.disconnected
                 .lock()
                 .unwrap()
@@ -795,6 +1177,63 @@ pub(crate) mod test_support {
             Arc::new(MockScannerPort),
             Arc::new(SessionManager::default()),
         )
+    }
+
+    #[derive(Clone, Default)]
+    struct TestWriter {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl<'a> fmt::MakeWriter<'a> for TestWriter {
+        type Writer = TestWriterGuard;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            TestWriterGuard {
+                buffer: Arc::clone(&self.buffer),
+            }
+        }
+    }
+
+    struct TestWriterGuard {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl io::Write for TestWriterGuard {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.buffer.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn capture_tracing() -> Arc<Mutex<Vec<u8>>> {
+        static WRITER: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
+        static INIT: OnceLock<()> = OnceLock::new();
+
+        let buffer = WRITER
+            .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
+            .clone();
+        buffer.lock().unwrap().clear();
+
+        INIT.get_or_init(|| {
+            let writer = TestWriter {
+                buffer: buffer.clone(),
+            };
+            let subscriber = tracing_subscriber::registry()
+                .with(EnvFilter::new("info"))
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .with_writer(writer)
+                        .with_ansi(false)
+                        .with_span_events(FmtSpan::CLOSE),
+                );
+            let _ = tracing::subscriber::set_global_default(subscriber);
+        });
+
+        buffer
     }
 }
 
@@ -1017,5 +1456,86 @@ mod tests {
             .list_reports(&session.token, ReportQuery::default())
             .await;
         assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    }
+
+    #[tokio::test]
+    async fn audit_logs_redact_sensitive_fields_and_record_session_creation_failure() {
+        let logs = capture_tracing();
+        let service = GatewayService::new(
+            Arc::new(MockSystemPort {
+                ready: true,
+                gmp_version: "22.7".to_string(),
+            }),
+            Arc::new(MockTargetPort::default()),
+            Arc::new(MockTaskPort),
+            Arc::new(MockAuthPort {
+                should_fail: true,
+                ..Default::default()
+            }),
+            Arc::new(MockReportPort),
+            Arc::new(MockResultPort),
+            Arc::new(MockScanConfigPort),
+            Arc::new(MockScannerPort),
+            Arc::new(SessionManager::default()),
+        );
+
+        let _ = service
+            .create_session("admin", "super-secret-password")
+            .await;
+
+        let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+        assert!(output.contains("audit_event=\"session.create\""));
+        assert!(output.contains("audit_outcome=\"failure\""));
+        assert!(output.contains("gvmd_username=admin"));
+        assert!(output.contains("session_id=\"session:"));
+        assert!(!output.contains("super-secret-password"));
+        assert!(!output.contains("gvm_sess_"));
+    }
+
+    #[tokio::test]
+    async fn audit_logs_command_execution_and_session_expiry_events() {
+        let logs = capture_tracing();
+        let service = create_test_service();
+        let session = service.create_session("admin", "secret").await.unwrap();
+        service.session_manager().expire(&session.token).unwrap();
+
+        let _ = service
+            .list_targets(&session.token, TargetQuery::default())
+            .await;
+
+        let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+        assert!(output.contains("audit_event=\"command.execution\""));
+        assert!(output.contains("audit_outcome=\"start\""));
+        assert!(output.contains("audit_event=\"session.expired\""));
+        assert!(output.contains("error_category=\"session_expired\""));
+    }
+
+    #[tokio::test]
+    async fn spans_are_emitted_for_session_and_command_lifecycle() {
+        let logs = capture_tracing();
+        let service = GatewayService::new(
+            Arc::new(MockSystemPort {
+                ready: true,
+                gmp_version: "22.7".to_string(),
+            }),
+            Arc::new(MockTargetPort { should_fail: true }),
+            Arc::new(MockTaskPort),
+            Arc::new(MockAuthPort::default()),
+            Arc::new(MockReportPort),
+            Arc::new(MockResultPort),
+            Arc::new(MockScanConfigPort),
+            Arc::new(MockScannerPort),
+            Arc::new(SessionManager::default()),
+        );
+
+        let session = service.create_session("admin", "secret").await.unwrap();
+        let _ = service.get_target(&session.token, "resource-123").await;
+        let _ = service.delete_session(&session.token).await;
+
+        let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+        assert!(output.contains("session.create"));
+        assert!(output.contains("command.execution"));
+        assert!(output.contains("targets.get"));
+        assert!(output.contains("session.teardown"));
     }
 }

@@ -564,6 +564,7 @@ dependencies = [
  "gvm-gateway-domain",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

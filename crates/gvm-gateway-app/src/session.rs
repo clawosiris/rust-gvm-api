@@ -7,10 +7,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
+use tracing::{field, info_span, Instrument};
 
 use gvm_gateway_domain::{AuthPort, GatewayError, SessionCreated, SessionInfo, SessionManager};
 
-use crate::GatewayService;
+use crate::{emit_audit_event, safe_session_id, GatewayService};
 
 // ============================================================================
 // Session lifecycle use cases
@@ -29,38 +30,142 @@ impl GatewayService {
         username: &str,
         password: &str,
     ) -> Result<SessionCreated, GatewayError> {
-        let session = self.sessions.create(username)?;
-        if let Err(err) = self
-            .auth
-            .authenticate_session(&session.token, username, password)
-            .await
-        {
-            // Roll back the domain session when backend auth fails.
-            let _ = self.sessions.remove(&session.token);
-            return Err(err);
+        let span = info_span!(
+            "session.create",
+            otel_name = "session.create",
+            gvmd_username = %username,
+            session_id = field::Empty,
+            audit_action = "create",
+            audit_resource = "session"
+        );
+
+        async move {
+            let session = self.sessions.create(username)?;
+            tracing::Span::current().record(
+                "session_id",
+                field::display(safe_session_id(&session.token)),
+            );
+
+            if let Err(err) = self
+                .auth
+                .authenticate_session(&session.token, username, password)
+                .await
+            {
+                let _ = self.sessions.remove(&session.token);
+                emit_audit_event(
+                    "session.create",
+                    "failure",
+                    username,
+                    Some(&session.token),
+                    None,
+                    None,
+                    Some(&err),
+                );
+                return Err(err);
+            }
+
+            let gmp_version = match self.system.gmp_version() {
+                Ok(version) => version,
+                Err(err) => {
+                    emit_audit_event(
+                        "session.create",
+                        "failure",
+                        username,
+                        Some(&session.token),
+                        None,
+                        None,
+                        Some(&err),
+                    );
+                    return Err(err);
+                }
+            };
+
+            emit_audit_event(
+                "session.create",
+                "success",
+                username,
+                Some(&session.token),
+                None,
+                None,
+                None,
+            );
+
+            Ok(SessionCreated {
+                token: session.token,
+                expires_in: self.sessions.idle_timeout_secs(),
+                gmp_version,
+            })
         }
-        let gmp_version = self.system.gmp_version()?;
-        Ok(SessionCreated {
-            token: session.token,
-            expires_in: self.sessions.idle_timeout_secs(),
-            gmp_version,
-        })
+        .instrument(span)
+        .await
     }
 
     /// Returns detailed session information without extending the idle timer.
     pub fn get_session(&self, token: &str) -> Result<SessionInfo, GatewayError> {
+        let _span = info_span!(
+            "session.lookup",
+            otel_name = "session.lookup",
+            session_id = %safe_session_id(token),
+            audit_action = "lookup",
+            audit_resource = "session"
+        )
+        .entered();
         self.sessions.get_info(token)
     }
 
     /// Closes and destroys a session, disconnecting the backend connection.
     pub async fn delete_session(&self, token: &str) -> Result<(), GatewayError> {
-        let removed = self.sessions.remove(token)?;
-        if removed.is_none() {
-            return Err(GatewayError::NotFound("session not found".to_string()));
+        let span = info_span!(
+            "session.teardown",
+            otel_name = "session.teardown",
+            session_id = %safe_session_id(token),
+            audit_action = "delete",
+            audit_resource = "session"
+        );
+
+        async move {
+            let removed = self.sessions.remove(token)?;
+            if removed.is_none() {
+                let err = GatewayError::NotFound("session not found".to_string());
+                emit_audit_event(
+                    "session.delete",
+                    "failure",
+                    "unknown",
+                    Some(token),
+                    None,
+                    None,
+                    Some(&err),
+                );
+                return Err(err);
+            }
+
+            let removed = removed.expect("checked is_some");
+            if let Err(err) = self.auth.disconnect_session(token).await {
+                emit_audit_event(
+                    "session.delete",
+                    "backend_disconnect_failed",
+                    &removed.user,
+                    Some(token),
+                    None,
+                    None,
+                    Some(&err),
+                );
+            }
+
+            emit_audit_event(
+                "session.delete",
+                "success",
+                &removed.user,
+                Some(token),
+                None,
+                None,
+                None,
+            );
+
+            Ok(())
         }
-        // Best-effort backend disconnect; ignore errors.
-        let _ = self.auth.disconnect_session(token).await;
-        Ok(())
+        .instrument(span)
+        .await
     }
 }
 
@@ -114,7 +219,25 @@ impl SessionReaper {
                     }
                 };
                 for token in &tokens {
+                    emit_audit_event(
+                        "session.expired",
+                        "cleanup",
+                        "unknown",
+                        Some(token),
+                        None,
+                        Some("expire"),
+                        None,
+                    );
                     if let Err(err) = auth.disconnect_session(token).await {
+                        emit_audit_event(
+                            "session.disconnect",
+                            "failure",
+                            "unknown",
+                            Some(token),
+                            None,
+                            Some("disconnect"),
+                            Some(&err),
+                        );
                         tracing::warn!(token, ?err, "session reaper: disconnect_session failed");
                     }
                 }
@@ -345,5 +468,28 @@ mod tests {
         // The reaper should not have found the session (already removed).
         let tokens = disconnected.lock().unwrap();
         assert_eq!(tokens.len(), 1); // only the one from delete_session
+    }
+
+    #[tokio::test]
+    async fn reaper_emits_audit_for_expiry_and_disconnect_failure() {
+        let logs = capture_tracing();
+        let auth = MockAuthPort {
+            disconnect_should_fail: true,
+            ..Default::default()
+        };
+        let sessions = Arc::new(SessionManager::default());
+        let reaper = SessionReaper::new(Arc::clone(&sessions), Arc::new(auth));
+
+        let session = sessions.create("admin").unwrap();
+        sessions.expire(&session.token).unwrap();
+
+        let handle = reaper.spawn_with_interval(Duration::from_millis(10));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        handle.abort();
+
+        let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+        assert!(output.contains("audit_event=\"session.expired\""));
+        assert!(output.contains("audit_event=\"session.disconnect\""));
+        assert!(output.contains("error_category=\"backend_unavailable\""));
     }
 }
