@@ -13,10 +13,16 @@ This repository uses orchestrated releases via [clawosiris/release-orchestrator]
 ### Stable Release
 1. Go to [release-orchestrator](https://github.com/clawosiris/release-orchestrator)
 2. Trigger the release workflow with type `patch`, `minor`, or `major`
+3. The release workflow will build and attach:
+   - `gvm-gateway` Arch Linux packages (`.pkg.tar.zst`)
+   - `gvm-gateway` Debian packages (`.deb`)
+   - matching `.sha256` checksum files
+   - SBOM archives
 
 ### Nightly / Alpha Build
 1. Go to [release-orchestrator](https://github.com/clawosiris/release-orchestrator)
 2. Trigger the release workflow with type `alpha`
+3. Nightly/alpha package artifacts are published with prerelease-safe package versions so stable releases remain the upgrade target.
 
 ### Pre-releases
 - `alpha` — Early development builds (nightlies)
@@ -29,7 +35,23 @@ For local testing without releasing:
 ```bash
 cargo build --release
 cargo test
+./scripts/install-nfpm.sh
+./scripts/package-build.sh --packager deb --version "$(./scripts/workspace-version.sh)"
+./scripts/package-build.sh --packager archlinux --version "$(./scripts/workspace-version.sh)"
 ```
+
+Package smoke tests use Docker in CI:
+
+```bash
+./scripts/package-smoke.sh --packager deb
+./scripts/package-smoke.sh --packager archlinux
+```
+
+## Packaging Notes
+
+- The first pass packages the unified `gvm-gateway` binary.
+- Packages also ship an example config at `/etc/gvm-gateway/gvm-gateway.toml`.
+- systemd service/unit packaging is intentionally deferred until the runtime contract and service defaults settle.
 
 ## Questions?
 
