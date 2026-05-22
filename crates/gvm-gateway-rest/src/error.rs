@@ -132,6 +132,34 @@ impl RestError {
             },
         }
     }
+
+    /// Builds a 403 problem details response.
+    pub fn forbidden(detail: impl Into<String>, instance: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            problem: ProblemDetails {
+                r#type: "urn:gvm-gateway:problem:forbidden".to_string(),
+                title: "Forbidden".to_string(),
+                status: StatusCode::FORBIDDEN.as_u16(),
+                detail: Some(detail.into()),
+                instance: Some(instance.into()),
+            },
+        }
+    }
+
+    /// Builds a 429 problem details response.
+    pub fn too_many_requests(detail: impl Into<String>, instance: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            problem: ProblemDetails {
+                r#type: "urn:gvm-gateway:problem:too-many-requests".to_string(),
+                title: "Too Many Requests".to_string(),
+                status: StatusCode::TOO_MANY_REQUESTS.as_u16(),
+                detail: Some(detail.into()),
+                instance: Some(instance.into()),
+            },
+        }
+    }
 }
 
 impl IntoResponse for RestError {

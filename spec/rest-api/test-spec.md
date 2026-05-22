@@ -72,10 +72,11 @@
 
 | Test | Scope |
 |------|-------|
-| `under_limit_passes` | 50 requests < 100 rps limit → all 200 |
-| `over_limit_returns_429` | 150 requests > 100 rps limit → 429 after threshold |
+| `under_limit_passes` | Requests below configured fixed-window limits → all 200 |
+| `over_limit_returns_429` | Requests above subject/global window → 429 after threshold |
 | `retry_after_header_present` | 429 response → has `Retry-After` header |
-| `different_sessions_independent` | Two active session tokens → separate rate limits |
+| `different_sessions_independent` | Two active session tokens → separate subject limits |
+| `session_creation_rate_limited` | Unauthenticated session creation pressure is limited before backend work |
 
 ### 2.5 Configuration (`config.rs`)
 
@@ -84,7 +85,7 @@
 | `default_config_valid` | No config file → sensible defaults |
 | `env_var_override` | `GVM_API_BIND=0.0.0.0:9090` overrides config |
 | `cli_arg_override` | `--bind 0.0.0.0:9090` overrides config + env |
-| `env_var_expansion_in_config` | e.g. session/TLS config uses `${...}` env expansion correctly |
+| `security_config_override` | CORS/rate-limit file config and env overrides map into REST security config |
 | `invalid_config_rejected` | Bad TOML → clear error message |
 
 ## 3. Integration Tests
@@ -173,10 +174,12 @@ async fn test_server() -> TestServer {
 | Test | Scope |
 |------|-------|
 | `trace_context_headers_propagated` | W3C trace context is accepted/forwarded (`traceparent`, optional `tracestate`/`baggage`) |
-| `cors_preflight_allowed_origin` | OPTIONS request with allowed origin → 200 |
-| `cors_preflight_denied_origin` | OPTIONS with unknown origin → no CORS headers |
+| `cors_preflight_allowed_origin` | OPTIONS request with allowed origin → 204 + allow headers |
+| `cors_preflight_denied_origin` | OPTIONS with unknown origin → 403 and no CORS allow-origin header |
 | `gzip_compression` | `Accept-Encoding: gzip` → compressed response |
 | `content_type_json` | All API responses → `Content-Type: application/json` |
+| `security_headers_present` | API success and problem responses include baseline security headers |
+| `audit_log_redacts_session_token` | Audit/log capture contains safe session IDs but no raw tokens or passwords |
 | `method_not_allowed` | `PATCH /api/v1/targets` → 405 |
 | `not_found_route` | `GET /api/v1/nonexistent` → 404 |
 

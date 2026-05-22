@@ -241,7 +241,11 @@ impl SessionReaper {
                             Some("disconnect"),
                             Some(&err),
                         );
-                        tracing::warn!(token, ?err, "session reaper: disconnect_session failed");
+                        tracing::warn!(
+                            session_id = %safe_session_id(token),
+                            ?err,
+                            "session reaper: disconnect_session failed"
+                        );
                     }
                 }
                 if !tokens.is_empty() {
@@ -495,5 +499,7 @@ mod tests {
         assert!(output.contains("audit_event=\"session.expired\""));
         assert!(output.contains("audit_event=\"session.disconnect\""));
         assert!(output.contains("error_category=\"backend_unavailable\""));
+        assert!(output.contains("session_id=\"session:"));
+        assert!(!output.contains(&session.token));
     }
 }

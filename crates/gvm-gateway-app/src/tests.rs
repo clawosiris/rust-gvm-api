@@ -279,6 +279,49 @@ async fn audit_logs_command_execution_and_session_expiry_events() {
     assert!(output.contains("error_category=\"session_expired\""));
 }
 
+/// Mutating resource workflows emit audit events with safe session context only.
+#[tokio::test]
+async fn audit_logs_target_mutation_without_raw_session_token() {
+    let _trace_lock = lock_tracing().await;
+    let logs = capture_tracing();
+    let service = create_test_service();
+    let session = service
+        .create_session("admin", "super-secret-password")
+        .await
+        .unwrap();
+
+    let result = service
+        .create_target(
+            &session.token,
+            CreateTargetInput {
+                name: "target-a".to_string(),
+                comment: None,
+                hosts: vec!["192.0.2.10".to_string()],
+                exclude_hosts: vec![],
+                alive_test: None,
+                port_list_id: None,
+                reverse_lookup_only: None,
+                reverse_lookup_unify: None,
+                ssh_credential_id: None,
+                smb_credential_id: None,
+                esxi_credential_id: None,
+                snmp_credential_id: None,
+            },
+        )
+        .await;
+    assert!(result.is_ok());
+
+    let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+    assert!(output.contains("audit_event=\"command.execution\""));
+    assert!(output.contains("audit_outcome=\"start\""));
+    assert!(output.contains("audit_outcome=\"success\""));
+    assert!(output.contains("resource=\"target\""));
+    assert!(output.contains("action=\"create\""));
+    assert!(output.contains("session_id=\"session:"));
+    assert!(!output.contains(&session.token));
+    assert!(!output.contains("super-secret-password"));
+}
+
 /// Spans are emitted for both session lifecycle and resource command execution.
 #[tokio::test]
 async fn spans_are_emitted_for_session_and_command_lifecycle() {

@@ -7,7 +7,7 @@ A RESTful API server that exposes Greenbone Vulnerability Management (GVM) opera
 ### Goals
 
 - **Standards-first**: OpenAPI 3.1 specification, JSON:API-inspired resource design, proper HTTP semantics
-- **Security-first**: Session-token authentication, TLS, rate limiting, audit logging
+- **Security-first**: Session-token authentication, deny-by-default CORS, security headers, rate limiting, audit logging
 - **Observable**: Structured logging and OpenTelemetry (OTel) traces via OTLP
 - **Performant**: Async throughout, connection pooling to gvmd, streaming for large responses
 
@@ -303,11 +303,11 @@ The API should propagate W3C Trace Context (`traceparent`, `tracestate`, optiona
 
 ### Rate Limiting
 
-Token-bucket rate limiting per session / authenticated user, aligned with the session model in #27:
-- Default: 100 req/s per client workflow
-- Configurable per-endpoint overrides
-- `429 Too Many Requests` with `Retry-After` header
-- Capacity/backpressure should compose cleanly with global/per-user session limits
+Fixed-window rate limiting per global API surface and authenticated subject, aligned with the session model in #27:
+- Defaults are conservative and configurable (`rate_limit_*` config keys)
+- Subject keys are derived from Bearer tokens or request-scoped Basic credentials without logging raw secrets
+- `429 Too Many Requests` includes a `Retry-After` header
+- Capacity/backpressure composes with global/per-user session limits and protects session creation from unauthenticated pressure
 
 ## 4. Configuration
 
@@ -316,8 +316,6 @@ Token-bucket rate limiting per session / authenticated user, aligned with the se
 
 [server]
 bind = "0.0.0.0:8080"
-tls_cert = "/etc/gvm-api/tls/cert.pem"
-tls_key = "/etc/gvm-api/tls/key.pem"
 request_timeout_secs = 30
 body_limit_bytes = 10_485_760  # 10 MB
 
@@ -336,9 +334,10 @@ idle_timeout_secs = 300
 max_sessions = 100
 max_sessions_per_user = 5
 
-[rate_limit]
-default_rps = 100
-burst = 150
+cors_allowed_origins = ["https://ui.example"]
+rate_limit_window_secs = 60
+rate_limit_global_per_window = 1000
+rate_limit_subject_per_window = 500
 
 [logging]
 format = "json"  # "json" | "pretty"
@@ -489,15 +488,17 @@ For each resource (acceptance-test first):
 ## 8. Security Considerations
 
 - **No credential storage**: GMP credentials are used only to establish a session; bearer session tokens must be treated as secrets and redacted from logs
-- **TLS everywhere**: Support native TLS for API + GMP transport
+- **Transport security**: REST TLS / termination-mode configuration is deferred to #130 and is not part of Phase 3 until explicitly re-scoped
 - **Input validation**: All request bodies validated before GMP translation
 - **No unsafe code**: `#[deny(unsafe_code)]` crate-wide
 - **CORS**: Configurable origin allowlist (deny by default)
-- **Headers**: Security headers via tower-http (X-Content-Type-Options, X-Frame-Options, etc.)
+- **Headers**: Security headers are applied by REST middleware (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Cache-Control` for API responses)
+- **Audit taxonomy**: Session lifecycle emits `session.create`, `session.delete`, `session.expired`, and `session.disconnect`; resource workflows emit `command.execution` with `start`/`success`/`failure` outcomes plus resource/action metadata.
+- **Token-safe observability**: Logs and spans use safe session identifiers (`session:<suffix>`). Raw bearer tokens, Basic credentials, and passwords must not be written to audit fields, tracing fields, problem details, or rate-limit/security events.
 
 ## 9. Open Questions
 
 - [ ] Should we support GMP filter syntax passthrough or only structured query params?
 - [ ] WebSocket vs SSE for real-time task status updates?
-- [ ] Should a later API version add a stateless per-request auth mode, or should session-based auth remain the only public contract?
+- [ ] Should request-scoped Basic auth remain a compatibility path long-term, or should clients be encouraged to use explicit sessions for all workflows?
 - [ ] Should report export be synchronous or async (poll-based)?
