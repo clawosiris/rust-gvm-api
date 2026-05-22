@@ -44,6 +44,7 @@ servers:
 
 security:
   - bearerAuth: []
+  - basicAuth: []
 
 tags:
   - name: Sessions
@@ -143,11 +144,13 @@ components:
       type: http
       scheme: basic
       description: |
-        GVM username and password. Used only for session creation
-        (`POST /api/v1/sessions`).
+        GVM username and password. Used to create a persistent session
+        (`POST /api/v1/sessions`) or to authenticate one protected request
+        with request-scoped backend cleanup.
     bearerAuth:
       type: http
       scheme: bearer
       description: |
         Opaque session token returned by `POST /api/v1/sessions`.
-        Must be presented on all subsequent requests.
+        May be presented on subsequent protected requests instead of Basic
+        credentials.

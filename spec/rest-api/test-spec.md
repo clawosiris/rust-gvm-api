@@ -65,6 +65,8 @@
 | `expired_session_token_rejected` | Expired token → 401 |
 | `closed_session_token_rejected` | Closed token → 401 |
 | `valid_session_token_allows_request` | Active token → request proceeds |
+| `request_scoped_basic_auth_allows_request` | Basic credentials on protected endpoint → request proceeds without explicit session management |
+| `request_scoped_basic_auth_cleans_up` | Request-scoped Basic execution tears down backend/session state after success or failure |
 
 ### 2.4 Rate Limiting (`middleware/rate_limit.rs`)
 
@@ -155,6 +157,8 @@ async fn test_server() -> TestServer {
 | `protected_endpoint_no_auth` | `GET /api/v1/targets` (no token) | 401 |
 | `protected_endpoint_unknown_token` | `GET /api/v1/targets` + unknown token | 401 |
 | `protected_endpoint_valid_auth` | `GET /api/v1/targets` + valid session token | 200 |
+| `protected_endpoint_request_scoped_basic_auth` | `GET /api/v1/targets` + valid Basic credentials | 200, backend context cleaned up after response |
+| `protected_endpoint_malformed_basic_auth` | `GET /api/v1/targets` + malformed Basic credentials | 401 |
 
 ### 3.7 OpenAPI Compliance
 
