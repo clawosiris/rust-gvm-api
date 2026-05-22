@@ -41,6 +41,9 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     document["security"] = json!([
         {
             "bearerAuth": []
+        },
+        {
+            "basicAuth": []
         }
     ]);
     document["tags"] = json!([
@@ -234,17 +237,17 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         }
     }
 
-    // Session endpoints: POST uses basicAuth, GET/DELETE use bearerAuth (inherited).
+    // Session endpoints: POST uses basicAuth to create a persistent session;
+    // GET/DELETE operate on the explicit path token and keep bearer-only docs.
     if let Some(operation) = document["paths"]["/sessions"]["post"].as_object_mut() {
         operation.insert("security".to_string(), json!([{"basicAuth": []}]));
     }
-    // GET and DELETE on /sessions/{token} use global bearer security (no override needed)
     for (path, method) in [
         ("/sessions/{token}", "get"),
         ("/sessions/{token}", "delete"),
     ] {
         if let Some(operation) = document["paths"][path][method].as_object_mut() {
-            operation.remove("security");
+            operation.insert("security".to_string(), json!([{"bearerAuth": []}]));
         }
     }
 
@@ -430,7 +433,7 @@ fn ensure_basic_auth_scheme(document: &mut Value) {
             json!({
                 "type": "http",
                 "scheme": "basic",
-                "description": "HTTP Basic credentials used to create a session."
+                "description": "HTTP Basic credentials used either to create a persistent session or to authenticate one protected request with request-scoped backend cleanup."
             }),
         );
     }

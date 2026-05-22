@@ -1206,6 +1206,72 @@ async fn list_targets_empty() {
 }
 
 #[tokio::test]
+async fn list_targets_accepts_request_scoped_basic_auth() {
+    let harness = target_harness(|_| {}).await;
+    let auth_count_before = harness
+        .server
+        .command_history()
+        .iter()
+        .filter(|record| record.command_name() == "authenticate")
+        .count();
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .basic_auth("admin", Some("admin"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["data"], serde_json::json!([]));
+
+    let history = harness.server.command_history();
+    assert!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "authenticate")
+            .count()
+            > auth_count_before
+    );
+    assert!(history
+        .iter()
+        .any(|record| record.command_name() == "get_targets"));
+
+    // The existing persistent bearer session remains usable and unchanged.
+    let bearer_response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bearer_response.status(), StatusCode::OK);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn malformed_basic_auth_on_protected_route_returns_401() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .header("Authorization", "Basic not-base64")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["status"], 401);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
 async fn list_targets_paginated() {
     let harness = target_harness(|store| {
         for index in 1..=25 {

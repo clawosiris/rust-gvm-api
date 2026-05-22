@@ -213,7 +213,7 @@ URL-based versioning (`/api/v1/`, `/api/v2/`). Major breaking changes increment 
 | `GET` | `/api/v1/sessions/{token}` | Inspect current session state |
 | `DELETE` | `/api/v1/sessions/{token}` | Close and destroy a session |
 
-Authentication is session-based for v0.1. Public user-management endpoints are deferred unless the API contract is expanded later.
+Protected routes accept either an existing Bearer session token or request-scoped HTTP Basic credentials. `POST /api/v1/sessions` remains the persistent-session creation path. Public user-management endpoints are deferred unless the API contract is expanded later.
 
 #### Feeds
 
@@ -283,16 +283,21 @@ The API should propagate W3C Trace Context (`traceparent`, `tracestate`, optiona
 
 ### Authentication & Authorization
 
-1. **Session token flow** — Primary auth model
+1. **Session token flow** — Persistent auth model
    - `POST /api/v1/sessions` with Basic credentials
    - API returns an opaque session token
    - Subsequent requests use `Authorization: Bearer <sessionToken>`
 
-2. **Session lifecycle controls**
+2. **Request-scoped Basic auth** — Single-call auth model
+   - Protected resource routes may use `Authorization: Basic <base64(username:password)>`
+   - The gateway authenticates those credentials, creates a backend execution context for exactly one request, then tears it down before returning
+   - Bearer authentication takes precedence whenever the `Authorization` scheme is `Bearer`; malformed Basic credentials fail with `401 Unauthorized`
+
+3. **Session lifecycle controls**
    - `GET /api/v1/sessions/{token}` to inspect session state
    - `DELETE /api/v1/sessions/{token}` for explicit teardown
 
-3. **Authorization**
+4. **Authorization**
    - Authorization behavior follows gvmd user permissions
    - API adapters map domain permission errors to protocol-specific status codes
 
