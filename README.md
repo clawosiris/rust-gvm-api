@@ -91,6 +91,8 @@ make ci
 
 - [REST API OpenSpec](spec/rest-api/openspec.md)
 - [gRPC API OpenSpec](spec/grpc-api/openspec.md)
+- [GMP API Proxy Analysis](docs/gmp-api-proxy-analysis.md)
+- [Proxy Access Control Analysis](docs/proxy-access-control-analysis.md)
 - [MCP Gateway Surface Analysis](docs/mcp-gateway-surface-analysis.md)
 - [MCP Implementation Roadmap](docs/mcp-implementation-roadmap.md)
 
