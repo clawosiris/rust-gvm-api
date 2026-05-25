@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Configure git credentials for private deps
         run: git config --global url."https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/".insteadOf "https://github.com/"
-      - uses: EmbarkStudios/cargo-deny-action@91bf2b620e09e18d6eb78b92e7861937469acedb # v2
+      - uses: EmbarkStudios/cargo-deny-action@a531616d8ce3b9177443e48a1159bc945a099823 # v2
         with:
           arguments: --workspace
           credentials: https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com
@@ -112,7 +112,7 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - uses: taiki-e/install-action@660ccd1d376e9007f8fbbc3c66b63643fa9ddd6e # cargo-llvm-cov
       - run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
-      - uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v5
+      - uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v5
         with:
           files: lcov.info
           fail_ci_if_error: false
