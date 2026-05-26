@@ -29,12 +29,12 @@
 
 | Test | Input | Expected |
 |------|-------|----------|
-| `gmp_not_found_maps_to_404` | GMP "resource not found" | 404 + RFC 7807 body |
+| `gmp_not_found_maps_to_404` | GMP "resource not found" | 404 + RFC 9457 body |
 | `gmp_auth_failure_maps_to_401` | GMP "authentication failed" | 401 |
 | `gmp_permission_denied_maps_to_403` | GMP "permission denied" | 403 |
 | `gmp_connection_failure_maps_to_502` | GMP connection error | 502 |
 | `gmp_timeout_maps_to_504` | GMP timeout | 504 |
-| `error_response_follows_rfc7807` | Any error | Has `type`, `title`, `status`, `detail` fields |
+| `error_response_follows_rfc9457` | Any error | Has `type`, `code`, `title`, `status`, `detail` fields |
 | `error_response_includes_instance` | Error with path context | `instance` matches request path |
 
 ### 2.2 Model Conversion (`models/`)
@@ -121,7 +121,7 @@ async fn test_server() -> TestServer {
 | `list_targets_empty` | `GET /api/v1/targets` | No targets | 200, empty `data[]`, pagination |
 | `list_targets_paginated` | `GET /api/v1/targets?page=2&per_page=10` | 25 targets | 200, 10 items, correct pagination |
 | `create_target` | `POST /api/v1/targets` + body | — | 201, target with ID |
-| `create_target_missing_name` | `POST /api/v1/targets` (no name) | — | 400, RFC 7807 |
+| `create_target_missing_name` | `POST /api/v1/targets` (no name) | — | 400, RFC 9457 |
 | `get_target` | `GET /api/v1/targets/{id}` | Target exists | 200, full target |
 | `get_target_not_found` | `GET /api/v1/targets/{bad-id}` | — | 404 |
 | `update_target` | `PUT /api/v1/targets/{id}` + body | Target exists | 200, updated fields |
@@ -177,7 +177,8 @@ async fn test_server() -> TestServer {
 | `cors_preflight_allowed_origin` | OPTIONS request with allowed origin → 204 + allow headers |
 | `cors_preflight_denied_origin` | OPTIONS with unknown origin → 403 and no CORS allow-origin header |
 | `gzip_compression` | `Accept-Encoding: gzip` → compressed response |
-| `content_type_json` | All API responses → `Content-Type: application/json` |
+| `content_type_json` | Success responses → `Content-Type: application/json` |
+| `content_type_problem_json` | Problem responses → `Content-Type: application/problem+json` |
 | `security_headers_present` | API success and problem responses include baseline security headers |
 | `audit_log_redacts_session_token` | Audit/log capture contains safe session IDs but no raw tokens or passwords |
 | `method_not_allowed` | `PATCH /api/v1/targets` → 405 |

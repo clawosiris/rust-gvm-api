@@ -265,12 +265,13 @@ GET /api/v1/results?severity_min=7.0&host=192.168.1.0/24&task_id=<uuid>
 
 #### Error Responses
 
-RFC 7807 Problem Details:
+RFC 9457 Problem Details:
 
 ```json
 {
-  "type": "https://api.gvm.example/errors/not-found",
-  "title": "Resource Not Found",
+  "type": "https://gvm-gateway.greenbone.net/errors/not-found",
+  "code": "not_found",
+  "title": "Not Found",
   "status": 404,
   "detail": "Target with ID '550e8400-e29b-41d4-a716-446655440000' not found.",
   "instance": "/api/v1/targets/550e8400-e29b-41d4-a716-446655440000"

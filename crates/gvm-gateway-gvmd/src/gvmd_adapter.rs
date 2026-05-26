@@ -104,7 +104,7 @@ impl GvmdAdapter {
             .map_err(|_| GatewayError::BackendUnavailable("session store unavailable".to_string()))?
             .get(session_token)
             .cloned()
-            .ok_or_else(|| GatewayError::Unauthorized("missing gvmd session".to_string()))
+            .ok_or_else(|| GatewayError::SessionInvalidated("missing gvmd session".to_string()))
     }
 }
 
@@ -1037,7 +1037,7 @@ mod tests {
     fn gvmd_adapter_session_client_fails_without_session() {
         let adapter = GvmdAdapter::unix_socket("/tmp/nonexistent.sock");
         let result = adapter.session_client("missing-token");
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+        assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
     }
 
     mod integration {
@@ -1319,7 +1319,7 @@ mod tests {
                 )
                 .await;
 
-            assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+            assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 
             server.shutdown().await;
         }

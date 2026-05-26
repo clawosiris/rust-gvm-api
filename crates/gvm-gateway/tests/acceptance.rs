@@ -1095,8 +1095,9 @@ async fn problem_details_shape_on_error() {
     let json = response.json::<serde_json::Value>().await.unwrap();
     assert_eq!(
         json["type"],
-        serde_json::json!("urn:gvm-gateway:problem:bad-gateway")
+        serde_json::json!("https://gvm-gateway.greenbone.net/errors/bad-gateway")
     );
+    assert_eq!(json["code"], serde_json::json!("backend_unavailable"));
     assert_eq!(json["title"], serde_json::json!("Bad Gateway"));
     assert_eq!(json["status"], serde_json::json!(502));
     assert_eq!(json["detail"], serde_json::json!("backend offline"));
@@ -1119,8 +1120,9 @@ async fn not_found_route_returns_404_problem() {
     let json = response.json::<serde_json::Value>().await.unwrap();
     assert_eq!(
         json["type"],
-        serde_json::json!("urn:gvm-gateway:problem:not-found")
+        serde_json::json!("https://gvm-gateway.greenbone.net/errors/not-found")
     );
+    assert_eq!(json["code"], serde_json::json!("not_found"));
     assert_eq!(json["title"], serde_json::json!("Not Found"));
     assert_eq!(json["status"], serde_json::json!(404));
     assert_eq!(json["instance"], serde_json::json!("/does-not-exist"));
@@ -2011,10 +2013,11 @@ async fn assert_problem_status(response: reqwest::Response, status: StatusCode) 
     );
     let json = response.json::<serde_json::Value>().await.unwrap();
     assert_eq!(json["status"], serde_json::json!(status.as_u16()));
+    assert!(json["code"].as_str().is_some());
     assert!(json["type"]
         .as_str()
         .unwrap()
-        .starts_with("urn:gvm-gateway:problem:"));
+        .starts_with("https://gvm-gateway.greenbone.net/errors/"));
 }
 
 fn assert_security_headers(response: &reqwest::Response) {

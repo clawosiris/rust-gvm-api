@@ -15,6 +15,7 @@ use axum::{
     http::{header, HeaderValue},
     response::{IntoResponse, Response},
 };
+use gvm_gateway_domain::GatewayError;
 use serde::Deserialize;
 
 use crate::error::RestError;
@@ -125,8 +126,10 @@ pub(crate) fn is_rate_limited_path(path: &str) -> bool {
 }
 
 pub(crate) fn too_many_requests_response(instance: &str, retry_after_secs: u64) -> Response {
-    let mut response = RestError::too_many_requests(
-        format!("rate limit exceeded; retry after {retry_after_secs} seconds"),
+    let mut response = RestError::from_gateway_error(
+        GatewayError::TooManyRequests(format!(
+            "rate limit exceeded; retry after {retry_after_secs} seconds"
+        )),
         instance.to_string(),
     )
     .into_response();

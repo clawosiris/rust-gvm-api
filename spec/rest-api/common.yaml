@@ -182,6 +182,7 @@ components:
         Error response following RFC 9457 (Problem Details for HTTP APIs).
       required:
         - type
+        - code
         - title
         - status
       properties:
@@ -191,7 +192,12 @@ components:
           description: |
             A URI reference that identifies the problem type.
           examples:
-            - "urn:ietf:rfc:9457:not-found"
+            - "https://gvm-gateway.greenbone.net/errors/not-found"
+        code:
+          type: string
+          description: Stable machine-readable problem identity.
+          examples:
+            - "not_found"
         title:
           type: string
           description: Short human-readable summary of the problem type.

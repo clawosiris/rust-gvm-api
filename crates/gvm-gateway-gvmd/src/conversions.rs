@@ -213,11 +213,15 @@ pub(crate) fn map_gvm_error(error: gvm_client::GvmError) -> GatewayError {
             message,
         } => GatewayError::Unauthorized(message),
         gvm_client::GvmError::Server {
+            status: 403,
+            message,
+        } => GatewayError::Forbidden(message),
+        gvm_client::GvmError::Server {
             status: 404,
             message,
         } => GatewayError::NotFound(message),
         gvm_client::GvmError::Timeout(duration) => {
-            GatewayError::BackendUnavailable(format!("gvmd timeout after {duration:?}"))
+            GatewayError::GatewayTimeout(format!("gvmd timeout after {duration:?}"))
         }
         other => GatewayError::BackendUnavailable(other.to_string()),
     }
@@ -237,6 +241,10 @@ pub(crate) fn map_parse_error(error: gvm_gmp::responses::ParseError) -> GatewayE
             status: 401,
             message,
         } => GatewayError::Unauthorized(message),
+        gvm_gmp::responses::ParseError::ServerError {
+            status: 403,
+            message,
+        } => GatewayError::Forbidden(message),
         other => GatewayError::BackendUnavailable(other.to_string()),
     }
 }
@@ -365,6 +373,16 @@ mod tests {
     }
 
     #[test]
+    fn map_gvm_error_403_to_forbidden() {
+        let error = gvm_client::GvmError::Server {
+            status: 403,
+            message: "forbidden".to_string(),
+        };
+        let mapped = map_gvm_error(error);
+        assert!(matches!(mapped, GatewayError::Forbidden(_)));
+    }
+
+    #[test]
     fn map_gvm_error_404_to_not_found() {
         let error = gvm_client::GvmError::Server {
             status: 404,
@@ -372,6 +390,13 @@ mod tests {
         };
         let mapped = map_gvm_error(error);
         assert!(matches!(mapped, GatewayError::NotFound(_)));
+    }
+
+    #[test]
+    fn map_gvm_error_timeout_to_gateway_timeout() {
+        let error = gvm_client::GvmError::Timeout(std::time::Duration::from_secs(5));
+        let mapped = map_gvm_error(error);
+        assert!(matches!(mapped, GatewayError::GatewayTimeout(_)));
     }
 
     #[test]
@@ -392,6 +417,16 @@ mod tests {
         };
         let mapped = map_parse_error(error);
         assert!(matches!(mapped, GatewayError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn map_parse_error_403_to_forbidden() {
+        let error = gvm_gmp::responses::ParseError::ServerError {
+            status: 403,
+            message: "forbidden".to_string(),
+        };
+        let mapped = map_parse_error(error);
+        assert!(matches!(mapped, GatewayError::Forbidden(_)));
     }
 
     #[test]

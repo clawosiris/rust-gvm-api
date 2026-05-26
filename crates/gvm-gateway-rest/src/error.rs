@@ -8,14 +8,18 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use gvm_gateway_domain::GatewayError;
+use gvm_gateway_domain::{GatewayError, GatewayErrorCode};
 use serde::Serialize;
+
+const PROBLEM_TYPE_BASE_URL: &str = "https://gvm-gateway.greenbone.net/errors";
 
 /// RFC 9457 problem details payload.
 #[derive(Debug, Serialize)]
 pub struct ProblemDetails {
     /// Problem type URI.
     pub r#type: String,
+    /// Stable machine-readable error identity.
+    pub code: String,
     /// Human-readable summary.
     pub title: String,
     /// HTTP status code.
@@ -37,126 +41,95 @@ pub struct RestError {
 impl RestError {
     /// Builds a REST error from a domain error.
     pub fn from_gateway_error(error: GatewayError, instance: impl Into<String>) -> Self {
-        let instance = Some(instance.into());
-
-        match error {
-            GatewayError::BackendUnavailable(detail) => Self {
-                status: StatusCode::BAD_GATEWAY,
-                problem: ProblemDetails {
-                    r#type: "urn:gvm-gateway:problem:bad-gateway".to_string(),
-                    title: "Bad Gateway".to_string(),
-                    status: StatusCode::BAD_GATEWAY.as_u16(),
-                    detail: Some(detail),
-                    instance,
-                },
-            },
-            GatewayError::NotFound(detail) => Self {
-                status: StatusCode::NOT_FOUND,
-                problem: ProblemDetails {
-                    r#type: "urn:gvm-gateway:problem:not-found".to_string(),
-                    title: "Not Found".to_string(),
-                    status: StatusCode::NOT_FOUND.as_u16(),
-                    detail: Some(detail),
-                    instance,
-                },
-            },
-            GatewayError::InvalidInput(detail) => Self {
-                status: StatusCode::BAD_REQUEST,
-                problem: ProblemDetails {
-                    r#type: "urn:gvm-gateway:problem:bad-request".to_string(),
-                    title: "Bad Request".to_string(),
-                    status: StatusCode::BAD_REQUEST.as_u16(),
-                    detail: Some(detail),
-                    instance,
-                },
-            },
-            GatewayError::Unauthorized(detail) => Self {
-                status: StatusCode::UNAUTHORIZED,
-                problem: ProblemDetails {
-                    r#type: "urn:gvm-gateway:problem:unauthorized".to_string(),
-                    title: "Unauthorized".to_string(),
-                    status: StatusCode::UNAUTHORIZED.as_u16(),
-                    detail: Some(detail),
-                    instance,
-                },
-            },
-            GatewayError::Conflict(detail) => Self {
-                status: StatusCode::CONFLICT,
-                problem: ProblemDetails {
-                    r#type: "urn:gvm-gateway:problem:conflict".to_string(),
-                    title: "Conflict".to_string(),
-                    status: StatusCode::CONFLICT.as_u16(),
-                    detail: Some(detail),
-                    instance,
-                },
-            },
-            GatewayError::GatewayTimeout(detail) => Self {
-                status: StatusCode::GATEWAY_TIMEOUT,
-                problem: ProblemDetails {
-                    r#type: "urn:gvm-gateway:problem:gateway-timeout".to_string(),
-                    title: "Gateway Timeout".to_string(),
-                    status: StatusCode::GATEWAY_TIMEOUT.as_u16(),
-                    detail: Some(detail),
-                    instance,
-                },
-            },
-        }
+        let status = status_for_gateway_error(&error);
+        Self::from_parts(
+            error.code(),
+            title_for_code(error.code()),
+            status,
+            Some(error.detail().to_string()),
+            Some(instance.into()),
+        )
     }
 
     /// Builds a problem-details 404 for an unknown route.
     pub fn not_found(instance: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::NOT_FOUND,
-            problem: ProblemDetails {
-                r#type: "urn:gvm-gateway:problem:not-found".to_string(),
-                title: "Not Found".to_string(),
-                status: StatusCode::NOT_FOUND.as_u16(),
-                detail: Some("The requested route does not exist.".to_string()),
-                instance: Some(instance.into()),
-            },
-        }
+        Self::from_parts(
+            GatewayErrorCode::NotFound,
+            title_for_code(GatewayErrorCode::NotFound),
+            StatusCode::NOT_FOUND,
+            Some("The requested route does not exist.".to_string()),
+            Some(instance.into()),
+        )
     }
 
     /// Builds a 405 problem details response.
     pub fn method_not_allowed(instance: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::METHOD_NOT_ALLOWED,
-            problem: ProblemDetails {
-                r#type: "urn:gvm-gateway:problem:method-not-allowed".to_string(),
-                title: "Method Not Allowed".to_string(),
-                status: StatusCode::METHOD_NOT_ALLOWED.as_u16(),
-                detail: Some(
-                    "The requested HTTP method is not allowed for this route.".to_string(),
-                ),
-                instance: Some(instance.into()),
-            },
-        }
+        Self::from_custom_parts(
+            "method-not-allowed",
+            "method_not_allowed",
+            "Method Not Allowed",
+            StatusCode::METHOD_NOT_ALLOWED,
+            Some("The requested HTTP method is not allowed for this route.".to_string()),
+            Some(instance.into()),
+        )
     }
 
     /// Builds a 403 problem details response.
     pub fn forbidden(detail: impl Into<String>, instance: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::FORBIDDEN,
-            problem: ProblemDetails {
-                r#type: "urn:gvm-gateway:problem:forbidden".to_string(),
-                title: "Forbidden".to_string(),
-                status: StatusCode::FORBIDDEN.as_u16(),
-                detail: Some(detail.into()),
-                instance: Some(instance.into()),
-            },
-        }
+        Self::from_parts(
+            GatewayErrorCode::Forbidden,
+            title_for_code(GatewayErrorCode::Forbidden),
+            StatusCode::FORBIDDEN,
+            Some(detail.into()),
+            Some(instance.into()),
+        )
     }
 
     /// Builds a 429 problem details response.
     pub fn too_many_requests(detail: impl Into<String>, instance: impl Into<String>) -> Self {
+        Self::from_parts(
+            GatewayErrorCode::TooManyRequests,
+            title_for_code(GatewayErrorCode::TooManyRequests),
+            StatusCode::TOO_MANY_REQUESTS,
+            Some(detail.into()),
+            Some(instance.into()),
+        )
+    }
+
+    fn from_parts(
+        code: GatewayErrorCode,
+        title: &'static str,
+        status: StatusCode,
+        detail: Option<String>,
+        instance: Option<String>,
+    ) -> Self {
+        Self::from_custom_parts(
+            code.problem_slug(),
+            code.as_str(),
+            title,
+            status,
+            detail,
+            instance,
+        )
+    }
+
+    fn from_custom_parts(
+        slug: &str,
+        code: &str,
+        title: &'static str,
+        status: StatusCode,
+        detail: Option<String>,
+        instance: Option<String>,
+    ) -> Self {
         Self {
-            status: StatusCode::TOO_MANY_REQUESTS,
+            status,
             problem: ProblemDetails {
-                r#type: "urn:gvm-gateway:problem:too-many-requests".to_string(),
-                title: "Too Many Requests".to_string(),
-                status: StatusCode::TOO_MANY_REQUESTS.as_u16(),
-                detail: Some(detail.into()),
-                instance: Some(instance.into()),
+                r#type: format!("{PROBLEM_TYPE_BASE_URL}/{slug}"),
+                code: code.to_string(),
+                title: title.to_string(),
+                status: status.as_u16(),
+                detail,
+                instance,
             },
         }
     }
@@ -170,5 +143,72 @@ impl IntoResponse for RestError {
             Json(self.problem),
         )
             .into_response()
+    }
+}
+
+fn status_for_gateway_error(error: &GatewayError) -> StatusCode {
+    match error {
+        GatewayError::BackendUnavailable(_) => StatusCode::BAD_GATEWAY,
+        GatewayError::NotFound(_) => StatusCode::NOT_FOUND,
+        GatewayError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+        GatewayError::Unauthorized(_)
+        | GatewayError::SessionExpired(_)
+        | GatewayError::SessionInvalidated(_) => StatusCode::UNAUTHORIZED,
+        GatewayError::Forbidden(_) => StatusCode::FORBIDDEN,
+        GatewayError::Conflict(_) => StatusCode::CONFLICT,
+        GatewayError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
+        GatewayError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        GatewayError::GatewayTimeout(_) => StatusCode::GATEWAY_TIMEOUT,
+    }
+}
+
+fn title_for_code(code: GatewayErrorCode) -> &'static str {
+    match code {
+        GatewayErrorCode::BackendUnavailable => "Bad Gateway",
+        GatewayErrorCode::NotFound => "Not Found",
+        GatewayErrorCode::BadRequest => "Bad Request",
+        GatewayErrorCode::Unauthorized => "Unauthorized",
+        GatewayErrorCode::SessionExpired => "Session Expired",
+        GatewayErrorCode::SessionInvalidated => "Session Invalidated",
+        GatewayErrorCode::Forbidden => "Forbidden",
+        GatewayErrorCode::Conflict => "Conflict",
+        GatewayErrorCode::TooManyRequests => "Too Many Requests",
+        GatewayErrorCode::InternalServerError => "Internal Server Error",
+        GatewayErrorCode::GatewayTimeout => "Gateway Timeout",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_expired_problem_uses_https_type_and_public_code() {
+        let error = RestError::from_gateway_error(
+            GatewayError::SessionExpired("session expired".to_string()),
+            "/api/v1/targets",
+        );
+
+        assert_eq!(error.status, StatusCode::UNAUTHORIZED);
+        let json = serde_json::to_value(&error.problem).unwrap();
+        assert_eq!(
+            json["type"],
+            serde_json::json!("https://gvm-gateway.greenbone.net/errors/session-expired")
+        );
+        assert_eq!(json["code"], serde_json::json!("session_expired"));
+        assert_eq!(json["title"], serde_json::json!("Session Expired"));
+    }
+
+    #[test]
+    fn route_not_found_problem_uses_public_code() {
+        let error = RestError::not_found("/does-not-exist");
+
+        assert_eq!(error.status, StatusCode::NOT_FOUND);
+        let json = serde_json::to_value(&error.problem).unwrap();
+        assert_eq!(json["code"], serde_json::json!("not_found"));
+        assert_eq!(
+            json["type"],
+            serde_json::json!("https://gvm-gateway.greenbone.net/errors/not-found")
+        );
     }
 }

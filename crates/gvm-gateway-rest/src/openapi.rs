@@ -407,11 +407,14 @@ fn ensure_problem_detail_schema(document: &mut Value) {
         "ProblemDetail".to_string(),
         json!({
             "type": "object",
-            "required": ["type", "title", "status"],
+            "required": ["type", "code", "title", "status"],
             "properties": {
                 "type": {
                     "type": "string",
                     "format": "uri"
+                },
+                "code": {
+                    "type": "string"
                 },
                 "title": {
                     "type": "string"
@@ -651,6 +654,7 @@ pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
 pub(crate) struct ProblemDetailDoc {
     #[serde(rename = "type")]
     r#type: String,
+    code: String,
     title: String,
     status: u16,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -662,7 +666,8 @@ pub(crate) struct ProblemDetailDoc {
 impl ProblemDetailDoc {
     fn example() -> Self {
         Self {
-            r#type: "urn:gvm-gateway:problem:bad-request".to_string(),
+            r#type: "https://gvm-gateway.greenbone.net/errors/bad-request".to_string(),
+            code: "bad_request".to_string(),
             title: "Bad Request".to_string(),
             status: 400,
             detail: Some("request validation failed".to_string()),

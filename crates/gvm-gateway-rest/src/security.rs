@@ -139,8 +139,8 @@ fn cors_preflight_response(
     instance: &str,
 ) -> Response {
     let Some(origin) = allowed_origin(config, headers) else {
-        let mut response = RestError::forbidden(
-            "CORS origin is not allowed".to_string(),
+        let mut response = RestError::from_gateway_error(
+            GatewayError::Forbidden("CORS origin is not allowed".to_string()),
             instance.to_string(),
         )
         .into_response();

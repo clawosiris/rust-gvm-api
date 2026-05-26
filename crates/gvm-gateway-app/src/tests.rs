@@ -67,7 +67,7 @@ async fn service_list_targets_requires_valid_session() {
     let result = service
         .list_targets("invalid-token", TargetQuery::default())
         .await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Target listing succeeds after a valid session is created.
@@ -100,7 +100,7 @@ async fn service_create_target_requires_valid_session() {
         snmp_credential_id: None,
     };
     let result = service.create_target("invalid-token", input).await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Target fetch rejects unknown session tokens before hitting the port.
@@ -108,7 +108,7 @@ async fn service_create_target_requires_valid_session() {
 async fn service_get_target_requires_valid_session() {
     let service = create_test_service();
     let result = service.get_target("invalid-token", "some-id").await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Target modification rejects unknown session tokens before hitting the port.
@@ -118,7 +118,7 @@ async fn service_modify_target_requires_valid_session() {
     let result = service
         .modify_target("invalid-token", "some-id", ModifyTargetInput::default())
         .await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Target deletion rejects unknown session tokens before hitting the port.
@@ -126,7 +126,7 @@ async fn service_modify_target_requires_valid_session() {
 async fn service_delete_target_requires_valid_session() {
     let service = create_test_service();
     let result = service.delete_target("invalid-token", "some-id").await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Expired sessions are rejected consistently by target operations.
@@ -139,7 +139,7 @@ async fn service_operations_fail_with_expired_session() {
     let result = service
         .list_targets(&session.token, TargetQuery::default())
         .await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionExpired(_))));
 }
 
 /// Report listing rejects unknown session tokens before hitting the port.
@@ -149,7 +149,7 @@ async fn service_list_reports_requires_valid_session() {
     let result = service
         .list_reports("invalid-token", ReportQuery::default())
         .await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Report listing succeeds after a valid session is created.
@@ -170,7 +170,7 @@ async fn service_get_report_requires_valid_session() {
     let result = service
         .get_report("invalid-token", "some-id", GetReportOpts::default())
         .await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Report deletion rejects unknown session tokens before hitting the port.
@@ -178,7 +178,7 @@ async fn service_get_report_requires_valid_session() {
 async fn service_delete_report_requires_valid_session() {
     let service = create_test_service();
     let result = service.delete_report("invalid-token", "some-id").await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Result listing rejects unknown session tokens before hitting the port.
@@ -188,7 +188,7 @@ async fn service_list_results_requires_valid_session() {
     let result = service
         .list_results("invalid-token", ResultQuery::default())
         .await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Result listing succeeds after a valid session is created.
@@ -207,7 +207,7 @@ async fn service_list_results_with_valid_session() {
 async fn service_get_result_requires_valid_session() {
     let service = create_test_service();
     let result = service.get_result("invalid-token", "some-id").await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
 /// Expired sessions are rejected consistently by report operations.
@@ -220,7 +220,7 @@ async fn service_report_operations_fail_with_expired_session() {
     let result = service
         .list_reports(&session.token, ReportQuery::default())
         .await;
-    assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+    assert!(matches!(result, Err(GatewayError::SessionExpired(_))));
 }
 
 /// Audit logs record auth failures without leaking credentials or raw session tokens.
