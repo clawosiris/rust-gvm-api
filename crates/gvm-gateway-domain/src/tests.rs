@@ -16,11 +16,31 @@ fn gateway_error_variants_distinguishable() {
     let not_found = GatewayError::NotFound("missing".to_string());
     let invalid = GatewayError::InvalidInput("bad".to_string());
     let unauth = GatewayError::Unauthorized("denied".to_string());
+    let expired = GatewayError::SessionExpired("expired".to_string());
+    let invalidated = GatewayError::SessionInvalidated("missing".to_string());
+    let forbidden = GatewayError::Forbidden("forbidden".to_string());
+    let limited = GatewayError::TooManyRequests("slow down".to_string());
+    let internal = GatewayError::Internal("boom".to_string());
 
     assert!(matches!(backend, GatewayError::BackendUnavailable(_)));
     assert!(matches!(not_found, GatewayError::NotFound(_)));
     assert!(matches!(invalid, GatewayError::InvalidInput(_)));
     assert!(matches!(unauth, GatewayError::Unauthorized(_)));
+    assert!(matches!(expired, GatewayError::SessionExpired(_)));
+    assert!(matches!(invalidated, GatewayError::SessionInvalidated(_)));
+    assert!(matches!(forbidden, GatewayError::Forbidden(_)));
+    assert!(matches!(limited, GatewayError::TooManyRequests(_)));
+    assert!(matches!(internal, GatewayError::Internal(_)));
+}
+
+/// Shared errors expose stable public code and slug identity.
+#[test]
+fn gateway_error_identity_is_stable() {
+    let error = GatewayError::SessionExpired("expired".to_string());
+
+    assert_eq!(error.code().as_str(), "session_expired");
+    assert_eq!(error.problem_slug(), "session-expired");
+    assert_eq!(error.detail(), "expired");
 }
 
 // ------------------------------------------------------------------------

@@ -72,12 +72,8 @@ impl GatewayService {
             Ok(session) => Ok(session),
             Err(err) => {
                 let reason = match &err {
-                    GatewayError::Unauthorized(message) if message.contains("expired") => {
-                        "session.expired"
-                    }
-                    GatewayError::Unauthorized(message) if message.contains("missing") => {
-                        "session.invalidated"
-                    }
+                    GatewayError::SessionExpired(_) => "session.expired",
+                    GatewayError::SessionInvalidated(_) => "session.invalidated",
                     _ => "session.lookup_failed",
                 };
                 emit_audit_event(
@@ -194,10 +190,13 @@ fn error_category(error: &GatewayError) -> &'static str {
         GatewayError::BackendUnavailable(_) => "backend_unavailable",
         GatewayError::NotFound(_) => "not_found",
         GatewayError::InvalidInput(_) => "invalid_input",
-        GatewayError::Unauthorized(message) if message.contains("expired") => "session_expired",
-        GatewayError::Unauthorized(message) if message.contains("missing") => "session_invalidated",
         GatewayError::Unauthorized(_) => "unauthorized",
+        GatewayError::SessionExpired(_) => "session_expired",
+        GatewayError::SessionInvalidated(_) => "session_invalidated",
+        GatewayError::Forbidden(_) => "forbidden",
         GatewayError::Conflict(_) => "conflict",
+        GatewayError::TooManyRequests(_) => "too_many_requests",
+        GatewayError::Internal(_) => "internal_server_error",
         GatewayError::GatewayTimeout(_) => "gateway_timeout",
     }
 }

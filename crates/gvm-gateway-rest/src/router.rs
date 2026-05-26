@@ -14,15 +14,13 @@ use aide::{
 };
 use axum::{
     extract::{Extension, OriginalUri, Request},
-    http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, patch},
     Router,
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::GatewayError;
 use serde_json::Value;
 
 use crate::{
@@ -39,6 +37,7 @@ use crate::{
         update_scan_config, update_scan_config_docs,
     },
     scanners::{get_scanner, get_scanner_docs, list_scanners, list_scanners_docs},
+    security::{request_scoped_basic_auth_middleware, security_middleware, SecurityRuntime},
     sessions::{
         create_session, create_session_docs, delete_session, delete_session_docs, get_session,
         get_session_docs,
@@ -55,12 +54,21 @@ use crate::{
     },
 };
 
+pub use crate::rate_limit::RateLimitConfig;
+pub use crate::security::RestSecurityConfig;
+
 /// Builds the gateway router.
 pub fn build_router(state: GatewayService) -> Router {
+    build_router_with_security(state, RestSecurityConfig::default())
+}
+
+/// Builds the gateway router with explicit REST security middleware config.
+pub fn build_router_with_security(state: GatewayService, security: RestSecurityConfig) -> Router {
     let openapi = build_openapi();
     let openapi_json =
         Arc::new(serde_json::to_string_pretty(&openapi).expect("generated OpenAPI must serialize"));
     let request_scoped_auth_state = state.clone();
+    let security_state = Arc::new(SecurityRuntime::new(security));
 
     documented_router()
         .route("/api/v1/openapi.json", get(serve_openapi))
@@ -70,6 +78,10 @@ pub fn build_router(state: GatewayService) -> Router {
             request_scoped_basic_auth_middleware,
         ))
         .layer(middleware::from_fn(trace_context_middleware))
+        .layer(middleware::from_fn_with_state(
+            security_state,
+            security_middleware,
+        ))
         .with_state(state)
         .layer(Extension(openapi_json))
         .into()
@@ -230,123 +242,6 @@ async fn trace_context_middleware(mut request: Request, next: Next) -> Response 
     let mut response = next.run(request).await;
     apply_trace_headers(response.headers_mut(), &trace_headers);
     response
-}
-
-async fn request_scoped_basic_auth_middleware(
-    service: axum::extract::State<GatewayService>,
-    mut request: Request,
-    next: Next,
-) -> Response {
-    if !uses_request_scoped_basic_auth(&request) {
-        return next.run(request).await;
-    }
-
-    let instance = request.uri().path().to_string();
-    let (username, password) = match basic_credentials(request.headers()) {
-        Ok(credentials) => credentials,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    let created = match service.create_session(&username, &password).await {
-        Ok(created) => created,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let token = created.token;
-
-    let bearer = match HeaderValue::from_str(&format!("Bearer {token}")) {
-        Ok(value) => value,
-        Err(_) => {
-            let _ = service.delete_session(&token).await;
-            return RestError::from_gateway_error(
-                GatewayError::BackendUnavailable("failed to prepare request-scoped session".into()),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    request.headers_mut().insert(header::AUTHORIZATION, bearer);
-
-    let response = next.run(request).await;
-    let response_was_successful = response.status().is_success();
-    match service.delete_session(&token).await {
-        Ok(()) => response,
-        Err(error) if response_was_successful => {
-            RestError::from_gateway_error(error, instance).into_response()
-        }
-        Err(_error) => response,
-    }
-}
-
-fn uses_request_scoped_basic_auth(request: &Request) -> bool {
-    if is_basic_auth(request.headers()).is_none() {
-        return false;
-    }
-
-    let path = request.uri().path();
-    if matches!(
-        path,
-        "/health" | "/ready" | "/api/v1/version" | "/api/v1/openapi.json"
-    ) {
-        return false;
-    }
-
-    // Keep the explicit session lifecycle contract unchanged: POST /sessions
-    // uses Basic credentials to create a persistent bearer session, while
-    // session inspection/deletion continue to operate on their path token.
-    if (path == "/api/v1/sessions" && request.method() == Method::POST)
-        || path.starts_with("/api/v1/sessions/")
-    {
-        return false;
-    }
-
-    is_protected_resource_path(path)
-}
-
-fn is_protected_resource_path(path: &str) -> bool {
-    [
-        "/api/v1/targets",
-        "/api/v1/tasks",
-        "/api/v1/reports",
-        "/api/v1/results",
-        "/api/v1/scan-configs",
-        "/api/v1/scanners",
-    ]
-    .iter()
-    .any(|prefix| {
-        path == *prefix
-            || path
-                .strip_prefix(prefix)
-                .is_some_and(|rest| rest.starts_with('/'))
-    })
-}
-
-fn is_basic_auth(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Basic "))
-}
-
-fn basic_credentials(headers: &HeaderMap) -> Result<(String, String), GatewayError> {
-    let encoded = is_basic_auth(headers)
-        .ok_or_else(|| GatewayError::Unauthorized("expected Basic authentication".to_string()))?;
-
-    let decoded = BASE64
-        .decode(encoded)
-        .map_err(|_| GatewayError::Unauthorized("invalid Base64 in credentials".to_string()))?;
-    let decoded_str = String::from_utf8(decoded)
-        .map_err(|_| GatewayError::Unauthorized("invalid UTF-8 in credentials".to_string()))?;
-    let (username, password) = decoded_str
-        .split_once(':')
-        .ok_or_else(|| GatewayError::Unauthorized("malformed Basic credentials".to_string()))?;
-
-    if username.is_empty() {
-        return Err(GatewayError::Unauthorized(
-            "username must not be empty".to_string(),
-        ));
-    }
-
-    Ok((username.to_string(), password.to_string()))
 }
 
 #[derive(Clone, Default)]
