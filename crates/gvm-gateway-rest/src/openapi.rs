@@ -228,6 +228,11 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
             }
         }),
     );
+
+    for path in ["/sessions", "/targets", "/tasks", "/scan-configs"] {
+        add_location_header_to_created_response(&mut normalized_paths, path);
+    }
+
     document["paths"] = Value::Object(normalized_paths);
 
     for (path, method) in [
@@ -564,6 +569,23 @@ fn copy_path(
 ) {
     if let Some(path_item) = source_paths.get(source) {
         normalized_paths.insert(target.to_string(), path_item.clone());
+    }
+}
+
+fn add_location_header_to_created_response(normalized_paths: &mut Map<String, Value>, path: &str) {
+    if let Some(response) = normalized_paths
+        .get_mut(path)
+        .and_then(|path_item| path_item.get_mut("post"))
+        .and_then(|operation| operation.get_mut("responses"))
+        .and_then(|responses| responses.get_mut("201"))
+    {
+        response["headers"]["Location"] = json!({
+            "description": "Canonical URI of the created resource.",
+            "schema": {
+                "type": "string",
+                "format": "uri-reference"
+            }
+        });
     }
 }
 

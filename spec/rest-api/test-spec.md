@@ -121,6 +121,7 @@ async fn test_server() -> TestServer {
 | `list_targets_empty` | `GET /api/v1/targets` | No targets | 200, empty `data[]`, pagination |
 | `list_targets_paginated` | `GET /api/v1/targets?page=2&per_page=10` | 25 targets | 200, 10 items, correct pagination |
 | `create_target` | `POST /api/v1/targets` + body | — | 201, target with ID |
+| `create_target_location_header` | `POST /api/v1/targets` + body | — | 201 + `Location: /api/v1/targets/{id}` |
 | `create_target_missing_name` | `POST /api/v1/targets` (no name) | — | 400, RFC 9457 |
 | `get_target` | `GET /api/v1/targets/{id}` | Target exists | 200, full target |
 | `get_target_not_found` | `GET /api/v1/targets/{bad-id}` | — | 404 |
@@ -133,6 +134,7 @@ async fn test_server() -> TestServer {
 | Test | Request | Setup | Expected |
 |------|---------|-------|----------|
 | `create_task` | `POST /api/v1/tasks` | Target + config exist | 201 |
+| `create_task_location_header` | `POST /api/v1/tasks` | Target + config exist | 201 + `Location: /api/v1/tasks/{id}` |
 | `start_task` | `POST /api/v1/tasks/{id}/start` | Task exists | 200, report_id |
 | `stop_running_task` | `POST /api/v1/tasks/{id}/stop` | Task running | 200 |
 | `stop_idle_task` | `POST /api/v1/tasks/{id}/stop` | Task not running | 409 |
@@ -152,6 +154,7 @@ async fn test_server() -> TestServer {
 | Test | Request | Expected |
 |------|---------|----------|
 | `create_session_valid_credentials` | `POST /api/v1/sessions` + valid Basic auth | 201, session token + metadata |
+| `create_session_location_header` | `POST /api/v1/sessions` + valid Basic auth | 201 + `Location: /api/v1/sessions/{token}` |
 | `create_session_invalid_credentials` | `POST /api/v1/sessions` + bad Basic auth | 401 |
 | `get_session_valid_token` | `GET /api/v1/sessions/{token}` | 200, session details |
 | `delete_session_valid_token` | `DELETE /api/v1/sessions/{token}` | 204 |
@@ -169,7 +172,21 @@ async fn test_server() -> TestServer {
 | `all_routes_documented` | Every registered route appears in the spec |
 | `response_matches_schema` | Actual responses validate against declared schemas |
 
-### 3.8 Cross-Cutting
+### 3.8 REST Level 2 Conformance
+
+| Test | Scope |
+|------|-------|
+| `create_target_location_header` | Resource creation returns `201 Created` + canonical `Location` |
+| `create_task_location_header` | Resource creation returns `201 Created` + canonical `Location` |
+| `create_scan_config_location_header` | Resource creation returns `201 Created` + canonical `Location` |
+| `create_session_location_header` | Session creation returns `201 Created` + canonical `Location` |
+| `method_not_allowed` | Unsupported method on a published resource returns `405` |
+| `not_found_route` | Unknown route returns `404` |
+| `stop_idle_task` | Illegal action transition returns `409` |
+| `content_type_problem_json` | Problem responses use `application/problem+json` |
+| `generated_openapi_endpoint_exposes_implemented_contract` | Generated OpenAPI stays aligned with curated path/method/response/header contract |
+
+### 3.9 Cross-Cutting
 
 | Test | Scope |
 |------|-------|

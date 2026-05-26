@@ -158,11 +158,17 @@ async fn create_session_valid_credentials() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    let json = response.json::<serde_json::Value>().await.unwrap();
-    assert!(json["sessionToken"]
-        .as_str()
+    let location = response
+        .headers()
+        .get(reqwest::header::LOCATION)
         .unwrap()
-        .starts_with("gvm_sess_"));
+        .to_str()
+        .unwrap()
+        .to_string();
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    let token = json["sessionToken"].as_str().unwrap();
+    assert!(token.starts_with("gvm_sess_"));
+    assert_eq!(location, format!("/api/v1/sessions/{token}"));
     assert_eq!(json["expiresIn"], 300);
     assert_eq!(json["gmpVersion"], "22.7");
 
@@ -784,6 +790,14 @@ fn compare_responses(
             generated_media_types.is_subset(&curated_media_types),
             "response content type drift for {context} {status}"
         );
+        compare_headers(
+            docs,
+            generated_response_doc,
+            generated_response.get("headers"),
+            curated_response_doc,
+            curated_response.get("headers"),
+            &format!("{context} response {status} headers"),
+        );
 
         for media_type in generated_media_types {
             compare_schema_like(
@@ -795,6 +809,59 @@ fn compare_responses(
                 &format!("{context} response {status} {media_type} schema"),
             );
         }
+    }
+}
+
+fn compare_headers(
+    docs: &SpecDocs<'_>,
+    generated_doc: DocName,
+    generated_headers: Option<&Value>,
+    curated_doc: DocName,
+    curated_headers: Option<&Value>,
+    context: &str,
+) {
+    let generated_headers = generated_headers
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let curated_headers = curated_headers
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+
+    let generated_keys = generated_headers
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let curated_keys = curated_headers
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        generated_keys.is_subset(&curated_keys),
+        "response header drift for {context}: generated={generated_keys:?}, curated={curated_keys:?}"
+    );
+
+    for key in generated_keys {
+        let (generated_header_doc, generated_header) =
+            resolve_ref(docs, generated_doc, &generated_headers[key]);
+        let (curated_header_doc, curated_header) =
+            resolve_ref(docs, curated_doc, &curated_headers[key]);
+
+        assert_required_flag(
+            generated_header.get("required"),
+            curated_header.get("required"),
+            &format!("{context} {key} required"),
+        );
+        compare_schema_like(
+            docs,
+            generated_header_doc,
+            generated_header.get("schema").unwrap_or(&Value::Null),
+            curated_header_doc,
+            curated_header.get("schema").unwrap_or(&Value::Null),
+            &format!("{context} {key} schema"),
+        );
     }
 }
 
@@ -1718,9 +1785,17 @@ async fn create_target() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
+    let location = response
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     let json = response.json::<serde_json::Value>().await.unwrap();
     let id = json["id"].as_str().unwrap();
     assert!(Uuid::parse_str(id).is_ok());
+    assert_eq!(location, format!("/api/v1/targets/{id}"));
     assert!(harness
         .server
         .command_history()
