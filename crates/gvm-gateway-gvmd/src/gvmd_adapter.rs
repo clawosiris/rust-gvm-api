@@ -6,6 +6,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    process::Command as ProcessCommand,
     sync::{Arc, Mutex},
 };
 
@@ -13,16 +14,33 @@ use async_trait::async_trait;
 use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
-    AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput, GatewayError,
-    GetReportOpts, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput, Pagination, Report,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig,
-    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
-    ScannerQuery, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage,
-    TaskPort, TaskQuery,
+    Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
+    CreatePortListInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
+    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, Feed, FeedPort,
+    GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput, ModifyPortListInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, Pagination,
+    PortList, PortListPage, PortListPort, PortListQuery, Report, ReportPage, ReportPort,
+    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
+    SchedulePage, SchedulePort, ScheduleQuery, Target, TargetPage, TargetPort, TargetQuery, Task,
+    TaskAction, TaskPage, TaskPort, TaskQuery,
 };
 use gvm_gmp::{
     commands::{
+        alerts::{
+            create_alert, delete_alert, get_alert, get_alerts, modify_alert, AlertOpts,
+            GetAlertsOpts,
+        },
         authentication::authenticate,
+        credentials::{
+            create_credential, delete_credential, get_credential, get_credentials,
+            modify_credential, CredentialOpts, GetCredentialsOpts,
+        },
+        feed::get_feeds,
+        port_lists::{
+            create_port_list, delete_port_list, get_port_list, get_port_lists, modify_port_list,
+            GetPortListsOpts, PortListOpts,
+        },
         reports::{delete_report, get_report, get_reports, GetReportsOpts},
         results::{get_result, get_results, GetResultsOpts},
         scan_configs::{
@@ -30,6 +48,10 @@ use gvm_gmp::{
             modify_scan_config, ConfigOpts, GetScanConfigsOpts,
         },
         scanners::{get_scanner, get_scanners, GetScannersOpts},
+        schedules::{
+            create_schedule, delete_schedule, get_schedule, get_schedules, modify_schedule,
+            GetSchedulesOpts, ScheduleOpts,
+        },
         targets::{
             create_target, delete_target, get_target, get_targets, modify_target, CreateTargetOpts,
             GetTargetsOpts, ModifyTargetOpts,
@@ -42,18 +64,23 @@ use gvm_gmp::{
         },
     },
     responses::{
-        ActionResponse, CreateScanConfigResponse, CreateTargetResponse, CreateTaskResponse,
+        ActionResponse, CreateAlertResponse, CreateCredentialResponse, CreatePortListResponse,
+        CreateScanConfigResponse, CreateScheduleResponse, CreateTargetResponse, CreateTaskResponse,
+        GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetPortListsResponse,
         GetReportsResponse, GetResultsResponse, GetScanConfigsResponse, GetScannersResponse,
-        GetTargetsResponse, GetTasksResponse, StartTaskResponse,
+        GetSchedulesResponse, GetTargetsResponse, GetTasksResponse, StartTaskResponse,
     },
     EntityId,
 };
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::conversions::{
-    map_gvm_error, map_parse_error, parse_alive_test, parse_entity_id, parse_hosts_ordering,
-    reject_unsupported_credentials, report_from_gmp, result_from_gmp, scan_config_from_gmp,
-    scanner_from_gmp, target_from_gmp, task_from_gmp,
+    alert_from_gmp, credential_from_gmp, feed_from_gmp, map_gvm_error, map_parse_error,
+    parse_alert_condition, parse_alert_event, parse_alert_method, parse_alive_test,
+    parse_credential_type, parse_entity_id, parse_hosts_ordering, parse_snmp_auth_algorithm,
+    parse_snmp_privacy_algorithm, port_list_from_gmp, reject_unsupported_credentials,
+    report_from_gmp, result_from_gmp, scan_config_from_gmp, scanner_from_gmp, schedule_from_gmp,
+    target_from_gmp, task_from_gmp,
 };
 
 type SharedClient = Arc<AsyncMutex<GmpClient<UnixSocketConnection>>>;
@@ -105,6 +132,677 @@ impl GvmdAdapter {
             .get(session_token)
             .cloned()
             .ok_or_else(|| GatewayError::SessionInvalidated("missing gvmd session".to_string()))
+    }
+
+    fn spawn_feed_sync(&self) -> Result<(), GatewayError> {
+        let bin = std::env::var("GVM_GATEWAY_FEED_SYNC_BIN")
+            .unwrap_or_else(|_| "greenbone-feed-sync".to_string());
+        ProcessCommand::new(bin)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| {
+                GatewayError::BackendUnavailable(format!("failed to start feed sync: {error}"))
+            })
+    }
+}
+
+#[async_trait]
+impl AlertPort for GvmdAdapter {
+    async fn list_alerts(
+        &self,
+        session_token: &str,
+        query: &AlertQuery,
+    ) -> Result<AlertPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_alerts(GetAlertsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetAlertsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(alert_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.name.cmp(&right.name));
+
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let data = items
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect::<Vec<_>>();
+
+        Ok(AlertPage {
+            data,
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+
+    async fn create_alert(
+        &self,
+        session_token: &str,
+        input: CreateAlertInput,
+    ) -> Result<String, GatewayError> {
+        if !input.event_data.is_empty()
+            || !input.condition_data.is_empty()
+            || !input.method_data.is_empty()
+        {
+            return Err(GatewayError::InvalidInput(
+                "alert eventData/conditionData/methodData are not supported by the current GMP adapter".to_string(),
+            ));
+        }
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(create_alert(
+                &input.name,
+                AlertOpts {
+                    comment: input.comment,
+                    event: input.event.as_deref().map(parse_alert_event).transpose()?,
+                    condition: input
+                        .condition
+                        .as_deref()
+                        .map(parse_alert_condition)
+                        .transpose()?,
+                    method: input
+                        .method
+                        .as_deref()
+                        .map(parse_alert_method)
+                        .transpose()?,
+                    filter_id: input
+                        .filter_id
+                        .as_deref()
+                        .map(parse_entity_id)
+                        .transpose()?,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateAlertResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_alert(&self, session_token: &str, id: &str) -> Result<Alert, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_alert(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetAlertsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(alert_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("alert {id} not found")))
+    }
+
+    async fn modify_alert(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyAlertInput,
+    ) -> Result<Alert, GatewayError> {
+        if input
+            .event_data
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+            || input
+                .condition_data
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+            || input
+                .method_data
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+        {
+            return Err(GatewayError::InvalidInput(
+                "alert eventData/conditionData/methodData are not supported by the current GMP adapter".to_string(),
+            ));
+        }
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_alert(
+                &parse_entity_id(id)?,
+                AlertOpts {
+                    comment: input.comment,
+                    event: input.event.as_deref().map(parse_alert_event).transpose()?,
+                    condition: input
+                        .condition
+                        .as_deref()
+                        .map(parse_alert_condition)
+                        .transpose()?,
+                    method: input
+                        .method
+                        .as_deref()
+                        .map(parse_alert_method)
+                        .transpose()?,
+                    filter_id: input
+                        .filter_id
+                        .as_deref()
+                        .map(parse_entity_id)
+                        .transpose()?,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        drop(client);
+        self.get_alert(session_token, id).await
+    }
+
+    async fn delete_alert(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_alert(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl SchedulePort for GvmdAdapter {
+    async fn list_schedules(
+        &self,
+        session_token: &str,
+        query: &ScheduleQuery,
+    ) -> Result<SchedulePage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_schedules(GetSchedulesOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+                tasks: None,
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetSchedulesResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(schedule_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.name.cmp(&right.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        Ok(SchedulePage {
+            data: items
+                .into_iter()
+                .skip(start)
+                .take(query.per_page as usize)
+                .collect(),
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+
+    async fn create_schedule(
+        &self,
+        session_token: &str,
+        input: CreateScheduleInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(create_schedule(
+                &input.name,
+                ScheduleOpts {
+                    comment: input.comment,
+                    icalendar: Some(input.icalendar),
+                    timezone: Some(input.timezone),
+                    name: None,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateScheduleResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_schedule(&self, session_token: &str, id: &str) -> Result<Schedule, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_schedule(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetSchedulesResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(schedule_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("schedule {id} not found")))
+    }
+
+    async fn modify_schedule(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyScheduleInput,
+    ) -> Result<Schedule, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_schedule(
+                &parse_entity_id(id)?,
+                ScheduleOpts {
+                    comment: input.comment,
+                    icalendar: input.icalendar,
+                    timezone: input.timezone,
+                    name: input.name,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        drop(client);
+        self.get_schedule(session_token, id).await
+    }
+
+    async fn delete_schedule(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_schedule(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl CredentialPort for GvmdAdapter {
+    async fn list_credentials(
+        &self,
+        session_token: &str,
+        query: &CredentialQuery,
+    ) -> Result<CredentialPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_credentials(GetCredentialsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetCredentialsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(credential_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.name.cmp(&right.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        Ok(CredentialPage {
+            data: items
+                .into_iter()
+                .skip(start)
+                .take(query.per_page as usize)
+                .collect(),
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+
+    async fn create_credential(
+        &self,
+        session_token: &str,
+        input: CreateCredentialInput,
+    ) -> Result<String, GatewayError> {
+        if input.private_key.is_some()
+            || input.certificate.is_some()
+            || input.privacy_password.is_some()
+        {
+            return Err(GatewayError::InvalidInput(
+                "privateKey, certificate, and privacyPassword are not supported by the current GMP adapter".to_string(),
+            ));
+        }
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(create_credential(
+                &input.name,
+                CredentialOpts {
+                    comment: input.comment,
+                    credential_type: Some(parse_credential_type(&input.credential_type)?),
+                    login: input.login,
+                    password: input.password.or(input.community),
+                    private_key: None,
+                    certificate: None,
+                    auth_algorithm: input
+                        .auth_algorithm
+                        .as_deref()
+                        .map(parse_snmp_auth_algorithm)
+                        .transpose()?,
+                    privacy_algorithm: input
+                        .privacy_algorithm
+                        .as_deref()
+                        .map(parse_snmp_privacy_algorithm)
+                        .transpose()?,
+                    format: None,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateCredentialResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_credential(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<Credential, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_credential(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetCredentialsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(credential_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("credential {id} not found")))
+    }
+
+    async fn modify_credential(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyCredentialInput,
+    ) -> Result<Credential, GatewayError> {
+        if input.private_key.is_some()
+            || input.certificate.is_some()
+            || input.privacy_password.is_some()
+        {
+            return Err(GatewayError::InvalidInput(
+                "privateKey, certificate, and privacyPassword are not supported by the current GMP adapter".to_string(),
+            ));
+        }
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_credential(
+                &parse_entity_id(id)?,
+                CredentialOpts {
+                    comment: input.comment,
+                    credential_type: None,
+                    login: input.login,
+                    password: input.password.or(input.community),
+                    private_key: None,
+                    certificate: None,
+                    auth_algorithm: input
+                        .auth_algorithm
+                        .as_deref()
+                        .map(parse_snmp_auth_algorithm)
+                        .transpose()?,
+                    privacy_algorithm: input
+                        .privacy_algorithm
+                        .as_deref()
+                        .map(parse_snmp_privacy_algorithm)
+                        .transpose()?,
+                    format: None,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        drop(client);
+        self.get_credential(session_token, id).await
+    }
+
+    async fn delete_credential(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_credential(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl PortListPort for GvmdAdapter {
+    async fn list_port_lists(
+        &self,
+        session_token: &str,
+        query: &PortListQuery,
+    ) -> Result<PortListPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_port_lists(GetPortListsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetPortListsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(port_list_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.name.cmp(&right.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total_pages = if total == 0 {
+            0
+        } else {
+            ((total - 1) / query.per_page) + 1
+        };
+        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        Ok(PortListPage {
+            data: items
+                .into_iter()
+                .skip(start)
+                .take(query.per_page as usize)
+                .collect(),
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total,
+                total_pages,
+            },
+        })
+    }
+
+    async fn create_port_list(
+        &self,
+        session_token: &str,
+        input: CreatePortListInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(create_port_list(
+                &input.name,
+                PortListOpts {
+                    comment: input.comment,
+                    port_range: input.port_range,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreatePortListResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_port_list(&self, session_token: &str, id: &str) -> Result<PortList, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_port_list(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetPortListsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(port_list_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("port list {id} not found")))
+    }
+
+    async fn modify_port_list(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyPortListInput,
+    ) -> Result<PortList, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_port_list(
+                &parse_entity_id(id)?,
+                PortListOpts {
+                    comment: input.comment,
+                    port_range: input.port_range,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        drop(client);
+        self.get_port_list(session_token, id).await
+    }
+
+    async fn delete_port_list(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_port_list(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl FeedPort for GvmdAdapter {
+    async fn list_feeds(&self, session_token: &str) -> Result<Vec<Feed>, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_feeds())
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetFeedsResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.items.into_iter().map(feed_from_gmp).collect())
+    }
+
+    async fn sync_feeds(&self, _session_token: &str) -> Result<(), GatewayError> {
+        self.spawn_feed_sync()
     }
 }
 

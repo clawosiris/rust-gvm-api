@@ -21,6 +21,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AlertList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
     post:
@@ -36,6 +38,9 @@ paths:
       responses:
         "201":
           description: Alert created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
           content:
             application/json:
               schema:
@@ -59,6 +64,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Alert"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":
@@ -93,6 +100,8 @@ paths:
       responses:
         "204":
           description: Alert deleted
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":

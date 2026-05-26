@@ -6,13 +6,16 @@
 //! Everything in this module is `pub(crate)` — it is an implementation detail
 //! of the gvmd adapter and not part of the crate's public API.
 
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
 use gvm_gateway_domain::{
-    CreateTargetInput, GatewayError, NvtRef, Report, ResourceRef, ResultCount, ScanConfig,
-    ScanResult, Scanner, Target, Task,
+    Alert, CreateTargetInput, Credential, Feed, GatewayError, NvtRef, PortList, Report,
+    ResourceRef, ResultCount, ScanConfig, ScanResult, Scanner, Schedule, Target, Task,
 };
-use gvm_gmp::{AliveTest, EntityId, HostsOrdering};
+use gvm_gmp::{
+    AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
+    SnmpAuthAlgorithm, SnmpPrivacyAlgorithm,
+};
 
 // ============================================================================
 // GMP → Domain Conversion Utilities
@@ -38,6 +41,88 @@ pub(crate) fn target_from_gmp(target: gvm_gmp::responses::Target) -> Target {
         snmp_credential: None,
         in_use: target.meta.in_use,
         writable: target.meta.writable,
+    }
+}
+
+pub(crate) fn alert_from_gmp(alert: gvm_gmp::responses::Alert) -> Alert {
+    Alert {
+        id: alert.meta.id.to_string(),
+        name: alert.meta.name,
+        comment: alert.meta.comment,
+        event: alert.event,
+        condition: alert.condition,
+        method: alert.method,
+        event_data: HashMap::new(),
+        condition_data: HashMap::new(),
+        method_data: HashMap::new(),
+        filter: alert.filter.map(|resource| ResourceRef {
+            id: resource.id.to_string(),
+            name: Some(resource.name),
+        }),
+        in_use: alert.meta.in_use,
+        writable: alert.meta.writable,
+    }
+}
+
+pub(crate) fn schedule_from_gmp(schedule: gvm_gmp::responses::Schedule) -> Schedule {
+    Schedule {
+        id: schedule.meta.id.to_string(),
+        name: schedule.meta.name,
+        comment: schedule.meta.comment,
+        icalendar: schedule.icalendar,
+        timezone: schedule.timezone,
+        first_run: None,
+        next_run: None,
+        duration: schedule
+            .duration
+            .and_then(|value| value.parse::<u32>().ok()),
+        in_use: schedule.meta.in_use,
+        writable: schedule.meta.writable,
+    }
+}
+
+pub(crate) fn credential_from_gmp(credential: gvm_gmp::responses::Credential) -> Credential {
+    Credential {
+        id: credential.meta.id.to_string(),
+        name: credential.meta.name,
+        comment: credential.meta.comment,
+        credential_type: credential.type_,
+        login: credential.login,
+        in_use: credential.meta.in_use,
+        writable: credential.meta.writable,
+    }
+}
+
+pub(crate) fn port_list_from_gmp(port_list: gvm_gmp::responses::PortList) -> PortList {
+    let (tcp_count, udp_count) = match (&port_list.port_range, port_list.port_count) {
+        (Some(range), Some(count)) if range.starts_with('T') => (Some(count), None),
+        (Some(range), Some(count)) if range.starts_with('U') => (None, Some(count)),
+        _ => (None, None),
+    };
+
+    PortList {
+        id: port_list.meta.id.to_string(),
+        name: port_list.meta.name,
+        comment: port_list.meta.comment,
+        port_count: port_list.port_count,
+        tcp_count,
+        udp_count,
+        port_range: port_list.port_range,
+        in_use: port_list.meta.in_use,
+        writable: port_list.meta.writable,
+    }
+}
+
+pub(crate) fn feed_from_gmp(feed: gvm_gmp::responses::Feed) -> Feed {
+    Feed {
+        feed_type: feed.type_,
+        name: feed.name,
+        version: feed.version,
+        description: feed.description,
+        currently_syncing: feed
+            .currently_syncing
+            .as_deref()
+            .is_some_and(|value| value != "0"),
     }
 }
 
@@ -196,6 +281,38 @@ pub(crate) fn parse_hosts_ordering(value: &str) -> Result<HostsOrdering, Gateway
             "invalid hostsOrdering: {value}"
         ))),
     }
+}
+
+pub(crate) fn parse_alert_event(value: &str) -> Result<AlertEvent, GatewayError> {
+    AlertEvent::from_str(value)
+        .map_err(|_| GatewayError::InvalidInput(format!("invalid event: {value}")))
+}
+
+pub(crate) fn parse_alert_condition(value: &str) -> Result<AlertCondition, GatewayError> {
+    AlertCondition::from_str(value)
+        .map_err(|_| GatewayError::InvalidInput(format!("invalid condition: {value}")))
+}
+
+pub(crate) fn parse_alert_method(value: &str) -> Result<AlertMethod, GatewayError> {
+    AlertMethod::from_str(value)
+        .map_err(|_| GatewayError::InvalidInput(format!("invalid method: {value}")))
+}
+
+pub(crate) fn parse_credential_type(value: &str) -> Result<CredentialType, GatewayError> {
+    CredentialType::from_str(value)
+        .map_err(|_| GatewayError::InvalidInput(format!("invalid credential type: {value}")))
+}
+
+pub(crate) fn parse_snmp_auth_algorithm(value: &str) -> Result<SnmpAuthAlgorithm, GatewayError> {
+    SnmpAuthAlgorithm::from_str(value)
+        .map_err(|_| GatewayError::InvalidInput(format!("invalid authAlgorithm: {value}")))
+}
+
+pub(crate) fn parse_snmp_privacy_algorithm(
+    value: &str,
+) -> Result<SnmpPrivacyAlgorithm, GatewayError> {
+    SnmpPrivacyAlgorithm::from_str(value)
+        .map_err(|_| GatewayError::InvalidInput(format!("invalid privacyAlgorithm: {value}")))
 }
 
 // ============================================================================

@@ -6,12 +6,16 @@
 
 use async_trait::async_trait;
 use gvm_gateway_domain::{
-    AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput, GatewayError,
-    GetReportOpts, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput, ReadinessStatus,
-    Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig,
-    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
-    ScannerQuery, SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
-    TaskPage, TaskPort, TaskQuery,
+    Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
+    CreatePortListInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
+    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, Feed, FeedPort,
+    GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput, ModifyPortListInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, PortList,
+    PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportPage, ReportPort,
+    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
+    SchedulePage, SchedulePort, ScheduleQuery, SystemPort, Target, TargetPage, TargetPort,
+    TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
 };
 
 /// Static adapter for system readiness and version information.
@@ -67,6 +71,142 @@ impl SystemPort for StaticGvmdAdapter {
                     .unwrap_or_else(|| "gvmd unavailable".to_string()),
             ))
         }
+    }
+}
+
+macro_rules! unsupported {
+    ($message:literal) => {
+        Err(GatewayError::BackendUnavailable($message.to_string()))
+    };
+}
+
+#[async_trait]
+impl AlertPort for StaticGvmdAdapter {
+    async fn list_alerts(&self, _: &str, _: &AlertQuery) -> Result<AlertPage, GatewayError> {
+        unsupported!("static adapter does not support alerts")
+    }
+    async fn create_alert(&self, _: &str, _: CreateAlertInput) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support alerts")
+    }
+    async fn get_alert(&self, _: &str, _: &str) -> Result<Alert, GatewayError> {
+        unsupported!("static adapter does not support alerts")
+    }
+    async fn modify_alert(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyAlertInput,
+    ) -> Result<Alert, GatewayError> {
+        unsupported!("static adapter does not support alerts")
+    }
+    async fn delete_alert(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support alerts")
+    }
+}
+
+#[async_trait]
+impl SchedulePort for StaticGvmdAdapter {
+    async fn list_schedules(
+        &self,
+        _: &str,
+        _: &ScheduleQuery,
+    ) -> Result<SchedulePage, GatewayError> {
+        unsupported!("static adapter does not support schedules")
+    }
+    async fn create_schedule(
+        &self,
+        _: &str,
+        _: CreateScheduleInput,
+    ) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support schedules")
+    }
+    async fn get_schedule(&self, _: &str, _: &str) -> Result<Schedule, GatewayError> {
+        unsupported!("static adapter does not support schedules")
+    }
+    async fn modify_schedule(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyScheduleInput,
+    ) -> Result<Schedule, GatewayError> {
+        unsupported!("static adapter does not support schedules")
+    }
+    async fn delete_schedule(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support schedules")
+    }
+}
+
+#[async_trait]
+impl CredentialPort for StaticGvmdAdapter {
+    async fn list_credentials(
+        &self,
+        _: &str,
+        _: &CredentialQuery,
+    ) -> Result<CredentialPage, GatewayError> {
+        unsupported!("static adapter does not support credentials")
+    }
+    async fn create_credential(
+        &self,
+        _: &str,
+        _: CreateCredentialInput,
+    ) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support credentials")
+    }
+    async fn get_credential(&self, _: &str, _: &str) -> Result<Credential, GatewayError> {
+        unsupported!("static adapter does not support credentials")
+    }
+    async fn modify_credential(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyCredentialInput,
+    ) -> Result<Credential, GatewayError> {
+        unsupported!("static adapter does not support credentials")
+    }
+    async fn delete_credential(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support credentials")
+    }
+}
+
+#[async_trait]
+impl PortListPort for StaticGvmdAdapter {
+    async fn list_port_lists(
+        &self,
+        _: &str,
+        _: &PortListQuery,
+    ) -> Result<PortListPage, GatewayError> {
+        unsupported!("static adapter does not support port lists")
+    }
+    async fn create_port_list(
+        &self,
+        _: &str,
+        _: CreatePortListInput,
+    ) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support port lists")
+    }
+    async fn get_port_list(&self, _: &str, _: &str) -> Result<PortList, GatewayError> {
+        unsupported!("static adapter does not support port lists")
+    }
+    async fn modify_port_list(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyPortListInput,
+    ) -> Result<PortList, GatewayError> {
+        unsupported!("static adapter does not support port lists")
+    }
+    async fn delete_port_list(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support port lists")
+    }
+}
+
+#[async_trait]
+impl FeedPort for StaticGvmdAdapter {
+    async fn list_feeds(&self, _: &str) -> Result<Vec<Feed>, GatewayError> {
+        unsupported!("static adapter does not support feeds")
+    }
+    async fn sync_feeds(&self, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support feed sync")
     }
 }
 

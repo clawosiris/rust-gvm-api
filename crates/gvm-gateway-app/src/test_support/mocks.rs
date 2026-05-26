@@ -5,12 +5,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use gvm_gateway_domain::{
-    AuthPort, CreateScanConfigInput, CreateTargetInput, CreateTaskInput, GatewayError,
-    GetReportOpts, ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput, ReadinessStatus,
-    Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig,
-    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
-    ScannerQuery, SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
-    TaskPage, TaskPort, TaskQuery,
+    Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
+    CreatePortListInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
+    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, Feed, FeedPort,
+    GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput, ModifyPortListInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, PortList,
+    PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportPage, ReportPort,
+    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
+    SchedulePage, SchedulePort, ScheduleQuery, SystemPort, Target, TargetPage, TargetPort,
+    TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -37,6 +41,205 @@ impl SystemPort for MockSystemPort {
 
     fn gmp_version(&self) -> Result<String, GatewayError> {
         Ok(self.gmp_version.clone())
+    }
+}
+
+/// Mock alert port for tests that only need wiring.
+#[derive(Clone, Default)]
+pub(crate) struct MockAlertPort;
+
+#[async_trait]
+impl AlertPort for MockAlertPort {
+    async fn list_alerts(&self, _: &str, query: &AlertQuery) -> Result<AlertPage, GatewayError> {
+        Ok(AlertPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_alert(&self, _: &str, _: CreateAlertInput) -> Result<String, GatewayError> {
+        Ok("00000000-0000-0000-0000-000000000011".to_string())
+    }
+
+    async fn get_alert(&self, _: &str, id: &str) -> Result<Alert, GatewayError> {
+        Err(GatewayError::NotFound(format!("alert {id} not found")))
+    }
+
+    async fn modify_alert(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyAlertInput,
+    ) -> Result<Alert, GatewayError> {
+        Err(GatewayError::NotFound(format!("alert {id} not found")))
+    }
+
+    async fn delete_alert(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("alert {id} not found")))
+    }
+}
+
+/// Mock schedule port for tests that only need wiring.
+#[derive(Clone, Default)]
+pub(crate) struct MockSchedulePort;
+
+#[async_trait]
+impl SchedulePort for MockSchedulePort {
+    async fn list_schedules(
+        &self,
+        _: &str,
+        query: &ScheduleQuery,
+    ) -> Result<SchedulePage, GatewayError> {
+        Ok(SchedulePage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_schedule(
+        &self,
+        _: &str,
+        _: CreateScheduleInput,
+    ) -> Result<String, GatewayError> {
+        Ok("00000000-0000-0000-0000-000000000012".to_string())
+    }
+
+    async fn get_schedule(&self, _: &str, id: &str) -> Result<Schedule, GatewayError> {
+        Err(GatewayError::NotFound(format!("schedule {id} not found")))
+    }
+
+    async fn modify_schedule(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyScheduleInput,
+    ) -> Result<Schedule, GatewayError> {
+        Err(GatewayError::NotFound(format!("schedule {id} not found")))
+    }
+
+    async fn delete_schedule(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("schedule {id} not found")))
+    }
+}
+
+/// Mock credential port for tests that only need wiring.
+#[derive(Clone, Default)]
+pub(crate) struct MockCredentialPort;
+
+#[async_trait]
+impl CredentialPort for MockCredentialPort {
+    async fn list_credentials(
+        &self,
+        _: &str,
+        query: &CredentialQuery,
+    ) -> Result<CredentialPage, GatewayError> {
+        Ok(CredentialPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_credential(
+        &self,
+        _: &str,
+        _: CreateCredentialInput,
+    ) -> Result<String, GatewayError> {
+        Ok("00000000-0000-0000-0000-000000000013".to_string())
+    }
+
+    async fn get_credential(&self, _: &str, id: &str) -> Result<Credential, GatewayError> {
+        Err(GatewayError::NotFound(format!("credential {id} not found")))
+    }
+
+    async fn modify_credential(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyCredentialInput,
+    ) -> Result<Credential, GatewayError> {
+        Err(GatewayError::NotFound(format!("credential {id} not found")))
+    }
+
+    async fn delete_credential(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("credential {id} not found")))
+    }
+}
+
+/// Mock port-list port for tests that only need wiring.
+#[derive(Clone, Default)]
+pub(crate) struct MockPortListPort;
+
+#[async_trait]
+impl PortListPort for MockPortListPort {
+    async fn list_port_lists(
+        &self,
+        _: &str,
+        query: &PortListQuery,
+    ) -> Result<PortListPage, GatewayError> {
+        Ok(PortListPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_port_list(
+        &self,
+        _: &str,
+        _: CreatePortListInput,
+    ) -> Result<String, GatewayError> {
+        Ok("00000000-0000-0000-0000-000000000014".to_string())
+    }
+
+    async fn get_port_list(&self, _: &str, id: &str) -> Result<PortList, GatewayError> {
+        Err(GatewayError::NotFound(format!("port list {id} not found")))
+    }
+
+    async fn modify_port_list(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyPortListInput,
+    ) -> Result<PortList, GatewayError> {
+        Err(GatewayError::NotFound(format!("port list {id} not found")))
+    }
+
+    async fn delete_port_list(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("port list {id} not found")))
+    }
+}
+
+/// Mock feed port for tests that only need wiring.
+#[derive(Clone, Default)]
+pub(crate) struct MockFeedPort;
+
+#[async_trait]
+impl FeedPort for MockFeedPort {
+    async fn list_feeds(&self, _: &str) -> Result<Vec<Feed>, GatewayError> {
+        Ok(vec![])
+    }
+
+    async fn sync_feeds(&self, _: &str) -> Result<(), GatewayError> {
+        Ok(())
     }
 }
 

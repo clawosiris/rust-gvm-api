@@ -60,6 +60,26 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
             "description": "Scan target management"
         },
         {
+            "name": "Alerts",
+            "description": "Alert management"
+        },
+        {
+            "name": "Schedules",
+            "description": "Schedule management"
+        },
+        {
+            "name": "Credentials",
+            "description": "Credential management"
+        },
+        {
+            "name": "Port Lists",
+            "description": "Port list management"
+        },
+        {
+            "name": "Feeds",
+            "description": "Feed status"
+        },
+        {
             "name": "Tasks",
             "description": "Scan task management"
         },
@@ -119,6 +139,66 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         &mut normalized_paths,
         "/api/v1/targets/{id}",
         "/targets/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/alerts",
+        "/alerts",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/alerts/{id}",
+        "/alerts/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/schedules",
+        "/schedules",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/schedules/{id}",
+        "/schedules/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/credentials",
+        "/credentials",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/credentials/{id}",
+        "/credentials/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/port-lists",
+        "/port-lists",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/port-lists/{id}",
+        "/port-lists/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/feeds",
+        "/feeds",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/feeds/sync",
+        "/feeds/sync",
     );
     copy_path(
         &source_paths,
@@ -229,7 +309,16 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         }),
     );
 
-    for path in ["/sessions", "/targets", "/tasks", "/scan-configs"] {
+    for path in [
+        "/sessions",
+        "/targets",
+        "/alerts",
+        "/schedules",
+        "/credentials",
+        "/port-lists",
+        "/tasks",
+        "/scan-configs",
+    ] {
         add_location_header_to_created_response(&mut normalized_paths, path);
     }
 
@@ -266,6 +355,28 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         ("/targets/{id}", "get"),
         ("/targets/{id}", "put"),
         ("/targets/{id}", "delete"),
+        ("/alerts", "get"),
+        ("/alerts", "post"),
+        ("/alerts/{id}", "get"),
+        ("/alerts/{id}", "put"),
+        ("/alerts/{id}", "delete"),
+        ("/schedules", "get"),
+        ("/schedules", "post"),
+        ("/schedules/{id}", "get"),
+        ("/schedules/{id}", "put"),
+        ("/schedules/{id}", "delete"),
+        ("/credentials", "get"),
+        ("/credentials", "post"),
+        ("/credentials/{id}", "get"),
+        ("/credentials/{id}", "put"),
+        ("/credentials/{id}", "delete"),
+        ("/port-lists", "get"),
+        ("/port-lists", "post"),
+        ("/port-lists/{id}", "get"),
+        ("/port-lists/{id}", "put"),
+        ("/port-lists/{id}", "delete"),
+        ("/feeds", "get"),
+        ("/feeds/sync", "post"),
         ("/reports", "get"),
         ("/reports/{id}", "get"),
         ("/reports/{id}", "delete"),
@@ -287,6 +398,17 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
 
     tighten_target_query_parameters(&mut document);
     tighten_target_payload_schemas(&mut document);
+    tighten_list_query_parameters(&mut document, "/alerts");
+    tighten_list_query_parameters(&mut document, "/schedules");
+    tighten_list_query_parameters(&mut document, "/credentials");
+    tighten_list_query_parameters(&mut document, "/port-lists");
+    tighten_alert_payload_schemas(&mut document);
+    tighten_schedule_payload_schemas(&mut document);
+    tighten_credential_payload_schemas(&mut document);
+    tighten_port_list_payload_schemas(&mut document);
+    tighten_alert_enums(&mut document);
+    tighten_credential_enums(&mut document);
+    tighten_feed_schema(&mut document);
     tighten_task_query_parameters(&mut document);
     tighten_task_payload_schemas(&mut document);
     tighten_scan_config_payload_schemas(&mut document);
@@ -357,6 +479,102 @@ fn tighten_list_query_parameters(document: &mut Value, path: &str) {
 
 fn tighten_target_payload_schemas(document: &mut Value) {
     document["components"]["schemas"]["CreateTarget"]["properties"]["hosts"]["minItems"] = json!(1);
+}
+
+fn tighten_alert_payload_schemas(document: &mut Value) {
+    if let Some(schema) = document["components"]["schemas"].get_mut("CreateAlert") {
+        schema["required"] = json!(["name", "event", "condition", "method"]);
+        schema["properties"]["filterId"]["format"] = json!("uuid");
+    }
+    if let Some(schema) = document["components"]["schemas"].get_mut("ModifyAlert") {
+        schema["properties"]["filterId"]["format"] = json!("uuid");
+    }
+}
+
+fn tighten_schedule_payload_schemas(document: &mut Value) {
+    if let Some(schema) = document["components"]["schemas"].get_mut("CreateSchedule") {
+        schema["required"] = json!(["name", "icalendar", "timezone"]);
+    }
+}
+
+fn tighten_credential_payload_schemas(document: &mut Value) {
+    if let Some(schema) = document["components"]["schemas"].get_mut("CreateCredential") {
+        schema["required"] = json!(["name", "type"]);
+        schema["properties"]["password"]["format"] = json!("password");
+        schema["properties"]["privacyPassword"]["format"] = json!("password");
+    }
+    if let Some(schema) = document["components"]["schemas"].get_mut("ModifyCredential") {
+        schema["properties"]["password"]["format"] = json!("password");
+        schema["properties"]["privacyPassword"]["format"] = json!("password");
+    }
+}
+
+fn tighten_port_list_payload_schemas(document: &mut Value) {
+    if let Some(schema) = document["components"]["schemas"].get_mut("CreatePortList") {
+        schema["required"] = json!(["name"]);
+    }
+}
+
+fn tighten_alert_enums(document: &mut Value) {
+    let event_values = json!(["task_run_status_changed", "updated_secinfo", "new_secinfo"]);
+    let condition_values = json!([
+        "always",
+        "filter_count_at_least",
+        "filter_count_changed",
+        "severity_at_least",
+        "severity_changed"
+    ]);
+    let method_values = json!([
+        "email",
+        "http_get",
+        "scp",
+        "send_email",
+        "smb",
+        "snmp",
+        "sourcefire_connector",
+        "start_task",
+        "syslog",
+        "tippingpoint",
+        "verinice_ce",
+        "verinice_net",
+        "alemba"
+    ]);
+    for schema_name in ["Alert", "CreateAlert"] {
+        if let Some(schema) = document["components"]["schemas"].get_mut(schema_name) {
+            schema["properties"]["event"]["enum"] = event_values.clone();
+            schema["properties"]["condition"]["enum"] = condition_values.clone();
+            schema["properties"]["method"]["enum"] = method_values.clone();
+        }
+    }
+    if let Some(schema) = document["components"]["schemas"].get_mut("Alert") {
+        schema["required"] = json!(["id", "name", "event", "condition", "method"]);
+    }
+}
+
+fn tighten_credential_enums(document: &mut Value) {
+    let credential_types = json!(["cc", "pw", "snmp", "snmpv3", "up", "usk"]);
+    let auth_algorithms = json!(["md5", "sha1"]);
+    let privacy_algorithms = json!(["aes", "des"]);
+    if let Some(schema) = document["components"]["schemas"].get_mut("Credential") {
+        schema["properties"]["type"]["enum"] = credential_types.clone();
+        schema["required"] = json!(["id", "name", "type"]);
+    }
+    if let Some(schema) = document["components"]["schemas"].get_mut("CreateCredential") {
+        schema["properties"]["type"]["enum"] = credential_types;
+        schema["properties"]["authAlgorithm"]["enum"] = auth_algorithms.clone();
+        schema["properties"]["privacyAlgorithm"]["enum"] = privacy_algorithms.clone();
+    }
+    if let Some(schema) = document["components"]["schemas"].get_mut("ModifyCredential") {
+        schema["properties"]["authAlgorithm"]["enum"] = auth_algorithms;
+        schema["properties"]["privacyAlgorithm"]["enum"] = privacy_algorithms;
+    }
+}
+
+fn tighten_feed_schema(document: &mut Value) {
+    if let Some(schema) = document["components"]["schemas"].get_mut("Feed") {
+        schema["required"] = json!(["type", "name", "version"]);
+        schema["properties"]["type"]["enum"] = json!(["NVT", "CERT", "SCAP", "GVMD_DATA"]);
+    }
 }
 
 fn tighten_task_query_parameters(document: &mut Value) {

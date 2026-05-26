@@ -21,6 +21,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PortListList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+    post:
+      operationId: createPortList
+      tags: [Port Lists]
+      summary: Create a port list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePortList"
+      responses:
+        "201":
+          description: Port list created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
 
@@ -38,6 +64,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PortList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyPortList
+      tags: [Port Lists]
+      summary: Modify a port list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyPortList"
+      responses:
+        "200":
+          description: Port list updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deletePortList
+      tags: [Port Lists]
+      summary: Delete a port list
+      responses:
+        "204":
+          description: Port list deleted
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":
@@ -82,3 +146,23 @@ components:
             $ref: "#/components/schemas/PortList"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
+
+    CreatePortList:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        portRange:
+          type: string
+
+    ModifyPortList:
+      type: object
+      properties:
+        comment:
+          type: string
+        portRange:
+          type: string

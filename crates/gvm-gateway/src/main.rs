@@ -36,7 +36,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         adapter.clone(),
         adapter.clone(),
         adapter.clone(),
-        adapter,
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
         sessions,
     );
     let _reaper_handle = reaper.spawn();
