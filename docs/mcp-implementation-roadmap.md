@@ -77,6 +77,36 @@ The shared gateway core should continue to own:
 - audit event model
 - backend execution traits
 
+### 3.1 Why this implementation shape
+
+This roadmap chooses a native MCP adapter inside `rust-gvm-api` for five concrete reasons:
+
+1. `rust-gvm-api` already owns the customer-facing contract boundary. `rust-gvm` should stay the GMP execution substrate rather than absorbing API-surface concerns.
+2. The existing `gvm-gateway-*` split already gives us a domain model, application core, and gvmd adapter seam that MCP can reuse directly.
+3. Embedding MCP avoids a proxy-in-front-of-another-proxy shape where MCP would translate into REST or gRPC and then translate again into the core.
+4. The real service boundary is already GMP and authenticated gvmd sessions. There is no strong first-phase requirement for local caching, local tool execution, or offline state that would justify a separate local MCP architecture.
+5. Session handling, policy, audit, and error normalization are easier to keep correct when MCP is just another adapter over the same runtime instead of a sidecar client with its own hidden state.
+
+This is why the first delivery shape is:
+
+`MCP adapter -> shared gateway core -> rust-gvm -> gvmd`
+
+not:
+
+`MCP server -> REST/gRPC gateway -> shared gateway core -> rust-gvm -> gvmd`
+
+### 3.2 Topology rule
+
+The default deployment can and probably should use the same backend instance as the API proxy process, but the architecture must not silently hard-code that as the only topology.
+
+Day-one expectation:
+
+- the MCP adapter may resolve against the same in-process gateway runtime by default
+- backend instance selection stays explicit in configuration
+- later deployments may route MCP-triggered work to a different gateway/backend instance without redesigning the public contract
+
+That keeps the first implementation simple without turning the default topology into an accidental architectural constraint.
+
 ## 4. Phase Plan
 
 ### Phase 0: Decision Closure and Scope Freeze
@@ -333,7 +363,7 @@ These must be treated as day-one requirements, not post-MVP cleanup:
 
 If these are deferred too far, the gateway will work in demos and fail in real deployments.
 
-## 6. Dependencies and Risks
+## 6. Dependencies and Issues
 
 ### Dependencies
 
@@ -342,13 +372,81 @@ If these are deferred too far, the gateway will work in demos and fail in real d
 - mock-backed validation path for representative workflows
 - agreement on initial session bootstrap contract
 
-### Primary risks
+### Issue 1: Surface drift
 
-- adapter drift if one surface ships ahead of the catalog
-- over-designing code generation before first useful behavior exists
-- credential leakage if the MCP adapter hides session bootstrap sloppily
-- performance surprises around long-running reports and connection pinning
-- pressure to add raw passthrough escape hatches that bypass the catalog
+If one surface ships directly against backend behavior before the catalog settles, parity turns into a documentation promise instead of an enforced property.
+
+Mitigation:
+
+- every shipped surface binds to canonical operations, not directly to GMP
+- parity metadata lives in the catalog
+- missing bindings fail in CI
+
+### Issue 2: Session lifecycle and connection pinning
+
+`gvmd` sessions are stateful. A gateway token is not just an auth claim; it is a handle to an authenticated backend session whose lifecycle must be cleaned up correctly.
+
+Why it matters:
+
+- leaking backend sessions wastes scarce connections
+- mixing operations across the wrong session breaks authorization and audit integrity
+- MCP makes it easy to hide session creation unless the design stays explicit
+
+Mitigation:
+
+- keep explicit `sessions.create` and `sessions.delete`
+- bind one gateway session token to one authenticated gvmd session
+- centralize expiry, revocation, and cleanup in the shared runtime
+
+### Issue 3: Topology lock-in
+
+Using the same gateway instance for REST and MCP is a good default, but silently assuming that forever would make later deployment changes harder than they need to be.
+
+Mitigation:
+
+- keep backend instance selection explicit in configuration
+- treat same-instance routing as the default deployment, not the only supported model
+- avoid adapter logic that assumes localhost forwarding or process-local-only state
+
+### Issue 4: Long-running operations and report-heavy workloads
+
+Task execution, report retrieval, and large result sets stress each surface differently. A naive MCP wrapper around REST polling would work, but it would carry the wrong semantics and the wrong failure modes.
+
+Mitigation:
+
+- model long-running work once in the core
+- let REST, gRPC, and MCP expose transport-appropriate ergonomics over the same capability
+- validate the first real workflow on `targets`, `tasks`, and `reports` rather than stopping at session bootstrap demos
+
+### Issue 5: Credential handling inside MCP
+
+The easiest way to make MCP feel convenient is also the easiest way to blur security boundaries. If the MCP adapter quietly stores upstream credentials or performs hidden bootstrap, the audit and policy model becomes harder to reason about.
+
+Mitigation:
+
+- prefer explicit gateway session bootstrap as the default contract
+- if a managed deployment later adds helper bootstrap behavior, keep it a thin wrapper over the same canonical session model
+- ensure audit events distinguish `surface=mcp` from `surface=rest` and `surface=grpc`
+
+### Issue 6: Pressure for raw passthrough escape hatches
+
+Once the first capability gaps appear, the fastest workaround will be pressure to expose raw GMP passthrough. That would immediately weaken the catalog and make parity impossible to police.
+
+Mitigation:
+
+- keep raw passthrough out of the public MCP contract
+- add missing capabilities through the catalog and core first
+- treat passthrough requests as signals that the operation catalog is incomplete, not as proof that the catalog should be bypassed
+
+### Issue 7: Over-design before useful behavior
+
+The opposite failure mode is to spend too long on code generation, metadata systems, or future-perfect abstractions before the first useful slice exists.
+
+Mitigation:
+
+- keep the catalog close to Rust types first
+- prove the architecture on `sessions` and `system`, then on one real scan workflow
+- add generation and derived manifests only after the core path is exercised end to end
 
 ## 7. Recommended Immediate Next Steps
 
