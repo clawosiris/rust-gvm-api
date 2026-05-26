@@ -96,7 +96,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Invalid request
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -106,7 +106,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Authentication required or session expired
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -116,7 +116,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Insufficient permissions
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -126,7 +126,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Resource not found
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -136,7 +136,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Resource state conflict
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -150,7 +150,7 @@ components:
           description: Seconds to wait before retrying
       description: Session limit or rate limit exceeded
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -160,7 +160,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Backend service unreachable or connection failed
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -170,7 +170,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Backend service did not respond in time
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 

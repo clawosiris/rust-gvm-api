@@ -26,7 +26,11 @@ pub(crate) fn problem_response<'a, const N: u16>(
     op: TransformOperation<'a>,
     description: &'static str,
 ) -> TransformOperation<'a> {
-    op.response_with::<N, Json<ProblemDetailDoc>, _>(|response| response.description(description))
+    op.response_with::<N, Json<ProblemDetailDoc>, _>(|response| {
+        response
+            .description(description)
+            .example(ProblemDetailDoc::example())
+    })
 }
 
 /// Finalize the generated OpenAPI document so its served contract shape matches
@@ -288,6 +292,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     tighten_list_query_parameters(&mut document, "/scanners");
     tighten_report_get_parameters(&mut document);
     ensure_problem_detail_schema(&mut document);
+    normalize_problem_response_content_types(&mut document);
     ensure_basic_auth_scheme(&mut document);
     strip_nullable_types(&mut document);
     document
@@ -424,6 +429,40 @@ fn ensure_problem_detail_schema(document: &mut Value) {
             }
         }),
     );
+}
+
+fn normalize_problem_response_content_types(document: &mut Value) {
+    let Some(paths) = document["paths"].as_object_mut() else {
+        return;
+    };
+
+    for methods in paths.values_mut() {
+        let Some(methods) = methods.as_object_mut() else {
+            continue;
+        };
+        for operation in methods.values_mut() {
+            let Some(responses) = operation["responses"].as_object_mut() else {
+                continue;
+            };
+            for response in responses.values_mut() {
+                let Some(content) = response["content"].as_object_mut() else {
+                    continue;
+                };
+                let Some(problem_json) = content.remove("application/json") else {
+                    continue;
+                };
+                let Some(schema_ref) = problem_json["schema"]["$ref"].as_str() else {
+                    content.insert("application/json".to_string(), problem_json);
+                    continue;
+                };
+                if schema_ref.ends_with("/ProblemDetail") {
+                    content.insert("application/problem+json".to_string(), problem_json);
+                } else {
+                    content.insert("application/json".to_string(), problem_json);
+                }
+            }
+        }
+    }
 }
 
 fn ensure_basic_auth_scheme(document: &mut Value) {
@@ -618,6 +657,18 @@ pub(crate) struct ProblemDetailDoc {
     detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     instance: Option<String>,
+}
+
+impl ProblemDetailDoc {
+    fn example() -> Self {
+        Self {
+            r#type: "urn:gvm-gateway:problem:bad-request".to_string(),
+            title: "Bad Request".to_string(),
+            status: 400,
+            detail: Some("request validation failed".to_string()),
+            instance: Some("/api/v1/targets".to_string()),
+        }
+    }
 }
 
 // -- Session path parameter --------------------------------------------------

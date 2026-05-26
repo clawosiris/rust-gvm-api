@@ -2002,6 +2002,13 @@ async fn target_harness_with_security(
 
 async fn assert_problem_status(response: reqwest::Response, status: StatusCode) {
     assert_eq!(response.status(), status);
+    assert_eq!(
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .unwrap(),
+        "application/problem+json"
+    );
     let json = response.json::<serde_json::Value>().await.unwrap();
     assert_eq!(json["status"], serde_json::json!(status.as_u16()));
     assert!(json["type"]

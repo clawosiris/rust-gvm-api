@@ -599,6 +599,7 @@ impl RateLimiter {
 
         let window_secs = self.config.window_secs.max(1);
         let mut buckets = self.buckets.lock().ok()?;
+        buckets.retain(|_, bucket| now.saturating_sub(bucket.window_started_at) < window_secs);
         let bucket = buckets.entry(key).or_insert_with(|| RateBucket {
             window_started_at: now,
             count: 0,

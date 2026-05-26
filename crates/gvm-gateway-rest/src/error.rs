@@ -4,7 +4,7 @@
 //! Error handling for the REST adapter.
 
 use axum::{
-    http::StatusCode,
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -164,6 +164,11 @@ impl RestError {
 
 impl IntoResponse for RestError {
     fn into_response(self) -> Response {
-        (self.status, Json(self.problem)).into_response()
+        (
+            self.status,
+            [(header::CONTENT_TYPE, "application/problem+json")],
+            Json(self.problem),
+        )
+            .into_response()
     }
 }
