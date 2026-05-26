@@ -6,7 +6,7 @@
 use aide::transform::TransformOperation;
 use axum::{
     extract::{OriginalUri, Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -17,7 +17,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dto::datetime_schema,
+    dto::{created_resource_location, datetime_schema},
     error::RestError,
     openapi::{ok_json, problem_response, SessionTokenPathDoc},
 };
@@ -92,15 +92,19 @@ pub async fn create_session(
     };
 
     match service.create_session(&username, &password).await {
-        Ok(created) => (
-            StatusCode::CREATED,
-            Json(SessionCreatedResponse {
-                session_token: created.token,
-                expires_in: created.expires_in,
-                gmp_version: created.gmp_version,
-            }),
-        )
-            .into_response(),
+        Ok(created) => {
+            let location = created_resource_location(&instance, &created.token);
+            (
+                StatusCode::CREATED,
+                [(header::LOCATION, location)],
+                Json(SessionCreatedResponse {
+                    session_token: created.token,
+                    expires_in: created.expires_in,
+                    gmp_version: created.gmp_version,
+                }),
+            )
+                .into_response()
+        }
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }

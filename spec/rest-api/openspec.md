@@ -126,6 +126,44 @@ crates/gvm-rest-api/
 
 URL-based versioning (`/api/v1/`, `/api/v2/`). Major breaking changes increment version. Minor additions are non-breaking.
 
+### REST Design Constraints
+
+The public REST surface intentionally targets **Richardson Maturity Model Level 2**.
+That is a design constraint for new endpoints and spec reviews, not just an after-the-fact assessment.
+
+What Level 2 means in this repo:
+
+- Model public resources as collections and items by default.
+- Use HTTP methods for their normal semantics:
+  - `GET` is safe and read-only.
+  - `POST` creates resources or performs an explicitly documented state transition.
+  - `PUT` is idempotent replacement/update.
+  - `DELETE` removes or closes a resource and returns `204 No Content` when no body is needed.
+- Use meaningful success and failure status codes rather than tunneling everything through `200`.
+- Use RFC 9457 `application/problem+json` responses for failures.
+- When a canonical URI exists for a created resource, return `201 Created` with a `Location` header that points at that resource.
+
+This repo does **not** target Richardson Maturity Model Level 3 for the public REST surface.
+Hypermedia controls are optional and not required for API completeness or review acceptance.
+
+### Action-Style Endpoint Rule
+
+Collection/item resource modeling is the default. Action-style routes are allowed only when the operation is a state transition or controller-style command with no stable child resource to expose cleanly.
+
+Accepted action-style exceptions:
+
+- `POST /api/v1/tasks/{id}/start`
+- `POST /api/v1/tasks/{id}/stop`
+- `POST /api/v1/tasks/{id}/resume`
+- `POST /api/v1/feeds/sync`
+
+Rules for these exceptions:
+
+- They must be documented explicitly in the REST spec instead of appearing as ad hoc RPC drift.
+- They must stay on `POST`.
+- They must use status codes that reflect the transition outcome (`200`, `202`, `404`, `409`, `504`, etc.).
+- If a future action can be modeled more clearly as a real resource, that design should be preferred during review.
+
 ### Resource Endpoints
 
 #### Targets
@@ -133,7 +171,7 @@ URL-based versioning (`/api/v1/`, `/api/v2/`). Major breaking changes increment 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/targets` | List targets (paginated, filterable) |
-| `POST` | `/api/v1/targets` | Create a target |
+| `POST` | `/api/v1/targets` | Create a target (`201 Created` + `Location`) |
 | `GET` | `/api/v1/targets/{id}` | Get target by ID |
 | `PUT` | `/api/v1/targets/{id}` | Update target |
 | `DELETE` | `/api/v1/targets/{id}` | Delete target |
@@ -143,7 +181,7 @@ URL-based versioning (`/api/v1/`, `/api/v2/`). Major breaking changes increment 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/tasks` | List tasks |
-| `POST` | `/api/v1/tasks` | Create task |
+| `POST` | `/api/v1/tasks` | Create task (`201 Created` + `Location`) |
 | `GET` | `/api/v1/tasks/{id}` | Get task |
 | `PUT` | `/api/v1/tasks/{id}` | Update task |
 | `DELETE` | `/api/v1/tasks/{id}` | Delete task |
@@ -173,7 +211,7 @@ URL-based versioning (`/api/v1/`, `/api/v2/`). Major breaking changes increment 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/scan-configs` | List scan configurations |
-| `POST` | `/api/v1/scan-configs` | Create scan config |
+| `POST` | `/api/v1/scan-configs` | Create scan config (`201 Created` + `Location`) |
 | `GET` | `/api/v1/scan-configs/{id}` | Get scan config |
 | `PUT` | `/api/v1/scan-configs/{id}` | Update scan config |
 | `DELETE` | `/api/v1/scan-configs/{id}` | Delete scan config |
@@ -209,7 +247,7 @@ URL-based versioning (`/api/v1/`, `/api/v2/`). Major breaking changes increment 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/sessions` | Authenticate with HTTP Basic credentials and create a session |
+| `POST` | `/api/v1/sessions` | Authenticate with HTTP Basic credentials and create a session (`201 Created` + `Location`) |
 | `GET` | `/api/v1/sessions/{token}` | Inspect current session state |
 | `DELETE` | `/api/v1/sessions/{token}` | Close and destroy a session |
 
@@ -220,7 +258,7 @@ Protected routes accept either an existing Bearer session token or request-scope
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/feeds` | List feed status |
-| `POST` | `/api/v1/feeds/sync` | Trigger feed sync |
+| `POST` | `/api/v1/feeds/sync` | Trigger feed sync (documented action-style exception, `202 Accepted`) |
 
 #### System
 
@@ -281,6 +319,21 @@ RFC 9457 Problem Details:
 #### Distributed tracing
 
 The API should propagate W3C Trace Context (`traceparent`, `tracestate`, optional `baggage`) for OpenTelemetry correlation.
+
+#### Create semantics
+
+When a create operation returns a canonical resource identifier, the response must include:
+
+- `201 Created`
+- a response body containing the created identifier or resource representation
+- a `Location` header pointing at the canonical resource URI
+
+Current required coverage:
+
+- `POST /api/v1/sessions` → `Location: /api/v1/sessions/{token}`
+- `POST /api/v1/targets` → `Location: /api/v1/targets/{id}`
+- `POST /api/v1/tasks` → `Location: /api/v1/tasks/{id}`
+- `POST /api/v1/scan-configs` → `Location: /api/v1/scan-configs/{id}`
 
 ### Authentication & Authorization
 

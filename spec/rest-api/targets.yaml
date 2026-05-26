@@ -38,6 +38,9 @@ paths:
       responses:
         "201":
           description: Target created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
           content:
             application/json:
               schema:
