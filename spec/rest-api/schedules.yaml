@@ -4,6 +4,22 @@
 openapi: 3.1.0
 
 paths:
+  /timezones:
+    get:
+      operationId: getTimezones
+      tags: [Schedules]
+      summary: List available schedule timezones
+      description: Returns the timezone identifiers accepted by the backend for schedule resources.
+      responses:
+        "200":
+          description: Supported schedule timezones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimezoneList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
   /schedules:
     get:
       operationId: getSchedules
@@ -186,3 +202,27 @@ components:
             $ref: "#/components/schemas/Schedule"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Timezone:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: IANA timezone identifier accepted by the backend.
+          examples:
+            - "Europe/Berlin"
+        displayName:
+          type: string
+          description: Optional human-friendly label for UI presentation.
+
+    TimezoneList:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Timezone"

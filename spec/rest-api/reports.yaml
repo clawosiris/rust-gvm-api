@@ -84,6 +84,98 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /reports/{id}/vulnerabilities:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportVulnerabilities
+      tags: [Reports]
+      summary: Get vulnerability findings for a report
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of vulnerability findings
+          content:
+            application/json:
+              schema:
+                $ref: "./results.yaml#/components/schemas/ResultList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /reports/{id}/tls-certificates:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportTlsCertificates
+      tags: [Reports]
+      summary: Get TLS certificates observed in a report
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of TLS certificates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TlsCertificateList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /reports/{id}/errors:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportErrors
+      tags: [Reports]
+      summary: Get report error findings
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of report errors
+          content:
+            application/json:
+              schema:
+                $ref: "./results.yaml#/components/schemas/ResultList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /reports/{id}/closed-cves:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportClosedCves
+      tags: [Reports]
+      summary: Get closed CVE findings for a report
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of closed CVE findings
+          content:
+            application/json:
+              schema:
+                $ref: "./results.yaml#/components/schemas/ResultList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
 components:
   schemas:
     Report:
@@ -140,5 +232,50 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Report"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    TlsCertificate:
+      type: object
+      required:
+        - subject
+      properties:
+        id:
+          type: string
+          description: Backend certificate or observation identifier when available.
+        host:
+          type: string
+          description: Host associated with the certificate observation.
+        port:
+          type: string
+          description: Port associated with the certificate observation.
+        subject:
+          type: string
+          description: Certificate subject distinguished name.
+        issuer:
+          type: string
+          description: Certificate issuer distinguished name.
+        notBefore:
+          type: string
+          format: date-time
+          description: Certificate validity start.
+        notAfter:
+          type: string
+          format: date-time
+          description: Certificate validity end.
+        fingerprintSha256:
+          type: string
+          description: SHA-256 fingerprint of the certificate.
+
+    TlsCertificateList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TlsCertificate"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
