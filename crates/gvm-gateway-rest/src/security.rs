@@ -1,0 +1,279 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Greenbone AG
+
+//! REST security middleware and request-scoped auth helpers.
+
+use std::sync::Arc;
+
+use axum::{
+    extract::Request,
+    http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
+    response::{IntoResponse, Response},
+};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use gvm_gateway_app::GatewayService;
+use gvm_gateway_domain::GatewayError;
+use serde::Deserialize;
+
+use crate::{
+    error::RestError,
+    rate_limit::{is_rate_limited_path, too_many_requests_response, RateLimitConfig, RateLimiter},
+};
+
+/// REST security middleware configuration.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+pub struct RestSecurityConfig {
+    /// Exact origins allowed for browser CORS requests. Empty means deny.
+    #[serde(default)]
+    pub cors_allowed_origins: Vec<String>,
+    /// Rate-limit and backpressure settings.
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
+}
+
+#[derive(Debug)]
+pub(crate) struct SecurityRuntime {
+    config: RestSecurityConfig,
+    limiter: RateLimiter,
+}
+
+impl SecurityRuntime {
+    pub(crate) fn new(config: RestSecurityConfig) -> Self {
+        Self {
+            limiter: RateLimiter::new(config.rate_limit.clone()),
+            config,
+        }
+    }
+}
+
+pub(crate) async fn security_middleware(
+    security: axum::extract::State<Arc<SecurityRuntime>>,
+    request: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let path = request.uri().path().to_string();
+
+    if is_cors_preflight(&request) {
+        return cors_preflight_response(&security.config, request.headers(), &path);
+    }
+
+    if is_rate_limited_path(&path) {
+        if let Some(retry_after) = security.limiter.check_request(&request) {
+            let mut response = too_many_requests_response(&path, retry_after);
+            apply_security_headers(response.headers_mut(), &path);
+            apply_cors_headers(response.headers_mut(), &security.config, request.headers());
+            tracing::warn!(
+                target: "gvm_gateway_rest::security",
+                security_event = "rate_limit.exceeded",
+                path = %path,
+                retry_after_secs = retry_after,
+                "rate_limit_exceeded"
+            );
+            return response;
+        }
+    }
+
+    let request_headers = request.headers().clone();
+    let mut response = next.run(request).await;
+    apply_security_headers(response.headers_mut(), &path);
+    apply_cors_headers(response.headers_mut(), &security.config, &request_headers);
+    response
+}
+
+pub(crate) async fn request_scoped_basic_auth_middleware(
+    service: axum::extract::State<GatewayService>,
+    mut request: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if !uses_request_scoped_basic_auth(&request) {
+        return next.run(request).await;
+    }
+
+    let instance = request.uri().path().to_string();
+    let (username, password) = match basic_credentials(request.headers()) {
+        Ok(credentials) => credentials,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    let created = match service.create_session(&username, &password).await {
+        Ok(created) => created,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let token = created.token;
+
+    let bearer = match HeaderValue::from_str(&format!("Bearer {token}")) {
+        Ok(value) => value,
+        Err(_) => {
+            let _ = service.delete_session(&token).await;
+            return RestError::from_gateway_error(
+                GatewayError::BackendUnavailable("failed to prepare request-scoped session".into()),
+                instance,
+            )
+            .into_response();
+        }
+    };
+    request.headers_mut().insert(header::AUTHORIZATION, bearer);
+
+    let response = next.run(request).await;
+    let response_was_successful = response.status().is_success();
+    match service.delete_session(&token).await {
+        Ok(()) => response,
+        Err(error) if response_was_successful => {
+            RestError::from_gateway_error(error, instance).into_response()
+        }
+        Err(_error) => response,
+    }
+}
+
+fn is_cors_preflight(request: &Request) -> bool {
+    request.method() == Method::OPTIONS
+        && request.headers().contains_key(header::ORIGIN)
+        && request
+            .headers()
+            .contains_key(header::ACCESS_CONTROL_REQUEST_METHOD)
+}
+
+fn cors_preflight_response(
+    config: &RestSecurityConfig,
+    headers: &HeaderMap,
+    instance: &str,
+) -> Response {
+    let Some(origin) = allowed_origin(config, headers) else {
+        let mut response = RestError::from_gateway_error(
+            GatewayError::Forbidden("CORS origin is not allowed".to_string()),
+            instance.to_string(),
+        )
+        .into_response();
+        apply_security_headers(response.headers_mut(), instance);
+        return response;
+    };
+
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    headers.insert(header::VARY, HeaderValue::from_static("Origin"));
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET,POST,PUT,DELETE,OPTIONS"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("Authorization,Content-Type,Traceparent,Tracestate,Baggage"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_MAX_AGE,
+        HeaderValue::from_static("600"),
+    );
+    apply_security_headers(headers, instance);
+    response
+}
+
+fn allowed_origin(config: &RestSecurityConfig, headers: &HeaderMap) -> Option<HeaderValue> {
+    let origin = headers.get(header::ORIGIN)?.to_str().ok()?;
+    if config
+        .cors_allowed_origins
+        .iter()
+        .any(|allowed| allowed == origin)
+    {
+        HeaderValue::from_str(origin).ok()
+    } else {
+        None
+    }
+}
+
+fn apply_cors_headers(headers: &mut HeaderMap, config: &RestSecurityConfig, request: &HeaderMap) {
+    if let Some(origin) = allowed_origin(config, request) {
+        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        headers.insert(header::VARY, HeaderValue::from_static("Origin"));
+    }
+}
+
+pub(crate) fn apply_security_headers(headers: &mut HeaderMap, path: &str) {
+    headers.insert(
+        HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-frame-options"),
+        HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("no-referrer"),
+    );
+    if path.starts_with("/api/") {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+}
+
+fn uses_request_scoped_basic_auth(request: &Request) -> bool {
+    if is_basic_auth(request.headers()).is_none() {
+        return false;
+    }
+
+    let path = request.uri().path();
+    if matches!(
+        path,
+        "/health" | "/ready" | "/api/v1/version" | "/api/v1/openapi.json"
+    ) {
+        return false;
+    }
+
+    // Keep the explicit session lifecycle contract unchanged: POST /sessions
+    // uses Basic credentials to create a persistent bearer session, while
+    // session inspection/deletion continue to operate on their path token.
+    if (path == "/api/v1/sessions" && request.method() == Method::POST)
+        || path.starts_with("/api/v1/sessions/")
+    {
+        return false;
+    }
+
+    is_protected_resource_path(path)
+}
+
+fn is_protected_resource_path(path: &str) -> bool {
+    [
+        "/api/v1/targets",
+        "/api/v1/tasks",
+        "/api/v1/reports",
+        "/api/v1/results",
+        "/api/v1/scan-configs",
+        "/api/v1/scanners",
+    ]
+    .iter()
+    .any(|prefix| {
+        path == *prefix
+            || path
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+fn is_basic_auth(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Basic "))
+}
+
+fn basic_credentials(headers: &HeaderMap) -> Result<(String, String), GatewayError> {
+    let encoded = is_basic_auth(headers)
+        .ok_or_else(|| GatewayError::Unauthorized("expected Basic authentication".to_string()))?;
+
+    let decoded = BASE64
+        .decode(encoded)
+        .map_err(|_| GatewayError::Unauthorized("invalid Base64 in credentials".to_string()))?;
+    let decoded_str = String::from_utf8(decoded)
+        .map_err(|_| GatewayError::Unauthorized("invalid UTF-8 in credentials".to_string()))?;
+    let (username, password) = decoded_str
+        .split_once(':')
+        .ok_or_else(|| GatewayError::Unauthorized("malformed Basic credentials".to_string()))?;
+
+    if username.is_empty() {
+        return Err(GatewayError::Unauthorized(
+            "username must not be empty".to_string(),
+        ));
+    }
+
+    Ok((username.to_string(), password.to_string()))
+}

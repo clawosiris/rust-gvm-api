@@ -9,11 +9,13 @@
 pub(crate) mod dto;
 pub mod error;
 pub mod openapi;
+pub(crate) mod rate_limit;
 pub mod reports;
 pub mod results;
 pub mod router;
 pub mod scan_configs;
 pub mod scanners;
+pub(crate) mod security;
 pub mod sessions;
 pub(crate) mod system;
 pub mod targets;

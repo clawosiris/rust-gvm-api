@@ -18,6 +18,7 @@ http.workspace = true
 schemars = { version = "1.0.4", features = ["uuid1"] }
 serde.workspace = true
 serde_json.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

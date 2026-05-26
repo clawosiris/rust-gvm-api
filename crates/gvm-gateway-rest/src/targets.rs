@@ -7,7 +7,7 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -18,7 +18,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
+    dto::{
+        created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse,
+        ResourceRefResponse,
+    },
     error::RestError,
     openapi::{
         ok_json, problem_response, CreateTargetDoc, ModifyTargetDoc, ResourceIdPathDoc,
@@ -374,13 +377,17 @@ pub async fn create_target(
     };
 
     match service.create_target(&session, input).await {
-        Ok(id) => (
-            StatusCode::CREATED,
-            Json(ResourceCreatedResponse {
-                id: parse_uuid(&id),
-            }),
-        )
-            .into_response(),
+        Ok(id) => {
+            let location = created_resource_location(&instance, &id);
+            (
+                StatusCode::CREATED,
+                [(header::LOCATION, location)],
+                Json(ResourceCreatedResponse {
+                    id: parse_uuid(&id),
+                }),
+            )
+                .into_response()
+        }
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }

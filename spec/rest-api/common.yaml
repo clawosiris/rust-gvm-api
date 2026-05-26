@@ -88,6 +88,11 @@ components:
       description: W3C Trace Context traceparent for downstream correlation.
       schema:
         type: string
+    Location:
+      description: Canonical URI of the created resource.
+      schema:
+        type: string
+        format: uri-reference
 
   responses:
     BadRequest:
@@ -96,7 +101,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Invalid request
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -106,7 +111,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Authentication required or session expired
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -116,7 +121,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Insufficient permissions
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -126,7 +131,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Resource not found
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -136,7 +141,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Resource state conflict
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -150,7 +155,7 @@ components:
           description: Seconds to wait before retrying
       description: Session limit or rate limit exceeded
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -160,7 +165,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Backend service unreachable or connection failed
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -170,7 +175,7 @@ components:
           $ref: "#/components/headers/Traceparent"
       description: Backend service did not respond in time
       content:
-        application/json:
+        application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
@@ -182,6 +187,7 @@ components:
         Error response following RFC 9457 (Problem Details for HTTP APIs).
       required:
         - type
+        - code
         - title
         - status
       properties:
@@ -191,7 +197,12 @@ components:
           description: |
             A URI reference that identifies the problem type.
           examples:
-            - "urn:ietf:rfc:9457:not-found"
+            - "https://gvm-gateway.greenbone.net/errors/not-found"
+        code:
+          type: string
+          description: Stable machine-readable problem identity.
+          examples:
+            - "not_found"
         title:
           type: string
           description: Short human-readable summary of the problem type.

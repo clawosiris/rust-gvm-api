@@ -68,3 +68,7 @@ impl From<ResourceRef> for ResourceRefResponse {
 pub(crate) struct ResourceCreatedResponse {
     pub(crate) id: Uuid,
 }
+
+pub(crate) fn created_resource_location(collection_path: &str, resource_id: &str) -> String {
+    format!("{}/{}", collection_path.trim_end_matches('/'), resource_id)
+}

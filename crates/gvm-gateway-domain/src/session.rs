@@ -185,13 +185,13 @@ impl SessionManager {
         })?;
         let stored = guard
             .get_mut(token)
-            .ok_or_else(|| GatewayError::Unauthorized("missing session".to_string()))?;
+            .ok_or_else(|| GatewayError::SessionInvalidated("missing session".to_string()))?;
 
         match stored.state {
             SessionState::Active => {
                 if now.saturating_sub(stored.last_used_at) >= self.idle_timeout_secs {
                     stored.state = SessionState::Expired;
-                    return Err(GatewayError::Unauthorized("session expired".to_string()));
+                    return Err(GatewayError::SessionExpired("session expired".to_string()));
                 }
                 stored.last_used_at = now;
                 Ok(Session {
@@ -200,7 +200,7 @@ impl SessionManager {
                     state: SessionState::Active,
                 })
             }
-            _ => Err(GatewayError::Unauthorized("session expired".to_string())),
+            _ => Err(GatewayError::SessionExpired("session expired".to_string())),
         }
     }
 
@@ -211,7 +211,7 @@ impl SessionManager {
         })?;
         let stored = guard
             .get_mut(token)
-            .ok_or_else(|| GatewayError::Unauthorized("missing session".to_string()))?;
+            .ok_or_else(|| GatewayError::SessionInvalidated("missing session".to_string()))?;
         stored.state = SessionState::Expired;
         Ok(())
     }
@@ -315,7 +315,7 @@ mod tests {
         let manager = SessionManager::default();
         let result = manager.touch("missing");
 
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+        assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
     }
 
     #[test]
@@ -325,7 +325,7 @@ mod tests {
         manager.expire(&session.token).unwrap();
 
         let result = manager.touch(&session.token);
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+        assert!(matches!(result, Err(GatewayError::SessionExpired(_))));
     }
 
     #[test]
@@ -343,7 +343,7 @@ mod tests {
         let manager = SessionManager::default();
         let result = manager.expire("missing");
 
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+        assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
     }
 
     #[test]
@@ -429,7 +429,7 @@ mod tests {
         let session = manager.create("charlie").unwrap();
         let result = manager.touch(&session.token);
 
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+        assert!(matches!(result, Err(GatewayError::SessionExpired(_))));
     }
 
     /// idle_timeout_secs returns the configured value.

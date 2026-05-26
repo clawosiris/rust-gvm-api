@@ -129,6 +129,8 @@ paths:
     $ref: './port-lists.yaml#/paths/~1port-lists~1{id}'
   /feeds:
     $ref: './feeds.yaml#/paths/~1feeds'
+  /feeds/sync:
+    $ref: './feeds.yaml#/paths/~1feeds~1sync'
   /health:
     $ref: './system.yaml#/paths/~1health'
   /ready:

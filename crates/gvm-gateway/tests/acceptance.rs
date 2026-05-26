@@ -12,7 +12,9 @@ use std::time::Duration;
 use gvm_gateway_app::{GatewayService, SessionReaper};
 use gvm_gateway_domain::{SessionManager, TargetPage};
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
-use gvm_gateway_rest::router::build_router;
+use gvm_gateway_rest::router::{
+    build_router, build_router_with_security, RateLimitConfig, RestSecurityConfig,
+};
 use gvm_gateway_rest::targets::{
     build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery,
 };
@@ -156,11 +158,17 @@ async fn create_session_valid_credentials() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    let json = response.json::<serde_json::Value>().await.unwrap();
-    assert!(json["sessionToken"]
-        .as_str()
+    let location = response
+        .headers()
+        .get(reqwest::header::LOCATION)
         .unwrap()
-        .starts_with("gvm_sess_"));
+        .to_str()
+        .unwrap()
+        .to_string();
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    let token = json["sessionToken"].as_str().unwrap();
+    assert!(token.starts_with("gvm_sess_"));
+    assert_eq!(location, format!("/api/v1/sessions/{token}"));
     assert_eq!(json["expiresIn"], 300);
     assert_eq!(json["gmpVersion"], "22.7");
 
@@ -782,6 +790,14 @@ fn compare_responses(
             generated_media_types.is_subset(&curated_media_types),
             "response content type drift for {context} {status}"
         );
+        compare_headers(
+            docs,
+            generated_response_doc,
+            generated_response.get("headers"),
+            curated_response_doc,
+            curated_response.get("headers"),
+            &format!("{context} response {status} headers"),
+        );
 
         for media_type in generated_media_types {
             compare_schema_like(
@@ -793,6 +809,59 @@ fn compare_responses(
                 &format!("{context} response {status} {media_type} schema"),
             );
         }
+    }
+}
+
+fn compare_headers(
+    docs: &SpecDocs<'_>,
+    generated_doc: DocName,
+    generated_headers: Option<&Value>,
+    curated_doc: DocName,
+    curated_headers: Option<&Value>,
+    context: &str,
+) {
+    let generated_headers = generated_headers
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let curated_headers = curated_headers
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+
+    let generated_keys = generated_headers
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let curated_keys = curated_headers
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        generated_keys.is_subset(&curated_keys),
+        "response header drift for {context}: generated={generated_keys:?}, curated={curated_keys:?}"
+    );
+
+    for key in generated_keys {
+        let (generated_header_doc, generated_header) =
+            resolve_ref(docs, generated_doc, &generated_headers[key]);
+        let (curated_header_doc, curated_header) =
+            resolve_ref(docs, curated_doc, &curated_headers[key]);
+
+        assert_required_flag(
+            generated_header.get("required"),
+            curated_header.get("required"),
+            &format!("{context} {key} required"),
+        );
+        compare_schema_like(
+            docs,
+            generated_header_doc,
+            generated_header.get("schema").unwrap_or(&Value::Null),
+            curated_header_doc,
+            curated_header.get("schema").unwrap_or(&Value::Null),
+            &format!("{context} {key} schema"),
+        );
     }
 }
 
@@ -1093,8 +1162,9 @@ async fn problem_details_shape_on_error() {
     let json = response.json::<serde_json::Value>().await.unwrap();
     assert_eq!(
         json["type"],
-        serde_json::json!("urn:gvm-gateway:problem:bad-gateway")
+        serde_json::json!("https://gvm-gateway.greenbone.net/errors/bad-gateway")
     );
+    assert_eq!(json["code"], serde_json::json!("backend_unavailable"));
     assert_eq!(json["title"], serde_json::json!("Bad Gateway"));
     assert_eq!(json["status"], serde_json::json!(502));
     assert_eq!(json["detail"], serde_json::json!("backend offline"));
@@ -1117,8 +1187,9 @@ async fn not_found_route_returns_404_problem() {
     let json = response.json::<serde_json::Value>().await.unwrap();
     assert_eq!(
         json["type"],
-        serde_json::json!("urn:gvm-gateway:problem:not-found")
+        serde_json::json!("https://gvm-gateway.greenbone.net/errors/not-found")
     );
+    assert_eq!(json["code"], serde_json::json!("not_found"));
     assert_eq!(json["title"], serde_json::json!("Not Found"));
     assert_eq!(json["status"], serde_json::json!(404));
     assert_eq!(json["instance"], serde_json::json!("/does-not-exist"));
@@ -1272,6 +1343,398 @@ async fn malformed_basic_auth_on_protected_route_returns_401() {
 }
 
 #[tokio::test]
+async fn protected_endpoint_missing_bearer_rejected() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .send()
+        .await
+        .unwrap();
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_malformed_bearer_rejected() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .header("Authorization", "Bearer")
+        .send()
+        .await
+        .unwrap();
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_unknown_session_rejected() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth("gvm_sess_unknown")
+        .send()
+        .await
+        .unwrap();
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_expired_session_rejected() {
+    let harness = target_harness(|_| {}).await;
+    harness.sessions.expire(&harness.token).unwrap();
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_closed_session_rejected() {
+    let harness = target_harness(|_| {}).await;
+    harness.sessions.remove(&harness.token).unwrap();
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_valid_session_allowed() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn cors_preflight_allowed_origin() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: vec!["https://ui.example".to_string()],
+            rate_limit: RateLimitConfig::disabled(),
+        },
+    )
+    .await;
+
+    let response = harness
+        .client
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("http://{}/api/v1/targets", harness.addr),
+        )
+        .header("Origin", "https://ui.example")
+        .header("Access-Control-Request-Method", "GET")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .unwrap(),
+        "https://ui.example"
+    );
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn cors_preflight_denied_origin() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: vec!["https://ui.example".to_string()],
+            rate_limit: RateLimitConfig::disabled(),
+        },
+    )
+    .await;
+
+    let response = harness
+        .client
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("http://{}/api/v1/targets", harness.addr),
+        )
+        .header("Origin", "https://evil.example")
+        .header("Access-Control-Request-Method", "GET")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(response
+        .headers()
+        .get("access-control-allow-origin")
+        .is_none());
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn security_headers_present() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_security_headers(&response);
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn over_limit_returns_429() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(10),
+                subject_per_window: Some(1),
+            },
+        },
+    )
+    .await;
+
+    let first = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(second.headers().contains_key("retry-after"));
+    let json = second.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["status"], 429);
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn retry_after_header_present() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(1),
+                subject_per_window: Some(100),
+            },
+        },
+    )
+    .await;
+
+    let _ = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+
+    let response = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(response
+        .headers()
+        .get("retry-after")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|value| value > 0));
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn different_sessions_have_independent_subject_limits() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(10),
+                subject_per_window: Some(1),
+            },
+        },
+    )
+    .await;
+    let second_token = harness.create_connected_session("admin", "admin").await;
+
+    let first = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&second_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+
+    let first_again = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first_again.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn global_limit_applies_across_sessions() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(1),
+                subject_per_window: Some(100),
+            },
+        },
+    )
+    .await;
+    let second_token = harness.create_connected_session("admin", "admin").await;
+
+    let first = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = harness
+        .client
+        .get(format!("http://{}/api/v1/targets", harness.addr))
+        .bearer_auth(&second_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn session_creation_rate_limited_before_backend_work() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(10),
+                subject_per_window: Some(1),
+            },
+        },
+    )
+    .await;
+
+    let first = harness
+        .client
+        .post(format!("http://{}/api/v1/sessions", harness.addr))
+        .basic_auth("admin", Some("admin"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::CREATED);
+    let auth_count_after_first = harness
+        .server
+        .command_history()
+        .iter()
+        .filter(|record| record.command_name() == "authenticate")
+        .count();
+
+    let second = harness
+        .client
+        .post(format!("http://{}/api/v1/sessions", harness.addr))
+        .basic_auth("admin", Some("admin"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        harness
+            .server
+            .command_history()
+            .iter()
+            .filter(|record| record.command_name() == "authenticate")
+            .count(),
+        auth_count_after_first
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
 async fn list_targets_paginated() {
     let harness = target_harness(|store| {
         for index in 1..=25 {
@@ -1322,9 +1785,17 @@ async fn create_target() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
+    let location = response
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     let json = response.json::<serde_json::Value>().await.unwrap();
     let id = json["id"].as_str().unwrap();
     assert!(Uuid::parse_str(id).is_ok());
+    assert_eq!(location, format!("/api/v1/targets/{id}"));
     assert!(harness
         .server
         .command_history()
@@ -1530,11 +2001,22 @@ struct TargetHarness {
     addr: SocketAddr,
     client: Client,
     token: String,
+    sessions: Arc<SessionManager>,
+    target_adapter: GvmdAdapter,
     server: MockGmpServer,
     handle: tokio::task::JoinHandle<()>,
 }
 
 impl TargetHarness {
+    async fn create_connected_session(&self, user: &str, password: &str) -> String {
+        let token = self.sessions.create(user).unwrap().token;
+        self.target_adapter
+            .connect_session(&token, user, password)
+            .await
+            .unwrap();
+        token
+    }
+
     async fn shutdown(self) {
         self.handle.abort();
         self.server.shutdown().await;
@@ -1542,6 +2024,13 @@ impl TargetHarness {
 }
 
 async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> TargetHarness {
+    target_harness_with_security(seed, RestSecurityConfig::default()).await
+}
+
+async fn target_harness_with_security(
+    seed: impl FnOnce(&ResourceStore) + Send + 'static,
+    security: RestSecurityConfig,
+) -> TargetHarness {
     let server = MockGmpServer::builder()
         .mode(ServerMode::Stateful)
         .version(MockVersion::V22_7)
@@ -1562,7 +2051,7 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
-        sessions,
+        Arc::clone(&sessions),
     );
     let token = service.session_manager().create("admin").unwrap().token;
     target_adapter
@@ -1572,7 +2061,7 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let app = build_router(service);
+    let app = build_router_with_security(service, security);
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
@@ -1581,7 +2070,40 @@ async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) -> T
         addr,
         client: Client::new(),
         token,
+        sessions,
+        target_adapter,
         server,
         handle,
     }
+}
+
+async fn assert_problem_status(response: reqwest::Response, status: StatusCode) {
+    assert_eq!(response.status(), status);
+    assert_eq!(
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .unwrap(),
+        "application/problem+json"
+    );
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["status"], serde_json::json!(status.as_u16()));
+    assert!(json["code"].as_str().is_some());
+    assert!(json["type"]
+        .as_str()
+        .unwrap()
+        .starts_with("https://gvm-gateway.greenbone.net/errors/"));
+}
+
+fn assert_security_headers(response: &reqwest::Response) {
+    assert_eq!(
+        response.headers().get("x-content-type-options").unwrap(),
+        "nosniff"
+    );
+    assert_eq!(response.headers().get("x-frame-options").unwrap(), "DENY");
+    assert_eq!(
+        response.headers().get("referrer-policy").unwrap(),
+        "no-referrer"
+    );
+    assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
 }

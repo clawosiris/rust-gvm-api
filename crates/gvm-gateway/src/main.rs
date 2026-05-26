@@ -12,7 +12,7 @@ use clap::Parser;
 use gvm_gateway_app::{GatewayService, SessionReaper};
 use gvm_gateway_domain::SessionManager;
 use gvm_gateway_gvmd::StaticGvmdAdapter;
-use gvm_gateway_rest::router::build_router;
+use gvm_gateway_rest::router::build_router_with_security;
 use tokio::net::TcpListener;
 
 use gvm_gateway::{config::load_config, config::CliArgs, telemetry::init_tracing};
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         sessions,
     );
     let _reaper_handle = reaper.spawn();
-    let app = build_router(service);
+    let app = build_router_with_security(service, config.rest_security);
 
     axum::serve(listener, app).await?;
     Ok(())
