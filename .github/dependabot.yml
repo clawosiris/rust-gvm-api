@@ -45,3 +45,29 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+
+  # Container base images (Containerfile)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "container"
+
+  # Compose service images
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "container"
