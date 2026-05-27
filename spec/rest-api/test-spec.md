@@ -147,7 +147,18 @@ async fn test_server() -> TestServer {
 | `list_reports` | `GET /api/v1/reports` | Reports exist | 200, summaries |
 | `get_report_with_results` | `GET /api/v1/reports/{id}` | Report exists | 200, includes results |
 | `get_report_results_paginated` | `GET /api/v1/reports/{id}/results?page=1&per_page=50` | Large report | 200, 50 results |
+| `get_report_vulnerabilities_paginated` | `GET /api/v1/reports/{id}/vulnerabilities?page=1&per_page=50` | Report exists | 200, paginated vulnerability findings |
+| `get_report_tls_certificates_paginated` | `GET /api/v1/reports/{id}/tls-certificates?page=1&per_page=50` | Report exists | 200, paginated TLS certificate observations |
+| `get_report_errors_paginated` | `GET /api/v1/reports/{id}/errors?page=1&per_page=50` | Report exists | 200, paginated report errors |
+| `get_report_closed_cves_paginated` | `GET /api/v1/reports/{id}/closed-cves?page=1&per_page=50` | Report exists | 200, paginated closed CVE findings |
 | `export_report_pdf` | `GET /api/v1/reports/{id}/export?format=pdf` | Report exists | 200, `application/pdf` |
+
+### 3.5a Discovery Helpers
+
+| Test | Request | Setup | Expected |
+|------|---------|-------|----------|
+| `list_timezones` | `GET /api/v1/timezones` | Backend exposes timezone catalog | 200, timezone list |
+| `list_credential_stores` | `GET /api/v1/credential-stores` | Backend exposes credential store catalog | 200, credential store list |
 
 ### 3.6 Authentication Flow
 

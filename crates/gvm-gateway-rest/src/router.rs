@@ -24,11 +24,29 @@ use gvm_gateway_app::GatewayService;
 use serde_json::Value;
 
 use crate::{
+    alerts::{
+        create_alert, create_alert_docs, delete_alert, delete_alert_docs, get_alert,
+        get_alert_docs, list_alerts, list_alerts_docs, update_alert, update_alert_docs,
+    },
+    credentials::{
+        create_credential, create_credential_docs, delete_credential, delete_credential_docs,
+        get_credential, get_credential_docs, list_credential_stores, list_credential_stores_docs,
+        list_credentials, list_credentials_docs, update_credential, update_credential_docs,
+    },
     error::RestError,
+    feeds::{list_feeds, list_feeds_docs, sync_feeds, sync_feeds_docs},
     openapi::{configure as configure_openapi, finalize_document},
+    port_lists::{
+        create_port_list, create_port_list_docs, delete_port_list, delete_port_list_docs,
+        get_port_list, get_port_list_docs, list_port_lists, list_port_lists_docs, update_port_list,
+        update_port_list_docs,
+    },
     reports::{
-        delete_report, delete_report_docs, get_report, get_report_docs, get_report_results,
-        get_report_results_docs, list_reports, list_reports_docs,
+        delete_report, delete_report_docs, get_report, get_report_closed_cves,
+        get_report_closed_cves_docs, get_report_docs, get_report_errors, get_report_errors_docs,
+        get_report_results, get_report_results_docs, get_report_tls_certificates,
+        get_report_tls_certificates_docs, get_report_vulnerabilities,
+        get_report_vulnerabilities_docs, list_reports, list_reports_docs,
     },
     results::{get_result, get_result_docs, list_results, list_results_docs},
     scan_configs::{
@@ -37,6 +55,11 @@ use crate::{
         update_scan_config, update_scan_config_docs,
     },
     scanners::{get_scanner, get_scanner_docs, list_scanners, list_scanners_docs},
+    schedules::{
+        create_schedule, create_schedule_docs, delete_schedule, delete_schedule_docs, get_schedule,
+        get_schedule_docs, list_schedules, list_schedules_docs, list_timezones,
+        list_timezones_docs, update_schedule, update_schedule_docs,
+    },
     security::{request_scoped_basic_auth_middleware, security_middleware, SecurityRuntime},
     sessions::{
         create_session, create_session_docs, delete_session, delete_session_docs, get_session,
@@ -136,6 +159,101 @@ fn documented_router() -> ApiRouter<GatewayService> {
             delete_with(delete_target, delete_target_docs),
         )
         .route("/api/v1/targets/{id}", patch(method_not_allowed_item))
+        // Alerts
+        .api_route("/api/v1/alerts", get_with(list_alerts, list_alerts_docs))
+        .api_route("/api/v1/alerts", post_with(create_alert, create_alert_docs))
+        .route("/api/v1/alerts", patch(method_not_allowed_collection))
+        .api_route("/api/v1/alerts/{id}", get_with(get_alert, get_alert_docs))
+        .api_route(
+            "/api/v1/alerts/{id}",
+            put_with(update_alert, update_alert_docs),
+        )
+        .api_route(
+            "/api/v1/alerts/{id}",
+            delete_with(delete_alert, delete_alert_docs),
+        )
+        .route("/api/v1/alerts/{id}", patch(method_not_allowed_item))
+        // Schedules
+        .api_route(
+            "/api/v1/timezones",
+            get_with(list_timezones, list_timezones_docs),
+        )
+        .api_route(
+            "/api/v1/schedules",
+            get_with(list_schedules, list_schedules_docs),
+        )
+        .api_route(
+            "/api/v1/schedules",
+            post_with(create_schedule, create_schedule_docs),
+        )
+        .route("/api/v1/schedules", patch(method_not_allowed_collection))
+        .api_route(
+            "/api/v1/schedules/{id}",
+            get_with(get_schedule, get_schedule_docs),
+        )
+        .api_route(
+            "/api/v1/schedules/{id}",
+            put_with(update_schedule, update_schedule_docs),
+        )
+        .api_route(
+            "/api/v1/schedules/{id}",
+            delete_with(delete_schedule, delete_schedule_docs),
+        )
+        .route("/api/v1/schedules/{id}", patch(method_not_allowed_item))
+        // Credentials
+        .api_route(
+            "/api/v1/credential-stores",
+            get_with(list_credential_stores, list_credential_stores_docs),
+        )
+        .api_route(
+            "/api/v1/credentials",
+            get_with(list_credentials, list_credentials_docs),
+        )
+        .api_route(
+            "/api/v1/credentials",
+            post_with(create_credential, create_credential_docs),
+        )
+        .route("/api/v1/credentials", patch(method_not_allowed_collection))
+        .api_route(
+            "/api/v1/credentials/{id}",
+            get_with(get_credential, get_credential_docs),
+        )
+        .api_route(
+            "/api/v1/credentials/{id}",
+            put_with(update_credential, update_credential_docs),
+        )
+        .api_route(
+            "/api/v1/credentials/{id}",
+            delete_with(delete_credential, delete_credential_docs),
+        )
+        .route("/api/v1/credentials/{id}", patch(method_not_allowed_item))
+        // Port Lists
+        .api_route(
+            "/api/v1/port-lists",
+            get_with(list_port_lists, list_port_lists_docs),
+        )
+        .api_route(
+            "/api/v1/port-lists",
+            post_with(create_port_list, create_port_list_docs),
+        )
+        .route("/api/v1/port-lists", patch(method_not_allowed_collection))
+        .api_route(
+            "/api/v1/port-lists/{id}",
+            get_with(get_port_list, get_port_list_docs),
+        )
+        .api_route(
+            "/api/v1/port-lists/{id}",
+            put_with(update_port_list, update_port_list_docs),
+        )
+        .api_route(
+            "/api/v1/port-lists/{id}",
+            delete_with(delete_port_list, delete_port_list_docs),
+        )
+        .route("/api/v1/port-lists/{id}", patch(method_not_allowed_item))
+        // Feeds
+        .api_route("/api/v1/feeds", get_with(list_feeds, list_feeds_docs))
+        .route("/api/v1/feeds", patch(method_not_allowed_collection))
+        .api_route("/api/v1/feeds/sync", post_with(sync_feeds, sync_feeds_docs))
         // Tasks
         .api_route("/api/v1/tasks", get_with(list_tasks, list_tasks_docs))
         .api_route("/api/v1/tasks", post_with(create_task, create_task_docs))
@@ -175,6 +293,25 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/reports/{id}/results",
             get_with(get_report_results, get_report_results_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/vulnerabilities",
+            get_with(get_report_vulnerabilities, get_report_vulnerabilities_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/tls-certificates",
+            get_with(
+                get_report_tls_certificates,
+                get_report_tls_certificates_docs,
+            ),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/errors",
+            get_with(get_report_errors, get_report_errors_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/closed-cves",
+            get_with(get_report_closed_cves, get_report_closed_cves_docs),
         )
         // Results
         .api_route("/api/v1/results", get_with(list_results, list_results_docs))

@@ -6,8 +6,9 @@
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
-    AuthPort, GatewayError, ReportPort, ResultPort, ScanConfigPort, ScannerPort, SessionManager,
-    SystemPort, TargetPort, TaskPort,
+    AlertPort, AuthPort, CredentialPort, FeedPort, GatewayError, PortListPort, ReportPort,
+    ResultPort, ScanConfigPort, ScannerPort, SchedulePort, SessionManager, SystemPort, TargetPort,
+    TaskPort,
 };
 use tracing::{field, info_span, Instrument};
 
@@ -19,6 +20,11 @@ pub(crate) const AUDIT_TARGET: &str = "gvm_gateway_app::audit";
 /// require touching unrelated handler signatures.
 pub struct GatewayService {
     pub(crate) system: Arc<dyn SystemPort>,
+    pub(crate) alerts: Arc<dyn AlertPort>,
+    pub(crate) schedules: Arc<dyn SchedulePort>,
+    pub(crate) credentials: Arc<dyn CredentialPort>,
+    pub(crate) port_lists: Arc<dyn PortListPort>,
+    pub(crate) feeds: Arc<dyn FeedPort>,
     pub(crate) targets: Arc<dyn TargetPort>,
     pub(crate) tasks: Arc<dyn TaskPort>,
     pub(crate) auth: Arc<dyn AuthPort>,
@@ -34,6 +40,11 @@ impl GatewayService {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         system: Arc<dyn SystemPort>,
+        alerts: Arc<dyn AlertPort>,
+        schedules: Arc<dyn SchedulePort>,
+        credentials: Arc<dyn CredentialPort>,
+        port_lists: Arc<dyn PortListPort>,
+        feeds: Arc<dyn FeedPort>,
         targets: Arc<dyn TargetPort>,
         tasks: Arc<dyn TaskPort>,
         auth: Arc<dyn AuthPort>,
@@ -45,6 +56,11 @@ impl GatewayService {
     ) -> Self {
         Self {
             system,
+            alerts,
+            schedules,
+            credentials,
+            port_lists,
+            feeds,
             targets,
             tasks,
             auth,
@@ -230,6 +246,11 @@ impl Clone for GatewayService {
     fn clone(&self) -> Self {
         Self {
             system: Arc::clone(&self.system),
+            alerts: Arc::clone(&self.alerts),
+            schedules: Arc::clone(&self.schedules),
+            credentials: Arc::clone(&self.credentials),
+            port_lists: Arc::clone(&self.port_lists),
+            feeds: Arc::clone(&self.feeds),
             targets: Arc::clone(&self.targets),
             tasks: Arc::clone(&self.tasks),
             auth: Arc::clone(&self.auth),

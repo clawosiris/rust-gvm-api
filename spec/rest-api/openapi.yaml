@@ -99,6 +99,14 @@ paths:
     $ref: './reports.yaml#/paths/~1reports~1{id}'
   /reports/{id}/results:
     $ref: './reports.yaml#/paths/~1reports~1{id}~1results'
+  /reports/{id}/vulnerabilities:
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1vulnerabilities'
+  /reports/{id}/tls-certificates:
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1tls-certificates'
+  /reports/{id}/errors:
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1errors'
+  /reports/{id}/closed-cves:
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1closed-cves'
   /results:
     $ref: './results.yaml#/paths/~1results'
   /results/{id}:
@@ -115,10 +123,14 @@ paths:
     $ref: './alerts.yaml#/paths/~1alerts'
   /alerts/{id}:
     $ref: './alerts.yaml#/paths/~1alerts~1{id}'
+  /timezones:
+    $ref: './schedules.yaml#/paths/~1timezones'
   /schedules:
     $ref: './schedules.yaml#/paths/~1schedules'
   /schedules/{id}:
     $ref: './schedules.yaml#/paths/~1schedules~1{id}'
+  /credential-stores:
+    $ref: './credentials.yaml#/paths/~1credential-stores'
   /credentials:
     $ref: './credentials.yaml#/paths/~1credentials'
   /credentials/{id}:

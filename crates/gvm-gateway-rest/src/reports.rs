@@ -11,7 +11,9 @@ use axum::{
     Json,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{GatewayError, GetReportOpts, ReportQuery, ResultQuery};
+use gvm_gateway_domain::{
+    GatewayError, GetReportOpts, ReportQuery, ResultQuery, TlsCertificate, TlsCertificatePage,
+};
 use schemars::JsonSchema;
 use serde::Serialize;
 use uuid::Uuid;
@@ -104,6 +106,65 @@ impl From<gvm_gateway_domain::Report> for ReportResponse {
 pub(crate) struct ReportListResponse {
     data: Vec<ReportResponse>,
     pagination: PaginationResponse,
+}
+
+/// JSON body returned for a TLS certificate observation.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TlsCertificate")]
+pub(crate) struct TlsCertificateResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<String>,
+    subject: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    issuer: Option<String>,
+    #[serde(rename = "notBefore", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    not_before: Option<String>,
+    #[serde(rename = "notAfter", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    not_after: Option<String>,
+    #[serde(rename = "fingerprintSha256", skip_serializing_if = "Option::is_none")]
+    fingerprint_sha256: Option<String>,
+}
+
+impl From<TlsCertificate> for TlsCertificateResponse {
+    fn from(certificate: TlsCertificate) -> Self {
+        Self {
+            id: certificate.id,
+            host: certificate.host,
+            port: certificate.port,
+            subject: certificate.subject,
+            issuer: certificate.issuer,
+            not_before: certificate.not_before,
+            not_after: certificate.not_after,
+            fingerprint_sha256: certificate.fingerprint_sha256,
+        }
+    }
+}
+
+/// JSON body returned for a paginated TLS certificate list.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TlsCertificateList")]
+pub(crate) struct TlsCertificateListResponse {
+    data: Vec<TlsCertificateResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<TlsCertificatePage> for TlsCertificateListResponse {
+    fn from(page: TlsCertificatePage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(TlsCertificateResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
 }
 
 impl From<gvm_gateway_domain::ReportPage> for ReportListResponse {
@@ -387,6 +448,162 @@ pub async fn get_report_results(
     }
 }
 
+/// Get report vulnerabilities handler.
+pub async fn get_report_vulnerabilities(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportResultsQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .get_report_vulnerabilities(
+            &session,
+            &id,
+            ResultQuery {
+                filter_string: query.filter_string,
+                filter_id: None,
+                page: query.page,
+                per_page: query.per_page,
+            },
+        )
+        .await
+    {
+        Ok(results) => (StatusCode::OK, Json(ResultListResponse::from(results))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Get report TLS certificates handler.
+pub async fn get_report_tls_certificates(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportResultsQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .get_report_tls_certificates(
+            &session,
+            &id,
+            ResultQuery {
+                filter_string: query.filter_string,
+                filter_id: None,
+                page: query.page,
+                per_page: query.per_page,
+            },
+        )
+        .await
+    {
+        Ok(certificates) => (
+            StatusCode::OK,
+            Json(TlsCertificateListResponse::from(certificates)),
+        )
+            .into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Get report errors handler.
+pub async fn get_report_errors(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportResultsQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .get_report_errors(
+            &session,
+            &id,
+            ResultQuery {
+                filter_string: query.filter_string,
+                filter_id: None,
+                page: query.page,
+                per_page: query.per_page,
+            },
+        )
+        .await
+    {
+        Ok(results) => (StatusCode::OK, Json(ResultListResponse::from(results))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Get report closed CVEs handler.
+pub async fn get_report_closed_cves(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportResultsQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .get_report_closed_cves(
+            &session,
+            &id,
+            ResultQuery {
+                filter_string: query.filter_string,
+                filter_id: None,
+                page: query.page,
+                per_page: query.per_page,
+            },
+        )
+        .await
+    {
+        Ok(results) => (StatusCode::OK, Json(ResultListResponse::from(results))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
 // ============================================================================
 // OpenAPI transforms
 // ============================================================================
@@ -447,6 +664,78 @@ pub(crate) fn get_report_results_docs(op: TransformOperation<'_>) -> TransformOp
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
         .response_with::<200, Json<ResultListResponse>, _>(ok_json("Paginated list of results"));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/vulnerabilities`.
+pub(crate) fn get_report_vulnerabilities_docs(
+    op: TransformOperation<'_>,
+) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportVulnerabilities")
+        .tag("Reports")
+        .summary("Get vulnerability findings for a report")
+        .description("Returns a paginated list of vulnerability findings for a report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ResultListResponse>, _>(ok_json(
+            "Paginated list of vulnerability findings",
+        ));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/tls-certificates`.
+pub(crate) fn get_report_tls_certificates_docs(
+    op: TransformOperation<'_>,
+) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportTlsCertificates")
+        .tag("Reports")
+        .summary("Get TLS certificates observed in a report")
+        .description("Returns a paginated list of TLS certificate observations for a report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<TlsCertificateListResponse>, _>(ok_json(
+            "Paginated list of TLS certificates",
+        ));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/errors`.
+pub(crate) fn get_report_errors_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportErrors")
+        .tag("Reports")
+        .summary("Get report error findings")
+        .description("Returns a paginated list of report error findings.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ResultListResponse>, _>(ok_json(
+            "Paginated list of report errors",
+        ));
+
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/closed-cves`.
+pub(crate) fn get_report_closed_cves_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportClosedCves")
+        .tag("Reports")
+        .summary("Get closed CVE findings for a report")
+        .description("Returns a paginated list of closed-CVE findings for a report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ResultListResponse>, _>(ok_json(
+            "Paginated list of closed CVE findings",
+        ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
