@@ -196,6 +196,10 @@ Rules for these exceptions:
 | `GET` | `/api/v1/reports` | List reports |
 | `GET` | `/api/v1/reports/{id}` | Get report (with results) |
 | `GET` | `/api/v1/reports/{id}/results` | Get report results (paginated) |
+| `GET` | `/api/v1/reports/{id}/vulnerabilities` | Get report vulnerability findings (paginated) |
+| `GET` | `/api/v1/reports/{id}/tls-certificates` | Get TLS certificates observed in a report (paginated) |
+| `GET` | `/api/v1/reports/{id}/errors` | Get report error findings (paginated) |
+| `GET` | `/api/v1/reports/{id}/closed-cves` | Get closed CVE findings for a report (paginated) |
 | `DELETE` | `/api/v1/reports/{id}` | Delete report |
 | `GET` | `/api/v1/reports/{id}/export` | Export report (PDF/XML/CSV) |
 
@@ -237,11 +241,33 @@ Rules for these exceptions:
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/api/v1/timezones` | List available schedule timezones |
 | `GET` | `/api/v1/schedules` | List schedules |
 | `POST` | `/api/v1/schedules` | Create schedule |
 | `GET` | `/api/v1/schedules/{id}` | Get schedule |
 | `PUT` | `/api/v1/schedules/{id}` | Update schedule |
 | `DELETE` | `/api/v1/schedules/{id}` | Delete schedule |
+
+#### Credentials
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/credential-stores` | List available credential stores |
+| `GET` | `/api/v1/credentials` | List credentials |
+| `POST` | `/api/v1/credentials` | Create credential |
+| `GET` | `/api/v1/credentials/{id}` | Get credential |
+| `PUT` | `/api/v1/credentials/{id}` | Update credential |
+| `DELETE` | `/api/v1/credentials/{id}` | Delete credential |
+
+#### Port Lists
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/port-lists` | List port lists |
+| `POST` | `/api/v1/port-lists` | Create port list |
+| `GET` | `/api/v1/port-lists/{id}` | Get port list |
+| `PUT` | `/api/v1/port-lists/{id}` | Update port list |
+| `DELETE` | `/api/v1/port-lists/{id}` | Delete port list |
 
 #### Sessions & Auth
 
