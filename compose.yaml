@@ -201,6 +201,11 @@ services:
       args:
         GVM_GATEWAY_VERSION: ${GVM_GATEWAY_VERSION:-dev}
         GVM_GATEWAY_VCS_REF: ${GVM_GATEWAY_VCS_REF:-local}
+        GVM_GATEWAY_UID: ${GVM_GATEWAY_UID:-65532}
+        GVM_GATEWAY_GID: ${GVM_GATEWAY_GID:-65532}
+    user: "${GVM_GATEWAY_UID:-65532}:${GVM_GATEWAY_GID:-65532}"
+    group_add:
+      - "${GVM_GATEWAY_SOCKET_GID:-65532}"
     ports:
       - 127.0.0.1:8080:8080
     volumes:

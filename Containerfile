@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-ARG RUST_VERSION=1.75.0
+ARG RUST_VERSION=1.95.0
 
-FROM rust:${RUST_VERSION}-bookworm AS builder
+FROM rust:${RUST_VERSION}-trixie AS builder
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git pkg-config \
@@ -17,10 +17,12 @@ COPY packaging packaging
 
 RUN cargo build --locked --release -p gvm-gateway
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 ARG GVM_GATEWAY_VERSION=dev
 ARG GVM_GATEWAY_VCS_REF=unknown
+ARG GVM_GATEWAY_UID=65532
+ARG GVM_GATEWAY_GID=65532
 
 LABEL org.opencontainers.image.title="gvm-gateway" \
       org.opencontainers.image.description="Unified REST and gRPC gateway for Greenbone Vulnerability Management" \
@@ -31,10 +33,16 @@ LABEL org.opencontainers.image.title="gvm-gateway" \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && groupadd --system --gid "${GVM_GATEWAY_GID}" gvm-gateway \
+    && useradd --system --uid "${GVM_GATEWAY_UID}" --gid "${GVM_GATEWAY_GID}" --no-create-home --shell /usr/sbin/nologin gvm-gateway \
+    && install -d -o "${GVM_GATEWAY_UID}" -g "${GVM_GATEWAY_GID}" /var/lib/gvm-gateway \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /workspace/target/release/gvm-gateway /usr/local/bin/gvm-gateway
 COPY packaging/gvm-gateway.container.toml /etc/gvm-gateway/gvm-gateway.toml
+
+USER ${GVM_GATEWAY_UID}:${GVM_GATEWAY_GID}
+WORKDIR /var/lib/gvm-gateway
 
 EXPOSE 8080
 
