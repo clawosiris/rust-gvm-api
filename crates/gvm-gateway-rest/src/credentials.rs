@@ -28,7 +28,8 @@ use crate::{
 };
 
 pub use gvm_gateway_domain::{
-    CreateCredentialInput, Credential, CredentialPage, CredentialQuery, ModifyCredentialInput,
+    CreateCredentialInput, Credential, CredentialPage, CredentialQuery, CredentialStore,
+    ModifyCredentialInput,
 };
 
 #[derive(Clone, Debug, Serialize, JsonSchema)]
@@ -66,6 +67,35 @@ impl From<Credential> for CredentialResponse {
 pub(crate) struct CredentialListResponse {
     data: Vec<CredentialResponse>,
     pagination: PaginationResponse,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "CredentialStore")]
+pub(crate) struct CredentialStoreResponse {
+    id: String,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<String>,
+    default: bool,
+    writable: bool,
+}
+
+impl From<CredentialStore> for CredentialStoreResponse {
+    fn from(store: CredentialStore) -> Self {
+        Self {
+            id: store.id,
+            name: store.name,
+            provider: store.provider,
+            default: store.default,
+            writable: store.writable,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "CredentialStoreList")]
+pub(crate) struct CredentialStoreListResponse {
+    data: Vec<CredentialStoreResponse>,
 }
 
 impl From<CredentialPage> for CredentialListResponse {
@@ -191,6 +221,31 @@ pub async fn list_credentials(
         Ok(credentials) => (
             StatusCode::OK,
             Json(CredentialListResponse::from(credentials)),
+        )
+            .into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+pub async fn list_credential_stores(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.list_credential_stores(&session).await {
+        Ok(stores) => (
+            StatusCode::OK,
+            Json(CredentialStoreListResponse {
+                data: stores
+                    .into_iter()
+                    .map(CredentialStoreResponse::from)
+                    .collect(),
+            }),
         )
             .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
@@ -325,6 +380,21 @@ pub(crate) fn list_credentials_docs(op: TransformOperation<'_>) -> TransformOper
             "Paginated list of credentials",
         ));
     let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/credential-stores`.
+pub(crate) fn list_credential_stores_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getCredentialStores")
+        .tag("Credentials")
+        .summary("List available credential stores")
+        .description("Returns backend credential stores available to credential workflows.")
+        .security_requirement("bearerAuth")
+        .response_with::<200, Json<CredentialStoreListResponse>, _>(ok_json(
+            "Available credential stores",
+        ));
+
     problem_response::<401>(op, "Authentication required or session expired")
 }
 

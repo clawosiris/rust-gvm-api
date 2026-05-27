@@ -8,14 +8,15 @@ use async_trait::async_trait;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
     CreatePortListInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
-    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, Feed, FeedPort,
-    GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput, ModifyPortListInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, PortList,
-    PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportPage, ReportPort,
-    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
-    SchedulePage, SchedulePort, ScheduleQuery, SystemPort, Target, TargetPage, TargetPort,
-    TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
+    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
+    Feed, FeedPort, GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput,
+    ModifyPortListInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput,
+    ModifyTaskInput, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
+    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig,
+    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
+    ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SystemPort, Target,
+    TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Timezone,
+    TlsCertificatePage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -106,6 +107,13 @@ impl AlertPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl SchedulePort for StaticGvmdAdapter {
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Ok(vec![Timezone {
+            name: "UTC".to_string(),
+            display_name: Some("UTC".to_string()),
+        }])
+    }
+
     async fn list_schedules(
         &self,
         _: &str,
@@ -138,6 +146,16 @@ impl SchedulePort for StaticGvmdAdapter {
 
 #[async_trait]
 impl CredentialPort for StaticGvmdAdapter {
+    async fn list_credential_stores(&self, _: &str) -> Result<Vec<CredentialStore>, GatewayError> {
+        Ok(vec![CredentialStore {
+            id: "default".to_string(),
+            name: "Default".to_string(),
+            provider: Some("gvmd".to_string()),
+            default: true,
+            writable: true,
+        }])
+    }
+
     async fn list_credentials(
         &self,
         _: &str,
@@ -330,6 +348,50 @@ impl ReportPort for StaticGvmdAdapter {
     }
 
     async fn get_report_results(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report_errors(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report_closed_cves(
         &self,
         _: &str,
         _: &str,

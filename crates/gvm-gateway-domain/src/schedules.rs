@@ -44,6 +44,15 @@ pub struct SchedulePage {
     pub pagination: Pagination,
 }
 
+/// Supported backend timezone identifier.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Timezone {
+    /// IANA timezone identifier.
+    pub name: String,
+    /// Optional human-friendly label.
+    pub display_name: Option<String>,
+}
+
 /// Schedule list query options.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ScheduleQuery {

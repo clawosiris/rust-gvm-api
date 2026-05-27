@@ -31,7 +31,7 @@ use crate::{
 };
 
 pub use gvm_gateway_domain::{
-    CreateScheduleInput, ModifyScheduleInput, Schedule, SchedulePage, ScheduleQuery,
+    CreateScheduleInput, ModifyScheduleInput, Schedule, SchedulePage, ScheduleQuery, Timezone,
 };
 
 #[derive(Clone, Debug, Serialize, JsonSchema)]
@@ -80,6 +80,29 @@ impl From<Schedule> for ScheduleResponse {
 pub(crate) struct ScheduleListResponse {
     data: Vec<ScheduleResponse>,
     pagination: PaginationResponse,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Timezone")]
+pub(crate) struct TimezoneResponse {
+    name: String,
+    #[serde(rename = "displayName", skip_serializing_if = "Option::is_none")]
+    display_name: Option<String>,
+}
+
+impl From<Timezone> for TimezoneResponse {
+    fn from(timezone: Timezone) -> Self {
+        Self {
+            name: timezone.name,
+            display_name: timezone.display_name,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TimezoneList")]
+pub(crate) struct TimezoneListResponse {
+    data: Vec<TimezoneResponse>,
 }
 
 impl From<SchedulePage> for ScheduleListResponse {
@@ -173,6 +196,28 @@ pub async fn list_schedules(
         Ok(schedules) => {
             (StatusCode::OK, Json(ScheduleListResponse::from(schedules))).into_response()
         }
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+pub async fn list_timezones(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.list_timezones(&session).await {
+        Ok(timezones) => (
+            StatusCode::OK,
+            Json(TimezoneListResponse {
+                data: timezones.into_iter().map(TimezoneResponse::from).collect(),
+            }),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -301,6 +346,21 @@ pub(crate) fn list_schedules_docs(op: TransformOperation<'_>) -> TransformOperat
             "Paginated list of schedules",
         ));
     let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `GET /api/v1/timezones`.
+pub(crate) fn list_timezones_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTimezones")
+        .tag("Schedules")
+        .summary("List available schedule timezones")
+        .description("Returns the timezone identifiers accepted by the backend for schedules.")
+        .security_requirement("bearerAuth")
+        .response_with::<200, Json<TimezoneListResponse>, _>(ok_json(
+            "Supported schedule timezones",
+        ));
+
     problem_response::<401>(op, "Authentication required or session expired")
 }
 

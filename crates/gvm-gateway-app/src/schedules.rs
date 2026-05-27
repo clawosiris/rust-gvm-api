@@ -10,6 +10,22 @@ use gvm_gateway_domain::{
 use crate::GatewayService;
 
 impl GatewayService {
+    /// Lists supported schedule timezones for an authenticated session.
+    pub async fn list_timezones(
+        &self,
+        session_token: &str,
+    ) -> Result<Vec<gvm_gateway_domain::Timezone>, GatewayError> {
+        self.execute_with_resource(
+            "schedules.timezones.list",
+            session_token,
+            "list",
+            "schedule_timezone",
+            None,
+            |session| async move { self.schedules.list_timezones(&session.token).await },
+        )
+        .await
+    }
+
     /// Lists schedules for an authenticated session.
     pub async fn list_schedules(
         &self,

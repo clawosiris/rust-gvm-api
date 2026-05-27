@@ -155,6 +155,12 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     copy_path(
         &source_paths,
         &mut normalized_paths,
+        "/api/v1/timezones",
+        "/timezones",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
         "/api/v1/schedules",
         "/schedules",
     );
@@ -163,6 +169,12 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         &mut normalized_paths,
         "/api/v1/schedules/{id}",
         "/schedules/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/credential-stores",
+        "/credential-stores",
     );
     copy_path(
         &source_paths,
@@ -247,6 +259,30 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         &mut normalized_paths,
         "/api/v1/reports/{id}/results",
         "/reports/{id}/results",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/reports/{id}/vulnerabilities",
+        "/reports/{id}/vulnerabilities",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/reports/{id}/tls-certificates",
+        "/reports/{id}/tls-certificates",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/reports/{id}/errors",
+        "/reports/{id}/errors",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/reports/{id}/closed-cves",
+        "/reports/{id}/closed-cves",
     );
     copy_path(
         &source_paths,
@@ -415,6 +451,10 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     tighten_list_query_parameters(&mut document, "/reports");
     tighten_list_query_parameters(&mut document, "/results");
     tighten_list_query_parameters(&mut document, "/reports/{id}/results");
+    tighten_list_query_parameters(&mut document, "/reports/{id}/vulnerabilities");
+    tighten_list_query_parameters(&mut document, "/reports/{id}/tls-certificates");
+    tighten_list_query_parameters(&mut document, "/reports/{id}/errors");
+    tighten_list_query_parameters(&mut document, "/reports/{id}/closed-cves");
     tighten_list_query_parameters(&mut document, "/scan-configs");
     tighten_list_query_parameters(&mut document, "/scanners");
     tighten_report_get_parameters(&mut document);

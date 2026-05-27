@@ -7,14 +7,15 @@ use async_trait::async_trait;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
     CreatePortListInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
-    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, Feed, FeedPort,
-    GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput, ModifyPortListInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, PortList,
-    PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportPage, ReportPort,
-    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
-    SchedulePage, SchedulePort, ScheduleQuery, SystemPort, Target, TargetPage, TargetPort,
-    TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
+    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
+    Feed, FeedPort, GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput,
+    ModifyPortListInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput,
+    ModifyTaskInput, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
+    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig,
+    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
+    ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SystemPort, Target,
+    TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Timezone,
+    TlsCertificatePage,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -90,6 +91,13 @@ pub(crate) struct MockSchedulePort;
 
 #[async_trait]
 impl SchedulePort for MockSchedulePort {
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Ok(vec![Timezone {
+            name: "UTC".to_string(),
+            display_name: Some("UTC".to_string()),
+        }])
+    }
+
     async fn list_schedules(
         &self,
         _: &str,
@@ -138,6 +146,16 @@ pub(crate) struct MockCredentialPort;
 
 #[async_trait]
 impl CredentialPort for MockCredentialPort {
+    async fn list_credential_stores(&self, _: &str) -> Result<Vec<CredentialStore>, GatewayError> {
+        Ok(vec![CredentialStore {
+            id: "default".to_string(),
+            name: "Default".to_string(),
+            provider: Some("gvmd".to_string()),
+            default: true,
+            writable: true,
+        }])
+    }
+
     async fn list_credentials(
         &self,
         _: &str,
@@ -485,6 +503,74 @@ impl ReportPort for MockReportPort {
     }
 
     async fn get_report_results(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(ResultPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(ResultPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        Ok(TlsCertificatePage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_errors(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(ResultPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_closed_cves(
         &self,
         _: &str,
         _: &str,

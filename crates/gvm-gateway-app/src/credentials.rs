@@ -11,6 +11,26 @@ use gvm_gateway_domain::{
 use crate::GatewayService;
 
 impl GatewayService {
+    /// Lists backend credential stores for an authenticated session.
+    pub async fn list_credential_stores(
+        &self,
+        session_token: &str,
+    ) -> Result<Vec<gvm_gateway_domain::CredentialStore>, GatewayError> {
+        self.execute_with_resource(
+            "credentials.stores.list",
+            session_token,
+            "list",
+            "credential_store",
+            None,
+            |session| async move {
+                self.credentials
+                    .list_credential_stores(&session.token)
+                    .await
+            },
+        )
+        .await
+    }
+
     /// Lists credentials for an authenticated session.
     pub async fn list_credentials(
         &self,

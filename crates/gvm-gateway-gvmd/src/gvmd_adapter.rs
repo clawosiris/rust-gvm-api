@@ -5,6 +5,7 @@
 
 use std::{
     collections::HashMap,
+    fs,
     path::{Path, PathBuf},
     process::Command as ProcessCommand,
     sync::{Arc, Mutex},
@@ -16,14 +17,15 @@ use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
     CreatePortListInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
-    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, Feed, FeedPort,
-    GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput, ModifyPortListInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, Pagination,
-    PortList, PortListPage, PortListPort, PortListQuery, Report, ReportPage, ReportPort,
-    ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigPort,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
-    SchedulePage, SchedulePort, ScheduleQuery, Target, TargetPage, TargetPort, TargetQuery, Task,
-    TaskAction, TaskPage, TaskPort, TaskQuery,
+    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
+    Feed, FeedPort, GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput,
+    ModifyPortListInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput,
+    ModifyTaskInput, Pagination, PortList, PortListPage, PortListPort, PortListQuery, Report,
+    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig,
+    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
+    ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Timezone,
+    TlsCertificate, TlsCertificatePage,
 };
 use gvm_gmp::{
     commands::{
@@ -143,6 +145,51 @@ impl GvmdAdapter {
             .map_err(|error| {
                 GatewayError::BackendUnavailable(format!("failed to start feed sync: {error}"))
             })
+    }
+
+    fn load_timezones(&self) -> Vec<Timezone> {
+        for path in [
+            "/usr/share/zoneinfo/zone1970.tab",
+            "/usr/share/zoneinfo/zone.tab",
+        ] {
+            if let Ok(contents) = fs::read_to_string(path) {
+                let mut zones = contents
+                    .lines()
+                    .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+                    .filter_map(|line| {
+                        let mut fields = line.split('\t');
+                        let _country_codes = fields.next()?;
+                        let _coordinates = fields.next()?;
+                        let name = fields.next()?.trim();
+                        Some(Timezone {
+                            name: name.to_string(),
+                            display_name: Some(name.replace('_', " ")),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                if !zones.is_empty() {
+                    zones.sort_by(|left, right| left.name.cmp(&right.name));
+                    zones.dedup_by(|left, right| left.name == right.name);
+                    return zones;
+                }
+            }
+        }
+
+        vec![Timezone {
+            name: "UTC".to_string(),
+            display_name: Some("UTC".to_string()),
+        }]
+    }
+
+    fn default_credential_stores(&self) -> Vec<CredentialStore> {
+        vec![CredentialStore {
+            id: "default".to_string(),
+            name: "Default".to_string(),
+            provider: Some("gvmd".to_string()),
+            default: true,
+            writable: true,
+        }]
     }
 }
 
@@ -338,6 +385,10 @@ impl AlertPort for GvmdAdapter {
 
 #[async_trait]
 impl SchedulePort for GvmdAdapter {
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Ok(self.load_timezones())
+    }
+
     async fn list_schedules(
         &self,
         session_token: &str,
@@ -475,6 +526,10 @@ impl SchedulePort for GvmdAdapter {
 
 #[async_trait]
 impl CredentialPort for GvmdAdapter {
+    async fn list_credential_stores(&self, _: &str) -> Result<Vec<CredentialStore>, GatewayError> {
+        Ok(self.default_credential_stores())
+    }
+
     async fn list_credentials(
         &self,
         session_token: &str,
@@ -1406,6 +1461,168 @@ impl ReportPort for GvmdAdapter {
             },
         })
     }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        let page = self
+            .get_report_results(session_token, report_id, &unpaginated_result_query(query))
+            .await?;
+        Ok(filter_result_page(page, query, |result| {
+            result.nvt.is_some() || result.severity.is_some()
+        }))
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        let page = self
+            .get_report_results(session_token, report_id, &unpaginated_result_query(query))
+            .await?;
+        let certificates = page
+            .data
+            .into_iter()
+            .filter(is_tls_certificate_result)
+            .map(|result| TlsCertificate {
+                id: Some(result.id),
+                host: result.host,
+                port: result.port,
+                subject: result.name,
+                issuer: None,
+                not_before: None,
+                not_after: None,
+                fingerprint_sha256: None,
+            })
+            .collect::<Vec<_>>();
+        Ok(paginate_tls_certificates(certificates, query))
+    }
+
+    async fn get_report_errors(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        let page = self
+            .get_report_results(session_token, report_id, &unpaginated_result_query(query))
+            .await?;
+        Ok(filter_result_page(page, query, is_error_result))
+    }
+
+    async fn get_report_closed_cves(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        let page = self
+            .get_report_results(session_token, report_id, &unpaginated_result_query(query))
+            .await?;
+        Ok(filter_result_page(page, query, is_closed_cve_result))
+    }
+}
+
+fn unpaginated_result_query(query: &ResultQuery) -> ResultQuery {
+    ResultQuery {
+        filter_string: query.filter_string.clone(),
+        filter_id: query.filter_id.clone(),
+        page: 1,
+        per_page: u32::MAX,
+    }
+}
+
+fn filter_result_page(
+    page: ResultPage,
+    query: &ResultQuery,
+    predicate: impl Fn(&ScanResult) -> bool,
+) -> ResultPage {
+    let filtered = page.data.into_iter().filter(predicate).collect::<Vec<_>>();
+    paginate_results(filtered, query)
+}
+
+fn paginate_results(results: Vec<ScanResult>, query: &ResultQuery) -> ResultPage {
+    let total = results.len() as u32;
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total - 1) / query.per_page) + 1
+    };
+    let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+
+    ResultPage {
+        data: results
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect(),
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total,
+            total_pages,
+        },
+    }
+}
+
+fn paginate_tls_certificates(
+    certificates: Vec<TlsCertificate>,
+    query: &ResultQuery,
+) -> TlsCertificatePage {
+    let total = certificates.len() as u32;
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total - 1) / query.per_page) + 1
+    };
+    let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+
+    TlsCertificatePage {
+        data: certificates
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect(),
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total,
+            total_pages,
+        },
+    }
+}
+
+fn is_error_result(result: &ScanResult) -> bool {
+    result
+        .threat
+        .as_deref()
+        .is_some_and(|threat| threat.eq_ignore_ascii_case("alarm"))
+        || result_text(result).contains("error")
+        || result_text(result).contains("failed")
+}
+
+fn is_closed_cve_result(result: &ScanResult) -> bool {
+    let text = result_text(result);
+    text.contains("closed cve") || text.contains("closed-cve") || text.contains("closed cves")
+}
+
+fn is_tls_certificate_result(result: &ScanResult) -> bool {
+    let text = result_text(result);
+    (text.contains("tls") || text.contains("ssl")) && text.contains("certificate")
+}
+
+fn result_text(result: &ScanResult) -> String {
+    let mut text = result.name.to_ascii_lowercase();
+    if let Some(description) = result.description.as_deref() {
+        text.push(' ');
+        text.push_str(&description.to_ascii_lowercase());
+    }
+    text
 }
 
 #[async_trait]

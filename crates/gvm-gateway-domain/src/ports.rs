@@ -8,12 +8,13 @@ use async_trait::async_trait;
 use crate::{
     Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreatePortListInput,
     CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput, Credential,
-    CredentialPage, CredentialQuery, Feed, GatewayError, GetReportOpts, ModifyAlertInput,
-    ModifyCredentialInput, ModifyPortListInput, ModifyScanConfigInput, ModifyScheduleInput,
-    ModifyTargetInput, ModifyTaskInput, PortList, PortListPage, PortListQuery, ReadinessStatus,
-    Report, ReportPage, ReportQuery, ResultPage, ResultQuery, ScanConfig, ScanConfigPage,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
-    ScheduleQuery, Target, TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery,
+    CredentialPage, CredentialQuery, CredentialStore, Feed, GatewayError, GetReportOpts,
+    ModifyAlertInput, ModifyCredentialInput, ModifyPortListInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, PortList, PortListPage, PortListQuery,
+    ReadinessStatus, Report, ReportPage, ReportQuery, ResultPage, ResultQuery, ScanConfig,
+    ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule,
+    SchedulePage, ScheduleQuery, Target, TargetPage, TargetQuery, Task, TaskAction, TaskPage,
+    TaskQuery, Timezone, TlsCertificatePage,
 };
 
 /// Port for system information needed by the gateway.
@@ -75,6 +76,9 @@ pub trait AlertPort: Send + Sync + 'static {
 /// Port for schedule CRUD operations.
 #[async_trait]
 pub trait SchedulePort: Send + Sync + 'static {
+    /// List timezone identifiers accepted for schedules.
+    async fn list_timezones(&self, session_token: &str) -> Result<Vec<Timezone>, GatewayError>;
+
     /// List schedules for the session.
     async fn list_schedules(
         &self,
@@ -107,6 +111,12 @@ pub trait SchedulePort: Send + Sync + 'static {
 /// Port for credential CRUD operations.
 #[async_trait]
 pub trait CredentialPort: Send + Sync + 'static {
+    /// List credential stores available to the backend.
+    async fn list_credential_stores(
+        &self,
+        session_token: &str,
+    ) -> Result<Vec<CredentialStore>, GatewayError>;
+
     /// List credentials for the session.
     async fn list_credentials(
         &self,
@@ -205,6 +215,38 @@ pub trait ReportPort: Send + Sync + 'static {
 
     /// List results for a specific report.
     async fn get_report_results(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError>;
+
+    /// List vulnerability findings for a specific report.
+    async fn get_report_vulnerabilities(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError>;
+
+    /// List TLS certificate observations for a specific report.
+    async fn get_report_tls_certificates(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError>;
+
+    /// List report errors for a specific report.
+    async fn get_report_errors(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError>;
+
+    /// List closed-CVE findings for a specific report.
+    async fn get_report_closed_cves(
         &self,
         session_token: &str,
         report_id: &str,

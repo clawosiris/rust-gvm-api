@@ -37,6 +37,21 @@ pub struct CredentialPage {
     pub pagination: Pagination,
 }
 
+/// Backend credential store available for new credentials.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CredentialStore {
+    /// Stable backend identifier.
+    pub id: String,
+    /// Human-friendly store name.
+    pub name: String,
+    /// Optional provider label.
+    pub provider: Option<String>,
+    /// Whether this is the default store for new credentials.
+    pub default: bool,
+    /// Whether clients may write to this store.
+    pub writable: bool,
+}
+
 /// Credential list query options.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CredentialQuery {

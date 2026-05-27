@@ -4,7 +4,8 @@
 //! Report use cases.
 
 use gvm_gateway_domain::{
-    GatewayError, GetReportOpts, Report, ReportPage, ReportQuery, ResultPage, ResultQuery,
+    GatewayError, GetReportOpts, Pagination, Report, ReportPage, ReportQuery, ResultPage,
+    ResultQuery, ScanResult, TlsCertificate, TlsCertificatePage,
 };
 
 use crate::GatewayService;
@@ -79,4 +80,220 @@ impl GatewayService {
         )
         .await
     }
+
+    /// Lists vulnerability findings for a specific report.
+    pub async fn get_report_vulnerabilities(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        self.execute_with_resource(
+            "reports.vulnerabilities.list",
+            session_token,
+            "list",
+            "report_vulnerability",
+            Some(report_id),
+            |session| async move {
+                let page = self
+                    .reports
+                    .get_report_results(&session.token, report_id, &unpaginated_query(&query))
+                    .await?;
+                Ok(filter_result_page(page, &query, is_vulnerability_result))
+            },
+        )
+        .await
+    }
+
+    /// Lists TLS certificate observations for a specific report.
+    pub async fn get_report_tls_certificates(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        self.execute_with_resource(
+            "reports.tls_certificates.list",
+            session_token,
+            "list",
+            "report_tls_certificate",
+            Some(report_id),
+            |session| async move {
+                let page = self
+                    .reports
+                    .get_report_results(&session.token, report_id, &unpaginated_query(&query))
+                    .await?;
+                let certificates = page
+                    .data
+                    .into_iter()
+                    .filter(is_tls_certificate_result)
+                    .map(result_to_tls_certificate)
+                    .collect::<Vec<_>>();
+                Ok(paginate_tls_certificates(certificates, &query))
+            },
+        )
+        .await
+    }
+
+    /// Lists report errors for a specific report.
+    pub async fn get_report_errors(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        self.execute_with_resource(
+            "reports.errors.list",
+            session_token,
+            "list",
+            "report_error",
+            Some(report_id),
+            |session| async move {
+                let page = self
+                    .reports
+                    .get_report_results(&session.token, report_id, &unpaginated_query(&query))
+                    .await?;
+                Ok(filter_result_page(page, &query, is_error_result))
+            },
+        )
+        .await
+    }
+
+    /// Lists closed-CVE findings for a specific report.
+    pub async fn get_report_closed_cves(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        self.execute_with_resource(
+            "reports.closed_cves.list",
+            session_token,
+            "list",
+            "report_closed_cve",
+            Some(report_id),
+            |session| async move {
+                let page = self
+                    .reports
+                    .get_report_results(&session.token, report_id, &unpaginated_query(&query))
+                    .await?;
+                Ok(filter_result_page(page, &query, is_closed_cve_result))
+            },
+        )
+        .await
+    }
+}
+
+fn unpaginated_query(query: &ResultQuery) -> ResultQuery {
+    ResultQuery {
+        filter_string: query.filter_string.clone(),
+        filter_id: query.filter_id.clone(),
+        page: 1,
+        per_page: u32::MAX,
+    }
+}
+
+fn filter_result_page(
+    page: ResultPage,
+    query: &ResultQuery,
+    predicate: impl Fn(&ScanResult) -> bool,
+) -> ResultPage {
+    let filtered = page.data.into_iter().filter(predicate).collect::<Vec<_>>();
+    paginate_results(filtered, query)
+}
+
+fn paginate_results(results: Vec<ScanResult>, query: &ResultQuery) -> ResultPage {
+    let total = results.len() as u32;
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total - 1) / query.per_page) + 1
+    };
+    let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+
+    ResultPage {
+        data: results
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect(),
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total,
+            total_pages,
+        },
+    }
+}
+
+fn paginate_tls_certificates(
+    certificates: Vec<TlsCertificate>,
+    query: &ResultQuery,
+) -> TlsCertificatePage {
+    let total = certificates.len() as u32;
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total - 1) / query.per_page) + 1
+    };
+    let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+
+    TlsCertificatePage {
+        data: certificates
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect(),
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total,
+            total_pages,
+        },
+    }
+}
+
+fn is_vulnerability_result(result: &ScanResult) -> bool {
+    result.nvt.is_some() || result.severity.is_some()
+}
+
+fn is_error_result(result: &ScanResult) -> bool {
+    result
+        .threat
+        .as_deref()
+        .is_some_and(|threat| threat.eq_ignore_ascii_case("alarm"))
+        || result_text(result).contains("error")
+        || result_text(result).contains("failed")
+}
+
+fn is_closed_cve_result(result: &ScanResult) -> bool {
+    let text = result_text(result);
+    text.contains("closed cve") || text.contains("closed-cve") || text.contains("closed cves")
+}
+
+fn is_tls_certificate_result(result: &ScanResult) -> bool {
+    let text = result_text(result);
+    (text.contains("tls") || text.contains("ssl")) && text.contains("certificate")
+}
+
+fn result_to_tls_certificate(result: ScanResult) -> TlsCertificate {
+    TlsCertificate {
+        id: Some(result.id),
+        host: result.host,
+        port: result.port,
+        subject: result.name,
+        issuer: None,
+        not_before: None,
+        not_after: None,
+        fingerprint_sha256: None,
+    }
+}
+
+fn result_text(result: &ScanResult) -> String {
+    let mut text = result.name.to_ascii_lowercase();
+    if let Some(description) = result.description.as_deref() {
+        text.push(' ');
+        text.push_str(&description.to_ascii_lowercase());
+    }
+    text
 }

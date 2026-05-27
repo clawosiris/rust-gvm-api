@@ -30,8 +30,8 @@ use crate::{
     },
     credentials::{
         create_credential, create_credential_docs, delete_credential, delete_credential_docs,
-        get_credential, get_credential_docs, list_credentials, list_credentials_docs,
-        update_credential, update_credential_docs,
+        get_credential, get_credential_docs, list_credential_stores, list_credential_stores_docs,
+        list_credentials, list_credentials_docs, update_credential, update_credential_docs,
     },
     error::RestError,
     feeds::{list_feeds, list_feeds_docs, sync_feeds, sync_feeds_docs},
@@ -42,8 +42,11 @@ use crate::{
         update_port_list_docs,
     },
     reports::{
-        delete_report, delete_report_docs, get_report, get_report_docs, get_report_results,
-        get_report_results_docs, list_reports, list_reports_docs,
+        delete_report, delete_report_docs, get_report, get_report_closed_cves,
+        get_report_closed_cves_docs, get_report_docs, get_report_errors, get_report_errors_docs,
+        get_report_results, get_report_results_docs, get_report_tls_certificates,
+        get_report_tls_certificates_docs, get_report_vulnerabilities,
+        get_report_vulnerabilities_docs, list_reports, list_reports_docs,
     },
     results::{get_result, get_result_docs, list_results, list_results_docs},
     scan_configs::{
@@ -54,8 +57,8 @@ use crate::{
     scanners::{get_scanner, get_scanner_docs, list_scanners, list_scanners_docs},
     schedules::{
         create_schedule, create_schedule_docs, delete_schedule, delete_schedule_docs, get_schedule,
-        get_schedule_docs, list_schedules, list_schedules_docs, update_schedule,
-        update_schedule_docs,
+        get_schedule_docs, list_schedules, list_schedules_docs, list_timezones,
+        list_timezones_docs, update_schedule, update_schedule_docs,
     },
     security::{request_scoped_basic_auth_middleware, security_middleware, SecurityRuntime},
     sessions::{
@@ -172,6 +175,10 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .route("/api/v1/alerts/{id}", patch(method_not_allowed_item))
         // Schedules
         .api_route(
+            "/api/v1/timezones",
+            get_with(list_timezones, list_timezones_docs),
+        )
+        .api_route(
             "/api/v1/schedules",
             get_with(list_schedules, list_schedules_docs),
         )
@@ -194,6 +201,10 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         .route("/api/v1/schedules/{id}", patch(method_not_allowed_item))
         // Credentials
+        .api_route(
+            "/api/v1/credential-stores",
+            get_with(list_credential_stores, list_credential_stores_docs),
+        )
         .api_route(
             "/api/v1/credentials",
             get_with(list_credentials, list_credentials_docs),
@@ -282,6 +293,25 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/reports/{id}/results",
             get_with(get_report_results, get_report_results_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/vulnerabilities",
+            get_with(get_report_vulnerabilities, get_report_vulnerabilities_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/tls-certificates",
+            get_with(
+                get_report_tls_certificates,
+                get_report_tls_certificates_docs,
+            ),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/errors",
+            get_with(get_report_errors, get_report_errors_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/closed-cves",
+            get_with(get_report_closed_cves, get_report_closed_cves_docs),
         )
         // Results
         .api_route("/api/v1/results", get_with(list_results, list_results_docs))
