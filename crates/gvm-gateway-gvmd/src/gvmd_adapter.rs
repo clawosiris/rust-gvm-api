@@ -70,7 +70,8 @@ use gvm_gmp::{
         CreateScanConfigResponse, CreateScheduleResponse, CreateTargetResponse, CreateTaskResponse,
         GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetPortListsResponse,
         GetReportsResponse, GetResultsResponse, GetScanConfigsResponse, GetScannersResponse,
-        GetSchedulesResponse, GetTargetsResponse, GetTasksResponse, StartTaskResponse,
+        GetSchedulesResponse, GetTargetsResponse, GetTasksResponse, GetVersionResponse,
+        StartTaskResponse,
     },
     EntityId,
 };
@@ -100,6 +101,26 @@ impl GvmdAdapter {
         Self {
             socket_path: path.as_ref().to_path_buf(),
             sessions: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Probe the backend GMP version without creating a session-bound client.
+    pub async fn probe_version(&self) -> Result<String, GatewayError> {
+        let connection = UnixSocketConnection::with_path(&self.socket_path);
+        let mut client = GmpClient::connect(connection)
+            .await
+            .map_err(map_gvm_error)?;
+        let negotiated = client.version().to_string();
+        let response = client
+            .call(gvm_gmp::commands::version::get_version())
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetVersionResponse::from_response(&response).map_err(map_parse_error)?;
+
+        if parsed.version.trim().is_empty() {
+            Ok(negotiated)
+        } else {
+            Ok(parsed.version)
         }
     }
 
@@ -1953,6 +1974,25 @@ mod tests {
         let adapter = GvmdAdapter::unix_socket("/tmp/nonexistent.sock");
         let result = adapter.session_client("missing-token");
         assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+    }
+
+    #[tokio::test]
+    async fn gvmd_adapter_probe_version_reports_mock_version() {
+        use gvm_mock_server::{GmpVersion as MockVersion, MockGmpServer, ServerMode};
+
+        let server = MockGmpServer::builder()
+            .mode(ServerMode::Stateful)
+            .version(MockVersion::V22_7)
+            .unix_socket_auto()
+            .build()
+            .await
+            .unwrap();
+
+        let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+        let version = adapter.probe_version().await.unwrap();
+        assert_eq!(version, "22.7");
+
+        server.shutdown().await;
     }
 
     mod integration {

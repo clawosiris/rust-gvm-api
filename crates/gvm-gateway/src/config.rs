@@ -47,6 +47,13 @@ impl Default for GatewayConfig {
     }
 }
 
+impl GatewayConfig {
+    /// Parse the configured gvmd endpoint into a Unix socket path.
+    pub fn gvmd_socket_path(&self) -> Result<PathBuf, ConfigError> {
+        parse_gvmd_endpoint(&self.gvmd_endpoint)
+    }
+}
+
 /// Errors that can occur while loading configuration.
 #[derive(Debug)]
 pub enum ConfigError {
@@ -129,6 +136,32 @@ pub fn load_config(
     Ok(config)
 }
 
+/// Parse a configured gvmd endpoint into a Unix socket path.
+///
+/// The current runtime contract supports Unix domain sockets via
+/// `unix:///path/to/gvmd.sock`, and also accepts a bare absolute socket path
+/// for local development convenience.
+pub fn parse_gvmd_endpoint(endpoint: &str) -> Result<PathBuf, ConfigError> {
+    let value = endpoint.trim();
+    if value.is_empty() {
+        return Err(ConfigError::InvalidValue(
+            "gvmd_endpoint must not be empty".to_string(),
+        ));
+    }
+
+    if let Some(path) = value.strip_prefix("unix://") {
+        return absolute_socket_path(path);
+    }
+
+    if value.starts_with('/') {
+        return absolute_socket_path(value);
+    }
+
+    Err(ConfigError::InvalidValue(format!(
+        "unsupported gvmd_endpoint '{value}'; expected unix:///path/to/gvmd.sock"
+    )))
+}
+
 fn apply_security_file_config(security: &mut RestSecurityConfig, file: &FileConfig) {
     if let Some(origins) = file.cors_allowed_origins.as_ref() {
         security.cors_allowed_origins = origins.clone();
@@ -187,4 +220,15 @@ fn limit_to_option(limit: u64) -> Option<u64> {
     } else {
         Some(limit)
     }
+}
+
+fn absolute_socket_path(path: &str) -> Result<PathBuf, ConfigError> {
+    let candidate = PathBuf::from(path);
+    if !candidate.is_absolute() {
+        return Err(ConfigError::InvalidValue(format!(
+            "gvmd_endpoint must resolve to an absolute Unix socket path: {path}"
+        )));
+    }
+
+    Ok(candidate)
 }

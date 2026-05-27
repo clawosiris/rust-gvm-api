@@ -157,11 +157,45 @@ jobs:
           name: gvm-gateway-${{ matrix.packager }}
           path: dist/packages/*
 
+  container:
+    name: Container
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - run: docker buildx version
+      - name: Build loadable runtime image
+        run: |
+          docker buildx build \
+            --load \
+            --build-arg "GVM_GATEWAY_VERSION=$(./scripts/workspace-version.sh)" \
+            --build-arg "GVM_GATEWAY_VCS_REF=$(git rev-parse HEAD)" \
+            -t local/gvm-gateway:ci \
+            -f Containerfile \
+            .
+      - name: Smoke test runtime image
+        run: docker run --rm local/gvm-gateway:ci --help >/tmp/gvm-gateway-help.txt
+      - name: Validate compose stack
+        run: docker compose -f compose.yaml config >/tmp/gvm-gateway-compose.yaml
+      - name: Export OCI archive artifact
+        run: |
+          mkdir -p dist/oci
+          docker buildx build \
+            --output type=oci,dest=dist/oci/gvm-gateway.oci.tar \
+            --build-arg "GVM_GATEWAY_VERSION=$(./scripts/workspace-version.sh)" \
+            --build-arg "GVM_GATEWAY_VCS_REF=$(git rev-parse HEAD)" \
+            -f Containerfile \
+            .
+          sha256sum dist/oci/gvm-gateway.oci.tar > dist/oci/gvm-gateway.oci.tar.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gvm-gateway-oci
+          path: dist/oci/*
+
   # Aggregator job for branch protection — require this single check
   ci:
     name: CI
     if: always()
-    needs: [fmt, clippy, test, test-features, doc, deny, coverage, msrv, package]
+    needs: [fmt, clippy, test, test-features, doc, deny, coverage, msrv, package, container]
     runs-on: ubuntu-latest
     steps:
       - name: Check upstream job results

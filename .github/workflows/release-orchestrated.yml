@@ -116,9 +116,44 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "v${{ inputs.version }}" dist/packages/* --clobber
 
+  oci:
+    name: OCI Image
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: v${{ inputs.version }}
+      - run: docker buildx version
+      - name: Build loadable runtime image
+        run: |
+          docker buildx build \
+            --load \
+            --build-arg "GVM_GATEWAY_VERSION=${{ inputs.version }}" \
+            --build-arg "GVM_GATEWAY_VCS_REF=$(git rev-parse HEAD)" \
+            -t local/gvm-gateway:release \
+            -f Containerfile \
+            .
+      - name: Smoke test runtime image
+        run: docker run --rm local/gvm-gateway:release --help >/tmp/gvm-gateway-help.txt
+      - name: Export OCI image archive
+        run: |
+          mkdir -p dist/oci
+          docker buildx build \
+            --output "type=oci,dest=dist/oci/gvm-gateway-${{ inputs.version }}.oci.tar" \
+            --build-arg "GVM_GATEWAY_VERSION=${{ inputs.version }}" \
+            --build-arg "GVM_GATEWAY_VCS_REF=$(git rev-parse HEAD)" \
+            -f Containerfile \
+            .
+          sha256sum "dist/oci/gvm-gateway-${{ inputs.version }}.oci.tar" > "dist/oci/gvm-gateway-${{ inputs.version }}.oci.tar.sha256"
+      - name: Upload OCI assets to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "v${{ inputs.version }}" dist/oci/* --clobber
+
   sbom:
     name: Generate SBOM
-    needs: [test, package]
+    needs: [test, package, oci]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -143,7 +178,7 @@ jobs:
 
   collect:
     name: Release complete
-    needs: [package, sbom]
+    needs: [package, oci, sbom]
     runs-on: ubuntu-latest
     steps:
       - run: echo "✅ All release artifacts published for v${{ inputs.version }}"

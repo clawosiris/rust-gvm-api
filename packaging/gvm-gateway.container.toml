@@ -1,0 +1,5 @@
+# Example configuration for containerized gvm-gateway installs.
+
+bind = "0.0.0.0:8080"
+gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
+# otlp_endpoint = "http://otel-collector:4317"
