@@ -520,6 +520,8 @@ For each resource (acceptance-test first):
   - allow in-flight requests to complete up to a bounded drain timeout
   - after the timeout, return from the serve loop so the process can exit even if blocked handlers remain
 - Emit structured shutdown telemetry for state transitions, rejected requests, and drain-timeout exits.
+- Build OCI image artifacts for the REST gateway and verify they run under both Podman and Docker.
+- Document the local container/dev workflow in terms of Compose-compatible stacks rather than Docker-only assumptions.
 - Add/maintain integration and E2E tests focused on REST behavior (written first, fail-first):
   - session lifecycle
   - concurrent calls on same token serialize correctly

@@ -6,7 +6,7 @@
 
 ```
          ┌──────────┐
-         │   E2E    │  Against real gvmd (Docker Compose)
+         │   E2E    │  Against real gvmd (Compose stack via Podman or Docker)
         ┌┴──────────┴┐
         │ Integration │  In-process tonic test client + mock GMP
        ┌┴────────────┴┐
@@ -20,7 +20,7 @@
 |----------|-------|-------------|-------|
 | Unit | Conversions, validation, interceptor logic | None | < 1s each |
 | Integration | Full RPC calls with mock GMP pool | tonic in-process transport | < 5s each |
-| E2E | Full server against gvmd | Docker Compose stack | < 30s each |
+| E2E | Full server against gvmd | Compose-compatible stack (Podman or Docker) | < 30s each |
 | Contract | Protobuf backward compatibility | `buf breaking` | < 2s |
 | Streaming | Server-streaming correctness + backpressure | Mock large reports | < 10s each |
 
@@ -216,12 +216,13 @@ buf breaking proto --against .git#branch=main
 - No removed services
 - Enum values not renumbered
 
-## 5. E2E Tests (Docker Compose)
+## 5. E2E Tests (Compose stack via Podman or Docker)
 
 ### Test Environment
 
 ```yaml
 # tests/docker-compose.yml
+# Compatible with Docker Compose and Podman Compose
 services:
   gvmd:
     image: greenbone/gvmd:latest
@@ -283,7 +284,7 @@ tests/
 # Unit + Integration (CI, fast)
 cargo test --workspace
 
-# E2E (requires Docker)
+# E2E (requires Podman or Docker)
 cargo test --workspace --features e2e-tests
 
 # Contract (requires buf)

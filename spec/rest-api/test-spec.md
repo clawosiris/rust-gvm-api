@@ -6,7 +6,7 @@
 
 ```
          ┌──────────┐
-         │   E2E    │  Against real gvmd (Docker Compose)
+         │   E2E    │  Against real gvmd (Compose stack via Podman or Docker)
         ┌┴──────────┴┐
         │ Integration │  axum test client + mock GMP pool
        ┌┴────────────┴┐
@@ -20,7 +20,7 @@
 |----------|-------|-------------|-------|
 | Unit | Individual functions, conversions, validation | None | < 1s each |
 | Integration | Route handlers with mock GMP | axum `TestServer` | < 5s each |
-| E2E | Full server against gvmd | Docker Compose stack | < 30s each |
+| E2E | Full server against gvmd | Compose-compatible stack (Podman or Docker) | < 30s each |
 | Contract | OpenAPI spec compliance | Generated spec | < 2s each |
 
 ## 2. Unit Tests
@@ -212,12 +212,13 @@ async fn test_server() -> TestServer {
 | `method_not_allowed` | `PATCH /api/v1/targets` → 405 |
 | `not_found_route` | `GET /api/v1/nonexistent` → 404 |
 
-## 4. E2E Tests (Docker Compose)
+## 4. E2E Tests (Compose stack via Podman or Docker)
 
 ### Test Environment
 
 ```yaml
 # tests/docker-compose.yml
+# Compatible with Docker Compose and Podman Compose
 services:
   gvmd:
     image: greenbone/gvmd:latest
