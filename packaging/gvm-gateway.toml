@@ -1,0 +1,5 @@
+# Example configuration for packaged gvm-gateway installs.
+
+bind = "127.0.0.1:8080"
+gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
+# otlp_endpoint = "http://127.0.0.1:4317"

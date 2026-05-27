@@ -130,11 +130,38 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - run: cargo check --workspace --all-features
 
+  package:
+    name: Package (${{ matrix.packager }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        packager: [deb, archlinux]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Configure git credentials for private deps
+        run: git config --global url."https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Build release binary
+        run: cargo build --release -p gvm-gateway
+      - name: Install nfpm
+        run: ./scripts/install-nfpm.sh
+      - name: Build package
+        run: ./scripts/package-build.sh --packager "${{ matrix.packager }}" --version "$(./scripts/workspace-version.sh)" --output-dir dist/packages
+      - name: Smoke test package install
+        run: ./scripts/package-smoke.sh --packager "${{ matrix.packager }}" --package-dir dist/packages
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gvm-gateway-${{ matrix.packager }}
+          path: dist/packages/*
+
   # Aggregator job for branch protection — require this single check
   ci:
     name: CI
     if: always()
-    needs: [fmt, clippy, test, test-features, doc, deny, coverage, msrv]
+    needs: [fmt, clippy, test, test-features, doc, deny, coverage, msrv, package]
     runs-on: ubuntu-latest
     steps:
       - name: Check upstream job results

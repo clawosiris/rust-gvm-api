@@ -6,7 +6,7 @@
 > [!NOTE]
 > **Releases** are managed via the [release-orchestrator](https://github.com/clawosiris/release-orchestrator).
 > To create a nightly/alpha build, create an alpha release in the orchestrator.
-> See [RELEASING.md](./RELEASING.md) for details.
+> See [RELEASING.md](./RELEASING.md) for details, including automated Debian and Arch Linux package artifacts.
 
 REST and gRPC API servers for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm).
 
