@@ -8,11 +8,11 @@
 > To create a nightly/alpha build, create an alpha release in the orchestrator.
 > See [RELEASING.md](./RELEASING.md) for details, including automated Debian and Arch Linux package artifacts.
 
-REST and gRPC API servers for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm).
+REST and gRPC API servers for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), with MCP planned as a peer API surface, all built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm).
 
 ## Overview
 
-This project provides modern, standards-compliant API layers on top of the Greenbone Management Protocol (GMP). Instead of speaking GMP's raw XML over Unix sockets or SSH, consumers can interact via familiar REST or gRPC interfaces.
+This project provides modern, standards-compliant API layers on top of the Greenbone Management Protocol (GMP). Instead of speaking GMP's raw XML over Unix sockets or SSH, consumers interact through higher-level gateway surfaces such as REST, gRPC, and planned MCP tooling.
 
 ### Crates
 
@@ -20,22 +20,32 @@ This project provides modern, standards-compliant API layers on top of the Green
 |-------|-------------|
 | `gvm-rest-api` | RESTful API server (OpenAPI 3.1, JSON, axum) |
 | `gvm-grpc-api` | gRPC API server (Protocol Buffers, tonic, server-streaming) |
+| `gvm-gateway-*` | Shared gateway core and adapters that will also host MCP |
 
 ### Architecture
 
 ```
-┌──────────────┐     HTTP/JSON     ┌───────────────┐
-│  REST Client │◄─────────────────►│ gvm-rest-api  │
-└──────────────┘                   └───────┬───────┘
-                                           │
-┌──────────────┐     gRPC/Proto    ┌───────┴───────┐     GMP/XML      ┌──────┐
-│  gRPC Client │◄─────────────────►│ gvm-grpc-api  │◄───────────────►│ gvmd │
-└──────────────┘                   └───────────────┘  Unix/SSH/TLS    └──────┘
-                                           │
-                                   ┌───────┴───────┐
-                                   │  rust-gvm     │
-                                   │  (gvm-client) │
-                                   └───────────────┘
+┌──────────────┐     HTTP/JSON     ┌──────────────────┐
+│  REST Client │◄─────────────────►│ gvm-gateway-rest │
+└──────────────┘                   └────────┬─────────┘
+                                            │
+┌──────────────┐     gRPC/Proto    ┌────────┴─────────┐
+│  gRPC Client │◄─────────────────►│   gvm-grpc-api   │
+└──────────────┘                   └────────┬─────────┘
+                                            │
+┌──────────────┐     MCP Tools     ┌────────┴─────────┐
+│  MCP Client  │◄─────────────────►│ gvm-gateway-mcp │
+└──────────────┘                   └────────┬─────────┘
+                                            │
+                                   ┌────────┴─────────┐
+                                   │  gvm-gateway-*   │
+                                   │ shared core/app  │
+                                   └────────┬─────────┘
+                                            │
+                                   ┌────────┴─────────┐
+                                   │    rust-gvm      │
+                                   │   GMP transport   │
+                                   └──────────────────┘
 ```
 
 Both API servers use `gvm-client` from [rust-gvm](https://github.com/clawosiris/rust-gvm) to communicate with `gvmd` over the Greenbone Management Protocol.
@@ -122,6 +132,10 @@ Useful follow-up commands:
 
 - [REST API OpenSpec](spec/rest-api/openspec.md)
 - [gRPC API OpenSpec](spec/grpc-api/openspec.md)
+- [GMP API Proxy Analysis](docs/gmp-api-proxy-analysis.md)
+- [Proxy Access Control Analysis](docs/proxy-access-control-analysis.md)
+- [MCP Gateway Surface Analysis](docs/mcp-gateway-surface-analysis.md)
+- [MCP Implementation Roadmap](docs/mcp-implementation-roadmap.md)
 
 ## License
 
