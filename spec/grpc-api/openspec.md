@@ -553,7 +553,7 @@ service_name = "gvm-gateway"
 
 ### Phase 5: Production Readiness
 
-- Container image
+- OCI image artifacts runnable under Podman and Docker
 - Graceful shutdown with connection draining
 - Load balancing considerations (sticky sessions for streams)
 - Performance benchmarks vs REST API

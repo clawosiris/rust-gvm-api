@@ -2,3 +2,6 @@
 .github
 target
 codex.log
+dist
+tmp
+.bin

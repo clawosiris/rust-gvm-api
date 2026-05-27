@@ -16,6 +16,7 @@ This repository uses orchestrated releases via [clawosiris/release-orchestrator]
 3. The release workflow will build and attach:
    - `gvm-gateway` Arch Linux packages (`.pkg.tar.zst`)
    - `gvm-gateway` Debian packages (`.deb`)
+   - `gvm-gateway` OCI image archives (`.oci.tar`)
    - matching `.sha256` checksum files
    - SBOM archives
 
@@ -38,6 +39,7 @@ cargo test
 ./scripts/install-nfpm.sh
 ./scripts/package-build.sh --packager deb --version "$(./scripts/workspace-version.sh)"
 ./scripts/package-build.sh --packager archlinux --version "$(./scripts/workspace-version.sh)"
+./scripts/oci-build.sh --tag local/gvm-gateway:dev
 ```
 
 Package smoke tests use Docker in CI:
@@ -47,10 +49,13 @@ Package smoke tests use Docker in CI:
 ./scripts/package-smoke.sh --packager archlinux
 ```
 
+Compose stack validation and OCI archive export are also covered in CI/release automation.
+
 ## Packaging Notes
 
 - The first pass packages the unified `gvm-gateway` binary.
 - Packages also ship an example config at `/etc/gvm-gateway/gvm-gateway.toml`.
+- OCI image builds ship a container-oriented config at `/etc/gvm-gateway/gvm-gateway.toml` with `0.0.0.0:8080` and a shared `/run/gvmd` socket contract.
 - systemd service/unit packaging is intentionally deferred until the runtime contract and service defaults settle.
 
 ## Questions?

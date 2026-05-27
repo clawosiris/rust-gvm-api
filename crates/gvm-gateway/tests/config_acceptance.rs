@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, io::Write};
 
-use gvm_gateway::config::{load_config, CliArgs, GatewayConfig};
+use gvm_gateway::config::{load_config, parse_gvmd_endpoint, CliArgs, GatewayConfig};
 use gvm_gateway_rest::router::{RateLimitConfig, RestSecurityConfig};
 use tempfile::NamedTempFile;
 
@@ -77,4 +77,24 @@ fn config_override_precedence() {
             },
         }
     );
+}
+
+#[test]
+fn parse_gvmd_endpoint_accepts_unix_uri_and_absolute_path() {
+    assert_eq!(
+        parse_gvmd_endpoint("unix:///run/gvmd/gvmd.sock").unwrap(),
+        std::path::PathBuf::from("/run/gvmd/gvmd.sock")
+    );
+    assert_eq!(
+        parse_gvmd_endpoint("/tmp/gvmd.sock").unwrap(),
+        std::path::PathBuf::from("/tmp/gvmd.sock")
+    );
+}
+
+#[test]
+fn parse_gvmd_endpoint_rejects_unsupported_schemes() {
+    let error = parse_gvmd_endpoint("tcp://gvmd:9390").unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("expected unix:///path/to/gvmd.sock"));
 }
