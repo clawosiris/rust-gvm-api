@@ -96,6 +96,18 @@ impl RestError {
         )
     }
 
+    /// Builds a 503 problem details response.
+    pub fn service_unavailable(detail: impl Into<String>, instance: impl Into<String>) -> Self {
+        Self::from_custom_parts(
+            "service-unavailable",
+            "service_unavailable",
+            "Service Unavailable",
+            StatusCode::SERVICE_UNAVAILABLE,
+            Some(detail.into()),
+            Some(instance.into()),
+        )
+    }
+
     fn from_parts(
         code: GatewayErrorCode,
         title: &'static str,
@@ -209,6 +221,19 @@ mod tests {
         assert_eq!(
             json["type"],
             serde_json::json!("https://gvm-gateway.greenbone.net/errors/not-found")
+        );
+    }
+
+    #[test]
+    fn service_unavailable_problem_uses_public_code() {
+        let error = RestError::service_unavailable("draining", "/api/v1/targets");
+
+        assert_eq!(error.status, StatusCode::SERVICE_UNAVAILABLE);
+        let json = serde_json::to_value(&error.problem).unwrap();
+        assert_eq!(json["code"], serde_json::json!("service_unavailable"));
+        assert_eq!(
+            json["type"],
+            serde_json::json!("https://gvm-gateway.greenbone.net/errors/service-unavailable")
         );
     }
 }

@@ -6,7 +6,7 @@
 > [!NOTE]
 > **Releases** are managed via the [release-orchestrator](https://github.com/clawosiris/release-orchestrator).
 > To create a nightly/alpha build, create an alpha release in the orchestrator.
-> See [RELEASING.md](./RELEASING.md) for details.
+> See [RELEASING.md](./RELEASING.md) for details, including automated Debian and Arch Linux package artifacts.
 
 REST and gRPC API servers for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), with MCP planned as a peer API surface, all built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm).
 
@@ -86,6 +86,47 @@ make setup-hooks
 # Run full CI locally
 make ci
 ```
+
+### OCI Image Build
+
+Build the gateway image with either Docker or Podman:
+
+```bash
+./scripts/oci-build.sh --tag local/gvm-gateway:dev
+```
+
+The image is built from [Containerfile](./Containerfile) as a multi-stage OCI-compatible runtime image for the `gvm-gateway` binary. Release workflows also export the result as an OCI archive artifact.
+
+### Compose Dev Stack
+
+Start a local gateway + gvmd stack with either Docker Compose or Podman Compose:
+
+```bash
+./scripts/compose-dev.sh up -d --build
+```
+
+The stack definition in [compose.yaml](./compose.yaml) is based on the official Greenbone Community container topology, but trims it to the services needed for `gvmd` plus the gateway. On the first boot, feed and data initialization can take several minutes before `gvmd` is ready.
+
+Useful follow-up commands:
+
+```bash
+./scripts/compose-dev.sh logs -f gvmd gvm-gateway
+./scripts/compose-dev.sh down
+```
+
+### Container Runtime Contract
+
+- Default container config: [packaging/gvm-gateway.container.toml](./packaging/gvm-gateway.container.toml)
+- Listener: `0.0.0.0:8080`
+- gvmd socket mount: `/run/gvmd`
+- Required backend endpoint: `GVM_GATEWAY_GVMD_ENDPOINT=unix:///run/gvmd/gvmd.sock`
+- Optional telemetry endpoint: `GVM_GATEWAY_OTLP_ENDPOINT`
+- Optional shutdown tuning: `GVM_GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECS`
+- Optional REST security overrides:
+  - `GVM_GATEWAY_CORS_ALLOWED_ORIGINS`
+  - `GVM_GATEWAY_RATE_LIMIT_WINDOW_SECS`
+  - `GVM_GATEWAY_RATE_LIMIT_GLOBAL_PER_WINDOW`
+  - `GVM_GATEWAY_RATE_LIMIT_SUBJECT_PER_WINDOW`
 
 ## Documentation
 

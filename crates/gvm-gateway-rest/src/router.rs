@@ -24,11 +24,29 @@ use gvm_gateway_app::GatewayService;
 use serde_json::Value;
 
 use crate::{
+    alerts::{
+        create_alert, create_alert_docs, delete_alert, delete_alert_docs, get_alert,
+        get_alert_docs, list_alerts, list_alerts_docs, update_alert, update_alert_docs,
+    },
+    credentials::{
+        create_credential, create_credential_docs, delete_credential, delete_credential_docs,
+        get_credential, get_credential_docs, list_credential_stores, list_credential_stores_docs,
+        list_credentials, list_credentials_docs, update_credential, update_credential_docs,
+    },
     error::RestError,
+    feeds::{list_feeds, list_feeds_docs, sync_feeds, sync_feeds_docs},
     openapi::{configure as configure_openapi, finalize_document},
+    port_lists::{
+        create_port_list, create_port_list_docs, delete_port_list, delete_port_list_docs,
+        get_port_list, get_port_list_docs, list_port_lists, list_port_lists_docs, update_port_list,
+        update_port_list_docs,
+    },
     reports::{
-        delete_report, delete_report_docs, get_report, get_report_docs, get_report_results,
-        get_report_results_docs, list_reports, list_reports_docs,
+        delete_report, delete_report_docs, get_report, get_report_closed_cves,
+        get_report_closed_cves_docs, get_report_docs, get_report_errors, get_report_errors_docs,
+        get_report_results, get_report_results_docs, get_report_tls_certificates,
+        get_report_tls_certificates_docs, get_report_vulnerabilities,
+        get_report_vulnerabilities_docs, list_reports, list_reports_docs,
     },
     results::{get_result, get_result_docs, list_results, list_results_docs},
     scan_configs::{
@@ -37,11 +55,17 @@ use crate::{
         update_scan_config, update_scan_config_docs,
     },
     scanners::{get_scanner, get_scanner_docs, list_scanners, list_scanners_docs},
+    schedules::{
+        create_schedule, create_schedule_docs, delete_schedule, delete_schedule_docs, get_schedule,
+        get_schedule_docs, list_schedules, list_schedules_docs, list_timezones,
+        list_timezones_docs, update_schedule, update_schedule_docs,
+    },
     security::{request_scoped_basic_auth_middleware, security_middleware, SecurityRuntime},
     sessions::{
         create_session, create_session_docs, delete_session, delete_session_docs, get_session,
         get_session_docs,
     },
+    shutdown::ShutdownRuntime,
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
         create_target, create_target_docs, delete_target, delete_target_docs, get_target,
@@ -59,11 +83,24 @@ pub use crate::security::RestSecurityConfig;
 
 /// Builds the gateway router.
 pub fn build_router(state: GatewayService) -> Router {
-    build_router_with_security(state, RestSecurityConfig::default())
+    build_router_with_runtime_and_security(
+        state,
+        Arc::new(ShutdownRuntime::default()),
+        RestSecurityConfig::default(),
+    )
 }
 
 /// Builds the gateway router with explicit REST security middleware config.
 pub fn build_router_with_security(state: GatewayService, security: RestSecurityConfig) -> Router {
+    build_router_with_runtime_and_security(state, Arc::new(ShutdownRuntime::default()), security)
+}
+
+/// Builds the gateway router with explicit shutdown and REST security runtime.
+pub fn build_router_with_runtime_and_security(
+    state: GatewayService,
+    shutdown: Arc<ShutdownRuntime>,
+    security: RestSecurityConfig,
+) -> Router {
     let openapi = build_openapi();
     let openapi_json =
         Arc::new(serde_json::to_string_pretty(&openapi).expect("generated OpenAPI must serialize"));
@@ -79,10 +116,15 @@ pub fn build_router_with_security(state: GatewayService, security: RestSecurityC
         ))
         .layer(middleware::from_fn(trace_context_middleware))
         .layer(middleware::from_fn_with_state(
+            Arc::clone(&shutdown),
+            shutdown_gate_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
             security_state,
             security_middleware,
         ))
         .with_state(state)
+        .layer(Extension(shutdown))
         .layer(Extension(openapi_json))
         .into()
 }
@@ -136,6 +178,101 @@ fn documented_router() -> ApiRouter<GatewayService> {
             delete_with(delete_target, delete_target_docs),
         )
         .route("/api/v1/targets/{id}", patch(method_not_allowed_item))
+        // Alerts
+        .api_route("/api/v1/alerts", get_with(list_alerts, list_alerts_docs))
+        .api_route("/api/v1/alerts", post_with(create_alert, create_alert_docs))
+        .route("/api/v1/alerts", patch(method_not_allowed_collection))
+        .api_route("/api/v1/alerts/{id}", get_with(get_alert, get_alert_docs))
+        .api_route(
+            "/api/v1/alerts/{id}",
+            put_with(update_alert, update_alert_docs),
+        )
+        .api_route(
+            "/api/v1/alerts/{id}",
+            delete_with(delete_alert, delete_alert_docs),
+        )
+        .route("/api/v1/alerts/{id}", patch(method_not_allowed_item))
+        // Schedules
+        .api_route(
+            "/api/v1/timezones",
+            get_with(list_timezones, list_timezones_docs),
+        )
+        .api_route(
+            "/api/v1/schedules",
+            get_with(list_schedules, list_schedules_docs),
+        )
+        .api_route(
+            "/api/v1/schedules",
+            post_with(create_schedule, create_schedule_docs),
+        )
+        .route("/api/v1/schedules", patch(method_not_allowed_collection))
+        .api_route(
+            "/api/v1/schedules/{id}",
+            get_with(get_schedule, get_schedule_docs),
+        )
+        .api_route(
+            "/api/v1/schedules/{id}",
+            put_with(update_schedule, update_schedule_docs),
+        )
+        .api_route(
+            "/api/v1/schedules/{id}",
+            delete_with(delete_schedule, delete_schedule_docs),
+        )
+        .route("/api/v1/schedules/{id}", patch(method_not_allowed_item))
+        // Credentials
+        .api_route(
+            "/api/v1/credential-stores",
+            get_with(list_credential_stores, list_credential_stores_docs),
+        )
+        .api_route(
+            "/api/v1/credentials",
+            get_with(list_credentials, list_credentials_docs),
+        )
+        .api_route(
+            "/api/v1/credentials",
+            post_with(create_credential, create_credential_docs),
+        )
+        .route("/api/v1/credentials", patch(method_not_allowed_collection))
+        .api_route(
+            "/api/v1/credentials/{id}",
+            get_with(get_credential, get_credential_docs),
+        )
+        .api_route(
+            "/api/v1/credentials/{id}",
+            put_with(update_credential, update_credential_docs),
+        )
+        .api_route(
+            "/api/v1/credentials/{id}",
+            delete_with(delete_credential, delete_credential_docs),
+        )
+        .route("/api/v1/credentials/{id}", patch(method_not_allowed_item))
+        // Port Lists
+        .api_route(
+            "/api/v1/port-lists",
+            get_with(list_port_lists, list_port_lists_docs),
+        )
+        .api_route(
+            "/api/v1/port-lists",
+            post_with(create_port_list, create_port_list_docs),
+        )
+        .route("/api/v1/port-lists", patch(method_not_allowed_collection))
+        .api_route(
+            "/api/v1/port-lists/{id}",
+            get_with(get_port_list, get_port_list_docs),
+        )
+        .api_route(
+            "/api/v1/port-lists/{id}",
+            put_with(update_port_list, update_port_list_docs),
+        )
+        .api_route(
+            "/api/v1/port-lists/{id}",
+            delete_with(delete_port_list, delete_port_list_docs),
+        )
+        .route("/api/v1/port-lists/{id}", patch(method_not_allowed_item))
+        // Feeds
+        .api_route("/api/v1/feeds", get_with(list_feeds, list_feeds_docs))
+        .route("/api/v1/feeds", patch(method_not_allowed_collection))
+        .api_route("/api/v1/feeds/sync", post_with(sync_feeds, sync_feeds_docs))
         // Tasks
         .api_route("/api/v1/tasks", get_with(list_tasks, list_tasks_docs))
         .api_route("/api/v1/tasks", post_with(create_task, create_task_docs))
@@ -175,6 +312,25 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/reports/{id}/results",
             get_with(get_report_results, get_report_results_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/vulnerabilities",
+            get_with(get_report_vulnerabilities, get_report_vulnerabilities_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/tls-certificates",
+            get_with(
+                get_report_tls_certificates,
+                get_report_tls_certificates_docs,
+            ),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/errors",
+            get_with(get_report_errors, get_report_errors_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/closed-cves",
+            get_with(get_report_closed_cves, get_report_closed_cves_docs),
         )
         // Results
         .api_route("/api/v1/results", get_with(list_results, list_results_docs))
@@ -244,6 +400,32 @@ async fn trace_context_middleware(mut request: Request, next: Next) -> Response 
     response
 }
 
+async fn shutdown_gate_middleware(
+    axum::extract::State(shutdown): axum::extract::State<Arc<ShutdownRuntime>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path().to_string();
+    if should_bypass_shutdown_gate(&path) {
+        return next.run(request).await;
+    }
+
+    let Some(_in_flight) = shutdown.try_track_request() else {
+        tracing::info!(path, "shutdown: rejecting new request while draining");
+        return RestError::service_unavailable(
+            "The gateway is shutting down and no longer accepts new requests.",
+            path,
+        )
+        .into_response();
+    };
+
+    next.run(request).await
+}
+
+fn should_bypass_shutdown_gate(path: &str) -> bool {
+    matches!(path, "/health" | "/ready")
+}
+
 #[derive(Clone, Default)]
 struct TraceHeaders {
     traceparent: Option<HeaderValue>,
@@ -287,4 +469,101 @@ pub(crate) fn bearer_token(
         .ok_or_else(|| {
             gvm_gateway_domain::GatewayError::Unauthorized("missing bearer token".to_string())
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
+
+    use super::*;
+
+    fn static_gateway_service() -> GatewayService {
+        let adapter = Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7"));
+        let system: Arc<dyn gvm_gateway_domain::SystemPort> = adapter.clone();
+        let alerts: Arc<dyn gvm_gateway_domain::AlertPort> = adapter.clone();
+        let schedules: Arc<dyn gvm_gateway_domain::SchedulePort> = adapter.clone();
+        let credentials: Arc<dyn gvm_gateway_domain::CredentialPort> = adapter.clone();
+        let port_lists: Arc<dyn gvm_gateway_domain::PortListPort> = adapter.clone();
+        let feeds: Arc<dyn gvm_gateway_domain::FeedPort> = adapter.clone();
+        let targets: Arc<dyn gvm_gateway_domain::TargetPort> = adapter.clone();
+        let tasks: Arc<dyn gvm_gateway_domain::TaskPort> = adapter.clone();
+        let auth: Arc<dyn gvm_gateway_domain::AuthPort> = adapter.clone();
+        let reports: Arc<dyn gvm_gateway_domain::ReportPort> = adapter.clone();
+        let results: Arc<dyn gvm_gateway_domain::ResultPort> = adapter.clone();
+        let scan_configs: Arc<dyn gvm_gateway_domain::ScanConfigPort> = adapter.clone();
+        let scanners: Arc<dyn gvm_gateway_domain::ScannerPort> = adapter;
+
+        GatewayService::new(
+            system,
+            alerts,
+            schedules,
+            credentials,
+            port_lists,
+            feeds,
+            targets,
+            tasks,
+            auth,
+            reports,
+            results,
+            scan_configs,
+            scanners,
+            Arc::new(gvm_gateway_domain::SessionManager::default()),
+        )
+    }
+
+    #[tokio::test]
+    async fn draining_router_rejects_new_non_probe_requests() {
+        let service = static_gateway_service();
+        let shutdown = Arc::new(ShutdownRuntime::new());
+        let app = build_router_with_runtime_and_security(
+            service,
+            Arc::clone(&shutdown),
+            RestSecurityConfig::default(),
+        );
+
+        assert!(shutdown.begin_shutdown());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/version")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn draining_router_keeps_readiness_probe_available() {
+        let service = static_gateway_service();
+        let shutdown = Arc::new(ShutdownRuntime::new());
+        let app = build_router_with_runtime_and_security(
+            service,
+            Arc::clone(&shutdown),
+            RestSecurityConfig::default(),
+        );
+
+        assert!(shutdown.begin_shutdown());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
 }

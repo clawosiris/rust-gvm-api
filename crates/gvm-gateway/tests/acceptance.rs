@@ -4,17 +4,24 @@
 //! readiness, version endpoints, and full target CRUD operations via
 //! the REST adapter backed by a mock GMP server.
 
+use async_trait::async_trait;
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use gvm_gateway::server;
 use gvm_gateway_app::{GatewayService, SessionReaper};
-use gvm_gateway_domain::{SessionManager, TargetPage};
+use gvm_gateway_domain::{
+    CreateTargetInput, GatewayError, ModifyTargetInput, Pagination, SessionManager, Target,
+    TargetPage, TargetPort, TargetQuery,
+};
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
 use gvm_gateway_rest::router::{
-    build_router, build_router_with_security, RateLimitConfig, RestSecurityConfig,
+    build_router, build_router_with_runtime_and_security, build_router_with_security,
+    RateLimitConfig, RestSecurityConfig,
 };
+use gvm_gateway_rest::shutdown::ShutdownRuntime;
 use gvm_gateway_rest::targets::{
     build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery,
 };
@@ -25,6 +32,7 @@ use http::StatusCode;
 use reqwest::Client;
 use serde_json::Value;
 use tokio::net::TcpListener;
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 async fn spawn_server(
@@ -42,6 +50,11 @@ async fn spawn_server(
     let sessions = Arc::new(SessionManager::default());
     let service = GatewayService::new(
         Arc::new(system_adapter),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(target_adapter),
         Arc::new(task_adapter),
         Arc::new(auth_adapter),
@@ -57,6 +70,132 @@ async fn spawn_server(
     });
 
     (addr, handle)
+}
+
+struct GracefulShutdownHarness {
+    addr: SocketAddr,
+    client: Client,
+    token: String,
+    shutdown: Arc<ShutdownRuntime>,
+    handle: tokio::task::JoinHandle<std::io::Result<()>>,
+}
+
+impl GracefulShutdownHarness {
+    fn begin_shutdown(&self) {
+        self.shutdown.begin_shutdown();
+    }
+}
+
+struct ControlledTargetAdapter {
+    started: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+impl ControlledTargetAdapter {
+    fn new(started: Arc<Notify>, release: Arc<Notify>) -> Self {
+        Self { started, release }
+    }
+}
+
+#[async_trait]
+impl TargetPort for ControlledTargetAdapter {
+    async fn list_targets(
+        &self,
+        _session_token: &str,
+        query: &TargetQuery,
+    ) -> Result<TargetPage, GatewayError> {
+        self.started.notify_waiters();
+        self.release.notified().await;
+        Ok(TargetPage {
+            data: Vec::<Target>::new(),
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_target(
+        &self,
+        _session_token: &str,
+        _input: CreateTargetInput,
+    ) -> Result<String, GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test adapter".to_string(),
+        ))
+    }
+
+    async fn get_target(&self, _session_token: &str, _id: &str) -> Result<Target, GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test adapter".to_string(),
+        ))
+    }
+
+    async fn modify_target(
+        &self,
+        _session_token: &str,
+        _id: &str,
+        _input: ModifyTargetInput,
+    ) -> Result<Target, GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test adapter".to_string(),
+        ))
+    }
+
+    async fn delete_target(&self, _session_token: &str, _id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test adapter".to_string(),
+        ))
+    }
+}
+
+async fn graceful_shutdown_harness(
+    target_adapter: Arc<dyn TargetPort>,
+    drain_timeout: Duration,
+) -> GracefulShutdownHarness {
+    let sessions = Arc::new(SessionManager::default());
+    let token = sessions.create("admin").unwrap().token;
+    let service = GatewayService::new(
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        target_adapter,
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        sessions,
+    );
+    let shutdown = Arc::new(ShutdownRuntime::new());
+    let app = build_router_with_runtime_and_security(
+        service,
+        Arc::clone(&shutdown),
+        RestSecurityConfig::default(),
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let handle = tokio::spawn(server::serve(
+        listener,
+        app,
+        Arc::clone(&shutdown),
+        drain_timeout,
+    ));
+
+    GracefulShutdownHarness {
+        addr,
+        client: Client::new(),
+        token,
+        shutdown,
+        handle,
+    }
 }
 
 // ============================================================================
@@ -118,6 +257,96 @@ async fn ready_returns_503_when_not_ready() {
     );
 
     handle.abort();
+}
+
+#[tokio::test]
+async fn e2e_graceful_shutdown_drains_in_flight_requests() {
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let harness = graceful_shutdown_harness(
+        Arc::new(ControlledTargetAdapter::new(
+            Arc::clone(&started),
+            Arc::clone(&release),
+        )),
+        Duration::from_secs(1),
+    )
+    .await;
+
+    let request = {
+        let client = harness.client.clone();
+        let token = harness.token.clone();
+        let addr = harness.addr;
+        tokio::spawn(async move {
+            client
+                .get(format!("http://{addr}/api/v1/targets"))
+                .bearer_auth(token)
+                .send()
+                .await
+        })
+    };
+
+    started.notified().await;
+    harness.begin_shutdown();
+    tokio::time::sleep(Duration::from_millis(25)).await;
+    release.notify_waiters();
+
+    let response = request.await.unwrap().unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    tokio::time::timeout(Duration::from_secs(1), harness.handle)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn e2e_graceful_shutdown_forces_exit_after_timeout() {
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let harness = graceful_shutdown_harness(
+        Arc::new(ControlledTargetAdapter::new(
+            Arc::clone(&started),
+            Arc::clone(&release),
+        )),
+        Duration::from_millis(50),
+    )
+    .await;
+
+    let request = {
+        let client = harness.client.clone();
+        let token = harness.token.clone();
+        let addr = harness.addr;
+        tokio::spawn(async move {
+            client
+                .get(format!("http://{addr}/api/v1/targets"))
+                .bearer_auth(token)
+                .send()
+                .await
+        })
+    };
+
+    started.notified().await;
+    harness.begin_shutdown();
+
+    tokio::time::timeout(Duration::from_millis(250), harness.handle)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        !request.is_finished(),
+        "bounded shutdown should return even if a request is still blocked"
+    );
+
+    release.notify_waiters();
+    let response = tokio::time::timeout(Duration::from_secs(1), request)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -301,6 +530,11 @@ async fn session_reaper_cleans_up_expired_sessions() {
         arc_adapter.clone(),
         arc_adapter.clone(),
         arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
+        arc_adapter.clone(),
         arc_adapter,
         sessions,
     );
@@ -396,6 +630,16 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         serde_yaml::from_str(include_str!("../../../spec/rest-api/reports.yaml")).unwrap();
     let results_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/results.yaml")).unwrap();
+    let alerts_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/alerts.yaml")).unwrap();
+    let schedules_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/schedules.yaml")).unwrap();
+    let credentials_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/credentials.yaml")).unwrap();
+    let port_lists_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/port-lists.yaml")).unwrap();
+    let feeds_spec: Value =
+        serde_yaml::from_str(include_str!("../../../spec/rest-api/feeds.yaml")).unwrap();
     let scan_configs_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/scan-configs.yaml")).unwrap();
     let scanners_spec: Value =
@@ -411,6 +655,11 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         tasks: &tasks_spec,
         reports: &reports_spec,
         results: &results_spec,
+        alerts: &alerts_spec,
+        schedules: &schedules_spec,
+        credentials: &credentials_spec,
+        port_lists: &port_lists_spec,
+        feeds: &feeds_spec,
         scan_configs: &scan_configs_spec,
         scanners: &scanners_spec,
         common: &common_spec,
@@ -422,17 +671,32 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         path_names(&json),
         BTreeSet::from([
             "/health",
+            "/alerts",
+            "/alerts/{id}",
+            "/credential-stores",
+            "/credentials",
+            "/credentials/{id}",
+            "/feeds",
+            "/feeds/sync",
             "/openapi.json",
+            "/port-lists",
+            "/port-lists/{id}",
             "/ready",
             "/reports",
             "/reports/{id}",
+            "/reports/{id}/closed-cves",
+            "/reports/{id}/errors",
             "/reports/{id}/results",
+            "/reports/{id}/tls-certificates",
+            "/reports/{id}/vulnerabilities",
             "/results",
             "/results/{id}",
             "/scan-configs",
             "/scan-configs/{id}",
             "/scanners",
             "/scanners/{id}",
+            "/schedules",
+            "/schedules/{id}",
             "/sessions",
             "/sessions/{token}",
             "/targets",
@@ -442,6 +706,7 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/tasks/{id}/start",
             "/tasks/{id}/stop",
             "/tasks/{id}/resume",
+            "/timezones",
             "/version",
         ])
     );
@@ -469,6 +734,80 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         ("/targets/{id}", "get", DocName::Targets, "/targets/{id}"),
         ("/targets/{id}", "put", DocName::Targets, "/targets/{id}"),
         ("/targets/{id}", "delete", DocName::Targets, "/targets/{id}"),
+        ("/alerts", "get", DocName::Alerts, "/alerts"),
+        ("/alerts", "post", DocName::Alerts, "/alerts"),
+        ("/alerts/{id}", "get", DocName::Alerts, "/alerts/{id}"),
+        ("/alerts/{id}", "put", DocName::Alerts, "/alerts/{id}"),
+        ("/alerts/{id}", "delete", DocName::Alerts, "/alerts/{id}"),
+        ("/timezones", "get", DocName::Schedules, "/timezones"),
+        ("/schedules", "get", DocName::Schedules, "/schedules"),
+        ("/schedules", "post", DocName::Schedules, "/schedules"),
+        (
+            "/schedules/{id}",
+            "get",
+            DocName::Schedules,
+            "/schedules/{id}",
+        ),
+        (
+            "/schedules/{id}",
+            "put",
+            DocName::Schedules,
+            "/schedules/{id}",
+        ),
+        (
+            "/schedules/{id}",
+            "delete",
+            DocName::Schedules,
+            "/schedules/{id}",
+        ),
+        (
+            "/credential-stores",
+            "get",
+            DocName::Credentials,
+            "/credential-stores",
+        ),
+        ("/credentials", "get", DocName::Credentials, "/credentials"),
+        ("/credentials", "post", DocName::Credentials, "/credentials"),
+        (
+            "/credentials/{id}",
+            "get",
+            DocName::Credentials,
+            "/credentials/{id}",
+        ),
+        (
+            "/credentials/{id}",
+            "put",
+            DocName::Credentials,
+            "/credentials/{id}",
+        ),
+        (
+            "/credentials/{id}",
+            "delete",
+            DocName::Credentials,
+            "/credentials/{id}",
+        ),
+        ("/port-lists", "get", DocName::PortLists, "/port-lists"),
+        ("/port-lists", "post", DocName::PortLists, "/port-lists"),
+        (
+            "/port-lists/{id}",
+            "get",
+            DocName::PortLists,
+            "/port-lists/{id}",
+        ),
+        (
+            "/port-lists/{id}",
+            "put",
+            DocName::PortLists,
+            "/port-lists/{id}",
+        ),
+        (
+            "/port-lists/{id}",
+            "delete",
+            DocName::PortLists,
+            "/port-lists/{id}",
+        ),
+        ("/feeds", "get", DocName::Feeds, "/feeds"),
+        ("/feeds/sync", "post", DocName::Feeds, "/feeds/sync"),
         ("/tasks", "get", DocName::Tasks, "/tasks"),
         ("/tasks", "post", DocName::Tasks, "/tasks"),
         ("/tasks/{id}", "get", DocName::Tasks, "/tasks/{id}"),
@@ -500,6 +839,30 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "get",
             DocName::Reports,
             "/reports/{id}/results",
+        ),
+        (
+            "/reports/{id}/vulnerabilities",
+            "get",
+            DocName::Reports,
+            "/reports/{id}/vulnerabilities",
+        ),
+        (
+            "/reports/{id}/tls-certificates",
+            "get",
+            DocName::Reports,
+            "/reports/{id}/tls-certificates",
+        ),
+        (
+            "/reports/{id}/errors",
+            "get",
+            DocName::Reports,
+            "/reports/{id}/errors",
+        ),
+        (
+            "/reports/{id}/closed-cves",
+            "get",
+            DocName::Reports,
+            "/reports/{id}/closed-cves",
         ),
         ("/results", "get", DocName::Results, "/results"),
         ("/results/{id}", "get", DocName::Results, "/results/{id}"),
@@ -550,6 +913,11 @@ enum DocName {
     System,
     Sessions,
     Targets,
+    Alerts,
+    Schedules,
+    Credentials,
+    PortLists,
+    Feeds,
     Tasks,
     ScanConfigs,
     Scanners,
@@ -566,6 +934,11 @@ struct SpecDocs<'a> {
     tasks: &'a Value,
     reports: &'a Value,
     results: &'a Value,
+    alerts: &'a Value,
+    schedules: &'a Value,
+    credentials: &'a Value,
+    port_lists: &'a Value,
+    feeds: &'a Value,
     scan_configs: &'a Value,
     scanners: &'a Value,
     common: &'a Value,
@@ -1068,7 +1441,13 @@ fn parse_ref(current_doc: DocName, reference: &str) -> (DocName, String) {
         "" => current_doc,
         "./common.yaml" => DocName::Common,
         "./system.yaml" => DocName::System,
+        "./sessions.yaml" => DocName::Sessions,
         "./targets.yaml" => DocName::Targets,
+        "./alerts.yaml" => DocName::Alerts,
+        "./schedules.yaml" => DocName::Schedules,
+        "./credentials.yaml" => DocName::Credentials,
+        "./port-lists.yaml" => DocName::PortLists,
+        "./feeds.yaml" => DocName::Feeds,
         "./tasks.yaml" => DocName::Tasks,
         "./reports.yaml" => DocName::Reports,
         "./results.yaml" => DocName::Results,
@@ -1092,6 +1471,11 @@ fn doc<'a>(docs: &'a SpecDocs<'a>, name: DocName) -> &'a Value {
         DocName::System => docs.system,
         DocName::Sessions => docs.sessions,
         DocName::Targets => docs.targets,
+        DocName::Alerts => docs.alerts,
+        DocName::Schedules => docs.schedules,
+        DocName::Credentials => docs.credentials,
+        DocName::PortLists => docs.port_lists,
+        DocName::Feeds => docs.feeds,
         DocName::Tasks => docs.tasks,
         DocName::Reports => docs.reports,
         DocName::Results => docs.results,
@@ -2044,6 +2428,11 @@ async fn target_harness_with_security(
     let sessions = Arc::new(SessionManager::default());
     let service = GatewayService::new(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),

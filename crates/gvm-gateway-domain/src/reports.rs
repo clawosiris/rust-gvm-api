@@ -64,6 +64,39 @@ pub struct ReportPage {
     pub pagination: Pagination,
 }
 
+/// TLS certificate observation associated with a report.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TlsCertificate {
+    /// Backend certificate or observation identifier when available.
+    pub id: Option<String>,
+    /// Host associated with the certificate.
+    pub host: Option<String>,
+    /// Port associated with the certificate.
+    pub port: Option<String>,
+    /// Subject distinguished name or other primary label.
+    pub subject: String,
+    /// Optional issuer distinguished name.
+    pub issuer: Option<String>,
+    /// Optional certificate activation timestamp.
+    #[serde(rename = "notBefore", skip_serializing_if = "Option::is_none")]
+    pub not_before: Option<String>,
+    /// Optional certificate expiration timestamp.
+    #[serde(rename = "notAfter", skip_serializing_if = "Option::is_none")]
+    pub not_after: Option<String>,
+    /// Optional SHA-256 fingerprint.
+    #[serde(rename = "fingerprintSha256", skip_serializing_if = "Option::is_none")]
+    pub fingerprint_sha256: Option<String>,
+}
+
+/// Paginated TLS certificate list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TlsCertificatePage {
+    /// Page items.
+    pub data: Vec<TlsCertificate>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
 /// Report list query options.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ReportQuery {

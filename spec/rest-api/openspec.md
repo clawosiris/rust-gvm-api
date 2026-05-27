@@ -196,6 +196,10 @@ Rules for these exceptions:
 | `GET` | `/api/v1/reports` | List reports |
 | `GET` | `/api/v1/reports/{id}` | Get report (with results) |
 | `GET` | `/api/v1/reports/{id}/results` | Get report results (paginated) |
+| `GET` | `/api/v1/reports/{id}/vulnerabilities` | Get report vulnerability findings (paginated) |
+| `GET` | `/api/v1/reports/{id}/tls-certificates` | Get TLS certificates observed in a report (paginated) |
+| `GET` | `/api/v1/reports/{id}/errors` | Get report error findings (paginated) |
+| `GET` | `/api/v1/reports/{id}/closed-cves` | Get closed CVE findings for a report (paginated) |
 | `DELETE` | `/api/v1/reports/{id}` | Delete report |
 | `GET` | `/api/v1/reports/{id}/export` | Export report (PDF/XML/CSV) |
 
@@ -237,11 +241,33 @@ Rules for these exceptions:
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/api/v1/timezones` | List available schedule timezones |
 | `GET` | `/api/v1/schedules` | List schedules |
 | `POST` | `/api/v1/schedules` | Create schedule |
 | `GET` | `/api/v1/schedules/{id}` | Get schedule |
 | `PUT` | `/api/v1/schedules/{id}` | Update schedule |
 | `DELETE` | `/api/v1/schedules/{id}` | Delete schedule |
+
+#### Credentials
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/credential-stores` | List available credential stores |
+| `GET` | `/api/v1/credentials` | List credentials |
+| `POST` | `/api/v1/credentials` | Create credential |
+| `GET` | `/api/v1/credentials/{id}` | Get credential |
+| `PUT` | `/api/v1/credentials/{id}` | Update credential |
+| `DELETE` | `/api/v1/credentials/{id}` | Delete credential |
+
+#### Port Lists
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/port-lists` | List port lists |
+| `POST` | `/api/v1/port-lists` | Create port list |
+| `GET` | `/api/v1/port-lists/{id}` | Get port list |
+| `PUT` | `/api/v1/port-lists/{id}` | Update port list |
+| `DELETE` | `/api/v1/port-lists/{id}` | Delete port list |
 
 #### Sessions & Auth
 
@@ -487,10 +513,20 @@ For each resource (acceptance-test first):
 - Implement OTel tracer setup with OTLP exporter and service/resource attributes.
 - Ensure W3C Trace Context propagation across incoming HTTP, application use cases, and gvmd adapter calls.
 - Add resilience checks for session expiry, backend disconnects, and queue backpressure.
+- Implement graceful shutdown and connection draining for the REST gateway:
+  - handle `SIGTERM`/shutdown signals explicitly
+  - stop accepting new application requests once drain mode begins
+  - keep `/health` live but degrade `/ready` to `503 notReady` while draining
+  - allow in-flight requests to complete up to a bounded drain timeout
+  - after the timeout, return from the serve loop so the process can exit even if blocked handlers remain
+- Emit structured shutdown telemetry for state transitions, rejected requests, and drain-timeout exits.
+- Build OCI image artifacts for the REST gateway and verify they run under both Podman and Docker.
+- Document the local container/dev workflow in terms of Compose-compatible stacks rather than Docker-only assumptions.
 - Add/maintain integration and E2E tests focused on REST behavior (written first, fail-first):
   - session lifecycle
   - concurrent calls on same token serialize correctly
   - limit enforcement and teardown behavior
+  - graceful shutdown drain completion and bounded-timeout behavior
 - Prepare first REST-focused release cut.
 
 ### Deferred to next iteration

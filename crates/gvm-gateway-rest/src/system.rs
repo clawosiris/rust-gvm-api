@@ -5,7 +5,7 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    extract::State,
+    extract::{Extension, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -14,7 +14,7 @@ use gvm_gateway_app::GatewayService;
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::{error::RestError, openapi::problem_response};
+use crate::{error::RestError, openapi::problem_response, shutdown::ShutdownRuntime};
 
 // ============================================================================
 // Response DTOs
@@ -74,7 +74,21 @@ pub(crate) async fn health(State(service): State<GatewayService>) -> Response {
     .into_response()
 }
 
-pub(crate) async fn ready(State(service): State<GatewayService>) -> Response {
+pub(crate) async fn ready(
+    State(service): State<GatewayService>,
+    Extension(shutdown): Extension<std::sync::Arc<ShutdownRuntime>>,
+) -> Response {
+    if shutdown.is_shutting_down() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ReadinessStatusResponse {
+                status: ReadinessState::NotReady,
+                reason: Some("shutdown in progress".to_string()),
+            }),
+        )
+            .into_response();
+    }
+
     match service.ready() {
         Ok(readiness) if readiness.status == "ready" => (
             StatusCode::OK,
@@ -130,7 +144,9 @@ pub(crate) fn ready_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     op.id("getReadiness")
         .tag("System")
         .summary("Readiness probe")
-        .description("Indicates whether the service is ready to handle requests.")
+        .description(
+            "Indicates whether the service is ready to handle requests. Returns `503` while backend readiness is failing or graceful shutdown is draining in-flight requests.",
+        )
         .response_with::<200, Json<ReadinessStatusResponse>, _>(|response| {
             response.description("Service is ready")
         })

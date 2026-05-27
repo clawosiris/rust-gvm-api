@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, io::Write};
 
-use gvm_gateway::config::{load_config, CliArgs, GatewayConfig};
+use gvm_gateway::config::{load_config, parse_gvmd_endpoint, CliArgs, GatewayConfig};
 use gvm_gateway_rest::router::{RateLimitConfig, RestSecurityConfig};
 use tempfile::NamedTempFile;
 
@@ -13,6 +13,7 @@ fn default_config_valid() {
             bind: "127.0.0.1:8080".to_string(),
             otlp_endpoint: None,
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
+            shutdown_drain_timeout_secs: 30,
             rest_security: RestSecurityConfig::default(),
         }
     );
@@ -23,7 +24,7 @@ fn config_override_precedence() {
     let mut file = NamedTempFile::new().unwrap();
     writeln!(
         file,
-        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3"
+        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\nshutdown_drain_timeout_secs = 45\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3"
     )
     .unwrap();
 
@@ -32,6 +33,10 @@ fn config_override_precedence() {
     env.insert(
         "GVM_GATEWAY_GVMD_ENDPOINT".to_string(),
         "unix:///var/run/gvmd.sock".to_string(),
+    );
+    env.insert(
+        "GVM_GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECS".to_string(),
+        "5".to_string(),
     );
     env.insert(
         "GVM_GATEWAY_CORS_ALLOWED_ORIGINS".to_string(),
@@ -57,6 +62,7 @@ fn config_override_precedence() {
         Some("http://collector:4317")
     );
     assert_eq!(config.gvmd_endpoint, "unix:///var/run/gvmd.sock");
+    assert_eq!(config.shutdown_drain_timeout_secs, 5);
     assert_eq!(
         config.rest_security,
         RestSecurityConfig {
@@ -71,4 +77,24 @@ fn config_override_precedence() {
             },
         }
     );
+}
+
+#[test]
+fn parse_gvmd_endpoint_accepts_unix_uri_and_absolute_path() {
+    assert_eq!(
+        parse_gvmd_endpoint("unix:///run/gvmd/gvmd.sock").unwrap(),
+        std::path::PathBuf::from("/run/gvmd/gvmd.sock")
+    );
+    assert_eq!(
+        parse_gvmd_endpoint("/tmp/gvmd.sock").unwrap(),
+        std::path::PathBuf::from("/tmp/gvmd.sock")
+    );
+}
+
+#[test]
+fn parse_gvmd_endpoint_rejects_unsupported_schemes() {
+    let error = parse_gvmd_endpoint("tcp://gvmd:9390").unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("expected unix:///path/to/gvmd.sock"));
 }

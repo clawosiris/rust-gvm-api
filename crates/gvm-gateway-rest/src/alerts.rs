@@ -1,0 +1,397 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Greenbone AG
+
+//! Alert DTOs and handlers for the REST adapter.
+
+#![allow(missing_docs)]
+
+use std::collections::HashMap;
+
+use aide::transform::TransformOperation;
+use axum::{
+    body::Bytes,
+    extract::{OriginalUri, Path, Query, State},
+    http::{header, HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    Json,
+};
+use gvm_gateway_app::GatewayService;
+use gvm_gateway_domain::GatewayError;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::{
+    dto::{
+        created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse,
+        ResourceRefResponse,
+    },
+    error::RestError,
+    openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
+    router::bearer_token,
+    targets::{validate_uuid, TargetListQuery},
+};
+
+pub use gvm_gateway_domain::{Alert, AlertPage, AlertQuery, CreateAlertInput, ModifyAlertInput};
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Alert")]
+pub(crate) struct AlertResponse {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    event: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    condition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    method: Option<String>,
+    #[serde(
+        rename = "eventData",
+        default,
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    event_data: HashMap<String, String>,
+    #[serde(
+        rename = "conditionData",
+        default,
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    condition_data: HashMap<String, String>,
+    #[serde(
+        rename = "methodData",
+        default,
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    method_data: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filter: Option<ResourceRefResponse>,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+    writable: bool,
+}
+
+impl From<Alert> for AlertResponse {
+    fn from(alert: Alert) -> Self {
+        Self {
+            id: parse_uuid(&alert.id),
+            name: alert.name,
+            comment: alert.comment,
+            event: alert.event,
+            condition: alert.condition,
+            method: alert.method,
+            event_data: alert.event_data,
+            condition_data: alert.condition_data,
+            method_data: alert.method_data,
+            filter: alert.filter.map(ResourceRefResponse::from),
+            in_use: alert.in_use,
+            writable: alert.writable,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "AlertList")]
+pub(crate) struct AlertListResponse {
+    data: Vec<AlertResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<AlertPage> for AlertListResponse {
+    fn from(page: AlertPage) -> Self {
+        Self {
+            data: page.data.into_iter().map(AlertResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[schemars(rename = "CreateAlert")]
+pub struct CreateAlertRequest {
+    pub name: String,
+    pub comment: Option<String>,
+    pub event: Option<String>,
+    pub condition: Option<String>,
+    pub method: Option<String>,
+    #[serde(rename = "eventData", default)]
+    pub event_data: HashMap<String, String>,
+    #[serde(rename = "conditionData", default)]
+    pub condition_data: HashMap<String, String>,
+    #[serde(rename = "methodData", default)]
+    pub method_data: HashMap<String, String>,
+    #[serde(rename = "filterId")]
+    pub filter_id: Option<String>,
+}
+
+impl CreateAlertRequest {
+    fn validate(self) -> Result<CreateAlertInput, GatewayError> {
+        if self.name.trim().is_empty() {
+            return Err(GatewayError::InvalidInput("name is required".to_string()));
+        }
+        if let Some(filter_id) = self.filter_id.as_deref() {
+            validate_uuid("filterId", filter_id)?;
+        }
+        Ok(CreateAlertInput {
+            name: self.name,
+            comment: self.comment,
+            event: self.event,
+            condition: self.condition,
+            method: self.method,
+            event_data: self.event_data,
+            condition_data: self.condition_data,
+            method_data: self.method_data,
+            filter_id: self.filter_id,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema)]
+#[schemars(rename = "ModifyAlert")]
+pub struct ModifyAlertRequest {
+    pub name: Option<String>,
+    pub comment: Option<String>,
+    pub event: Option<String>,
+    pub condition: Option<String>,
+    pub method: Option<String>,
+    #[serde(rename = "eventData")]
+    pub event_data: Option<HashMap<String, String>>,
+    #[serde(rename = "conditionData")]
+    pub condition_data: Option<HashMap<String, String>>,
+    #[serde(rename = "methodData")]
+    pub method_data: Option<HashMap<String, String>>,
+    #[serde(rename = "filterId")]
+    pub filter_id: Option<String>,
+}
+
+impl ModifyAlertRequest {
+    fn validate(self) -> Result<ModifyAlertInput, GatewayError> {
+        if let Some(filter_id) = self.filter_id.as_deref() {
+            validate_uuid("filterId", filter_id)?;
+        }
+        Ok(ModifyAlertInput {
+            name: self.name,
+            comment: self.comment,
+            event: self.event,
+            condition: self.condition,
+            method: self.method,
+            event_data: self.event_data,
+            condition_data: self.condition_data,
+            method_data: self.method_data,
+            filter_id: self.filter_id,
+        })
+    }
+}
+
+pub async fn list_alerts(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match TargetListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service
+        .list_alerts(
+            &session,
+            AlertQuery {
+                filter_string: query.filter_string,
+                filter_id: query.filter_id,
+                page: query.page,
+                per_page: query.per_page,
+            },
+        )
+        .await
+    {
+        Ok(alerts) => (StatusCode::OK, Json(AlertListResponse::from(alerts))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+pub async fn create_alert(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let request = match serde_json::from_slice::<CreateAlertRequest>(&body) {
+        Ok(request) => request,
+        Err(error) => {
+            return RestError::from_gateway_error(
+                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
+                instance,
+            )
+            .into_response()
+        }
+    };
+    let input = match request.validate() {
+        Ok(input) => input,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.create_alert(&session, input).await {
+        Ok(id) => (
+            StatusCode::CREATED,
+            [(header::LOCATION, created_resource_location(&instance, &id))],
+            Json(ResourceCreatedResponse {
+                id: parse_uuid(&id),
+            }),
+        )
+            .into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+pub async fn get_alert(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.get_alert(&session, &id).await {
+        Ok(alert) => (StatusCode::OK, Json(AlertResponse::from(alert))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+pub async fn update_alert(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let request = match serde_json::from_slice::<ModifyAlertRequest>(&body) {
+        Ok(request) => request,
+        Err(error) => {
+            return RestError::from_gateway_error(
+                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
+                instance,
+            )
+            .into_response()
+        }
+    };
+    let input = match request.validate() {
+        Ok(input) => input,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.modify_alert(&session, &id, input).await {
+        Ok(alert) => (StatusCode::OK, Json(AlertResponse::from(alert))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+pub async fn delete_alert(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.delete_alert(&session, &id).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+pub(crate) fn list_alerts_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getAlerts")
+        .tag("Alerts")
+        .summary("List alerts")
+        .description("Returns a paginated list of alerts.")
+        .security_requirement("bearerAuth")
+        .input::<Query<TargetListQueryDoc>>()
+        .response_with::<200, Json<AlertListResponse>, _>(ok_json("Paginated list of alerts"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn create_alert_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createAlert")
+        .tag("Alerts")
+        .summary("Create an alert")
+        .description("Creates a new alert.")
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateAlertRequest>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Alert created"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_alert_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getAlert")
+        .tag("Alerts")
+        .summary("Get an alert")
+        .description("Returns a single alert.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<AlertResponse>, _>(ok_json("Alert details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn update_alert_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyAlert")
+        .tag("Alerts")
+        .summary("Modify an alert")
+        .description("Updates an existing alert.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyAlertRequest>)>()
+        .response_with::<200, Json<AlertResponse>, _>(ok_json("Alert updated"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn delete_alert_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteAlert")
+        .tag("Alerts")
+        .summary("Delete an alert")
+        .description("Deletes an existing alert.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<204, (), _>(|response| response.description("Alert deleted"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}

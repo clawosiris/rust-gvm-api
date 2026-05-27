@@ -6,11 +6,15 @@
 use async_trait::async_trait;
 
 use crate::{
-    CreateScanConfigInput, CreateTargetInput, CreateTaskInput, GatewayError, GetReportOpts,
-    ModifyScanConfigInput, ModifyTargetInput, ModifyTaskInput, ReadinessStatus, Report, ReportPage,
-    ReportQuery, ResultPage, ResultQuery, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult,
-    Scanner, ScannerPage, ScannerQuery, Target, TargetPage, TargetQuery, Task, TaskAction,
-    TaskPage, TaskQuery,
+    Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreatePortListInput,
+    CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput, Credential,
+    CredentialPage, CredentialQuery, CredentialStore, Feed, GatewayError, GetReportOpts,
+    ModifyAlertInput, ModifyCredentialInput, ModifyPortListInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, PortList, PortListPage, PortListQuery,
+    ReadinessStatus, Report, ReportPage, ReportQuery, ResultPage, ResultQuery, ScanConfig,
+    ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule,
+    SchedulePage, ScheduleQuery, Target, TargetPage, TargetQuery, Task, TaskAction, TaskPage,
+    TaskQuery, Timezone, TlsCertificatePage,
 };
 
 /// Port for system information needed by the gateway.
@@ -37,6 +41,157 @@ pub trait AuthPort: Send + Sync + 'static {
     async fn disconnect_session(&self, session_token: &str) -> Result<(), GatewayError>;
 }
 
+/// Port for alert CRUD operations.
+#[async_trait]
+pub trait AlertPort: Send + Sync + 'static {
+    /// List alerts for the session.
+    async fn list_alerts(
+        &self,
+        session_token: &str,
+        query: &AlertQuery,
+    ) -> Result<AlertPage, GatewayError>;
+
+    /// Create a new alert.
+    async fn create_alert(
+        &self,
+        session_token: &str,
+        input: CreateAlertInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch an alert by identifier.
+    async fn get_alert(&self, session_token: &str, id: &str) -> Result<Alert, GatewayError>;
+
+    /// Modify an alert by identifier.
+    async fn modify_alert(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyAlertInput,
+    ) -> Result<Alert, GatewayError>;
+
+    /// Delete an alert by identifier.
+    async fn delete_alert(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+}
+
+/// Port for schedule CRUD operations.
+#[async_trait]
+pub trait SchedulePort: Send + Sync + 'static {
+    /// List timezone identifiers accepted for schedules.
+    async fn list_timezones(&self, session_token: &str) -> Result<Vec<Timezone>, GatewayError>;
+
+    /// List schedules for the session.
+    async fn list_schedules(
+        &self,
+        session_token: &str,
+        query: &ScheduleQuery,
+    ) -> Result<SchedulePage, GatewayError>;
+
+    /// Create a new schedule.
+    async fn create_schedule(
+        &self,
+        session_token: &str,
+        input: CreateScheduleInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a schedule by identifier.
+    async fn get_schedule(&self, session_token: &str, id: &str) -> Result<Schedule, GatewayError>;
+
+    /// Modify a schedule by identifier.
+    async fn modify_schedule(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyScheduleInput,
+    ) -> Result<Schedule, GatewayError>;
+
+    /// Delete a schedule by identifier.
+    async fn delete_schedule(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+}
+
+/// Port for credential CRUD operations.
+#[async_trait]
+pub trait CredentialPort: Send + Sync + 'static {
+    /// List credential stores available to the backend.
+    async fn list_credential_stores(
+        &self,
+        session_token: &str,
+    ) -> Result<Vec<CredentialStore>, GatewayError>;
+
+    /// List credentials for the session.
+    async fn list_credentials(
+        &self,
+        session_token: &str,
+        query: &CredentialQuery,
+    ) -> Result<CredentialPage, GatewayError>;
+
+    /// Create a new credential.
+    async fn create_credential(
+        &self,
+        session_token: &str,
+        input: CreateCredentialInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a credential by identifier.
+    async fn get_credential(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<Credential, GatewayError>;
+
+    /// Modify a credential by identifier.
+    async fn modify_credential(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyCredentialInput,
+    ) -> Result<Credential, GatewayError>;
+
+    /// Delete a credential by identifier.
+    async fn delete_credential(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+}
+
+/// Port for port-list CRUD operations.
+#[async_trait]
+pub trait PortListPort: Send + Sync + 'static {
+    /// List port lists for the session.
+    async fn list_port_lists(
+        &self,
+        session_token: &str,
+        query: &PortListQuery,
+    ) -> Result<PortListPage, GatewayError>;
+
+    /// Create a new port list.
+    async fn create_port_list(
+        &self,
+        session_token: &str,
+        input: CreatePortListInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a port list by identifier.
+    async fn get_port_list(&self, session_token: &str, id: &str) -> Result<PortList, GatewayError>;
+
+    /// Modify a port list by identifier.
+    async fn modify_port_list(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyPortListInput,
+    ) -> Result<PortList, GatewayError>;
+
+    /// Delete a port list by identifier.
+    async fn delete_port_list(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+}
+
+/// Port for feed status and feed synchronization.
+#[async_trait]
+pub trait FeedPort: Send + Sync + 'static {
+    /// List feed status for the session.
+    async fn list_feeds(&self, session_token: &str) -> Result<Vec<Feed>, GatewayError>;
+
+    /// Trigger feed synchronization.
+    async fn sync_feeds(&self, session_token: &str) -> Result<(), GatewayError>;
+}
+
 /// Port for report operations.
 #[async_trait]
 pub trait ReportPort: Send + Sync + 'static {
@@ -60,6 +215,38 @@ pub trait ReportPort: Send + Sync + 'static {
 
     /// List results for a specific report.
     async fn get_report_results(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError>;
+
+    /// List vulnerability findings for a specific report.
+    async fn get_report_vulnerabilities(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError>;
+
+    /// List TLS certificate observations for a specific report.
+    async fn get_report_tls_certificates(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError>;
+
+    /// List report errors for a specific report.
+    async fn get_report_errors(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError>;
+
+    /// List closed-CVE findings for a specific report.
+    async fn get_report_closed_cves(
         &self,
         session_token: &str,
         report_id: &str,

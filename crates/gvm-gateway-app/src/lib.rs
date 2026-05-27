@@ -6,10 +6,15 @@
 
 //! Application use cases for the GVM gateway.
 
+mod alerts;
+mod credentials;
+mod feeds;
+mod port_lists;
 mod reports;
 mod results;
 mod scan_configs;
 mod scanners;
+mod schedules;
 mod service;
 mod session;
 mod system;

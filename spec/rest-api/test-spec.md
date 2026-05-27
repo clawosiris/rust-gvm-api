@@ -6,7 +6,7 @@
 
 ```
          ┌──────────┐
-         │   E2E    │  Against real gvmd (Docker Compose)
+         │   E2E    │  Against real gvmd (Compose stack via Podman or Docker)
         ┌┴──────────┴┐
         │ Integration │  axum test client + mock GMP pool
        ┌┴────────────┴┐
@@ -20,7 +20,7 @@
 |----------|-------|-------------|-------|
 | Unit | Individual functions, conversions, validation | None | < 1s each |
 | Integration | Route handlers with mock GMP | axum `TestServer` | < 5s each |
-| E2E | Full server against gvmd | Docker Compose stack | < 30s each |
+| E2E | Full server against gvmd | Compose-compatible stack (Podman or Docker) | < 30s each |
 | Contract | OpenAPI spec compliance | Generated spec | < 2s each |
 
 ## 2. Unit Tests
@@ -147,7 +147,18 @@ async fn test_server() -> TestServer {
 | `list_reports` | `GET /api/v1/reports` | Reports exist | 200, summaries |
 | `get_report_with_results` | `GET /api/v1/reports/{id}` | Report exists | 200, includes results |
 | `get_report_results_paginated` | `GET /api/v1/reports/{id}/results?page=1&per_page=50` | Large report | 200, 50 results |
+| `get_report_vulnerabilities_paginated` | `GET /api/v1/reports/{id}/vulnerabilities?page=1&per_page=50` | Report exists | 200, paginated vulnerability findings |
+| `get_report_tls_certificates_paginated` | `GET /api/v1/reports/{id}/tls-certificates?page=1&per_page=50` | Report exists | 200, paginated TLS certificate observations |
+| `get_report_errors_paginated` | `GET /api/v1/reports/{id}/errors?page=1&per_page=50` | Report exists | 200, paginated report errors |
+| `get_report_closed_cves_paginated` | `GET /api/v1/reports/{id}/closed-cves?page=1&per_page=50` | Report exists | 200, paginated closed CVE findings |
 | `export_report_pdf` | `GET /api/v1/reports/{id}/export?format=pdf` | Report exists | 200, `application/pdf` |
+
+### 3.5a Discovery Helpers
+
+| Test | Request | Setup | Expected |
+|------|---------|-------|----------|
+| `list_timezones` | `GET /api/v1/timezones` | Backend exposes timezone catalog | 200, timezone list |
+| `list_credential_stores` | `GET /api/v1/credential-stores` | Backend exposes credential store catalog | 200, credential store list |
 
 ### 3.6 Authentication Flow
 
@@ -201,12 +212,13 @@ async fn test_server() -> TestServer {
 | `method_not_allowed` | `PATCH /api/v1/targets` → 405 |
 | `not_found_route` | `GET /api/v1/nonexistent` → 404 |
 
-## 4. E2E Tests (Docker Compose)
+## 4. E2E Tests (Compose stack via Podman or Docker)
 
 ### Test Environment
 
 ```yaml
 # tests/docker-compose.yml
+# Compatible with Docker Compose and Podman Compose
 services:
   gvmd:
     image: greenbone/gvmd:latest
@@ -229,7 +241,7 @@ services:
 | `e2e_concurrent_requests` | 50 parallel target creates → all succeed |
 | `e2e_large_report_pagination` | Report with 10k+ results → paginate through all pages |
 | `e2e_auth_flow` | Create session → use token → close session → confirm token is rejected |
-| `e2e_graceful_shutdown` | Send SIGTERM during active requests → in-flight complete, new rejected |
+| `e2e_graceful_shutdown` | Begin shutdown during active requests → in-flight complete before timeout, readiness degrades, new work is shed |
 
 ## 5. Performance Tests
 
@@ -266,7 +278,7 @@ All unit and integration tests run in the CI workflow. E2E tests are gated behin
 # CI (fast)
 cargo test --workspace
 
-# E2E (requires Docker)
+# E2E (requires Podman or Docker)
 cargo test --workspace --features e2e-tests
 ```
 
