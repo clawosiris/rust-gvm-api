@@ -29,6 +29,8 @@ pub struct GatewayConfig {
     pub otlp_endpoint: Option<String>,
     /// Backend socket path or endpoint.
     pub gvmd_endpoint: String,
+    /// Maximum time to wait for in-flight requests during shutdown.
+    pub shutdown_drain_timeout_secs: u64,
     /// REST security middleware configuration.
     pub rest_security: RestSecurityConfig,
 }
@@ -39,6 +41,7 @@ impl Default for GatewayConfig {
             bind: "127.0.0.1:8080".to_string(),
             otlp_endpoint: None,
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
+            shutdown_drain_timeout_secs: 30,
             rest_security: RestSecurityConfig::default(),
         }
     }
@@ -72,6 +75,7 @@ struct FileConfig {
     bind: Option<String>,
     otlp_endpoint: Option<String>,
     gvmd_endpoint: Option<String>,
+    shutdown_drain_timeout_secs: Option<u64>,
     cors_allowed_origins: Option<Vec<String>>,
     rate_limit_window_secs: Option<u64>,
     rate_limit_global_per_window: Option<u64>,
@@ -97,6 +101,9 @@ pub fn load_config(
         if let Some(gvmd_endpoint) = file.gvmd_endpoint.as_ref() {
             config.gvmd_endpoint = gvmd_endpoint.clone();
         }
+        if let Some(timeout_secs) = file.shutdown_drain_timeout_secs {
+            config.shutdown_drain_timeout_secs = timeout_secs;
+        }
         apply_security_file_config(&mut config.rest_security, &file);
     }
 
@@ -108,6 +115,10 @@ pub fn load_config(
     }
     if let Some(gvmd_endpoint) = env.get("GVM_GATEWAY_GVMD_ENDPOINT") {
         config.gvmd_endpoint = gvmd_endpoint.clone();
+    }
+    if let Some(timeout_secs) = env.get("GVM_GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECS") {
+        config.shutdown_drain_timeout_secs =
+            parse_u64("GVM_GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECS", timeout_secs)?;
     }
     apply_security_env_config(&mut config.rest_security, env)?;
 

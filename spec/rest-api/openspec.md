@@ -513,10 +513,18 @@ For each resource (acceptance-test first):
 - Implement OTel tracer setup with OTLP exporter and service/resource attributes.
 - Ensure W3C Trace Context propagation across incoming HTTP, application use cases, and gvmd adapter calls.
 - Add resilience checks for session expiry, backend disconnects, and queue backpressure.
+- Implement graceful shutdown and connection draining for the REST gateway:
+  - handle `SIGTERM`/shutdown signals explicitly
+  - stop accepting new application requests once drain mode begins
+  - keep `/health` live but degrade `/ready` to `503 notReady` while draining
+  - allow in-flight requests to complete up to a bounded drain timeout
+  - after the timeout, return from the serve loop so the process can exit even if blocked handlers remain
+- Emit structured shutdown telemetry for state transitions, rejected requests, and drain-timeout exits.
 - Add/maintain integration and E2E tests focused on REST behavior (written first, fail-first):
   - session lifecycle
   - concurrent calls on same token serialize correctly
   - limit enforcement and teardown behavior
+  - graceful shutdown drain completion and bounded-timeout behavior
 - Prepare first REST-focused release cut.
 
 ### Deferred to next iteration

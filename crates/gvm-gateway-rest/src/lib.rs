@@ -22,6 +22,7 @@ pub mod scanners;
 pub mod schedules;
 pub(crate) mod security;
 pub mod sessions;
+pub mod shutdown;
 pub(crate) mod system;
 pub mod targets;
 pub mod tasks;

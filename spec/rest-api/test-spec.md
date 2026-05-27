@@ -240,7 +240,7 @@ services:
 | `e2e_concurrent_requests` | 50 parallel target creates → all succeed |
 | `e2e_large_report_pagination` | Report with 10k+ results → paginate through all pages |
 | `e2e_auth_flow` | Create session → use token → close session → confirm token is rejected |
-| `e2e_graceful_shutdown` | Send SIGTERM during active requests → in-flight complete, new rejected |
+| `e2e_graceful_shutdown` | Begin shutdown during active requests → in-flight complete before timeout, readiness degrades, new work is shed |
 
 ## 5. Performance Tests
 
@@ -277,7 +277,7 @@ All unit and integration tests run in the CI workflow. E2E tests are gated behin
 # CI (fast)
 cargo test --workspace
 
-# E2E (requires Docker)
+# E2E (requires Podman or Docker)
 cargo test --workspace --features e2e-tests
 ```
 

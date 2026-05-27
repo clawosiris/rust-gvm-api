@@ -65,6 +65,7 @@ use crate::{
         create_session, create_session_docs, delete_session, delete_session_docs, get_session,
         get_session_docs,
     },
+    shutdown::ShutdownRuntime,
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
         create_target, create_target_docs, delete_target, delete_target_docs, get_target,
@@ -82,11 +83,24 @@ pub use crate::security::RestSecurityConfig;
 
 /// Builds the gateway router.
 pub fn build_router(state: GatewayService) -> Router {
-    build_router_with_security(state, RestSecurityConfig::default())
+    build_router_with_runtime_and_security(
+        state,
+        Arc::new(ShutdownRuntime::default()),
+        RestSecurityConfig::default(),
+    )
 }
 
 /// Builds the gateway router with explicit REST security middleware config.
 pub fn build_router_with_security(state: GatewayService, security: RestSecurityConfig) -> Router {
+    build_router_with_runtime_and_security(state, Arc::new(ShutdownRuntime::default()), security)
+}
+
+/// Builds the gateway router with explicit shutdown and REST security runtime.
+pub fn build_router_with_runtime_and_security(
+    state: GatewayService,
+    shutdown: Arc<ShutdownRuntime>,
+    security: RestSecurityConfig,
+) -> Router {
     let openapi = build_openapi();
     let openapi_json =
         Arc::new(serde_json::to_string_pretty(&openapi).expect("generated OpenAPI must serialize"));
@@ -102,10 +116,15 @@ pub fn build_router_with_security(state: GatewayService, security: RestSecurityC
         ))
         .layer(middleware::from_fn(trace_context_middleware))
         .layer(middleware::from_fn_with_state(
+            Arc::clone(&shutdown),
+            shutdown_gate_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
             security_state,
             security_middleware,
         ))
         .with_state(state)
+        .layer(Extension(shutdown))
         .layer(Extension(openapi_json))
         .into()
 }
@@ -381,6 +400,32 @@ async fn trace_context_middleware(mut request: Request, next: Next) -> Response 
     response
 }
 
+async fn shutdown_gate_middleware(
+    axum::extract::State(shutdown): axum::extract::State<Arc<ShutdownRuntime>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path().to_string();
+    if should_bypass_shutdown_gate(&path) {
+        return next.run(request).await;
+    }
+
+    let Some(_in_flight) = shutdown.try_track_request() else {
+        tracing::info!(path, "shutdown: rejecting new request while draining");
+        return RestError::service_unavailable(
+            "The gateway is shutting down and no longer accepts new requests.",
+            path,
+        )
+        .into_response();
+    };
+
+    next.run(request).await
+}
+
+fn should_bypass_shutdown_gate(path: &str) -> bool {
+    matches!(path, "/health" | "/ready")
+}
+
 #[derive(Clone, Default)]
 struct TraceHeaders {
     traceparent: Option<HeaderValue>,
@@ -424,4 +469,97 @@ pub(crate) fn bearer_token(
         .ok_or_else(|| {
             gvm_gateway_domain::GatewayError::Unauthorized("missing bearer token".to_string())
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn draining_router_rejects_new_non_probe_requests() {
+        let service = GatewayService::new(
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_domain::SessionManager::default()),
+        );
+        let shutdown = Arc::new(ShutdownRuntime::new());
+        let app = build_router_with_runtime_and_security(
+            service,
+            Arc::clone(&shutdown),
+            RestSecurityConfig::default(),
+        );
+
+        assert!(shutdown.begin_shutdown());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/version")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn draining_router_keeps_readiness_probe_available() {
+        let service = GatewayService::new(
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
+            Arc::new(gvm_gateway_domain::SessionManager::default()),
+        );
+        let shutdown = Arc::new(ShutdownRuntime::new());
+        let app = build_router_with_runtime_and_security(
+            service,
+            Arc::clone(&shutdown),
+            RestSecurityConfig::default(),
+        );
+
+        assert!(shutdown.begin_shutdown());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
 }
