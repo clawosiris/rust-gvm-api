@@ -483,24 +483,43 @@ mod tests {
 
     use super::*;
 
+    fn static_gateway_service() -> GatewayService {
+        let adapter = Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7"));
+        let system: Arc<dyn gvm_gateway_domain::SystemPort> = adapter.clone();
+        let alerts: Arc<dyn gvm_gateway_domain::AlertPort> = adapter.clone();
+        let schedules: Arc<dyn gvm_gateway_domain::SchedulePort> = adapter.clone();
+        let credentials: Arc<dyn gvm_gateway_domain::CredentialPort> = adapter.clone();
+        let port_lists: Arc<dyn gvm_gateway_domain::PortListPort> = adapter.clone();
+        let feeds: Arc<dyn gvm_gateway_domain::FeedPort> = adapter.clone();
+        let targets: Arc<dyn gvm_gateway_domain::TargetPort> = adapter.clone();
+        let tasks: Arc<dyn gvm_gateway_domain::TaskPort> = adapter.clone();
+        let auth: Arc<dyn gvm_gateway_domain::AuthPort> = adapter.clone();
+        let reports: Arc<dyn gvm_gateway_domain::ReportPort> = adapter.clone();
+        let results: Arc<dyn gvm_gateway_domain::ResultPort> = adapter.clone();
+        let scan_configs: Arc<dyn gvm_gateway_domain::ScanConfigPort> = adapter.clone();
+        let scanners: Arc<dyn gvm_gateway_domain::ScannerPort> = adapter;
+
+        GatewayService::new(
+            system,
+            alerts,
+            schedules,
+            credentials,
+            port_lists,
+            feeds,
+            targets,
+            tasks,
+            auth,
+            reports,
+            results,
+            scan_configs,
+            scanners,
+            Arc::new(gvm_gateway_domain::SessionManager::default()),
+        )
+    }
+
     #[tokio::test]
     async fn draining_router_rejects_new_non_probe_requests() {
-        let service = GatewayService::new(
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_domain::SessionManager::default()),
-        );
+        let service = static_gateway_service();
         let shutdown = Arc::new(ShutdownRuntime::new());
         let app = build_router_with_runtime_and_security(
             service,
@@ -525,22 +544,7 @@ mod tests {
 
     #[tokio::test]
     async fn draining_router_keeps_readiness_probe_available() {
-        let service = GatewayService::new(
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7")),
-            Arc::new(gvm_gateway_domain::SessionManager::default()),
-        );
+        let service = static_gateway_service();
         let shutdown = Arc::new(ShutdownRuntime::new());
         let app = build_router_with_runtime_and_security(
             service,
