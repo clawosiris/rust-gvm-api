@@ -533,6 +533,7 @@ dependencies = [
 name = "gvm-gateway"
 version = "0.3.1"
 dependencies = [
+ "async-trait",
  "axum",
  "clap",
  "gvm-gateway-app",
@@ -551,6 +552,8 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml",
+ "tower",
+ "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
  "uuid",
@@ -601,11 +604,14 @@ dependencies = [
  "base64",
  "gvm-gateway-app",
  "gvm-gateway-domain",
+ "gvm-gateway-gvmd",
  "http",
  "schemars",
  "serde",
  "serde_json",
  "serde_yaml",
+ "tokio",
+ "tower",
  "tracing",
  "uuid",
 ]

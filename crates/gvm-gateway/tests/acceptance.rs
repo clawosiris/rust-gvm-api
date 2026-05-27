@@ -4,17 +4,24 @@
 //! readiness, version endpoints, and full target CRUD operations via
 //! the REST adapter backed by a mock GMP server.
 
+use async_trait::async_trait;
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use gvm_gateway::server;
 use gvm_gateway_app::{GatewayService, SessionReaper};
-use gvm_gateway_domain::{SessionManager, TargetPage};
+use gvm_gateway_domain::{
+    CreateTargetInput, GatewayError, ModifyTargetInput, Pagination, SessionManager, Target,
+    TargetPage, TargetPort, TargetQuery,
+};
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
 use gvm_gateway_rest::router::{
-    build_router, build_router_with_security, RateLimitConfig, RestSecurityConfig,
+    build_router, build_router_with_runtime_and_security, build_router_with_security,
+    RateLimitConfig, RestSecurityConfig,
 };
+use gvm_gateway_rest::shutdown::ShutdownRuntime;
 use gvm_gateway_rest::targets::{
     build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery,
 };
@@ -25,6 +32,7 @@ use http::StatusCode;
 use reqwest::Client;
 use serde_json::Value;
 use tokio::net::TcpListener;
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 async fn spawn_server(
@@ -62,6 +70,132 @@ async fn spawn_server(
     });
 
     (addr, handle)
+}
+
+struct GracefulShutdownHarness {
+    addr: SocketAddr,
+    client: Client,
+    token: String,
+    shutdown: Arc<ShutdownRuntime>,
+    handle: tokio::task::JoinHandle<std::io::Result<()>>,
+}
+
+impl GracefulShutdownHarness {
+    fn begin_shutdown(&self) {
+        self.shutdown.begin_shutdown();
+    }
+}
+
+struct ControlledTargetAdapter {
+    started: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+impl ControlledTargetAdapter {
+    fn new(started: Arc<Notify>, release: Arc<Notify>) -> Self {
+        Self { started, release }
+    }
+}
+
+#[async_trait]
+impl TargetPort for ControlledTargetAdapter {
+    async fn list_targets(
+        &self,
+        _session_token: &str,
+        query: &TargetQuery,
+    ) -> Result<TargetPage, GatewayError> {
+        self.started.notify_waiters();
+        self.release.notified().await;
+        Ok(TargetPage {
+            data: Vec::<Target>::new(),
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_target(
+        &self,
+        _session_token: &str,
+        _input: CreateTargetInput,
+    ) -> Result<String, GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test adapter".to_string(),
+        ))
+    }
+
+    async fn get_target(&self, _session_token: &str, _id: &str) -> Result<Target, GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test adapter".to_string(),
+        ))
+    }
+
+    async fn modify_target(
+        &self,
+        _session_token: &str,
+        _id: &str,
+        _input: ModifyTargetInput,
+    ) -> Result<Target, GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test adapter".to_string(),
+        ))
+    }
+
+    async fn delete_target(&self, _session_token: &str, _id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test adapter".to_string(),
+        ))
+    }
+}
+
+async fn graceful_shutdown_harness(
+    target_adapter: Arc<dyn TargetPort>,
+    drain_timeout: Duration,
+) -> GracefulShutdownHarness {
+    let sessions = Arc::new(SessionManager::default());
+    let token = sessions.create("admin").unwrap().token;
+    let service = GatewayService::new(
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        target_adapter,
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        sessions,
+    );
+    let shutdown = Arc::new(ShutdownRuntime::new());
+    let app = build_router_with_runtime_and_security(
+        service,
+        Arc::clone(&shutdown),
+        RestSecurityConfig::default(),
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let handle = tokio::spawn(server::serve(
+        listener,
+        app,
+        Arc::clone(&shutdown),
+        drain_timeout,
+    ));
+
+    GracefulShutdownHarness {
+        addr,
+        client: Client::new(),
+        token,
+        shutdown,
+        handle,
+    }
 }
 
 // ============================================================================
@@ -123,6 +257,96 @@ async fn ready_returns_503_when_not_ready() {
     );
 
     handle.abort();
+}
+
+#[tokio::test]
+async fn e2e_graceful_shutdown_drains_in_flight_requests() {
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let harness = graceful_shutdown_harness(
+        Arc::new(ControlledTargetAdapter::new(
+            Arc::clone(&started),
+            Arc::clone(&release),
+        )),
+        Duration::from_secs(1),
+    )
+    .await;
+
+    let request = {
+        let client = harness.client.clone();
+        let token = harness.token.clone();
+        let addr = harness.addr;
+        tokio::spawn(async move {
+            client
+                .get(format!("http://{addr}/api/v1/targets"))
+                .bearer_auth(token)
+                .send()
+                .await
+        })
+    };
+
+    started.notified().await;
+    harness.begin_shutdown();
+    tokio::time::sleep(Duration::from_millis(25)).await;
+    release.notify_waiters();
+
+    let response = request.await.unwrap().unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    tokio::time::timeout(Duration::from_secs(1), harness.handle)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn e2e_graceful_shutdown_forces_exit_after_timeout() {
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let harness = graceful_shutdown_harness(
+        Arc::new(ControlledTargetAdapter::new(
+            Arc::clone(&started),
+            Arc::clone(&release),
+        )),
+        Duration::from_millis(50),
+    )
+    .await;
+
+    let request = {
+        let client = harness.client.clone();
+        let token = harness.token.clone();
+        let addr = harness.addr;
+        tokio::spawn(async move {
+            client
+                .get(format!("http://{addr}/api/v1/targets"))
+                .bearer_auth(token)
+                .send()
+                .await
+        })
+    };
+
+    started.notified().await;
+    harness.begin_shutdown();
+
+    tokio::time::timeout(Duration::from_millis(250), harness.handle)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        !request.is_finished(),
+        "bounded shutdown should return even if a request is still blocked"
+    );
+
+    release.notify_waiters();
+    let response = tokio::time::timeout(Duration::from_secs(1), request)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

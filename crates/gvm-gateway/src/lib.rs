@@ -7,4 +7,5 @@
 //! Composition root support for the GVM gateway.
 
 pub mod config;
+pub mod server;
 pub mod telemetry;
