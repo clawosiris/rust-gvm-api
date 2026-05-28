@@ -21,7 +21,14 @@ use axum::{
     Router,
 };
 use gvm_gateway_app::GatewayService;
+use opentelemetry::{
+    propagation::{Extractor, Injector, TextMapPropagator},
+    Context,
+};
+use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
 use serde_json::Value;
+use tracing::{field, Instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
     alerts::{
@@ -482,12 +489,37 @@ async fn not_found(request: Request) -> Response {
     RestError::not_found(request.uri().path()).into_response()
 }
 
-async fn trace_context_middleware(mut request: Request, next: Next) -> Response {
+async fn trace_context_middleware(request: Request, next: Next) -> Response {
     let trace_headers = extract_trace_headers(request.headers());
-    request.extensions_mut().insert(trace_headers.clone());
+    let request_path = request.uri().path().to_string();
+    let request_method = request.method().clone();
+    let parent_context = extract_trace_context(request.headers());
+    let span = tracing::info_span!(
+        "http.request",
+        otel_name = field::Empty,
+        http_method = %request_method,
+        http_route = %request_path,
+        http_status_code = field::Empty,
+    );
+    span.record(
+        "otel_name",
+        field::display(format!("{request_method} {request_path}")),
+    );
+    let _ = span.set_parent(parent_context);
 
-    let mut response = next.run(request).await;
-    apply_trace_headers(response.headers_mut(), &trace_headers);
+    let span_for_response = span.clone();
+    let mut response = async move { next.run(request).await }
+        .instrument(span)
+        .await;
+    span_for_response.record(
+        "http_status_code",
+        field::display(response.status().as_u16()),
+    );
+    apply_trace_headers(
+        response.headers_mut(),
+        &trace_headers,
+        &span_for_response.context(),
+    );
     response
 }
 
@@ -521,26 +553,69 @@ fn should_bypass_shutdown_gate(path: &str) -> bool {
 struct TraceHeaders {
     traceparent: Option<HeaderValue>,
     tracestate: Option<HeaderValue>,
-    baggage: Option<HeaderValue>,
 }
 
 fn extract_trace_headers(headers: &HeaderMap) -> TraceHeaders {
     TraceHeaders {
         traceparent: headers.get("traceparent").cloned(),
         tracestate: headers.get("tracestate").cloned(),
-        baggage: headers.get("baggage").cloned(),
     }
 }
 
-fn apply_trace_headers(headers: &mut HeaderMap, trace_headers: &TraceHeaders) {
-    if let Some(value) = trace_headers.traceparent.clone() {
-        headers.insert(HeaderName::from_static("traceparent"), value);
+fn apply_trace_headers(headers: &mut HeaderMap, trace_headers: &TraceHeaders, context: &Context) {
+    trace_context_propagator().inject_context(context, &mut HeaderInjector(headers));
+
+    if !headers.contains_key("traceparent") {
+        if let Some(value) = trace_headers.traceparent.clone() {
+            headers.insert(HeaderName::from_static("traceparent"), value);
+        }
     }
-    if let Some(value) = trace_headers.tracestate.clone() {
-        headers.insert(HeaderName::from_static("tracestate"), value);
+
+    if !headers.contains_key("tracestate") {
+        if let Some(value) = trace_headers.tracestate.clone() {
+            headers.insert(HeaderName::from_static("tracestate"), value);
+        }
     }
-    if let Some(value) = trace_headers.baggage.clone() {
-        headers.insert(HeaderName::from_static("baggage"), value);
+}
+
+fn extract_trace_context(headers: &HeaderMap) -> Context {
+    trace_propagator().extract(&HeaderExtractor(headers))
+}
+
+fn trace_propagator() -> opentelemetry::propagation::TextMapCompositePropagator {
+    opentelemetry::propagation::TextMapCompositePropagator::new(vec![
+        Box::new(TraceContextPropagator::new()),
+        Box::new(BaggagePropagator::new()),
+    ])
+}
+
+fn trace_context_propagator() -> TraceContextPropagator {
+    TraceContextPropagator::new()
+}
+
+struct HeaderExtractor<'a>(&'a HeaderMap);
+
+impl Extractor for HeaderExtractor<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|value| value.to_str().ok())
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(HeaderName::as_str).collect()
+    }
+}
+
+struct HeaderInjector<'a>(&'a mut HeaderMap);
+
+impl Injector for HeaderInjector<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        let Ok(name) = HeaderName::from_bytes(key.as_bytes()) else {
+            return;
+        };
+        let Ok(value) = HeaderValue::from_str(&value) else {
+            return;
+        };
+        self.0.insert(name, value);
     }
 }
 
@@ -564,15 +639,64 @@ pub(crate) fn bearer_token(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{
+        io,
+        io::Write,
+        sync::{Arc, Mutex, OnceLock},
+    };
 
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
+    use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
     use tower::ServiceExt;
+    use tracing_subscriber::{fmt::format::FmtSpan, layer::SubscriberExt};
 
     use super::*;
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn capture_tracing() -> Arc<Mutex<Vec<u8>>> {
+        static BUFFER: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
+        static INIT: OnceLock<()> = OnceLock::new();
+
+        let buffer = BUFFER
+            .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
+            .clone();
+
+        INIT.get_or_init(|| {
+            let writer = buffer.clone();
+            let subscriber = tracing_subscriber::registry().with(
+                tracing_subscriber::fmt::layer()
+                    .with_ansi(false)
+                    .without_time()
+                    .with_span_events(FmtSpan::CLOSE)
+                    .with_writer(move || SharedWriter(writer.clone())),
+            );
+            let _ = tracing::subscriber::set_global_default(subscriber);
+        });
+
+        buffer.lock().unwrap().clear();
+        buffer
+    }
+
+    async fn lock_tracing() -> AsyncMutexGuard<'static, ()> {
+        static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| AsyncMutex::new(())).lock().await
+    }
 
     fn static_gateway_service() -> GatewayService {
         let adapter = Arc::new(gvm_gateway_gvmd::StaticGvmdAdapter::ready("22.7"));
@@ -658,5 +782,46 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn request_trace_context_returns_trace_headers_without_echoing_baggage() {
+        let _trace_lock = lock_tracing().await;
+        let logs = capture_tracing();
+        let service = static_gateway_service();
+        let app = build_router(service);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .header(
+                        "traceparent",
+                        "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+                    )
+                    .header("tracestate", "vendor=value")
+                    .header("baggage", "secret=user-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("traceparent").unwrap(),
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        );
+        assert_eq!(
+            response.headers().get("tracestate").unwrap(),
+            "vendor=value"
+        );
+        assert!(response.headers().get("baggage").is_none());
+
+        let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+        assert!(output.contains("http.request"));
+        assert!(output.contains("http_method=GET"));
+        assert!(output.contains("http_route=/health"));
+        assert!(!output.contains("secret=user-token"));
     }
 }

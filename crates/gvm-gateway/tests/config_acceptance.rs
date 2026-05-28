@@ -12,6 +12,10 @@ fn default_config_valid() {
         GatewayConfig {
             bind: "127.0.0.1:8080".to_string(),
             otlp_endpoint: None,
+            telemetry_service_name: "gvm-gateway".to_string(),
+            telemetry_service_namespace: Some("greenbone".to_string()),
+            telemetry_deployment_environment: None,
+            telemetry_service_instance_id: None,
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
             shutdown_drain_timeout_secs: 30,
             rest_security: RestSecurityConfig::default(),
@@ -24,12 +28,20 @@ fn config_override_precedence() {
     let mut file = NamedTempFile::new().unwrap();
     writeln!(
         file,
-        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\nshutdown_drain_timeout_secs = 45\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3"
+        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ntelemetry_service_name = \"gateway-file\"\ntelemetry_service_namespace = \"greenbone.file\"\ntelemetry_deployment_environment = \"staging\"\ntelemetry_service_instance_id = \"gw-file-1\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\nshutdown_drain_timeout_secs = 45\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3"
     )
     .unwrap();
 
     let mut env = BTreeMap::new();
     env.insert("GVM_GATEWAY_BIND".to_string(), "0.0.0.0:9090".to_string());
+    env.insert(
+        "GVM_GATEWAY_TELEMETRY_SERVICE_NAME".to_string(),
+        "gateway-env".to_string(),
+    );
+    env.insert(
+        "GVM_GATEWAY_TELEMETRY_SERVICE_INSTANCE_ID".to_string(),
+        "gw-env-7".to_string(),
+    );
     env.insert(
         "GVM_GATEWAY_GVMD_ENDPOINT".to_string(),
         "unix:///var/run/gvmd.sock".to_string(),
@@ -60,6 +72,19 @@ fn config_override_precedence() {
     assert_eq!(
         config.otlp_endpoint.as_deref(),
         Some("http://collector:4317")
+    );
+    assert_eq!(config.telemetry_service_name, "gateway-env");
+    assert_eq!(
+        config.telemetry_service_namespace.as_deref(),
+        Some("greenbone.file")
+    );
+    assert_eq!(
+        config.telemetry_deployment_environment.as_deref(),
+        Some("staging")
+    );
+    assert_eq!(
+        config.telemetry_service_instance_id.as_deref(),
+        Some("gw-env-7")
     );
     assert_eq!(config.gvmd_endpoint, "unix:///var/run/gvmd.sock");
     assert_eq!(config.shutdown_drain_timeout_secs, 5);

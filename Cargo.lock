@@ -592,6 +592,8 @@ dependencies = [
  "gvm-mock-server",
  "gvm-protocol",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -606,6 +608,8 @@ dependencies = [
  "gvm-gateway-domain",
  "gvm-gateway-gvmd",
  "http",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "schemars",
  "serde",
  "serde_json",
@@ -613,6 +617,8 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
  "uuid",
 ]
 

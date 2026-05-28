@@ -14,8 +14,11 @@ gvm-client.workspace = true
 gvm-connection.workspace = true
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
 gvm-gmp.workspace = true
+gvm-protocol.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 gvm-mock-server.workspace = true
 gvm-protocol.workspace = true
+tracing-subscriber.workspace = true

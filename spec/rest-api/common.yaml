@@ -88,6 +88,10 @@ components:
       description: W3C Trace Context traceparent for downstream correlation.
       schema:
         type: string
+    Tracestate:
+      description: W3C Trace Context tracestate for downstream correlation when present.
+      schema:
+        type: string
     Location:
       description: Canonical URI of the created resource.
       schema:

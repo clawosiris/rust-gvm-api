@@ -121,12 +121,27 @@ Useful follow-up commands:
 - gvmd socket mount: `/run/gvmd`
 - Required backend endpoint: `GVM_GATEWAY_GVMD_ENDPOINT=unix:///run/gvmd/gvmd.sock`
 - Optional telemetry endpoint: `GVM_GATEWAY_OTLP_ENDPOINT`
+- Optional telemetry resource attributes:
+  - `GVM_GATEWAY_TELEMETRY_SERVICE_NAME`
+  - `GVM_GATEWAY_TELEMETRY_SERVICE_NAMESPACE`
+  - `GVM_GATEWAY_TELEMETRY_DEPLOYMENT_ENVIRONMENT`
+  - `GVM_GATEWAY_TELEMETRY_SERVICE_INSTANCE_ID`
 - Optional shutdown tuning: `GVM_GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECS`
 - Optional REST security overrides:
   - `GVM_GATEWAY_CORS_ALLOWED_ORIGINS`
   - `GVM_GATEWAY_RATE_LIMIT_WINDOW_SECS`
   - `GVM_GATEWAY_RATE_LIMIT_GLOBAL_PER_WINDOW`
   - `GVM_GATEWAY_RATE_LIMIT_SUBJECT_PER_WINDOW`
+
+### Telemetry Contract
+
+- Logs are always emitted locally through the gateway tracing subscriber.
+- OTLP trace export is enabled only when `otlp_endpoint` or `GVM_GATEWAY_OTLP_ENDPOINT` is set.
+- The current exporter path is OTLP over gRPC (for example `http://otel-collector:4317`).
+- Stable resource attributes are `service.name`, `service.namespace`, and `service.version`; `deployment.environment` and `service.instance.id` are emitted only when configured.
+- Incoming REST requests accept W3C Trace Context headers (`traceparent`, optional `tracestate`, optional `baggage`).
+- REST responses return correlation headers for `traceparent` and `tracestate`; `baggage` is consumed for parent context but is not echoed back.
+- The gvmd backend runs over GMP on a Unix socket, so trace headers are not forwarded downstream; correlation across the internal boundary is represented by nested gateway/gvmd spans instead.
 
 ## Documentation
 

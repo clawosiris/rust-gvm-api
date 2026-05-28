@@ -384,7 +384,7 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
 }
 
 #[tokio::test]
-async fn trace_context_headers_propagated() {
+async fn trace_context_headers_propagated_without_baggage_echo() {
     let adapter = StaticGvmdAdapter::ready("22.7");
     let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
     let response = Client::new()
@@ -408,7 +408,7 @@ async fn trace_context_headers_propagated() {
         response.headers().get("tracestate").unwrap(),
         "vendor=value"
     );
-    assert_eq!(response.headers().get("baggage").unwrap(), "user_id=123");
+    assert!(response.headers().get("baggage").is_none());
 
     handle.abort();
 }

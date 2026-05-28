@@ -27,6 +27,14 @@ pub struct GatewayConfig {
     pub bind: String,
     /// Optional OTLP endpoint for tracing.
     pub otlp_endpoint: Option<String>,
+    /// Stable OpenTelemetry service.name attribute.
+    pub telemetry_service_name: String,
+    /// Optional OpenTelemetry service.namespace attribute.
+    pub telemetry_service_namespace: Option<String>,
+    /// Optional OpenTelemetry deployment.environment attribute.
+    pub telemetry_deployment_environment: Option<String>,
+    /// Optional OpenTelemetry service.instance.id attribute.
+    pub telemetry_service_instance_id: Option<String>,
     /// Backend socket path or endpoint.
     pub gvmd_endpoint: String,
     /// Maximum time to wait for in-flight requests during shutdown.
@@ -40,6 +48,10 @@ impl Default for GatewayConfig {
         Self {
             bind: "127.0.0.1:8080".to_string(),
             otlp_endpoint: None,
+            telemetry_service_name: "gvm-gateway".to_string(),
+            telemetry_service_namespace: Some("greenbone".to_string()),
+            telemetry_deployment_environment: None,
+            telemetry_service_instance_id: None,
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
             shutdown_drain_timeout_secs: 30,
             rest_security: RestSecurityConfig::default(),
@@ -81,6 +93,10 @@ impl std::error::Error for ConfigError {}
 struct FileConfig {
     bind: Option<String>,
     otlp_endpoint: Option<String>,
+    telemetry_service_name: Option<String>,
+    telemetry_service_namespace: Option<String>,
+    telemetry_deployment_environment: Option<String>,
+    telemetry_service_instance_id: Option<String>,
     gvmd_endpoint: Option<String>,
     shutdown_drain_timeout_secs: Option<u64>,
     cors_allowed_origins: Option<Vec<String>>,
@@ -105,6 +121,18 @@ pub fn load_config(
         if let Some(otlp_endpoint) = file.otlp_endpoint.as_ref() {
             config.otlp_endpoint = Some(otlp_endpoint.clone());
         }
+        if let Some(service_name) = file.telemetry_service_name.as_ref() {
+            config.telemetry_service_name = service_name.clone();
+        }
+        if let Some(namespace) = file.telemetry_service_namespace.as_ref() {
+            config.telemetry_service_namespace = Some(namespace.clone());
+        }
+        if let Some(environment) = file.telemetry_deployment_environment.as_ref() {
+            config.telemetry_deployment_environment = Some(environment.clone());
+        }
+        if let Some(instance_id) = file.telemetry_service_instance_id.as_ref() {
+            config.telemetry_service_instance_id = Some(instance_id.clone());
+        }
         if let Some(gvmd_endpoint) = file.gvmd_endpoint.as_ref() {
             config.gvmd_endpoint = gvmd_endpoint.clone();
         }
@@ -119,6 +147,18 @@ pub fn load_config(
     }
     if let Some(otlp_endpoint) = env.get("GVM_GATEWAY_OTLP_ENDPOINT") {
         config.otlp_endpoint = Some(otlp_endpoint.clone());
+    }
+    if let Some(service_name) = env.get("GVM_GATEWAY_TELEMETRY_SERVICE_NAME") {
+        config.telemetry_service_name = service_name.clone();
+    }
+    if let Some(namespace) = env.get("GVM_GATEWAY_TELEMETRY_SERVICE_NAMESPACE") {
+        config.telemetry_service_namespace = Some(namespace.clone());
+    }
+    if let Some(environment) = env.get("GVM_GATEWAY_TELEMETRY_DEPLOYMENT_ENVIRONMENT") {
+        config.telemetry_deployment_environment = Some(environment.clone());
+    }
+    if let Some(instance_id) = env.get("GVM_GATEWAY_TELEMETRY_SERVICE_INSTANCE_ID") {
+        config.telemetry_service_instance_id = Some(instance_id.clone());
     }
     if let Some(gvmd_endpoint) = env.get("GVM_GATEWAY_GVMD_ENDPOINT") {
         config.gvmd_endpoint = gvmd_endpoint.clone();
