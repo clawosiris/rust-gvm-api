@@ -592,6 +592,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gvm-gateway-e2e"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "gvm-gateway-gvmd"
 version = "0.3.1"
 dependencies = [
