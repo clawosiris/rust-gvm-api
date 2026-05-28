@@ -273,34 +273,29 @@ Rules for these exceptions:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/v1/users` | List users (admin-facing) |
-| `POST` | `/api/v1/users` | Create user (admin-only) |
-| `GET` | `/api/v1/users/{id}` | Get user (admin-facing) |
-| `PUT` | `/api/v1/users/{id}` | Update user (admin-only) |
-| `DELETE` | `/api/v1/users/{id}` | Delete user (admin-only) |
-| `GET` | `/api/v1/groups` | List groups (admin-facing) |
-| `POST` | `/api/v1/groups` | Create group (admin-only) |
-| `GET` | `/api/v1/groups/{id}` | Get group (admin-facing) |
-| `PUT` | `/api/v1/groups/{id}` | Update group (admin-only) |
-| `DELETE` | `/api/v1/groups/{id}` | Delete group (admin-only) |
-| `GET` | `/api/v1/roles` | List roles (admin-facing) |
-| `POST` | `/api/v1/roles` | Create role (admin-only) |
-| `GET` | `/api/v1/roles/{id}` | Get role (admin-facing) |
-| `PUT` | `/api/v1/roles/{id}` | Update role (admin-only) |
-| `DELETE` | `/api/v1/roles/{id}` | Delete role (admin-only) |
-| `GET` | `/api/v1/permissions` | List permission grants (admin-facing) |
-| `POST` | `/api/v1/permissions` | Create permission grant (admin-only) |
-| `GET` | `/api/v1/permissions/{id}` | Get permission grant (admin-facing) |
-| `PUT` | `/api/v1/permissions/{id}` | Update permission grant (admin-only) |
-| `DELETE` | `/api/v1/permissions/{id}` | Delete permission grant (admin-only) |
-| `GET` | `/api/v1/user-settings` | List current-user settings (self-service) |
+| `GET` | `/api/v1/users` | List users |
+| `POST` | `/api/v1/users` | Create user |
+| `GET` | `/api/v1/users/{id}` | Get user |
+| `PUT` | `/api/v1/users/{id}` | Update user |
+| `DELETE` | `/api/v1/users/{id}` | Delete user |
+| `GET` | `/api/v1/groups` | List groups |
+| `POST` | `/api/v1/groups` | Create group |
+| `GET` | `/api/v1/groups/{id}` | Get group |
+| `PUT` | `/api/v1/groups/{id}` | Update group |
+| `DELETE` | `/api/v1/groups/{id}` | Delete group |
+| `GET` | `/api/v1/roles` | List roles |
+| `POST` | `/api/v1/roles` | Create role |
+| `GET` | `/api/v1/roles/{id}` | Get role |
+| `PUT` | `/api/v1/roles/{id}` | Update role |
+| `DELETE` | `/api/v1/roles/{id}` | Delete role |
+| `GET` | `/api/v1/permissions` | List permission grants |
+| `POST` | `/api/v1/permissions` | Create permission grant |
+| `GET` | `/api/v1/permissions/{id}` | Get permission grant |
+| `PUT` | `/api/v1/permissions/{id}` | Update permission grant |
+| `DELETE` | `/api/v1/permissions/{id}` | Delete permission grant |
+| `GET` | `/api/v1/user-settings` | List current-user settings |
 | `GET` | `/api/v1/user-settings/{id}` | Get one current-user setting |
 | `PUT` | `/api/v1/user-settings/{id}` | Update one current-user setting |
-
-Identity resources split into two permission models:
-
-- `users`, `groups`, `roles`, and `permissions` are administrator-facing surfaces. Successful access depends on the backing gvmd permission model, and callers without the relevant backend grant should receive `403 Forbidden`.
-- `user-settings` is intentionally not modeled as generic admin CRUD. The REST contract treats it as the authenticated principal's own setting space because the current upstream GMP surface exposes `get_settings` / `modify_setting`, not create/delete or "edit someone else's settings" operations.
 
 #### Sessions & Auth
 
@@ -310,7 +305,7 @@ Identity resources split into two permission models:
 | `GET` | `/api/v1/sessions/{token}` | Inspect current session state |
 | `DELETE` | `/api/v1/sessions/{token}` | Close and destroy a session |
 
-Protected routes accept either an existing Bearer session token or request-scoped HTTP Basic credentials. `POST /api/v1/sessions` remains the persistent-session creation path. Identity endpoints are now part of the published contract, but they are not all equal: admin resources must document `403` behavior explicitly, while `user-settings` remains self-service and intentionally omits unsupported `POST`/`DELETE` mutation patterns.
+Protected routes accept either an existing Bearer session token or request-scoped HTTP Basic credentials. `POST /api/v1/sessions` remains the persistent-session creation path.
 
 #### Feeds
 

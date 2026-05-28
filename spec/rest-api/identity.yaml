@@ -10,9 +10,7 @@ paths:
       tags: [Users]
       summary: List users
       description: |
-        Lists gvmd users visible to the authenticated principal. In the initial
-        parity contract this is an administrator-facing resource; callers
-        without the relevant gvmd permission should receive `403 Forbidden`.
+        Lists users visible to the authenticated principal.
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
         - $ref: "./common.yaml#/components/parameters/FilterId"
@@ -67,9 +65,7 @@ paths:
       operationId: getUser
       tags: [Users]
       summary: Get a user
-      description: |
-        Returns one gvmd user by ID. This operation is administrator-facing in
-        the initial contract.
+      description: Returns one user by ID.
       responses:
         "200":
           description: User details
@@ -118,10 +114,7 @@ paths:
       operationId: deleteUser
       tags: [Users]
       summary: Delete a user
-      description: |
-        Deletes a gvmd user. The implementation may later expose the backend
-        `ultimate` delete toggle, but the first REST contract keeps deletion as
-        a single administrator-only operation.
+      description: Deletes a user.
       responses:
         "204":
           description: User deleted
@@ -139,9 +132,7 @@ paths:
       operationId: getGroups
       tags: [Groups]
       summary: List groups
-      description: |
-        Lists gvmd groups visible to the authenticated principal. In the
-        initial parity contract this is an administrator-facing resource.
+      description: Lists groups visible to the authenticated principal.
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
         - $ref: "./common.yaml#/components/parameters/FilterId"
@@ -258,9 +249,7 @@ paths:
       operationId: getRoles
       tags: [Roles]
       summary: List roles
-      description: |
-        Lists gvmd roles visible to the authenticated principal. In the initial
-        parity contract this is an administrator-facing resource.
+      description: Lists roles visible to the authenticated principal.
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
         - $ref: "./common.yaml#/components/parameters/FilterId"
@@ -377,9 +366,7 @@ paths:
       operationId: getPermissions
       tags: [Permissions]
       summary: List permissions
-      description: |
-        Lists gvmd permissions visible to the authenticated principal. In the
-        initial parity contract this is an administrator-facing resource.
+      description: Lists permissions visible to the authenticated principal.
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
         - $ref: "./common.yaml#/components/parameters/FilterId"
@@ -496,11 +483,7 @@ paths:
       operationId: getUserSettings
       tags: [User Settings]
       summary: List current user settings
-      description: |
-        Lists settings for the authenticated principal. Unlike the other
-        identity resources in this file, `user-settings` is modeled as a
-        caller-scoped self-service surface rather than a generic administrator
-        CRUD resource.
+      description: Lists settings for the authenticated principal.
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
         - $ref: "./common.yaml#/components/parameters/FilterId"
@@ -523,9 +506,7 @@ paths:
       operationId: getUserSetting
       tags: [User Settings]
       summary: Get one current-user setting
-      description: |
-        Returns one setting from the authenticated principal's setting space.
-        A caller cannot use this endpoint to inspect another user's settings.
+      description: Returns one setting for the authenticated principal by ID.
       responses:
         "200":
           description: User setting details
@@ -543,11 +524,7 @@ paths:
       operationId: modifyUserSetting
       tags: [User Settings]
       summary: Update one current-user setting
-      description: |
-        Updates a setting belonging to the authenticated principal. This is the
-        only mutation in the first `user-settings` contract; create/delete are
-        intentionally unsupported because the upstream GMP surface only exposes
-        read and modify operations here.
+      description: Updates one setting for the authenticated principal by ID.
       requestBody:
         required: true
         content:
