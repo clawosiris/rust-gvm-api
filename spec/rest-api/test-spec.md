@@ -160,6 +160,34 @@ async fn test_server() -> TestServer {
 | `list_timezones` | `GET /api/v1/timezones` | Backend exposes timezone catalog | 200, timezone list |
 | `list_credential_stores` | `GET /api/v1/credential-stores` | Backend exposes credential store catalog | 200, credential store list |
 
+### 3.5b Identity & Access Control
+
+| Test | Request | Setup | Expected |
+|------|---------|-------|----------|
+| `list_users_as_admin` | `GET /api/v1/users` | Admin-capable principal | 200, paginated users |
+| `list_users_without_admin_scope` | `GET /api/v1/users` | Authenticated non-admin principal | 403 |
+| `create_user_as_admin` | `POST /api/v1/users` | Admin-capable principal | 201 + `Location` |
+| `get_user_not_found` | `GET /api/v1/users/{bad-id}` | Admin-capable principal | 404 |
+| `modify_user_as_admin` | `PUT /api/v1/users/{id}` | Existing user + admin principal | 200 |
+| `delete_user_as_admin` | `DELETE /api/v1/users/{id}` | Existing user + admin principal | 204 |
+| `list_groups_as_admin` | `GET /api/v1/groups` | Admin-capable principal | 200, paginated groups |
+| `create_group_as_admin` | `POST /api/v1/groups` | Admin-capable principal | 201 + `Location` |
+| `modify_group_as_admin` | `PUT /api/v1/groups/{id}` | Existing group + admin principal | 200 |
+| `delete_group_as_admin` | `DELETE /api/v1/groups/{id}` | Existing group + admin principal | 204 |
+| `list_roles_as_admin` | `GET /api/v1/roles` | Admin-capable principal | 200, paginated roles |
+| `create_role_as_admin` | `POST /api/v1/roles` | Admin-capable principal | 201 + `Location` |
+| `modify_role_as_admin` | `PUT /api/v1/roles/{id}` | Existing role + admin principal | 200 |
+| `delete_role_as_admin` | `DELETE /api/v1/roles/{id}` | Existing role + admin principal | 204 |
+| `list_permissions_as_admin` | `GET /api/v1/permissions` | Admin-capable principal | 200, paginated permissions |
+| `create_permission_as_admin` | `POST /api/v1/permissions` | Admin-capable principal | 201 + `Location` |
+| `modify_permission_as_admin` | `PUT /api/v1/permissions/{id}` | Existing permission + admin principal | 200 |
+| `delete_permission_as_admin` | `DELETE /api/v1/permissions/{id}` | Existing permission + admin principal | 204 |
+| `list_user_settings_for_current_user` | `GET /api/v1/user-settings` | Authenticated principal | 200, unpaginated setting list |
+| `get_user_setting_for_current_user` | `GET /api/v1/user-settings/{id}` | Setting belongs to caller | 200 |
+| `modify_user_setting_for_current_user` | `PUT /api/v1/user-settings/{id}` | Setting belongs to caller | 200 |
+| `create_user_setting_not_allowed` | `POST /api/v1/user-settings` | Authenticated principal | 405 |
+| `delete_user_setting_not_allowed` | `DELETE /api/v1/user-settings/{id}` | Authenticated principal | 405 |
+
 ### 3.6 Authentication Flow
 
 | Test | Request | Expected |
