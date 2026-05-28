@@ -132,6 +132,14 @@ Run the compose-backed REST end-to-end tests through the wrapper script:
 
 The wrapper waits for `/ready`, prints feed status for diagnostics, then polls the REST resources required by the discovery scan test: discovery scan configs, OpenVAS scanner availability, and usable port lists. This is stricter than feed status alone because gvmd can accept GMP connections before first-boot data imports have populated REST-visible scan configs.
 
+Create a reusable e2e seed database from a warmed dev stack with:
+
+```bash
+./scripts/create-e2e-seed-db.sh
+```
+
+The seed artifact defaults to `dist/e2e/pg-gvm-data.tgz` and snapshots the compose Postgres data volume after the REST-level e2e resources are available. The seed dataset is scoped to the gateway tests: gvmd schema and baseline metadata, the dev admin user, REST-visible scan configs including Host Discovery, scanners, port lists, report formats, and related baseline objects already present in the volume. It is not intended to validate full feed import behavior.
+
 Useful follow-up commands:
 
 ```bash

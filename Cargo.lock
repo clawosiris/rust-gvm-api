@@ -687,6 +687,7 @@ dependencies = [
  "gvm-gmp",
  "gvm-mock-server",
  "gvm-protocol",
+ "quick-xml",
  "tokio",
  "tracing",
  "tracing-subscriber",
