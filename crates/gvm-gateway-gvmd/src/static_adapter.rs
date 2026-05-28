@@ -50,8 +50,9 @@ impl StaticGvmdAdapter {
     }
 }
 
+#[async_trait]
 impl SystemPort for StaticGvmdAdapter {
-    fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
+    async fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
         if self.ready {
             Ok(ReadinessStatus {
                 status: "ready",
@@ -65,7 +66,7 @@ impl SystemPort for StaticGvmdAdapter {
         }
     }
 
-    fn gmp_version(&self) -> Result<String, GatewayError> {
+    async fn gmp_version(&self) -> Result<String, GatewayError> {
         if self.ready {
             Ok(self.gmp_version.clone())
         } else {
@@ -640,33 +641,33 @@ impl AuthPort for StaticGvmdAdapter {
 mod tests {
     use super::*;
 
-    #[test]
-    fn static_adapter_ready_returns_ready_status() {
+    #[tokio::test]
+    async fn static_adapter_ready_returns_ready_status() {
         let adapter = StaticGvmdAdapter::ready("22.7");
-        let status = adapter.readiness().unwrap();
+        let status = adapter.readiness().await.unwrap();
         assert_eq!(status.status, "ready");
         assert!(status.reason.is_none());
     }
 
-    #[test]
-    fn static_adapter_ready_returns_gmp_version() {
+    #[tokio::test]
+    async fn static_adapter_ready_returns_gmp_version() {
         let adapter = StaticGvmdAdapter::ready("22.7");
-        let version = adapter.gmp_version().unwrap();
+        let version = adapter.gmp_version().await.unwrap();
         assert_eq!(version, "22.7");
     }
 
-    #[test]
-    fn static_adapter_not_ready_returns_not_ready_status() {
+    #[tokio::test]
+    async fn static_adapter_not_ready_returns_not_ready_status() {
         let adapter = StaticGvmdAdapter::not_ready("gvmd offline", "22.7");
-        let status = adapter.readiness().unwrap();
+        let status = adapter.readiness().await.unwrap();
         assert_eq!(status.status, "notReady");
         assert_eq!(status.reason.as_deref(), Some("gvmd offline"));
     }
 
-    #[test]
-    fn static_adapter_not_ready_gmp_version_fails() {
+    #[tokio::test]
+    async fn static_adapter_not_ready_gmp_version_fails() {
         let adapter = StaticGvmdAdapter::not_ready("gvmd offline", "22.7");
-        let result = adapter.gmp_version();
+        let result = adapter.gmp_version().await;
         assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
     }
 

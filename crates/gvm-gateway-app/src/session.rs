@@ -67,7 +67,7 @@ impl GatewayService {
                 return Err(err);
             }
 
-            let gmp_version = match self.system.gmp_version() {
+            let gmp_version = match self.system.gmp_version().await {
                 Ok(version) => version,
                 Err(err) => {
                     emit_audit_event(

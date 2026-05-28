@@ -21,17 +21,17 @@ fn service_health_always_returns_ok() {
 }
 
 /// Ready forwards a healthy backend readiness response unchanged.
-#[test]
-fn service_ready_returns_readiness() {
+#[tokio::test]
+async fn service_ready_returns_readiness() {
     let service = create_test_service();
-    let ready = service.ready().unwrap();
+    let ready = service.ready().await.unwrap();
     assert_eq!(ready.status, "ready");
     assert!(ready.reason.is_none());
 }
 
 /// Ready preserves a not-ready backend status and reason.
-#[test]
-fn service_ready_returns_not_ready() {
+#[tokio::test]
+async fn service_ready_returns_not_ready() {
     let service = GatewayService::new(
         Arc::new(MockSystemPort {
             ready: false,
@@ -52,16 +52,16 @@ fn service_ready_returns_not_ready() {
         Arc::new(MockScannerPort),
         Arc::new(SessionManager::default()),
     );
-    let ready = service.ready().unwrap();
+    let ready = service.ready().await.unwrap();
     assert_eq!(ready.status, "notReady");
     assert!(ready.reason.is_some());
 }
 
 /// Version includes both the crate version and the backend GMP version.
-#[test]
-fn service_version_returns_api_and_gmp_version() {
+#[tokio::test]
+async fn service_version_returns_api_and_gmp_version() {
     let service = create_test_service();
-    let version = service.version().unwrap();
+    let version = service.version().await.unwrap();
     assert_eq!(version.gmp_version, "22.7");
     assert!(!version.api_version.is_empty());
 }

@@ -22,12 +22,13 @@ use crate::{
 };
 
 /// Port for system information needed by the gateway.
+#[async_trait]
 pub trait SystemPort: Send + Sync + 'static {
     /// Returns whether the backend is ready.
-    fn readiness(&self) -> Result<ReadinessStatus, GatewayError>;
+    async fn readiness(&self) -> Result<ReadinessStatus, GatewayError>;
 
     /// Returns the GMP version string for the connected backend.
-    fn gmp_version(&self) -> Result<String, GatewayError>;
+    async fn gmp_version(&self) -> Result<String, GatewayError>;
 }
 
 /// Port for session authentication with the backend.
