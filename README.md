@@ -118,8 +118,12 @@ Useful follow-up commands:
 
 - Default container config: [packaging/gvm-gateway.container.toml](./packaging/gvm-gateway.container.toml)
 - Listener: `0.0.0.0:8080`
+- Default transport mode: `terminated_by_proxy`
 - gvmd socket mount: `/run/gvmd`
 - Required backend endpoint: `GVM_GATEWAY_GVMD_ENDPOINT=unix:///run/gvmd/gvmd.sock`
+- Required transport-security mode: `GVM_GATEWAY_TRANSPORT_SECURITY_MODE`
+- Native TLS certificate path when `GVM_GATEWAY_TRANSPORT_SECURITY_MODE=native`: `GVM_GATEWAY_TLS_CERTIFICATE_PATH`
+- Native TLS private-key path when `GVM_GATEWAY_TRANSPORT_SECURITY_MODE=native`: `GVM_GATEWAY_TLS_PRIVATE_KEY_PATH`
 - Optional telemetry endpoint: `GVM_GATEWAY_OTLP_ENDPOINT`
 - Optional telemetry resource attributes:
   - `GVM_GATEWAY_TELEMETRY_SERVICE_NAME`
@@ -132,6 +136,15 @@ Useful follow-up commands:
   - `GVM_GATEWAY_RATE_LIMIT_WINDOW_SECS`
   - `GVM_GATEWAY_RATE_LIMIT_GLOBAL_PER_WINDOW`
   - `GVM_GATEWAY_RATE_LIMIT_SUBJECT_PER_WINDOW`
+
+### Transport Security Contract
+
+- `transport_security_mode = "disabled"` serves plain HTTP intentionally.
+- `transport_security_mode = "terminated_by_proxy"` serves plain HTTP behind a trusted TLS-terminating proxy.
+- `transport_security_mode = "native"` serves HTTPS directly from the gateway process.
+- Native TLS requires both `tls_certificate_path` and `tls_private_key_path`; startup fails if either path is missing or the PEM material cannot be loaded.
+- Proxy mode does not require local TLS files.
+- Forwarded headers are not trusted implicitly in proxy mode; proxy trust remains an explicit future concern rather than a side effect of enabling proxy termination.
 
 ### Telemetry Contract
 

@@ -41,6 +41,8 @@ pub struct GatewayConfig {
     pub shutdown_drain_timeout_secs: u64,
     /// REST security middleware configuration.
     pub rest_security: RestSecurityConfig,
+    /// Transport security mode and native TLS material.
+    pub transport_security: TransportSecurityConfig,
 }
 
 impl Default for GatewayConfig {
@@ -55,6 +57,7 @@ impl Default for GatewayConfig {
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
             shutdown_drain_timeout_secs: 30,
             rest_security: RestSecurityConfig::default(),
+            transport_security: TransportSecurityConfig::default(),
         }
     }
 }
@@ -63,6 +66,101 @@ impl GatewayConfig {
     /// Parse the configured gvmd endpoint into a Unix socket path.
     pub fn gvmd_socket_path(&self) -> Result<PathBuf, ConfigError> {
         parse_gvmd_endpoint(&self.gvmd_endpoint)
+    }
+}
+
+/// Supported transport security modes for the REST gateway listener.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportSecurityMode {
+    /// Serve plain HTTP intentionally.
+    #[default]
+    Disabled,
+    /// Serve plain HTTP behind an upstream TLS-terminating proxy.
+    TerminatedByProxy,
+    /// Serve HTTPS directly from the gateway process.
+    Native,
+}
+
+/// Gateway transport security configuration.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+pub struct TransportSecurityConfig {
+    /// Selected transport security mode.
+    pub mode: TransportSecurityMode,
+    /// PEM certificate path for native TLS mode.
+    pub tls_certificate_path: Option<PathBuf>,
+    /// PEM private-key path for native TLS mode.
+    pub tls_private_key_path: Option<PathBuf>,
+}
+
+impl TransportSecurityConfig {
+    /// Returns the native TLS files when native TLS is enabled.
+    pub fn native_tls_files(&self) -> Result<Option<NativeTlsFiles>, ConfigError> {
+        self.validate()?;
+
+        if self.mode != TransportSecurityMode::Native {
+            return Ok(None);
+        }
+
+        Ok(Some(NativeTlsFiles {
+            certificate_path: require_path(
+                "tls_certificate_path",
+                self.tls_certificate_path.clone(),
+            )?,
+            private_key_path: require_path(
+                "tls_private_key_path",
+                self.tls_private_key_path.clone(),
+            )?,
+        }))
+    }
+
+    fn validate(&self) -> Result<(), ConfigError> {
+        match self.mode {
+            TransportSecurityMode::Disabled | TransportSecurityMode::TerminatedByProxy => {
+                if self.tls_certificate_path.is_some() || self.tls_private_key_path.is_some() {
+                    return Err(ConfigError::InvalidValue(format!(
+                        "{} mode must not set tls_certificate_path or tls_private_key_path",
+                        self.mode.as_str()
+                    )));
+                }
+            }
+            TransportSecurityMode::Native => {
+                require_path("tls_certificate_path", self.tls_certificate_path.clone())?;
+                require_path("tls_private_key_path", self.tls_private_key_path.clone())?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Native TLS certificate and private-key files.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeTlsFiles {
+    /// PEM certificate path.
+    pub certificate_path: PathBuf,
+    /// PEM private-key path.
+    pub private_key_path: PathBuf,
+}
+
+impl TransportSecurityMode {
+    fn parse(value: &str, source: &str) -> Result<Self, ConfigError> {
+        match value.trim() {
+            "disabled" => Ok(Self::Disabled),
+            "terminated_by_proxy" => Ok(Self::TerminatedByProxy),
+            "native" => Ok(Self::Native),
+            other => Err(ConfigError::InvalidValue(format!(
+                "{source} must be one of: disabled, terminated_by_proxy, native (got '{other}')"
+            ))),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::TerminatedByProxy => "terminated_by_proxy",
+            Self::Native => "native",
+        }
     }
 }
 
@@ -103,6 +201,9 @@ struct FileConfig {
     rate_limit_window_secs: Option<u64>,
     rate_limit_global_per_window: Option<u64>,
     rate_limit_subject_per_window: Option<u64>,
+    transport_security_mode: Option<TransportSecurityMode>,
+    tls_certificate_path: Option<PathBuf>,
+    tls_private_key_path: Option<PathBuf>,
 }
 
 /// Loads config from defaults, optional file, env map, and CLI overrides.
@@ -139,6 +240,15 @@ pub fn load_config(
         if let Some(timeout_secs) = file.shutdown_drain_timeout_secs {
             config.shutdown_drain_timeout_secs = timeout_secs;
         }
+        if let Some(mode) = file.transport_security_mode {
+            config.transport_security.mode = mode;
+        }
+        if let Some(path) = file.tls_certificate_path.as_ref() {
+            config.transport_security.tls_certificate_path = Some(path.clone());
+        }
+        if let Some(path) = file.tls_private_key_path.as_ref() {
+            config.transport_security.tls_private_key_path = Some(path.clone());
+        }
         apply_security_file_config(&mut config.rest_security, &file);
     }
 
@@ -167,12 +277,23 @@ pub fn load_config(
         config.shutdown_drain_timeout_secs =
             parse_u64("GVM_GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECS", timeout_secs)?;
     }
+    if let Some(mode) = env.get("GVM_GATEWAY_TRANSPORT_SECURITY_MODE") {
+        config.transport_security.mode =
+            TransportSecurityMode::parse(mode, "GVM_GATEWAY_TRANSPORT_SECURITY_MODE")?;
+    }
+    if let Some(path) = env.get("GVM_GATEWAY_TLS_CERTIFICATE_PATH") {
+        config.transport_security.tls_certificate_path = Some(PathBuf::from(path));
+    }
+    if let Some(path) = env.get("GVM_GATEWAY_TLS_PRIVATE_KEY_PATH") {
+        config.transport_security.tls_private_key_path = Some(PathBuf::from(path));
+    }
     apply_security_env_config(&mut config.rest_security, env)?;
 
     if let Some(bind) = cli.bind.as_ref() {
         config.bind = bind.clone();
     }
 
+    config.transport_security.validate()?;
     Ok(config)
 }
 
@@ -271,4 +392,20 @@ fn absolute_socket_path(path: &str) -> Result<PathBuf, ConfigError> {
     }
 
     Ok(candidate)
+}
+
+fn require_path(name: &str, path: Option<PathBuf>) -> Result<PathBuf, ConfigError> {
+    let path = path.ok_or_else(|| {
+        ConfigError::InvalidValue(format!(
+            "{name} must be set when transport_security_mode=native"
+        ))
+    })?;
+
+    if path.as_os_str().is_empty() {
+        return Err(ConfigError::InvalidValue(format!(
+            "{name} must not be empty when transport_security_mode=native"
+        )));
+    }
+
+    Ok(path)
 }

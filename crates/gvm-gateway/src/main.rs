@@ -25,6 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     init_tracing(&config)?;
 
     let gvmd_socket_path = config.gvmd_socket_path()?;
+    let native_tls = config.transport_security.native_tls_files()?;
     let listener = TcpListener::bind(&config.bind).await?;
     let live_adapter = Arc::new(GvmdAdapter::unix_socket(&gvmd_socket_path));
     let system_adapter = Arc::new(probe_system_adapter(&live_adapter).await);
@@ -54,6 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         app,
         shutdown,
         std::time::Duration::from_secs(config.shutdown_drain_timeout_secs),
+        native_tls,
     )
     .await?;
     Ok(())
