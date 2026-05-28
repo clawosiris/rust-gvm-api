@@ -1,0 +1,867 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /users:
+    get:
+      operationId: getUsers
+      tags: [Users]
+      summary: List users
+      description: |
+        Lists users visible to the authenticated principal.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+    post:
+      operationId: createUser
+      tags: [Users]
+      summary: Create a user
+      description: |
+        Creates a gvmd user. This operation is administrator-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUser"
+      responses:
+        "201":
+          description: User created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+
+  /users/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getUser
+      tags: [Users]
+      summary: Get a user
+      description: Returns one user by ID.
+      responses:
+        "200":
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyUser
+      tags: [Users]
+      summary: Modify a user
+      description: |
+        Updates mutable user attributes such as comment, host restrictions,
+        role assignments, password, and authentication type. This operation is
+        administrator-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyUser"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteUser
+      tags: [Users]
+      summary: Delete a user
+      description: Deletes a user.
+      responses:
+        "204":
+          description: User deleted
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /groups:
+    get:
+      operationId: getGroups
+      tags: [Groups]
+      summary: List groups
+      description: Lists groups visible to the authenticated principal.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+    post:
+      operationId: createGroup
+      tags: [Groups]
+      summary: Create a group
+      description: Creates a gvmd group. This operation is administrator-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGroup"
+      responses:
+        "201":
+          description: Group created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+
+  /groups/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getGroup
+      tags: [Groups]
+      summary: Get a group
+      responses:
+        "200":
+          description: Group details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyGroup
+      tags: [Groups]
+      summary: Modify a group
+      description: Updates group metadata and group membership. This operation is administrator-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyGroup"
+      responses:
+        "200":
+          description: Group updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteGroup
+      tags: [Groups]
+      summary: Delete a group
+      description: Deletes a gvmd group. This operation is administrator-only.
+      responses:
+        "204":
+          description: Group deleted
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /roles:
+    get:
+      operationId: getRoles
+      tags: [Roles]
+      summary: List roles
+      description: Lists roles visible to the authenticated principal.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of roles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+    post:
+      operationId: createRole
+      tags: [Roles]
+      summary: Create a role
+      description: Creates a gvmd role. This operation is administrator-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRole"
+      responses:
+        "201":
+          description: Role created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+
+  /roles/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getRole
+      tags: [Roles]
+      summary: Get a role
+      responses:
+        "200":
+          description: Role details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyRole
+      tags: [Roles]
+      summary: Modify a role
+      description: Updates role metadata and role membership. This operation is administrator-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyRole"
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteRole
+      tags: [Roles]
+      summary: Delete a role
+      description: Deletes a gvmd role. This operation is administrator-only.
+      responses:
+        "204":
+          description: Role deleted
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /permissions:
+    get:
+      operationId: getPermissions
+      tags: [Permissions]
+      summary: List permissions
+      description: Lists permissions visible to the authenticated principal.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+    post:
+      operationId: createPermission
+      tags: [Permissions]
+      summary: Create a permission
+      description: Creates a gvmd permission grant. This operation is administrator-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePermission"
+      responses:
+        "201":
+          description: Permission created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+
+  /permissions/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getPermission
+      tags: [Permissions]
+      summary: Get a permission
+      responses:
+        "200":
+          description: Permission details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Permission"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyPermission
+      tags: [Permissions]
+      summary: Modify a permission
+      description: Updates a gvmd permission grant. This operation is administrator-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyPermission"
+      responses:
+        "200":
+          description: Permission updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Permission"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deletePermission
+      tags: [Permissions]
+      summary: Delete a permission
+      description: Deletes a gvmd permission grant. This operation is administrator-only.
+      responses:
+        "204":
+          description: Permission deleted
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /user-settings:
+    get:
+      operationId: getUserSettings
+      tags: [User Settings]
+      summary: List current user settings
+      description: Lists settings for the authenticated principal.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+      responses:
+        "200":
+          description: Current user's settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSettingList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /user-settings/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getUserSetting
+      tags: [User Settings]
+      summary: Get one current-user setting
+      description: Returns one setting for the authenticated principal by ID.
+      responses:
+        "200":
+          description: User setting details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSetting"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyUserSetting
+      tags: [User Settings]
+      summary: Update one current-user setting
+      description: Updates one setting for the authenticated principal by ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModifyUserSetting"
+      responses:
+        "200":
+          description: User setting updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSetting"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    IdentityResourceBase:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        owner:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        creationTime:
+          type: string
+          format: date-time
+        modificationTime:
+          type: string
+          format: date-time
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+
+    User:
+      allOf:
+        - $ref: "#/components/schemas/IdentityResourceBase"
+        - type: object
+          properties:
+            roles:
+              type: array
+              items:
+                $ref: "./common.yaml#/components/schemas/ResourceRef"
+            groups:
+              type: array
+              items:
+                $ref: "./common.yaml#/components/schemas/ResourceRef"
+            hostsAllow:
+              type: boolean
+              description: Whether the host restriction acts as an allow-list (`true`) or deny-list (`false`).
+            hosts:
+              type: string
+              description: Host restriction expression as stored by gvmd.
+            authenticationType:
+              type: string
+              enum:
+                - file
+                - ldap_connect
+                - radius_connect
+
+    CreateUser:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        password:
+          type: string
+          format: password
+        hosts:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            format: uuid
+        authenticationType:
+          type: string
+          enum:
+            - file
+            - ldap_connect
+            - radius_connect
+
+    ModifyUser:
+      type: object
+      properties:
+        comment:
+          type: string
+        password:
+          type: string
+          format: password
+        hosts:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            format: uuid
+        authenticationType:
+          type: string
+          enum:
+            - file
+            - ldap_connect
+            - radius_connect
+
+    UserList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Group:
+      allOf:
+        - $ref: "#/components/schemas/IdentityResourceBase"
+        - type: object
+          properties:
+            users:
+              type: array
+              items:
+                type: string
+
+    CreateGroup:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        users:
+          type: array
+          items:
+            type: string
+
+    ModifyGroup:
+      type: object
+      properties:
+        comment:
+          type: string
+        users:
+          type: array
+          items:
+            type: string
+
+    GroupList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Role:
+      allOf:
+        - $ref: "#/components/schemas/IdentityResourceBase"
+        - type: object
+          properties:
+            users:
+              type: array
+              items:
+                type: string
+
+    CreateRole:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        users:
+          type: array
+          items:
+            type: string
+
+    ModifyRole:
+      type: object
+      properties:
+        comment:
+          type: string
+        users:
+          type: array
+          items:
+            type: string
+
+    RoleList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Role"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Permission:
+      allOf:
+        - $ref: "#/components/schemas/IdentityResourceBase"
+        - type: object
+          properties:
+            subjectType:
+              type: string
+              enum:
+                - user
+                - group
+                - role
+            subject:
+              $ref: "./common.yaml#/components/schemas/ResourceRef"
+            resourceType:
+              type: string
+              description: Backend resource type name used by gvmd for the grant target.
+            resource:
+              $ref: "./common.yaml#/components/schemas/ResourceRef"
+
+    CreatePermission:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        subjectType:
+          type: string
+          enum:
+            - user
+            - group
+            - role
+        subjectId:
+          type: string
+          format: uuid
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+          format: uuid
+
+    ModifyPermission:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        subjectType:
+          type: string
+          enum:
+            - user
+            - group
+            - role
+        subjectId:
+          type: string
+          format: uuid
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+          format: uuid
+
+    PermissionList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Permission"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    UserSetting:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        value:
+          type: string
+        comment:
+          type: string
+
+    UserSettingList:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserSetting"
+
+    ModifyUserSetting:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string

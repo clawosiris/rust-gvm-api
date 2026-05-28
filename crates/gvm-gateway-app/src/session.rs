@@ -286,6 +286,7 @@ mod tests {
             Arc::new(MockCredentialPort),
             Arc::new(MockPortListPort),
             Arc::new(MockFeedPort),
+            Arc::new(MockIdentityPort),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockTaskPort),
             auth,
@@ -351,6 +352,7 @@ mod tests {
             Arc::new(MockCredentialPort),
             Arc::new(MockPortListPort),
             Arc::new(MockFeedPort),
+            Arc::new(MockIdentityPort),
             Arc::new(MockTargetPort::default()),
             Arc::new(MockTaskPort),
             Arc::new(MockAuthPort {

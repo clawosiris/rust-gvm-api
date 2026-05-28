@@ -1,0 +1,367 @@
+mod common;
+
+use common::{
+    assert_problem_status, assert_security_headers, target_harness, target_harness_with_security,
+};
+use gvm_gateway_rest::router::{RateLimitConfig, RestSecurityConfig};
+use http::StatusCode;
+
+#[tokio::test]
+async fn list_targets_accepts_request_scoped_basic_auth() {
+    let harness = target_harness(|_| {}).await;
+    let auth_count_before = harness
+        .server
+        .command_history()
+        .iter()
+        .filter(|record| record.command_name() == "authenticate")
+        .count();
+
+    let response = harness.get_targets_with_basic("admin", "admin").await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["data"], serde_json::json!([]));
+
+    let history = harness.server.command_history();
+    assert!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "authenticate")
+            .count()
+            > auth_count_before
+    );
+    assert!(history
+        .iter()
+        .any(|record| record.command_name() == "get_targets"));
+
+    let bearer_response = harness.get_targets().await;
+    assert_eq!(bearer_response.status(), StatusCode::OK);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn malformed_basic_auth_on_protected_route_returns_401() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(harness.url("/api/v1/targets"))
+        .header("Authorization", "Basic not-base64")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["status"], 401);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_missing_bearer_rejected() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(harness.url("/api/v1/targets"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_malformed_bearer_rejected() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(harness.url("/api/v1/targets"))
+        .header("Authorization", "Bearer")
+        .send()
+        .await
+        .unwrap();
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_unknown_session_rejected() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness
+        .client
+        .get(harness.url("/api/v1/targets"))
+        .bearer_auth("gvm_sess_unknown")
+        .send()
+        .await
+        .unwrap();
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_expired_session_rejected() {
+    let harness = target_harness(|_| {}).await;
+    harness.sessions.expire(&harness.token).unwrap();
+
+    let response = harness.get_targets().await;
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_closed_session_rejected() {
+    let harness = target_harness(|_| {}).await;
+    harness.sessions.remove(&harness.token).unwrap();
+
+    let response = harness.get_targets().await;
+
+    assert_problem_status(response, StatusCode::UNAUTHORIZED).await;
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn protected_endpoint_valid_session_allowed() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness.get_targets().await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn cors_preflight_allowed_origin() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: vec!["https://ui.example".to_string()],
+            rate_limit: RateLimitConfig::disabled(),
+        },
+    )
+    .await;
+
+    let response = harness
+        .client
+        .request(reqwest::Method::OPTIONS, harness.url("/api/v1/targets"))
+        .header("Origin", "https://ui.example")
+        .header("Access-Control-Request-Method", "GET")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .unwrap(),
+        "https://ui.example"
+    );
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn cors_preflight_denied_origin() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: vec!["https://ui.example".to_string()],
+            rate_limit: RateLimitConfig::disabled(),
+        },
+    )
+    .await;
+
+    let response = harness
+        .client
+        .request(reqwest::Method::OPTIONS, harness.url("/api/v1/targets"))
+        .header("Origin", "https://evil.example")
+        .header("Access-Control-Request-Method", "GET")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(response
+        .headers()
+        .get("access-control-allow-origin")
+        .is_none());
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn security_headers_present() {
+    let harness = target_harness(|_| {}).await;
+
+    let response = harness.get_targets().await;
+
+    assert_security_headers(&response);
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn over_limit_returns_429() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(10),
+                subject_per_window: Some(1),
+            },
+        },
+    )
+    .await;
+
+    let first = harness.get_targets().await;
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = harness.get_targets().await;
+
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(second.headers().contains_key("retry-after"));
+    let json = second.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["status"], 429);
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn retry_after_header_present() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(1),
+                subject_per_window: Some(100),
+            },
+        },
+    )
+    .await;
+
+    let _ = harness.get_targets().await;
+    let response = harness.get_targets().await;
+
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(response
+        .headers()
+        .get("retry-after")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|value| value > 0));
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn different_sessions_have_independent_subject_limits() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(10),
+                subject_per_window: Some(1),
+            },
+        },
+    )
+    .await;
+    let second_token = harness.create_connected_session("admin", "admin").await;
+
+    let first = harness.get_targets().await;
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = harness
+        .client
+        .get(harness.url("/api/v1/targets"))
+        .bearer_auth(&second_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+
+    let first_again = harness.get_targets().await;
+    assert_eq!(first_again.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn global_limit_applies_across_sessions() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(1),
+                subject_per_window: Some(100),
+            },
+        },
+    )
+    .await;
+    let second_token = harness.create_connected_session("admin", "admin").await;
+
+    let first = harness.get_targets().await;
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = harness
+        .client
+        .get(harness.url("/api/v1/targets"))
+        .bearer_auth(&second_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn session_creation_rate_limited_before_backend_work() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(10),
+                subject_per_window: Some(1),
+            },
+        },
+    )
+    .await;
+
+    let first = harness.create_session_with_basic("admin", "admin").await;
+    assert_eq!(first.status(), StatusCode::CREATED);
+    let auth_count_after_first = harness
+        .server
+        .command_history()
+        .iter()
+        .filter(|record| record.command_name() == "authenticate")
+        .count();
+
+    let second = harness.create_session_with_basic("admin", "admin").await;
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        harness
+            .server
+            .command_history()
+            .iter()
+            .filter(|record| record.command_name() == "authenticate")
+            .count(),
+        auth_count_after_first
+    );
+
+    harness.shutdown().await;
+}

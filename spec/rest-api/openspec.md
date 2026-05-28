@@ -95,7 +95,7 @@ crates/gvm-rest-api/
 │   │   ├── scanners.rs  # /api/v1/scanners/*
 │   │   ├── alerts.rs    # /api/v1/alerts/*
 │   │   ├── schedules.rs # /api/v1/schedules/*
-│   │   ├── users.rs     # /api/v1/users/*
+│   │   ├── users.rs     # /api/v1/users/* + /groups/* + /roles/* + /permissions/* + /user-settings/*
 │   │   └── feeds.rs     # /api/v1/feeds/*
 │   ├── models/
 │   │   ├── mod.rs
@@ -269,6 +269,34 @@ Rules for these exceptions:
 | `PUT` | `/api/v1/port-lists/{id}` | Update port list |
 | `DELETE` | `/api/v1/port-lists/{id}` | Delete port list |
 
+#### Identity & Access Control
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/users` | List users |
+| `POST` | `/api/v1/users` | Create user |
+| `GET` | `/api/v1/users/{id}` | Get user |
+| `PUT` | `/api/v1/users/{id}` | Update user |
+| `DELETE` | `/api/v1/users/{id}` | Delete user |
+| `GET` | `/api/v1/groups` | List groups |
+| `POST` | `/api/v1/groups` | Create group |
+| `GET` | `/api/v1/groups/{id}` | Get group |
+| `PUT` | `/api/v1/groups/{id}` | Update group |
+| `DELETE` | `/api/v1/groups/{id}` | Delete group |
+| `GET` | `/api/v1/roles` | List roles |
+| `POST` | `/api/v1/roles` | Create role |
+| `GET` | `/api/v1/roles/{id}` | Get role |
+| `PUT` | `/api/v1/roles/{id}` | Update role |
+| `DELETE` | `/api/v1/roles/{id}` | Delete role |
+| `GET` | `/api/v1/permissions` | List permission grants |
+| `POST` | `/api/v1/permissions` | Create permission grant |
+| `GET` | `/api/v1/permissions/{id}` | Get permission grant |
+| `PUT` | `/api/v1/permissions/{id}` | Update permission grant |
+| `DELETE` | `/api/v1/permissions/{id}` | Delete permission grant |
+| `GET` | `/api/v1/user-settings` | List current-user settings |
+| `GET` | `/api/v1/user-settings/{id}` | Get one current-user setting |
+| `PUT` | `/api/v1/user-settings/{id}` | Update one current-user setting |
+
 #### Sessions & Auth
 
 | Method | Path | Description |
@@ -277,7 +305,7 @@ Rules for these exceptions:
 | `GET` | `/api/v1/sessions/{token}` | Inspect current session state |
 | `DELETE` | `/api/v1/sessions/{token}` | Close and destroy a session |
 
-Protected routes accept either an existing Bearer session token or request-scoped HTTP Basic credentials. `POST /api/v1/sessions` remains the persistent-session creation path. Public user-management endpoints are deferred unless the API contract is expanded later.
+Protected routes accept either an existing Bearer session token or request-scoped HTTP Basic credentials. `POST /api/v1/sessions` remains the persistent-session creation path.
 
 #### Feeds
 
