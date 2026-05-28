@@ -95,7 +95,7 @@ crates/gvm-rest-api/
 │   │   ├── scanners.rs  # /api/v1/scanners/*
 │   │   ├── alerts.rs    # /api/v1/alerts/*
 │   │   ├── schedules.rs # /api/v1/schedules/*
-│   │   ├── users.rs     # /api/v1/users/*
+│   │   ├── users.rs     # /api/v1/users/* + /groups/* + /roles/* + /permissions/* + /user-settings/*
 │   │   └── feeds.rs     # /api/v1/feeds/*
 │   ├── models/
 │   │   ├── mod.rs
@@ -269,6 +269,39 @@ Rules for these exceptions:
 | `PUT` | `/api/v1/port-lists/{id}` | Update port list |
 | `DELETE` | `/api/v1/port-lists/{id}` | Delete port list |
 
+#### Identity & Access Control
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/users` | List users (admin-facing) |
+| `POST` | `/api/v1/users` | Create user (admin-only) |
+| `GET` | `/api/v1/users/{id}` | Get user (admin-facing) |
+| `PUT` | `/api/v1/users/{id}` | Update user (admin-only) |
+| `DELETE` | `/api/v1/users/{id}` | Delete user (admin-only) |
+| `GET` | `/api/v1/groups` | List groups (admin-facing) |
+| `POST` | `/api/v1/groups` | Create group (admin-only) |
+| `GET` | `/api/v1/groups/{id}` | Get group (admin-facing) |
+| `PUT` | `/api/v1/groups/{id}` | Update group (admin-only) |
+| `DELETE` | `/api/v1/groups/{id}` | Delete group (admin-only) |
+| `GET` | `/api/v1/roles` | List roles (admin-facing) |
+| `POST` | `/api/v1/roles` | Create role (admin-only) |
+| `GET` | `/api/v1/roles/{id}` | Get role (admin-facing) |
+| `PUT` | `/api/v1/roles/{id}` | Update role (admin-only) |
+| `DELETE` | `/api/v1/roles/{id}` | Delete role (admin-only) |
+| `GET` | `/api/v1/permissions` | List permission grants (admin-facing) |
+| `POST` | `/api/v1/permissions` | Create permission grant (admin-only) |
+| `GET` | `/api/v1/permissions/{id}` | Get permission grant (admin-facing) |
+| `PUT` | `/api/v1/permissions/{id}` | Update permission grant (admin-only) |
+| `DELETE` | `/api/v1/permissions/{id}` | Delete permission grant (admin-only) |
+| `GET` | `/api/v1/user-settings` | List current-user settings (self-service) |
+| `GET` | `/api/v1/user-settings/{id}` | Get one current-user setting |
+| `PUT` | `/api/v1/user-settings/{id}` | Update one current-user setting |
+
+Identity resources split into two permission models:
+
+- `users`, `groups`, `roles`, and `permissions` are administrator-facing surfaces. Successful access depends on the backing gvmd permission model, and callers without the relevant backend grant should receive `403 Forbidden`.
+- `user-settings` is intentionally not modeled as generic admin CRUD. The REST contract treats it as the authenticated principal's own setting space because the current upstream GMP surface exposes `get_settings` / `modify_setting`, not create/delete or "edit someone else's settings" operations.
+
 #### Sessions & Auth
 
 | Method | Path | Description |
@@ -277,7 +310,7 @@ Rules for these exceptions:
 | `GET` | `/api/v1/sessions/{token}` | Inspect current session state |
 | `DELETE` | `/api/v1/sessions/{token}` | Close and destroy a session |
 
-Protected routes accept either an existing Bearer session token or request-scoped HTTP Basic credentials. `POST /api/v1/sessions` remains the persistent-session creation path. Public user-management endpoints are deferred unless the API contract is expanded later.
+Protected routes accept either an existing Bearer session token or request-scoped HTTP Basic credentials. `POST /api/v1/sessions` remains the persistent-session creation path. Identity endpoints are now part of the published contract, but they are not all equal: admin resources must document `403` behavior explicitly, while `user-settings` remains self-service and intentionally omits unsupported `POST`/`DELETE` mutation patterns.
 
 #### Feeds
 

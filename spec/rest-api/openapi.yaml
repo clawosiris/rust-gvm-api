@@ -69,6 +69,16 @@ tags:
     description: Credential management
   - name: Port Lists
     description: Port list management
+  - name: Users
+    description: User identity management
+  - name: Groups
+    description: Group identity management
+  - name: Roles
+    description: Role identity management
+  - name: Permissions
+    description: Permission grant management
+  - name: User Settings
+    description: Current-user preference management
   - name: Feeds
     description: Feed status
   - name: System
@@ -139,6 +149,26 @@ paths:
     $ref: './port-lists.yaml#/paths/~1port-lists'
   /port-lists/{id}:
     $ref: './port-lists.yaml#/paths/~1port-lists~1{id}'
+  /users:
+    $ref: './identity.yaml#/paths/~1users'
+  /users/{id}:
+    $ref: './identity.yaml#/paths/~1users~1{id}'
+  /groups:
+    $ref: './identity.yaml#/paths/~1groups'
+  /groups/{id}:
+    $ref: './identity.yaml#/paths/~1groups~1{id}'
+  /roles:
+    $ref: './identity.yaml#/paths/~1roles'
+  /roles/{id}:
+    $ref: './identity.yaml#/paths/~1roles~1{id}'
+  /permissions:
+    $ref: './identity.yaml#/paths/~1permissions'
+  /permissions/{id}:
+    $ref: './identity.yaml#/paths/~1permissions~1{id}'
+  /user-settings:
+    $ref: './identity.yaml#/paths/~1user-settings'
+  /user-settings/{id}:
+    $ref: './identity.yaml#/paths/~1user-settings~1{id}'
   /feeds:
     $ref: './feeds.yaml#/paths/~1feeds'
   /feeds/sync:
