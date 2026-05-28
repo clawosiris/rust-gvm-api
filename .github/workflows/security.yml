@@ -11,12 +11,6 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'spec/**'
-      - '*.md'
-      - 'LICENSE'
-      - '.github/ISSUE_TEMPLATE/**'
   schedule:
     # Run weekly on Monday at 06:00 UTC
     - cron: "0 6 * * 1"
