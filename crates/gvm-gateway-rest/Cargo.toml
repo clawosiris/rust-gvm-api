@@ -15,11 +15,14 @@ base64.workspace = true
 gvm-gateway-app = { path = "../gvm-gateway-app" }
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
 http.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
 schemars = { version = "1.0.4", features = ["uuid1"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+tracing-opentelemetry.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
@@ -27,3 +30,4 @@ async-trait.workspace = true
 gvm-gateway-gvmd = { path = "../gvm-gateway-gvmd" }
 serde_yaml = "0.9.34"
 tower.workspace = true
+tracing-subscriber.workspace = true

@@ -99,7 +99,9 @@ use gvm_gmp::{
     },
     EntityId,
 };
+use gvm_protocol::{Request, Response};
 use tokio::sync::Mutex as AsyncMutex;
+use tracing::{field, info_span, Instrument};
 
 use crate::conversions::{
     alert_from_gmp, credential_from_gmp, feed_from_gmp, group_from_gmp, map_gvm_error,
@@ -131,22 +133,32 @@ impl GvmdAdapter {
 
     /// Probe the backend GMP version without creating a session-bound client.
     pub async fn probe_version(&self) -> Result<String, GatewayError> {
-        let connection = UnixSocketConnection::with_path(&self.socket_path);
-        let mut client = GmpClient::connect(connection)
-            .await
-            .map_err(map_gvm_error)?;
-        let negotiated = client.version().to_string();
-        let response = client
-            .call(gvm_gmp::commands::version::get_version())
-            .await
-            .map_err(map_gvm_error)?;
-        let parsed = GetVersionResponse::from_response(&response).map_err(map_parse_error)?;
+        let span = info_span!(
+            "gvmd.probe_version",
+            otel_name = "gvmd.probe_version",
+            gvmd_endpoint = %self.socket_path.display()
+        );
 
-        if parsed.version.trim().is_empty() {
-            Ok(negotiated)
-        } else {
-            Ok(parsed.version)
+        async move {
+            let connection = UnixSocketConnection::with_path(&self.socket_path);
+            let mut client = GmpClient::connect(connection)
+                .await
+                .map_err(map_gvm_error)?;
+            let negotiated = client.version().to_string();
+            let response = client
+                .call(gvm_gmp::commands::version::get_version())
+                .await
+                .map_err(map_gvm_error)?;
+            let parsed = GetVersionResponse::from_response(&response).map_err(map_parse_error)?;
+
+            if parsed.version.trim().is_empty() {
+                Ok(negotiated)
+            } else {
+                Ok(parsed.version)
+            }
         }
+        .instrument(span)
+        .await
     }
 
     /// Open and authenticate a session-bound GMP connection.
@@ -156,21 +168,35 @@ impl GvmdAdapter {
         username: &str,
         password: &str,
     ) -> Result<(), GatewayError> {
-        let connection = UnixSocketConnection::with_path(&self.socket_path);
-        let mut client = GmpClient::connect(connection)
-            .await
-            .map_err(map_gvm_error)?;
-        client
-            .call(authenticate(username, password))
-            .await
-            .map_err(map_gvm_error)?;
+        let span = info_span!(
+            "gvmd.session.connect",
+            otel_name = "gvmd.session.connect",
+            gvmd_username = %username,
+            session_id = %safe_session_id(session_token),
+            gvmd_endpoint = %self.socket_path.display()
+        );
 
-        self.sessions
-            .lock()
-            .map_err(|_| GatewayError::BackendUnavailable("session store unavailable".to_string()))?
-            .insert(session_token.to_string(), Arc::new(AsyncMutex::new(client)));
+        async move {
+            let connection = UnixSocketConnection::with_path(&self.socket_path);
+            let mut client = GmpClient::connect(connection)
+                .await
+                .map_err(map_gvm_error)?;
+            client
+                .call(authenticate(username, password))
+                .await
+                .map_err(map_gvm_error)?;
 
-        Ok(())
+            self.sessions
+                .lock()
+                .map_err(|_| {
+                    GatewayError::BackendUnavailable("session store unavailable".to_string())
+                })?
+                .insert(session_token.to_string(), Arc::new(AsyncMutex::new(client)));
+
+            Ok(())
+        }
+        .instrument(span)
+        .await
     }
 
     fn session_client(&self, session_token: &str) -> Result<SharedClient, GatewayError> {
@@ -180,6 +206,36 @@ impl GvmdAdapter {
             .get(session_token)
             .cloned()
             .ok_or_else(|| GatewayError::SessionInvalidated("missing gvmd session".to_string()))
+    }
+
+    async fn call_with_session<R: Request>(
+        &self,
+        session_token: &str,
+        operation: &'static str,
+        request: R,
+    ) -> Result<Response, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let span = info_span!(
+            "gvmd.request",
+            otel_name = "gvmd.request",
+            session_id = %safe_session_id(session_token),
+            gvmd_operation = operation,
+            gvmd_endpoint = %self.socket_path.display(),
+            gvmd_status = field::Empty,
+        );
+
+        async move {
+            let response = client
+                .lock()
+                .await
+                .call(request)
+                .await
+                .map_err(map_gvm_error)?;
+            tracing::Span::current().record("gvmd_status", field::display("ok"));
+            Ok(response)
+        }
+        .instrument(span)
+        .await
     }
 
     fn spawn_feed_sync(&self) -> Result<(), GatewayError> {
@@ -237,6 +293,18 @@ impl GvmdAdapter {
             writable: true,
         }]
     }
+}
+
+fn safe_session_id(token: &str) -> String {
+    let suffix: String = token
+        .chars()
+        .rev()
+        .take(8)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    format!("session:{suffix}")
 }
 
 fn paged_pagination(total: u32, page: u32, per_page: u32) -> Pagination {
@@ -938,23 +1006,23 @@ impl IdentityPort for GvmdAdapter {
         session_token: &str,
         query: &IdentityQuery,
     ) -> Result<UserPage, GatewayError> {
-        let client = self.session_client(session_token)?;
         let filter_id = query
             .filter_id
             .as_deref()
             .map(parse_entity_id)
             .transpose()?;
-        let response = client
-            .lock()
-            .await
-            .call(get_users(GetUsersOpts {
-                filter_string: query.filter_string.clone(),
-                filter_id,
-                trash: None,
-                details: Some(true),
-            }))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "users.list",
+                get_users(GetUsersOpts {
+                    filter_string: query.filter_string.clone(),
+                    filter_id,
+                    trash: None,
+                    details: Some(true),
+                }),
+            )
+            .await?;
         let parsed = GetUsersResponse::from_response(&response).map_err(map_parse_error)?;
         let mut items = parsed
             .items
@@ -975,7 +1043,6 @@ impl IdentityPort for GvmdAdapter {
         session_token: &str,
         input: CreateUserInput,
     ) -> Result<String, GatewayError> {
-        let client = self.session_client(session_token)?;
         let role_ids = input
             .role_ids
             .into_iter()
@@ -986,33 +1053,30 @@ impl IdentityPort for GvmdAdapter {
             .as_deref()
             .map(parse_user_auth_type)
             .transpose()?;
-        let response = client
-            .lock()
-            .await
-            .call(create_user(
-                &input.name,
-                UserOpts {
-                    comment: input.comment,
-                    password: input.password,
-                    host_access: input.hosts,
-                    role_ids,
-                    auth_type,
-                },
-            ))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "users.create",
+                create_user(
+                    &input.name,
+                    UserOpts {
+                        comment: input.comment,
+                        password: input.password,
+                        host_access: input.hosts,
+                        role_ids,
+                        auth_type,
+                    },
+                ),
+            )
+            .await?;
         let parsed = CreateUserResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(parsed.id.to_string())
     }
 
     async fn get_user(&self, session_token: &str, id: &str) -> Result<User, GatewayError> {
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(get_user(&parse_entity_id(id)?))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(session_token, "users.get", get_user(&parse_entity_id(id)?))
+            .await?;
         let parsed = GetUsersResponse::from_response(&response).map_err(map_parse_error)?;
         let user = parsed
             .items
@@ -1028,7 +1092,6 @@ impl IdentityPort for GvmdAdapter {
         id: &str,
         input: ModifyUserInput,
     ) -> Result<User, GatewayError> {
-        let client = self.session_client(session_token)?;
         let role_ids = input
             .role_ids
             .unwrap_or_default()
@@ -1040,33 +1103,34 @@ impl IdentityPort for GvmdAdapter {
             .as_deref()
             .map(parse_user_auth_type)
             .transpose()?;
-        let response = client
-            .lock()
-            .await
-            .call(modify_user(
-                &parse_entity_id(id)?,
-                UserOpts {
-                    comment: input.comment,
-                    password: input.password,
-                    host_access: input.hosts,
-                    role_ids,
-                    auth_type,
-                },
-            ))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "users.modify",
+                modify_user(
+                    &parse_entity_id(id)?,
+                    UserOpts {
+                        comment: input.comment,
+                        password: input.password,
+                        host_access: input.hosts,
+                        role_ids,
+                        auth_type,
+                    },
+                ),
+            )
+            .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         self.get_user(session_token, id).await
     }
 
     async fn delete_user(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(delete_user(&parse_entity_id(id)?, true))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "users.delete",
+                delete_user(&parse_entity_id(id)?, true),
+            )
+            .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
     }
@@ -1076,23 +1140,23 @@ impl IdentityPort for GvmdAdapter {
         session_token: &str,
         query: &IdentityQuery,
     ) -> Result<GroupPage, GatewayError> {
-        let client = self.session_client(session_token)?;
         let filter_id = query
             .filter_id
             .as_deref()
             .map(parse_entity_id)
             .transpose()?;
-        let response = client
-            .lock()
-            .await
-            .call(get_groups(GetGroupsOpts {
-                filter_string: query.filter_string.clone(),
-                filter_id,
-                trash: None,
-                details: Some(true),
-            }))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "groups.list",
+                get_groups(GetGroupsOpts {
+                    filter_string: query.filter_string.clone(),
+                    filter_id,
+                    trash: None,
+                    details: Some(true),
+                }),
+            )
+            .await?;
         let parsed = GetGroupsResponse::from_response(&response).map_err(map_parse_error)?;
         let mut items = parsed
             .items
@@ -1516,7 +1580,6 @@ impl TargetPort for GvmdAdapter {
         session_token: &str,
         query: &TargetQuery,
     ) -> Result<TargetPage, GatewayError> {
-        let client = self.session_client(session_token)?;
         let filter_id = query
             .filter_id
             .as_deref()
@@ -1525,17 +1588,18 @@ impl TargetPort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
-        let response = client
-            .lock()
-            .await
-            .call(get_targets(GetTargetsOpts {
-                filter_string: query.filter_string.clone(),
-                filter_id,
-                trash: None,
-                details: Some(true),
-            }))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "targets.list",
+                get_targets(GetTargetsOpts {
+                    filter_string: query.filter_string.clone(),
+                    filter_id,
+                    trash: None,
+                    details: Some(true),
+                }),
+            )
+            .await?;
         let parsed = GetTargetsResponse::from_response(&response).map_err(map_parse_error)?;
         let mut items = parsed
             .items
@@ -1574,44 +1638,44 @@ impl TargetPort for GvmdAdapter {
         input: CreateTargetInput,
     ) -> Result<String, GatewayError> {
         reject_unsupported_credentials(&input)?;
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(create_target(
-                &input.name,
-                CreateTargetOpts {
-                    comment: input.comment,
-                    hosts: input.hosts,
-                    exclude_hosts: input.exclude_hosts,
-                    alive_test: input
-                        .alive_test
-                        .as_deref()
-                        .map(parse_alive_test)
-                        .transpose()?,
-                    port_list_id: input
-                        .port_list_id
-                        .as_deref()
-                        .map(parse_entity_id)
-                        .transpose()?,
-                    reverse_lookup_only: input.reverse_lookup_only,
-                    reverse_lookup_unify: input.reverse_lookup_unify,
-                },
-            ))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "targets.create",
+                create_target(
+                    &input.name,
+                    CreateTargetOpts {
+                        comment: input.comment,
+                        hosts: input.hosts,
+                        exclude_hosts: input.exclude_hosts,
+                        alive_test: input
+                            .alive_test
+                            .as_deref()
+                            .map(parse_alive_test)
+                            .transpose()?,
+                        port_list_id: input
+                            .port_list_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
+                        reverse_lookup_only: input.reverse_lookup_only,
+                        reverse_lookup_unify: input.reverse_lookup_unify,
+                    },
+                ),
+            )
+            .await?;
         let parsed = CreateTargetResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(parsed.id.to_string())
     }
 
     async fn get_target(&self, session_token: &str, id: &str) -> Result<Target, GatewayError> {
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(get_target(&parse_entity_id(id)?))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "targets.get",
+                get_target(&parse_entity_id(id)?),
+            )
+            .await?;
         let parsed = GetTargetsResponse::from_response(&response).map_err(map_parse_error)?;
         parsed
             .items
@@ -1627,45 +1691,44 @@ impl TargetPort for GvmdAdapter {
         id: &str,
         input: ModifyTargetInput,
     ) -> Result<Target, GatewayError> {
-        let client = self.session_client(session_token)?;
         let target_id = parse_entity_id(id)?;
-        let response = client
-            .lock()
-            .await
-            .call(modify_target(
-                &target_id,
-                ModifyTargetOpts {
-                    name: input.name,
-                    comment: input.comment,
-                    hosts: input.hosts.unwrap_or_default(),
-                    exclude_hosts: input.exclude_hosts.unwrap_or_default(),
-                    alive_test: input
-                        .alive_test
-                        .as_deref()
-                        .map(parse_alive_test)
-                        .transpose()?,
-                    port_list_id: input
-                        .port_list_id
-                        .as_deref()
-                        .map(parse_entity_id)
-                        .transpose()?,
-                },
-            ))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "targets.modify",
+                modify_target(
+                    &target_id,
+                    ModifyTargetOpts {
+                        name: input.name,
+                        comment: input.comment,
+                        hosts: input.hosts.unwrap_or_default(),
+                        exclude_hosts: input.exclude_hosts.unwrap_or_default(),
+                        alive_test: input
+                            .alive_test
+                            .as_deref()
+                            .map(parse_alive_test)
+                            .transpose()?,
+                        port_list_id: input
+                            .port_list_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
+                    },
+                ),
+            )
+            .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
-        drop(client);
         self.get_target(session_token, id).await
     }
 
     async fn delete_target(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(delete_target(&parse_entity_id(id)?, true))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "targets.delete",
+                delete_target(&parse_entity_id(id)?, true),
+            )
+            .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
     }
@@ -1678,7 +1741,6 @@ impl TaskPort for GvmdAdapter {
         session_token: &str,
         query: &TaskQuery,
     ) -> Result<TaskPage, GatewayError> {
-        let client = self.session_client(session_token)?;
         let filter_id = query
             .filter_id
             .as_deref()
@@ -1687,19 +1749,20 @@ impl TaskPort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
-        let response = client
-            .lock()
-            .await
-            .call(get_tasks(GetTasksOpts {
-                filter_string: query.filter_string.clone(),
-                filter_id,
-                trash: None,
-                details: Some(true),
-                schedules_only: None,
-                ignore_pagination: None,
-            }))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "tasks.list",
+                get_tasks(GetTasksOpts {
+                    filter_string: query.filter_string.clone(),
+                    filter_id,
+                    trash: None,
+                    details: Some(true),
+                    schedules_only: None,
+                    ignore_pagination: None,
+                }),
+            )
+            .await?;
         let parsed = GetTasksResponse::from_response(&response).map_err(map_parse_error)?;
         let mut items = parsed
             .items
@@ -1737,7 +1800,6 @@ impl TaskPort for GvmdAdapter {
         session_token: &str,
         input: CreateTaskInput,
     ) -> Result<String, GatewayError> {
-        let client = self.session_client(session_token)?;
         let config_id = parse_entity_id(&input.scan_config_id)?;
         let target_id = parse_entity_id(&input.target_id)?;
         let scanner_id = parse_entity_id(&input.scanner_id)?;
@@ -1757,39 +1819,40 @@ impl TaskPort for GvmdAdapter {
             .map(parse_hosts_ordering)
             .transpose()?;
 
-        let response = client
-            .lock()
-            .await
-            .call(create_task(
-                &input.name,
-                &config_id,
-                &target_id,
-                &scanner_id,
-                CreateTaskOpts {
-                    alterable: input.alterable,
-                    hosts_ordering,
-                    schedule_id,
-                    alert_ids,
-                    comment: input.comment,
-                    schedule_periods: input.schedule_periods,
-                    observers: input.observers,
-                    preferences: input.preferences,
-                },
-            ))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "tasks.create",
+                create_task(
+                    &input.name,
+                    &config_id,
+                    &target_id,
+                    &scanner_id,
+                    CreateTaskOpts {
+                        alterable: input.alterable,
+                        hosts_ordering,
+                        schedule_id,
+                        alert_ids,
+                        comment: input.comment,
+                        schedule_periods: input.schedule_periods,
+                        observers: input.observers,
+                        preferences: input.preferences,
+                    },
+                ),
+            )
+            .await?;
         let parsed = CreateTaskResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(parsed.id.to_string())
     }
 
     async fn get_task(&self, session_token: &str, id: &str) -> Result<Task, GatewayError> {
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(get_task_cmd(&parse_entity_id(id)?))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "tasks.get",
+                get_task_cmd(&parse_entity_id(id)?),
+            )
+            .await?;
         let parsed = GetTasksResponse::from_response(&response).map_err(map_parse_error)?;
         parsed
             .items
@@ -1805,7 +1868,6 @@ impl TaskPort for GvmdAdapter {
         id: &str,
         input: ModifyTaskInput,
     ) -> Result<Task, GatewayError> {
-        let client = self.session_client(session_token)?;
         let task_id = parse_entity_id(id)?;
         let target_id = input
             .target_id
@@ -1841,53 +1903,53 @@ impl TaskPort for GvmdAdapter {
             .map(parse_hosts_ordering)
             .transpose()?;
 
-        let response = client
-            .lock()
-            .await
-            .call(modify_task_cmd(
-                &task_id,
-                ModifyTaskOpts {
-                    name: input.name,
-                    comment: input.comment,
-                    alterable: None,
-                    hosts_ordering,
-                    schedule_id,
-                    schedule_periods: input.schedule_periods,
-                    target_id,
-                    config_id,
-                    scanner_id,
-                    alert_ids,
-                    observers: input.observers,
-                    preferences: vec![],
-                },
-            ))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "tasks.modify",
+                modify_task_cmd(
+                    &task_id,
+                    ModifyTaskOpts {
+                        name: input.name,
+                        comment: input.comment,
+                        alterable: None,
+                        hosts_ordering,
+                        schedule_id,
+                        schedule_periods: input.schedule_periods,
+                        target_id,
+                        config_id,
+                        scanner_id,
+                        alert_ids,
+                        observers: input.observers,
+                        preferences: vec![],
+                    },
+                ),
+            )
+            .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
-        drop(client);
         self.get_task(session_token, id).await
     }
 
     async fn delete_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(delete_task_cmd(&parse_entity_id(id)?, true))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "tasks.delete",
+                delete_task_cmd(&parse_entity_id(id)?, true),
+            )
+            .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
     }
 
     async fn start_task(&self, session_token: &str, id: &str) -> Result<TaskAction, GatewayError> {
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(start_task_cmd(&parse_entity_id(id)?))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "tasks.start",
+                start_task_cmd(&parse_entity_id(id)?),
+            )
+            .await?;
         let parsed = StartTaskResponse::from_response(&response).map_err(map_parse_error)?;
         let report_id = parsed.report_id.map(|id| id.to_string()).ok_or_else(|| {
             GatewayError::BackendUnavailable("start_task did not return a report_id".to_string())
@@ -1896,25 +1958,25 @@ impl TaskPort for GvmdAdapter {
     }
 
     async fn stop_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(stop_task_cmd(&parse_entity_id(id)?))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "tasks.stop",
+                stop_task_cmd(&parse_entity_id(id)?),
+            )
+            .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
     }
 
     async fn resume_task(&self, session_token: &str, id: &str) -> Result<TaskAction, GatewayError> {
-        let client = self.session_client(session_token)?;
-        let response = client
-            .lock()
-            .await
-            .call(resume_task_cmd(&parse_entity_id(id)?))
-            .await
-            .map_err(map_gvm_error)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "tasks.resume",
+                resume_task_cmd(&parse_entity_id(id)?),
+            )
+            .await?;
         // resume_task returns ActionResponse (no report_id field) in rust-gvm,
         // but the GMP protocol does return a report_id. Parse as StartTaskResponse
         // which shares the same XML structure.
@@ -2594,7 +2656,59 @@ impl AuthPort for GvmdAdapter {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        io,
+        io::Write,
+        sync::{Arc, Mutex, OnceLock},
+    };
+
+    use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
+    use tracing_subscriber::{fmt::format::FmtSpan, layer::SubscriberExt};
+
     use super::*;
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn capture_tracing() -> Arc<Mutex<Vec<u8>>> {
+        static BUFFER: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
+        static INIT: OnceLock<()> = OnceLock::new();
+
+        let buffer = BUFFER
+            .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
+            .clone();
+
+        INIT.get_or_init(|| {
+            let writer = buffer.clone();
+            let subscriber = tracing_subscriber::registry().with(
+                tracing_subscriber::fmt::layer()
+                    .with_ansi(false)
+                    .without_time()
+                    .with_span_events(FmtSpan::CLOSE)
+                    .with_writer(move || SharedWriter(writer.clone())),
+            );
+            let _ = tracing::subscriber::set_global_default(subscriber);
+        });
+
+        buffer.lock().unwrap().clear();
+        buffer
+    }
+
+    async fn lock_tracing() -> AsyncMutexGuard<'static, ()> {
+        static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| AsyncMutex::new(())).lock().await
+    }
 
     #[test]
     fn gvmd_adapter_session_client_fails_without_session() {
@@ -2683,6 +2797,36 @@ mod tests {
             let page = result.unwrap();
             assert!(page.data.is_empty());
             assert_eq!(page.pagination.total, 0);
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_emits_backend_boundary_spans_without_raw_session_token() {
+            let _trace_lock = lock_tracing().await;
+            let logs = capture_tracing();
+            let (adapter, server, token) = create_mock_adapter().await;
+
+            let result = adapter
+                .list_targets(
+                    &token,
+                    &TargetQuery {
+                        filter_string: None,
+                        filter_id: None,
+                        page: 1,
+                        per_page: 25,
+                    },
+                )
+                .await;
+
+            assert!(result.is_ok());
+
+            let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+            assert!(output.contains("gvmd.session.connect"));
+            assert!(output.contains("gvmd.request"));
+            assert!(output.contains("targets.list"));
+            assert!(output.contains("session:"));
+            assert!(!output.contains(&token));
 
             server.shutdown().await;
         }

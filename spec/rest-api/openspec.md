@@ -372,7 +372,7 @@ RFC 9457 Problem Details:
 
 #### Distributed tracing
 
-The API should propagate W3C Trace Context (`traceparent`, `tracestate`, optional `baggage`) for OpenTelemetry correlation.
+The API accepts W3C Trace Context (`traceparent`, `tracestate`, optional `baggage`) for OpenTelemetry correlation. REST responses return `traceparent` and `tracestate` for correlation, but do not echo `baggage`. The gvmd backend transport is GMP over a Unix socket, so trace headers are not forwarded downstream; internal correlation is represented by nested request/app/gvmd spans.
 
 #### Create semantics
 
@@ -447,13 +447,11 @@ rate_limit_window_secs = 60
 rate_limit_global_per_window = 1000
 rate_limit_subject_per_window = 500
 
-[logging]
-format = "json"  # "json" | "pretty"
-level = "info"
-
-[telemetry]
 otlp_endpoint = "http://localhost:4317"
-service_name = "gvm-rest-api"
+telemetry_service_name = "gvm-gateway"
+telemetry_service_namespace = "greenbone"
+telemetry_deployment_environment = "staging"
+telemetry_service_instance_id = "gateway-01"
 ```
 
 CLI flags override config file values; environment variables override both.
@@ -538,7 +536,7 @@ For each resource (acceptance-test first):
 ### Phase 5: REST hardening and release readiness
 
 - Add structured observability for REST flow (logs, OTel tracing).
-- Implement OTel tracer setup with OTLP exporter and service/resource attributes.
+- Implement OTel tracer setup with OTLP exporter and explicit service/resource attributes.
 - Ensure W3C Trace Context propagation across incoming HTTP, application use cases, and gvmd adapter calls.
 - Add resilience checks for session expiry, backend disconnects, and queue backpressure.
 - Implement graceful shutdown and connection draining for the REST gateway:

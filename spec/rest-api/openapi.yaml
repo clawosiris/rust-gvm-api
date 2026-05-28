@@ -29,6 +29,8 @@ info:
     - `traceparent`
     - `tracestate` (optional)
     - `baggage` (optional)
+    Responses return `traceparent` and, when present, `tracestate` for correlation.
+    `baggage` is accepted as parent context input but is not echoed back in responses.
 
     > **Note:** A future version of the API may support stateless per-request
     > authentication for simpler single-call use cases. For now, session-based

@@ -3,3 +3,7 @@
 bind = "0.0.0.0:8080"
 gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
 # otlp_endpoint = "http://otel-collector:4317"
+# telemetry_service_name = "gvm-gateway"
+# telemetry_service_namespace = "greenbone"
+# telemetry_deployment_environment = "container"
+# telemetry_service_instance_id = "gateway-pod-01"

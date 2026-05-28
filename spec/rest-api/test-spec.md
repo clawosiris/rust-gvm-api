@@ -229,7 +229,7 @@ async fn test_server() -> TestServer {
 
 | Test | Scope |
 |------|-------|
-| `trace_context_headers_propagated` | W3C trace context is accepted/forwarded (`traceparent`, optional `tracestate`/`baggage`) |
+| `trace_context_headers_propagated` | W3C trace context is accepted; responses return `traceparent`/`tracestate` but do not echo `baggage` |
 | `cors_preflight_allowed_origin` | OPTIONS request with allowed origin → 204 + allow headers |
 | `cors_preflight_denied_origin` | OPTIONS with unknown origin → 403 and no CORS allow-origin header |
 | `gzip_compression` | `Accept-Encoding: gzip` → compressed response |
