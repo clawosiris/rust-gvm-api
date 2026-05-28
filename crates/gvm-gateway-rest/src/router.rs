@@ -35,6 +35,18 @@ use crate::{
     },
     error::RestError,
     feeds::{list_feeds, list_feeds_docs, sync_feeds, sync_feeds_docs},
+    identity::{
+        create_group, create_group_docs, create_permission, create_permission_docs, create_role,
+        create_role_docs, create_user, create_user_docs, delete_group, delete_group_docs,
+        delete_permission, delete_permission_docs, delete_role, delete_role_docs, delete_user,
+        delete_user_docs, get_group, get_group_docs, get_permission, get_permission_docs, get_role,
+        get_role_docs, get_user, get_user_docs, get_user_setting, get_user_setting_docs,
+        list_groups, list_groups_docs, list_permissions, list_permissions_docs, list_roles,
+        list_roles_docs, list_user_settings, list_user_settings_docs, list_users, list_users_docs,
+        update_group, update_group_docs, update_permission, update_permission_docs, update_role,
+        update_role_docs, update_user, update_user_docs, update_user_setting,
+        update_user_setting_docs,
+    },
     openapi::{configure as configure_openapi, finalize_document},
     port_lists::{
         create_port_list, create_port_list_docs, delete_port_list, delete_port_list_docs,
@@ -273,6 +285,85 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route("/api/v1/feeds", get_with(list_feeds, list_feeds_docs))
         .route("/api/v1/feeds", patch(method_not_allowed_collection))
         .api_route("/api/v1/feeds/sync", post_with(sync_feeds, sync_feeds_docs))
+        // Identity and access control
+        .api_route("/api/v1/users", get_with(list_users, list_users_docs))
+        .api_route("/api/v1/users", post_with(create_user, create_user_docs))
+        .route("/api/v1/users", patch(method_not_allowed_collection))
+        .api_route("/api/v1/users/{id}", get_with(get_user, get_user_docs))
+        .api_route(
+            "/api/v1/users/{id}",
+            put_with(update_user, update_user_docs),
+        )
+        .api_route(
+            "/api/v1/users/{id}",
+            delete_with(delete_user, delete_user_docs),
+        )
+        .route("/api/v1/users/{id}", patch(method_not_allowed_item))
+        .api_route("/api/v1/groups", get_with(list_groups, list_groups_docs))
+        .api_route("/api/v1/groups", post_with(create_group, create_group_docs))
+        .route("/api/v1/groups", patch(method_not_allowed_collection))
+        .api_route("/api/v1/groups/{id}", get_with(get_group, get_group_docs))
+        .api_route(
+            "/api/v1/groups/{id}",
+            put_with(update_group, update_group_docs),
+        )
+        .api_route(
+            "/api/v1/groups/{id}",
+            delete_with(delete_group, delete_group_docs),
+        )
+        .route("/api/v1/groups/{id}", patch(method_not_allowed_item))
+        .api_route("/api/v1/roles", get_with(list_roles, list_roles_docs))
+        .api_route("/api/v1/roles", post_with(create_role, create_role_docs))
+        .route("/api/v1/roles", patch(method_not_allowed_collection))
+        .api_route("/api/v1/roles/{id}", get_with(get_role, get_role_docs))
+        .api_route(
+            "/api/v1/roles/{id}",
+            put_with(update_role, update_role_docs),
+        )
+        .api_route(
+            "/api/v1/roles/{id}",
+            delete_with(delete_role, delete_role_docs),
+        )
+        .route("/api/v1/roles/{id}", patch(method_not_allowed_item))
+        .api_route(
+            "/api/v1/permissions",
+            get_with(list_permissions, list_permissions_docs),
+        )
+        .api_route(
+            "/api/v1/permissions",
+            post_with(create_permission, create_permission_docs),
+        )
+        .route("/api/v1/permissions", patch(method_not_allowed_collection))
+        .api_route(
+            "/api/v1/permissions/{id}",
+            get_with(get_permission, get_permission_docs),
+        )
+        .api_route(
+            "/api/v1/permissions/{id}",
+            put_with(update_permission, update_permission_docs),
+        )
+        .api_route(
+            "/api/v1/permissions/{id}",
+            delete_with(delete_permission, delete_permission_docs),
+        )
+        .route("/api/v1/permissions/{id}", patch(method_not_allowed_item))
+        .api_route(
+            "/api/v1/user-settings",
+            get_with(list_user_settings, list_user_settings_docs),
+        )
+        .route(
+            "/api/v1/user-settings",
+            patch(method_not_allowed_collection),
+        )
+        .api_route(
+            "/api/v1/user-settings/{id}",
+            get_with(get_user_setting, get_user_setting_docs),
+        )
+        .api_route(
+            "/api/v1/user-settings/{id}",
+            put_with(update_user_setting, update_user_setting_docs),
+        )
+        .route("/api/v1/user-settings/{id}", patch(method_not_allowed_item))
         // Tasks
         .api_route("/api/v1/tasks", get_with(list_tasks, list_tasks_docs))
         .api_route("/api/v1/tasks", post_with(create_task, create_task_docs))
@@ -491,6 +582,7 @@ mod tests {
         let credentials: Arc<dyn gvm_gateway_domain::CredentialPort> = adapter.clone();
         let port_lists: Arc<dyn gvm_gateway_domain::PortListPort> = adapter.clone();
         let feeds: Arc<dyn gvm_gateway_domain::FeedPort> = adapter.clone();
+        let identity: Arc<dyn gvm_gateway_domain::IdentityPort> = adapter.clone();
         let targets: Arc<dyn gvm_gateway_domain::TargetPort> = adapter.clone();
         let tasks: Arc<dyn gvm_gateway_domain::TaskPort> = adapter.clone();
         let auth: Arc<dyn gvm_gateway_domain::AuthPort> = adapter.clone();
@@ -506,6 +598,7 @@ mod tests {
             credentials,
             port_lists,
             feeds,
+            identity,
             targets,
             tasks,
             auth,

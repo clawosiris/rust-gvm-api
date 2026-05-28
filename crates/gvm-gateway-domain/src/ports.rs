@@ -6,15 +6,19 @@
 use async_trait::async_trait;
 
 use crate::{
-    Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreatePortListInput,
-    CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput, Credential,
-    CredentialPage, CredentialQuery, CredentialStore, Feed, GatewayError, GetReportOpts,
-    ModifyAlertInput, ModifyCredentialInput, ModifyPortListInput, ModifyScanConfigInput,
-    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, PortList, PortListPage, PortListQuery,
-    ReadinessStatus, Report, ReportPage, ReportQuery, ResultPage, ResultQuery, ScanConfig,
-    ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule,
-    SchedulePage, ScheduleQuery, Target, TargetPage, TargetQuery, Task, TaskAction, TaskPage,
-    TaskQuery, Timezone, TlsCertificatePage,
+    Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreateGroupInput,
+    CreatePermissionInput, CreatePortListInput, CreateRoleInput, CreateScanConfigInput,
+    CreateScheduleInput, CreateTargetInput, CreateTaskInput, CreateUserInput, Credential,
+    CredentialPage, CredentialQuery, CredentialStore, Feed, GatewayError, GetReportOpts, Group,
+    GroupPage, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
+    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
+    ReadinessStatus, Report, ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery,
+    Schedule, SchedulePage, ScheduleQuery, Target, TargetPage, TargetQuery, Task, TaskAction,
+    TaskPage, TaskQuery, Timezone, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery,
 };
 
 /// Port for system information needed by the gateway.
@@ -190,6 +194,148 @@ pub trait FeedPort: Send + Sync + 'static {
 
     /// Trigger feed synchronization.
     async fn sync_feeds(&self, session_token: &str) -> Result<(), GatewayError>;
+}
+
+/// Port for identity and access-control operations.
+#[async_trait]
+pub trait IdentityPort: Send + Sync + 'static {
+    /// List users for the session.
+    async fn list_users(
+        &self,
+        session_token: &str,
+        query: &IdentityQuery,
+    ) -> Result<UserPage, GatewayError>;
+
+    /// Create a new user.
+    async fn create_user(
+        &self,
+        session_token: &str,
+        input: CreateUserInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a user by identifier.
+    async fn get_user(&self, session_token: &str, id: &str) -> Result<User, GatewayError>;
+
+    /// Modify a user by identifier.
+    async fn modify_user(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyUserInput,
+    ) -> Result<User, GatewayError>;
+
+    /// Delete a user by identifier.
+    async fn delete_user(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// List groups for the session.
+    async fn list_groups(
+        &self,
+        session_token: &str,
+        query: &IdentityQuery,
+    ) -> Result<GroupPage, GatewayError>;
+
+    /// Create a new group.
+    async fn create_group(
+        &self,
+        session_token: &str,
+        input: CreateGroupInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a group by identifier.
+    async fn get_group(&self, session_token: &str, id: &str) -> Result<Group, GatewayError>;
+
+    /// Modify a group by identifier.
+    async fn modify_group(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyGroupInput,
+    ) -> Result<Group, GatewayError>;
+
+    /// Delete a group by identifier.
+    async fn delete_group(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// List roles for the session.
+    async fn list_roles(
+        &self,
+        session_token: &str,
+        query: &IdentityQuery,
+    ) -> Result<RolePage, GatewayError>;
+
+    /// Create a new role.
+    async fn create_role(
+        &self,
+        session_token: &str,
+        input: CreateRoleInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a role by identifier.
+    async fn get_role(&self, session_token: &str, id: &str) -> Result<Role, GatewayError>;
+
+    /// Modify a role by identifier.
+    async fn modify_role(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyRoleInput,
+    ) -> Result<Role, GatewayError>;
+
+    /// Delete a role by identifier.
+    async fn delete_role(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// List permissions for the session.
+    async fn list_permissions(
+        &self,
+        session_token: &str,
+        query: &IdentityQuery,
+    ) -> Result<PermissionPage, GatewayError>;
+
+    /// Create a new permission.
+    async fn create_permission(
+        &self,
+        session_token: &str,
+        input: CreatePermissionInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch a permission by identifier.
+    async fn get_permission(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<Permission, GatewayError>;
+
+    /// Modify a permission by identifier.
+    async fn modify_permission(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyPermissionInput,
+    ) -> Result<Permission, GatewayError>;
+
+    /// Delete a permission by identifier.
+    async fn delete_permission(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// List current-user settings for the session.
+    async fn list_user_settings(
+        &self,
+        session_token: &str,
+        query: &UserSettingQuery,
+    ) -> Result<UserSettingList, GatewayError>;
+
+    /// Fetch one current-user setting by identifier.
+    async fn get_user_setting(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<UserSetting, GatewayError>;
+
+    /// Modify one current-user setting by identifier.
+    async fn modify_user_setting(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyUserSettingInput,
+    ) -> Result<UserSetting, GatewayError>;
 }
 
 /// Port for report operations.

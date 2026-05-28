@@ -80,6 +80,26 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
             "description": "Feed status"
         },
         {
+            "name": "Users",
+            "description": "User management"
+        },
+        {
+            "name": "Groups",
+            "description": "Group management"
+        },
+        {
+            "name": "Roles",
+            "description": "Role management"
+        },
+        {
+            "name": "Permissions",
+            "description": "Permission management"
+        },
+        {
+            "name": "User Settings",
+            "description": "Current-user settings"
+        },
+        {
             "name": "Tasks",
             "description": "Scan task management"
         },
@@ -211,6 +231,66 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         &mut normalized_paths,
         "/api/v1/feeds/sync",
         "/feeds/sync",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/users",
+        "/users",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/users/{id}",
+        "/users/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/groups",
+        "/groups",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/groups/{id}",
+        "/groups/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/roles",
+        "/roles",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/roles/{id}",
+        "/roles/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/permissions",
+        "/permissions",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/permissions/{id}",
+        "/permissions/{id}",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/user-settings",
+        "/user-settings",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
+        "/api/v1/user-settings/{id}",
+        "/user-settings/{id}",
     );
     copy_path(
         &source_paths,
@@ -448,6 +528,10 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     tighten_task_query_parameters(&mut document);
     tighten_task_payload_schemas(&mut document);
     tighten_scan_config_payload_schemas(&mut document);
+    tighten_list_query_parameters(&mut document, "/users");
+    tighten_list_query_parameters(&mut document, "/groups");
+    tighten_list_query_parameters(&mut document, "/roles");
+    tighten_list_query_parameters(&mut document, "/permissions");
     tighten_list_query_parameters(&mut document, "/reports");
     tighten_list_query_parameters(&mut document, "/results");
     tighten_list_query_parameters(&mut document, "/reports/{id}/results");
@@ -458,6 +542,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     tighten_list_query_parameters(&mut document, "/scan-configs");
     tighten_list_query_parameters(&mut document, "/scanners");
     tighten_report_get_parameters(&mut document);
+    tighten_identity_schemas(&mut document);
     ensure_problem_detail_schema(&mut document);
     normalize_problem_response_content_types(&mut document);
     ensure_basic_auth_scheme(&mut document);
@@ -658,6 +743,152 @@ fn tighten_task_payload_schemas(document: &mut Value) {
                 scanner_id["format"] = json!("uuid");
             }
         }
+    }
+}
+
+fn tighten_identity_schemas(document: &mut Value) {
+    let schemas = &mut document["components"]["schemas"];
+    schemas["IdentityResourceBase"] = json!({
+        "type": "object",
+        "required": ["id", "name", "writable", "inUse"],
+        "properties": {
+            "id": {
+                "type": "string",
+                "format": "uuid"
+            },
+            "name": {
+                "type": "string"
+            },
+            "comment": {
+                "type": "string"
+            },
+            "owner": {
+                "$ref": "#/components/schemas/ResourceRef"
+            },
+            "creationTime": {
+                "type": "string",
+                "format": "date-time"
+            },
+            "modificationTime": {
+                "type": "string",
+                "format": "date-time"
+            },
+            "writable": {
+                "type": "boolean"
+            },
+            "inUse": {
+                "type": "boolean"
+            }
+        }
+    });
+
+    schemas["User"] = json!({
+        "allOf": [
+            {
+                "$ref": "#/components/schemas/IdentityResourceBase"
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "roles": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ResourceRef"
+                        }
+                    },
+                    "groups": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ResourceRef"
+                        }
+                    },
+                    "hostsAllow": {
+                        "type": "boolean"
+                    },
+                    "hosts": {
+                        "type": "string"
+                    },
+                    "authenticationType": {
+                        "type": "string",
+                        "enum": ["file", "ldap_connect", "radius_connect"]
+                    }
+                }
+            }
+        ]
+    });
+
+    schemas["Group"] = json!({
+        "allOf": [
+            {
+                "$ref": "#/components/schemas/IdentityResourceBase"
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "users": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        ]
+    });
+
+    schemas["Role"] = json!({
+        "allOf": [
+            {
+                "$ref": "#/components/schemas/IdentityResourceBase"
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "users": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        ]
+    });
+
+    schemas["Permission"] = json!({
+        "allOf": [
+            {
+                "$ref": "#/components/schemas/IdentityResourceBase"
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "subjectType": {
+                        "type": "string",
+                        "enum": ["user", "group", "role"]
+                    },
+                    "subject": {
+                        "$ref": "#/components/schemas/ResourceRef"
+                    },
+                    "resourceType": {
+                        "type": "string"
+                    },
+                    "resource": {
+                        "$ref": "#/components/schemas/ResourceRef"
+                    }
+                }
+            }
+        ]
+    });
+
+    if let Some(schema) = schemas.get_mut("UserSetting") {
+        schema["required"] = json!(["id", "name"]);
+    }
+    if let Some(schema) = schemas.get_mut("CreateUser") {
+        schema["properties"]["password"]["format"] = json!("password");
+    }
+    if let Some(schema) = schemas.get_mut("ModifyUser") {
+        schema["properties"]["password"]["format"] = json!("password");
     }
 }
 

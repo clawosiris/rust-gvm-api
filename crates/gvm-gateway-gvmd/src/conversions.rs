@@ -9,12 +9,13 @@
 use std::{collections::HashMap, str::FromStr};
 
 use gvm_gateway_domain::{
-    Alert, CreateTargetInput, Credential, Feed, GatewayError, NvtRef, PortList, Report,
-    ResourceRef, ResultCount, ScanConfig, ScanResult, Scanner, Schedule, Target, Task,
+    Alert, CreateTargetInput, Credential, Feed, GatewayError, Group, IdentityResourceMeta, NvtRef,
+    Permission, PortList, Report, ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner,
+    Schedule, Target, Task, User, UserSetting,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
-    SnmpAuthAlgorithm, SnmpPrivacyAlgorithm,
+    PermissionSubjectType, SnmpAuthAlgorithm, SnmpPrivacyAlgorithm, UserAuthType,
 };
 
 // ============================================================================
@@ -123,6 +124,58 @@ pub(crate) fn feed_from_gmp(feed: gvm_gmp::responses::Feed) -> Feed {
             .currently_syncing
             .as_deref()
             .is_some_and(|value| value != "0"),
+    }
+}
+
+pub(crate) fn user_from_gmp(user: gvm_gmp::responses::User) -> User {
+    User {
+        meta: identity_meta_from_gmp(user.meta),
+        roles: user
+            .roles
+            .into_iter()
+            .map(resource_ref_from_named_entity)
+            .collect(),
+        groups: user
+            .groups
+            .into_iter()
+            .map(resource_ref_from_named_entity)
+            .collect(),
+        hosts_allow: user.hosts_allow.as_deref().and_then(parse_bool_flag),
+        hosts: user.hosts,
+        authentication_type: None,
+    }
+}
+
+pub(crate) fn group_from_gmp(group: gvm_gmp::responses::Group) -> Group {
+    Group {
+        meta: identity_meta_from_gmp(group.meta),
+        users: group.users,
+    }
+}
+
+pub(crate) fn role_from_gmp(role: gvm_gmp::responses::Role) -> Role {
+    Role {
+        meta: identity_meta_from_gmp(role.meta),
+        users: role.users,
+    }
+}
+
+pub(crate) fn permission_from_gmp(permission: gvm_gmp::responses::Permission) -> Permission {
+    Permission {
+        meta: identity_meta_from_gmp(permission.meta),
+        subject_type: permission.subject_type,
+        subject: permission.subject.map(resource_ref_from_named_entity),
+        resource_type: permission.resource_type,
+        resource: permission.resource.map(resource_ref_from_named_entity),
+    }
+}
+
+pub(crate) fn user_setting_from_gmp(setting: gvm_gmp::responses::UserSetting) -> UserSetting {
+    UserSetting {
+        id: setting.id.to_string(),
+        name: setting.name,
+        value: setting.value,
+        comment: setting.comment,
     }
 }
 
@@ -315,6 +368,18 @@ pub(crate) fn parse_snmp_privacy_algorithm(
         .map_err(|_| GatewayError::InvalidInput(format!("invalid privacyAlgorithm: {value}")))
 }
 
+pub(crate) fn parse_user_auth_type(value: &str) -> Result<UserAuthType, GatewayError> {
+    UserAuthType::from_str(value)
+        .map_err(|_| GatewayError::InvalidInput(format!("invalid authenticationType: {value}")))
+}
+
+pub(crate) fn parse_permission_subject_type(
+    value: &str,
+) -> Result<PermissionSubjectType, GatewayError> {
+    PermissionSubjectType::from_str(value)
+        .map_err(|_| GatewayError::InvalidInput(format!("invalid subjectType: {value}")))
+}
+
 // ============================================================================
 // Error Mapping
 // ============================================================================
@@ -341,6 +406,34 @@ pub(crate) fn map_gvm_error(error: gvm_client::GvmError) -> GatewayError {
             GatewayError::GatewayTimeout(format!("gvmd timeout after {duration:?}"))
         }
         other => GatewayError::BackendUnavailable(other.to_string()),
+    }
+}
+
+fn identity_meta_from_gmp(meta: gvm_gmp::responses::common::EntityMeta) -> IdentityResourceMeta {
+    IdentityResourceMeta {
+        id: meta.id.to_string(),
+        name: meta.name,
+        comment: meta.comment,
+        owner: None,
+        creation_time: meta.creation_time,
+        modification_time: meta.modification_time,
+        writable: meta.writable,
+        in_use: meta.in_use,
+    }
+}
+
+fn resource_ref_from_named_entity(entity: gvm_gmp::responses::NamedEntity) -> ResourceRef {
+    ResourceRef {
+        id: entity.id.to_string(),
+        name: Some(entity.name),
+    }
+}
+
+fn parse_bool_flag(value: &str) -> Option<bool> {
+    match value {
+        "0" => Some(false),
+        "1" => Some(true),
+        _ => None,
     }
 }
 

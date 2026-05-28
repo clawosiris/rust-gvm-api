@@ -11,6 +11,7 @@ pub mod credentials;
 pub(crate) mod dto;
 pub mod error;
 pub mod feeds;
+pub mod identity;
 pub mod openapi;
 pub mod port_lists;
 pub(crate) mod rate_limit;

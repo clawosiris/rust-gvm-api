@@ -6,9 +6,9 @@
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
-    AlertPort, AuthPort, CredentialPort, FeedPort, GatewayError, PortListPort, ReportPort,
-    ResultPort, ScanConfigPort, ScannerPort, SchedulePort, SessionManager, SystemPort, TargetPort,
-    TaskPort,
+    AlertPort, AuthPort, CredentialPort, FeedPort, GatewayError, IdentityPort, PortListPort,
+    ReportPort, ResultPort, ScanConfigPort, ScannerPort, SchedulePort, SessionManager, SystemPort,
+    TargetPort, TaskPort,
 };
 use tracing::{field, info_span, Instrument};
 
@@ -25,6 +25,7 @@ pub struct GatewayService {
     pub(crate) credentials: Arc<dyn CredentialPort>,
     pub(crate) port_lists: Arc<dyn PortListPort>,
     pub(crate) feeds: Arc<dyn FeedPort>,
+    pub(crate) identity: Arc<dyn IdentityPort>,
     pub(crate) targets: Arc<dyn TargetPort>,
     pub(crate) tasks: Arc<dyn TaskPort>,
     pub(crate) auth: Arc<dyn AuthPort>,
@@ -45,6 +46,7 @@ impl GatewayService {
         credentials: Arc<dyn CredentialPort>,
         port_lists: Arc<dyn PortListPort>,
         feeds: Arc<dyn FeedPort>,
+        identity: Arc<dyn IdentityPort>,
         targets: Arc<dyn TargetPort>,
         tasks: Arc<dyn TaskPort>,
         auth: Arc<dyn AuthPort>,
@@ -61,6 +63,7 @@ impl GatewayService {
             credentials,
             port_lists,
             feeds,
+            identity,
             targets,
             tasks,
             auth,
@@ -251,6 +254,7 @@ impl Clone for GatewayService {
             credentials: Arc::clone(&self.credentials),
             port_lists: Arc::clone(&self.port_lists),
             feeds: Arc::clone(&self.feeds),
+            identity: Arc::clone(&self.identity),
             targets: Arc::clone(&self.targets),
             tasks: Arc::clone(&self.tasks),
             auth: Arc::clone(&self.auth),

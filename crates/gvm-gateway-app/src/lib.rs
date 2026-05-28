@@ -9,6 +9,7 @@
 mod alerts;
 mod credentials;
 mod feeds;
+mod identity;
 mod port_lists;
 mod reports;
 mod results;
