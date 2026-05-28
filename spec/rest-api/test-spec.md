@@ -1,4 +1,4 @@
-# Test Spec: GVM REST API (`gvm-rest-api`)
+# Test Spec: GVM REST Gateway (`gvm-gateway-rest` / `gvm-gateway`)
 
 ## 1. Test Strategy
 
@@ -93,7 +93,7 @@
 ### 3.1 Test Infrastructure
 
 ```rust
-// tests/common/mod.rs
+// Current crate-local harness lives under crates/gvm-gateway/tests/common/mod.rs.
 use axum::Router;
 use axum_test::TestServer;
 
@@ -245,17 +245,17 @@ async fn test_server() -> TestServer {
 ### Test Environment
 
 ```yaml
-# tests/docker-compose.yml
-# Compatible with Docker Compose and Podman Compose
+# Current repository stack lives in compose.yaml.
+# Compatible with Docker Compose and Podman Compose.
 services:
   gvmd:
     image: greenbone/gvmd:latest
     # ... (Greenbone Community stack)
 
-  gvm-rest-api:
+  gvm-gateway:
     build: ../..
     environment:
-      GMP_SOCKET_PATH: /run/gvmd/gvmd.sock
+      GVM_GATEWAY_GVMD_ENDPOINT: unix:///run/gvmd/gvmd.sock
     depends_on:
       gvmd:
         condition: service_healthy
@@ -282,6 +282,9 @@ services:
 | `memory_large_report` | Peak memory during 100MB report | < 200MB |
 
 ## 6. Test Data & Fixtures
+
+```
+Target future top-level test fixture layout:
 
 ```
 tests/

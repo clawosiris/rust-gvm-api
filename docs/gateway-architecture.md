@@ -35,6 +35,13 @@ Their responsibilities are:
 - `gvm-gateway-gvmd`: gvmd outgoing adapter built on `rust-gvm`.
 - `gvm-gateway`: composition root, config loading, listener/bootstrap, tracing init, shutdown wiring.
 
+Two older placeholder crates still exist in the repository tree:
+
+- `crates/gvm-rest-api`
+- `crates/gvm-grpc-api`
+
+They are not workspace members, are not part of the active composition root, and should be treated as legacy placeholders until they either converge into the `gvm-gateway-*` adapter shape or are removed.
+
 ## Adapter Status
 
 - REST is the implemented public adapter on `main`.
@@ -120,4 +127,5 @@ That newer transport contract supersedes the older blanket "no plain HTTP" assum
 - Repo docs must distinguish clearly between:
   - implemented gateway surfaces on `main`
   - planned adapter surfaces
+  - legacy placeholder crates that are checked in but not wired into the workspace/runtime
   - exploratory or legacy artifacts that are not part of the current workspace composition root
