@@ -16,16 +16,20 @@ use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
-    CreatePortListInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
-    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput,
-    ModifyPortListInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput,
-    ModifyTaskInput, Pagination, PortList, PortListPage, PortListPort, PortListQuery, Report,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig,
-    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
-    ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Timezone,
-    TlsCertificate, TlsCertificatePage,
+    CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
+    CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
+    CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
+    Feed, FeedPort, GatewayError, GetReportOpts, Group, GroupPage, IdentityPort, IdentityQuery,
+    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyPermissionInput,
+    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
+    ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Pagination,
+    Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, Report,
+    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, Target,
+    TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Timezone,
+    TlsCertificate, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -39,12 +43,23 @@ use gvm_gmp::{
             modify_credential, CredentialOpts, GetCredentialsOpts,
         },
         feed::get_feeds,
+        groups::{
+            create_group, delete_group, get_group, get_groups, modify_group, GetGroupsOpts,
+            GroupOpts,
+        },
+        permissions::{
+            create_permission, delete_permission, get_permission, get_permissions,
+            modify_permission, GetPermissionsOpts, PermissionOpts,
+        },
         port_lists::{
             create_port_list, delete_port_list, get_port_list, get_port_lists, modify_port_list,
             GetPortListsOpts, PortListOpts,
         },
         reports::{delete_report, get_report, get_reports, GetReportsOpts},
         results::{get_result, get_results, GetResultsOpts},
+        roles::{
+            create_role, delete_role, get_role, get_roles, modify_role, GetRolesOpts, RoleOpts,
+        },
         scan_configs::{
             create_scan_config, delete_scan_config, get_scan_config, get_scan_configs,
             modify_scan_config, ConfigOpts, GetScanConfigsOpts,
@@ -64,26 +79,36 @@ use gvm_gmp::{
             start_task as start_task_cmd, stop_task as stop_task_cmd, CreateTaskOpts, GetTasksOpts,
             ModifyTaskOpts,
         },
+        user_settings::{
+            get_user_setting, get_user_settings, modify_user_setting, GetUserSettingsOpts,
+            ModifyUserSettingOpts,
+        },
+        users::{
+            create_user, delete_user, get_user, get_users, modify_user, GetUsersOpts, UserOpts,
+        },
     },
     responses::{
-        ActionResponse, CreateAlertResponse, CreateCredentialResponse, CreatePortListResponse,
+        ActionResponse, CreateAlertResponse, CreateCredentialResponse, CreateGroupResponse,
+        CreatePermissionResponse, CreatePortListResponse, CreateRoleResponse,
         CreateScanConfigResponse, CreateScheduleResponse, CreateTargetResponse, CreateTaskResponse,
-        GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetPortListsResponse,
-        GetReportsResponse, GetResultsResponse, GetScanConfigsResponse, GetScannersResponse,
-        GetSchedulesResponse, GetTargetsResponse, GetTasksResponse, GetVersionResponse,
-        StartTaskResponse,
+        CreateUserResponse, GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse,
+        GetGroupsResponse, GetPermissionsResponse, GetPortListsResponse, GetReportsResponse,
+        GetResultsResponse, GetRolesResponse, GetScanConfigsResponse, GetScannersResponse,
+        GetSchedulesResponse, GetTargetsResponse, GetTasksResponse, GetUserSettingsResponse,
+        GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse, StartTaskResponse,
     },
     EntityId,
 };
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::conversions::{
-    alert_from_gmp, credential_from_gmp, feed_from_gmp, map_gvm_error, map_parse_error,
-    parse_alert_condition, parse_alert_event, parse_alert_method, parse_alive_test,
-    parse_credential_type, parse_entity_id, parse_hosts_ordering, parse_snmp_auth_algorithm,
-    parse_snmp_privacy_algorithm, port_list_from_gmp, reject_unsupported_credentials,
-    report_from_gmp, result_from_gmp, scan_config_from_gmp, scanner_from_gmp, schedule_from_gmp,
-    target_from_gmp, task_from_gmp,
+    alert_from_gmp, credential_from_gmp, feed_from_gmp, group_from_gmp, map_gvm_error,
+    map_parse_error, parse_alert_condition, parse_alert_event, parse_alert_method,
+    parse_alive_test, parse_credential_type, parse_entity_id, parse_hosts_ordering,
+    parse_permission_subject_type, parse_snmp_auth_algorithm, parse_snmp_privacy_algorithm,
+    parse_user_auth_type, permission_from_gmp, port_list_from_gmp, reject_unsupported_credentials,
+    report_from_gmp, result_from_gmp, role_from_gmp, scan_config_from_gmp, scanner_from_gmp,
+    schedule_from_gmp, target_from_gmp, task_from_gmp, user_from_gmp, user_setting_from_gmp,
 };
 
 type SharedClient = Arc<AsyncMutex<GmpClient<UnixSocketConnection>>>;
@@ -212,6 +237,30 @@ impl GvmdAdapter {
             writable: true,
         }]
     }
+}
+
+fn paged_pagination(total: u32, page: u32, per_page: u32) -> Pagination {
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total - 1) / per_page) + 1
+    };
+
+    Pagination {
+        page,
+        per_page,
+        total,
+        total_pages,
+    }
+}
+
+fn paged_slice<T>(items: Vec<T>, page: u32, per_page: u32) -> Vec<T> {
+    let start = ((page.saturating_sub(1)) * per_page) as usize;
+    items
+        .into_iter()
+        .skip(start)
+        .take(per_page as usize)
+        .collect()
 }
 
 #[async_trait]
@@ -879,6 +928,584 @@ impl FeedPort for GvmdAdapter {
 
     async fn sync_feeds(&self, _session_token: &str) -> Result<(), GatewayError> {
         self.spawn_feed_sync()
+    }
+}
+
+#[async_trait]
+impl IdentityPort for GvmdAdapter {
+    async fn list_users(
+        &self,
+        session_token: &str,
+        query: &IdentityQuery,
+    ) -> Result<UserPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_users(GetUsersOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetUsersResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(user_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+
+        Ok(UserPage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn create_user(
+        &self,
+        session_token: &str,
+        input: CreateUserInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let role_ids = input
+            .role_ids
+            .into_iter()
+            .map(|value| parse_entity_id(&value))
+            .collect::<Result<Vec<_>, _>>()?;
+        let auth_type = input
+            .authentication_type
+            .as_deref()
+            .map(parse_user_auth_type)
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(create_user(
+                &input.name,
+                UserOpts {
+                    comment: input.comment,
+                    password: input.password,
+                    host_access: input.hosts,
+                    role_ids,
+                    auth_type,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateUserResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_user(&self, session_token: &str, id: &str) -> Result<User, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_user(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetUsersResponse::from_response(&response).map_err(map_parse_error)?;
+        let user = parsed
+            .items
+            .into_iter()
+            .next()
+            .ok_or_else(|| GatewayError::NotFound(format!("user {id} not found")))?;
+        Ok(user_from_gmp(user))
+    }
+
+    async fn modify_user(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyUserInput,
+    ) -> Result<User, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let role_ids = input
+            .role_ids
+            .unwrap_or_default()
+            .into_iter()
+            .map(|value| parse_entity_id(&value))
+            .collect::<Result<Vec<_>, _>>()?;
+        let auth_type = input
+            .authentication_type
+            .as_deref()
+            .map(parse_user_auth_type)
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_user(
+                &parse_entity_id(id)?,
+                UserOpts {
+                    comment: input.comment,
+                    password: input.password,
+                    host_access: input.hosts,
+                    role_ids,
+                    auth_type,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_user(session_token, id).await
+    }
+
+    async fn delete_user(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_user(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn list_groups(
+        &self,
+        session_token: &str,
+        query: &IdentityQuery,
+    ) -> Result<GroupPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_groups(GetGroupsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetGroupsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(group_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+
+        Ok(GroupPage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn create_group(
+        &self,
+        session_token: &str,
+        input: CreateGroupInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(create_group(
+                &input.name,
+                GroupOpts {
+                    comment: input.comment,
+                    users: input.users,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateGroupResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_group(&self, session_token: &str, id: &str) -> Result<Group, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_group(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetGroupsResponse::from_response(&response).map_err(map_parse_error)?;
+        let group = parsed
+            .items
+            .into_iter()
+            .next()
+            .ok_or_else(|| GatewayError::NotFound(format!("group {id} not found")))?;
+        Ok(group_from_gmp(group))
+    }
+
+    async fn modify_group(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyGroupInput,
+    ) -> Result<Group, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_group(
+                &parse_entity_id(id)?,
+                GroupOpts {
+                    comment: input.comment,
+                    users: input.users.unwrap_or_default(),
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_group(session_token, id).await
+    }
+
+    async fn delete_group(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_group(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn list_roles(
+        &self,
+        session_token: &str,
+        query: &IdentityQuery,
+    ) -> Result<RolePage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_roles(GetRolesOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetRolesResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(role_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+
+        Ok(RolePage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn create_role(
+        &self,
+        session_token: &str,
+        input: CreateRoleInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(create_role(
+                &input.name,
+                RoleOpts {
+                    comment: input.comment,
+                    users: input.users,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateRoleResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_role(&self, session_token: &str, id: &str) -> Result<Role, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_role(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetRolesResponse::from_response(&response).map_err(map_parse_error)?;
+        let role = parsed
+            .items
+            .into_iter()
+            .next()
+            .ok_or_else(|| GatewayError::NotFound(format!("role {id} not found")))?;
+        Ok(role_from_gmp(role))
+    }
+
+    async fn modify_role(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyRoleInput,
+    ) -> Result<Role, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_role(
+                &parse_entity_id(id)?,
+                RoleOpts {
+                    comment: input.comment,
+                    users: input.users.unwrap_or_default(),
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_role(session_token, id).await
+    }
+
+    async fn delete_role(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_role(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn list_permissions(
+        &self,
+        session_token: &str,
+        query: &IdentityQuery,
+    ) -> Result<PermissionPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_permissions(GetPermissionsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetPermissionsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(permission_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+
+        Ok(PermissionPage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn create_permission(
+        &self,
+        session_token: &str,
+        input: CreatePermissionInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(create_permission(PermissionOpts {
+                comment: input.comment,
+                name: input.name,
+                resource_id: input
+                    .resource_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?,
+                resource_type: input.resource_type,
+                subject_type: input
+                    .subject_type
+                    .as_deref()
+                    .map(parse_permission_subject_type)
+                    .transpose()?,
+                subject_id: input
+                    .subject_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?,
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreatePermissionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn get_permission(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<Permission, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_permission(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetPermissionsResponse::from_response(&response).map_err(map_parse_error)?;
+        let permission = parsed
+            .items
+            .into_iter()
+            .next()
+            .ok_or_else(|| GatewayError::NotFound(format!("permission {id} not found")))?;
+        Ok(permission_from_gmp(permission))
+    }
+
+    async fn modify_permission(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyPermissionInput,
+    ) -> Result<Permission, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_permission(
+                &parse_entity_id(id)?,
+                PermissionOpts {
+                    comment: input.comment,
+                    name: input.name,
+                    resource_id: input
+                        .resource_id
+                        .as_deref()
+                        .map(parse_entity_id)
+                        .transpose()?,
+                    resource_type: input.resource_type,
+                    subject_type: input
+                        .subject_type
+                        .as_deref()
+                        .map(parse_permission_subject_type)
+                        .transpose()?,
+                    subject_id: input
+                        .subject_id
+                        .as_deref()
+                        .map(parse_entity_id)
+                        .transpose()?,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_permission(session_token, id).await
+    }
+
+    async fn delete_permission(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_permission(&parse_entity_id(id)?, true))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn list_user_settings(
+        &self,
+        session_token: &str,
+        query: &UserSettingQuery,
+    ) -> Result<UserSettingList, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_user_settings(GetUserSettingsOpts {
+                filter: query.filter_string.clone(),
+                filter_id: query
+                    .filter_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?,
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetUserSettingsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .settings
+            .into_iter()
+            .map(user_setting_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.name.cmp(&right.name));
+
+        Ok(UserSettingList { data: items })
+    }
+
+    async fn get_user_setting(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<UserSetting, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_user_setting(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetUserSettingsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .settings
+            .into_iter()
+            .next()
+            .map(user_setting_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("user setting {id} not found")))
+    }
+
+    async fn modify_user_setting(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyUserSettingInput,
+    ) -> Result<UserSetting, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_user_setting(
+                &parse_entity_id(id)?,
+                ModifyUserSettingOpts { value: input.value },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ModifyUserSettingResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_user_setting(session_token, id).await
     }
 }
 

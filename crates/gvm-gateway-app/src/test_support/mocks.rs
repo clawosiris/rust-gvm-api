@@ -6,16 +6,19 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
-    CreatePortListInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
-    CreateTaskInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, GatewayError, GetReportOpts, ModifyAlertInput, ModifyCredentialInput,
-    ModifyPortListInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput,
-    ModifyTaskInput, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, ScanConfig,
-    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
-    ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SystemPort, Target,
-    TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Timezone,
-    TlsCertificatePage,
+    CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
+    CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
+    CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
+    Feed, FeedPort, GatewayError, GetReportOpts, Group, GroupPage, IdentityPort, IdentityQuery,
+    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyPermissionInput,
+    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
+    ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Permission,
+    PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
+    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SystemPort,
+    Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
+    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -258,6 +261,178 @@ impl FeedPort for MockFeedPort {
 
     async fn sync_feeds(&self, _: &str) -> Result<(), GatewayError> {
         Ok(())
+    }
+}
+
+/// Mock identity port for tests that only need service wiring.
+#[derive(Clone, Default)]
+pub(crate) struct MockIdentityPort;
+
+#[async_trait]
+impl IdentityPort for MockIdentityPort {
+    async fn list_users(&self, _: &str, query: &IdentityQuery) -> Result<UserPage, GatewayError> {
+        Ok(UserPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_user(&self, _: &str, _: CreateUserInput) -> Result<String, GatewayError> {
+        Ok("mock-user-id".to_string())
+    }
+
+    async fn get_user(&self, _: &str, id: &str) -> Result<User, GatewayError> {
+        Err(GatewayError::NotFound(format!("user {id} not found")))
+    }
+
+    async fn modify_user(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyUserInput,
+    ) -> Result<User, GatewayError> {
+        Err(GatewayError::NotFound(format!("user {id} not found")))
+    }
+
+    async fn delete_user(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("user {id} not found")))
+    }
+
+    async fn list_groups(&self, _: &str, query: &IdentityQuery) -> Result<GroupPage, GatewayError> {
+        Ok(GroupPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_group(&self, _: &str, _: CreateGroupInput) -> Result<String, GatewayError> {
+        Ok("mock-group-id".to_string())
+    }
+
+    async fn get_group(&self, _: &str, id: &str) -> Result<Group, GatewayError> {
+        Err(GatewayError::NotFound(format!("group {id} not found")))
+    }
+
+    async fn modify_group(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyGroupInput,
+    ) -> Result<Group, GatewayError> {
+        Err(GatewayError::NotFound(format!("group {id} not found")))
+    }
+
+    async fn delete_group(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("group {id} not found")))
+    }
+
+    async fn list_roles(&self, _: &str, query: &IdentityQuery) -> Result<RolePage, GatewayError> {
+        Ok(RolePage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_role(&self, _: &str, _: CreateRoleInput) -> Result<String, GatewayError> {
+        Ok("mock-role-id".to_string())
+    }
+
+    async fn get_role(&self, _: &str, id: &str) -> Result<Role, GatewayError> {
+        Err(GatewayError::NotFound(format!("role {id} not found")))
+    }
+
+    async fn modify_role(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyRoleInput,
+    ) -> Result<Role, GatewayError> {
+        Err(GatewayError::NotFound(format!("role {id} not found")))
+    }
+
+    async fn delete_role(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("role {id} not found")))
+    }
+
+    async fn list_permissions(
+        &self,
+        _: &str,
+        query: &IdentityQuery,
+    ) -> Result<PermissionPage, GatewayError> {
+        Ok(PermissionPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_permission(
+        &self,
+        _: &str,
+        _: CreatePermissionInput,
+    ) -> Result<String, GatewayError> {
+        Ok("mock-permission-id".to_string())
+    }
+
+    async fn get_permission(&self, _: &str, id: &str) -> Result<Permission, GatewayError> {
+        Err(GatewayError::NotFound(format!("permission {id} not found")))
+    }
+
+    async fn modify_permission(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyPermissionInput,
+    ) -> Result<Permission, GatewayError> {
+        Err(GatewayError::NotFound(format!("permission {id} not found")))
+    }
+
+    async fn delete_permission(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("permission {id} not found")))
+    }
+
+    async fn list_user_settings(
+        &self,
+        _: &str,
+        _: &UserSettingQuery,
+    ) -> Result<UserSettingList, GatewayError> {
+        Ok(UserSettingList { data: vec![] })
+    }
+
+    async fn get_user_setting(&self, _: &str, id: &str) -> Result<UserSetting, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "user setting {id} not found"
+        )))
+    }
+
+    async fn modify_user_setting(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyUserSettingInput,
+    ) -> Result<UserSetting, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "user setting {id} not found"
+        )))
     }
 }
 

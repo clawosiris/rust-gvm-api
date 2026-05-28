@@ -42,6 +42,7 @@ fn service_ready_returns_not_ready() {
         Arc::new(MockCredentialPort),
         Arc::new(MockPortListPort),
         Arc::new(MockFeedPort),
+        Arc::new(MockIdentityPort),
         Arc::new(MockTargetPort::default()),
         Arc::new(MockTaskPort),
         Arc::new(MockAuthPort::default()),
@@ -243,6 +244,7 @@ async fn audit_logs_redact_sensitive_fields_and_record_session_creation_failure(
         Arc::new(MockCredentialPort),
         Arc::new(MockPortListPort),
         Arc::new(MockFeedPort),
+        Arc::new(MockIdentityPort),
         Arc::new(MockTargetPort::default()),
         Arc::new(MockTaskPort),
         Arc::new(MockAuthPort {
@@ -347,6 +349,7 @@ async fn spans_are_emitted_for_session_and_command_lifecycle() {
         Arc::new(MockCredentialPort),
         Arc::new(MockPortListPort),
         Arc::new(MockFeedPort),
+        Arc::new(MockIdentityPort),
         Arc::new(MockTargetPort { should_fail: true }),
         Arc::new(MockTaskPort),
         Arc::new(MockAuthPort::default()),
