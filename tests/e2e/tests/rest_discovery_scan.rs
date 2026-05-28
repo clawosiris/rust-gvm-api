@@ -28,8 +28,17 @@ async fn rest_discovery_scan_happy_path() -> Result<()> {
         let scanner = harness.select_scanner(&scanners)?;
         eprintln!("selected scanner {} ({})", scanner.name, scanner.id);
 
+        // Real gvmd requires a target to carry a concrete port list before a
+        // task can run; this keeps the end-to-end path on the production GMP
+        // contract instead of relying on static-adapter defaults.
+        let port_lists = harness.list_port_lists(&session.token).await?;
+        let port_list = harness.select_port_list(&port_lists)?;
+        eprintln!("selected port list {} ({})", port_list.name, port_list.id);
+
         let target_name = harness.unique_name("nightly-discovery-target");
-        let target = harness.create_target(&session.token, &target_name).await?;
+        let target = harness
+            .create_target(&session.token, &target_name, &port_list.id)
+            .await?;
         eprintln!(
             "created target {} ({}) for host(s) {}",
             target.name,

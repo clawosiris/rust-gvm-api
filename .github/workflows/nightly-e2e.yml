@@ -16,6 +16,7 @@ env:
   GVM_GATEWAY_E2E_PASSWORD: admin
   GVM_GATEWAY_E2E_TARGET_HOST: openvasd
   GVM_GATEWAY_E2E_READY_TIMEOUT_SECS: "120"
+  GVM_GATEWAY_E2E_RESOURCE_TIMEOUT_SECS: "1200"
   GVM_GATEWAY_E2E_SCAN_TIMEOUT_SECS: "900"
   GVM_GATEWAY_E2E_POLL_INTERVAL_SECS: "10"
 
@@ -32,21 +33,8 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Start compose-backed runtime
         run: ./scripts/compose-dev.sh up -d --build
-      - name: Wait for gateway readiness
-        run: |
-          for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8080/ready | grep -q '"status":"ready"'; then
-              echo "Gateway is ready on attempt ${attempt}"
-              exit 0
-            fi
-            echo "Gateway not ready yet (attempt ${attempt}/60)"
-            ./scripts/compose-dev.sh ps || true
-            sleep 20
-          done
-          echo "Gateway never became ready"
-          exit 1
       - name: Run REST discovery-scan E2E suite
-        run: cargo test -p gvm-gateway-e2e --test rest_discovery_scan -- --ignored --nocapture
+        run: ./scripts/run-e2e-tests.sh
       - name: Capture compose diagnostics
         if: always()
         run: |

@@ -136,11 +136,28 @@ impl E2eHarness {
         Ok(response.data)
     }
 
-    pub async fn create_target(&self, token: &str, name: &str) -> Result<Target> {
+    pub async fn list_port_lists(&self, token: &str) -> Result<Vec<PortList>> {
+        let response: ListResponse<PortList> = self
+            .send_json(
+                self.authed(Method::GET, "/api/v1/port-lists", token),
+                StatusCode::OK,
+                "list port lists",
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn create_target(
+        &self,
+        token: &str,
+        name: &str,
+        port_list_id: &str,
+    ) -> Result<Target> {
         let body = json!({
             "name": name,
             "hosts": [self.config.target_host.clone()],
             "aliveTest": "Consider Alive",
+            "portListId": port_list_id,
         });
         let created: ResourceCreated = self
             .send_json(
@@ -326,6 +343,19 @@ impl E2eHarness {
             .with_context(|| "no scanners returned from REST API".to_string())
     }
 
+    pub fn select_port_list<'a>(&self, port_lists: &'a [PortList]) -> Result<&'a PortList> {
+        port_lists
+            .iter()
+            .find(|port_list| lower(&port_list.name).contains("all iana assigned tcp"))
+            .or_else(|| {
+                port_lists
+                    .iter()
+                    .find(|port_list| lower(&port_list.name).contains("all tcp"))
+            })
+            .or_else(|| port_lists.first())
+            .with_context(|| "no port lists returned from REST API".to_string())
+    }
+
     pub fn unique_name(&self, prefix: &str) -> String {
         format!("{prefix}-{}", chrono_like_timestamp())
     }
@@ -381,6 +411,7 @@ pub struct ReadinessResponse {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SessionResponse {
+    #[serde(rename = "sessionToken")]
     pub token: String,
     #[serde(rename = "expiresIn")]
     pub expires_in: u64,
@@ -430,6 +461,12 @@ pub struct Scanner {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct PortList {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct Target {
     pub id: String,
     pub name: String,
@@ -446,7 +483,7 @@ pub struct Task {
     #[serde(rename = "lastReport")]
     pub last_report: Option<ResourceRef>,
     #[serde(rename = "resultCount")]
-    pub result_count: Option<ResultCount>,
+    pub result_count: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
