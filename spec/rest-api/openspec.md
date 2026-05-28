@@ -420,27 +420,14 @@ Fixed-window rate limiting per global API surface and authenticated subject, ali
 ## 4. Configuration
 
 ```toml
-# gvm-rest-api.toml
+# gvm-gateway.toml
 
-[server]
 bind = "0.0.0.0:8080"
-request_timeout_secs = 30
-body_limit_bytes = 10_485_760  # 10 MB
-
-[gmp]
-transport = "unix"  # "unix" | "ssh" | "tls"
-socket_path = "/run/gvmd/gvmd.sock"
-# ssh_host = "gvmd.local"
-# ssh_port = 22
-# ssh_user = "gvm"
-pool_size = 10
-connect_timeout_secs = 5
-request_timeout_secs = 60
-
-[session]
-idle_timeout_secs = 300
-max_sessions = 100
-max_sessions_per_user = 5
+transport_security_mode = "terminated_by_proxy" # "disabled" | "terminated_by_proxy" | "native"
+# tls_certificate_path = "/etc/gvm-gateway/tls/cert.pem"
+# tls_private_key_path = "/etc/gvm-gateway/tls/key.pem"
+gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
+shutdown_drain_timeout_secs = 30
 
 cors_allowed_origins = ["https://ui.example"]
 rate_limit_window_secs = 60
@@ -455,6 +442,12 @@ telemetry_service_instance_id = "gateway-01"
 ```
 
 CLI flags override config file values; environment variables override both.
+
+Transport-security notes:
+- `disabled` means intentional plain HTTP.
+- `terminated_by_proxy` means plain HTTP behind a trusted TLS-terminating proxy and does not require local TLS files.
+- `native` means the gateway itself serves HTTPS and must fail startup unless both the certificate and private-key files are configured and loadable.
+- Proxy mode does not implicitly enable trust for forwarded headers.
 
 ## 5. Implementation Phases (REST-first, aligned with #26 and #27)
 

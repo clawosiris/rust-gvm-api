@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, io::Write};
 
-use gvm_gateway::config::{load_config, parse_gvmd_endpoint, CliArgs, GatewayConfig};
+use gvm_gateway::config::{
+    load_config, parse_gvmd_endpoint, CliArgs, GatewayConfig, TransportSecurityConfig,
+    TransportSecurityMode,
+};
 use gvm_gateway_rest::router::{RateLimitConfig, RestSecurityConfig};
 use tempfile::NamedTempFile;
 
@@ -19,6 +22,7 @@ fn default_config_valid() {
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
             shutdown_drain_timeout_secs: 30,
             rest_security: RestSecurityConfig::default(),
+            transport_security: TransportSecurityConfig::default(),
         }
     );
 }
@@ -57,6 +61,10 @@ fn config_override_precedence() {
     env.insert(
         "GVM_GATEWAY_RATE_LIMIT_SUBJECT_PER_WINDOW".to_string(),
         "0".to_string(),
+    );
+    env.insert(
+        "GVM_GATEWAY_TRANSPORT_SECURITY_MODE".to_string(),
+        "terminated_by_proxy".to_string(),
     );
 
     let config = load_config(
@@ -102,6 +110,14 @@ fn config_override_precedence() {
             },
         }
     );
+    assert_eq!(
+        config.transport_security,
+        TransportSecurityConfig {
+            mode: TransportSecurityMode::TerminatedByProxy,
+            tls_certificate_path: None,
+            tls_private_key_path: None,
+        }
+    );
 }
 
 #[test]
@@ -122,4 +138,92 @@ fn parse_gvmd_endpoint_rejects_unsupported_schemes() {
     assert!(error
         .to_string()
         .contains("expected unix:///path/to/gvmd.sock"));
+}
+
+#[test]
+fn native_transport_security_requires_both_tls_paths() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, "transport_security_mode = \"native\"").unwrap();
+
+    let error = load_config(
+        &CliArgs {
+            config: Some(file.path().to_path_buf()),
+            bind: None,
+        },
+        &BTreeMap::new(),
+    )
+    .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("tls_certificate_path must be set when transport_security_mode=native"));
+}
+
+#[test]
+fn non_native_transport_security_rejects_tls_paths() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        "transport_security_mode = \"terminated_by_proxy\"\ntls_certificate_path = \"/etc/gvm-gateway/tls/cert.pem\"\ntls_private_key_path = \"/etc/gvm-gateway/tls/key.pem\""
+    )
+    .unwrap();
+
+    let error = load_config(
+        &CliArgs {
+            config: Some(file.path().to_path_buf()),
+            bind: None,
+        },
+        &BTreeMap::new(),
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains(
+        "terminated_by_proxy mode must not set tls_certificate_path or tls_private_key_path"
+    ));
+}
+
+#[test]
+fn native_transport_security_accepts_certificate_and_key_paths() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        "transport_security_mode = \"native\"\ntls_certificate_path = \"/etc/gvm-gateway/tls/cert.pem\"\ntls_private_key_path = \"/etc/gvm-gateway/tls/key.pem\""
+    )
+    .unwrap();
+
+    let config = load_config(
+        &CliArgs {
+            config: Some(file.path().to_path_buf()),
+            bind: None,
+        },
+        &BTreeMap::new(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        config.transport_security.mode,
+        TransportSecurityMode::Native
+    );
+    assert_eq!(
+        config.transport_security.tls_certificate_path,
+        Some("/etc/gvm-gateway/tls/cert.pem".into())
+    );
+    assert_eq!(
+        config.transport_security.tls_private_key_path,
+        Some("/etc/gvm-gateway/tls/key.pem".into())
+    );
+}
+
+#[test]
+fn invalid_transport_security_mode_is_rejected() {
+    let mut env = BTreeMap::new();
+    env.insert(
+        "GVM_GATEWAY_TRANSPORT_SECURITY_MODE".to_string(),
+        "sometimes".to_string(),
+    );
+
+    let error = load_config(&CliArgs::default(), &env).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("must be one of: disabled, terminated_by_proxy, native"));
 }

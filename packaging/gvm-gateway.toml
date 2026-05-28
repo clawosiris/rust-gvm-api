@@ -1,7 +1,10 @@
 # Example configuration for packaged gvm-gateway installs.
 
 bind = "127.0.0.1:8080"
+transport_security_mode = "disabled"
 gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
+# tls_certificate_path = "/etc/gvm-gateway/tls/cert.pem"
+# tls_private_key_path = "/etc/gvm-gateway/tls/key.pem"
 # otlp_endpoint = "http://127.0.0.1:4317"
 # telemetry_service_name = "gvm-gateway"
 # telemetry_service_namespace = "greenbone"

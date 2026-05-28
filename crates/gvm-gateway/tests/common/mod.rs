@@ -228,6 +228,7 @@ pub async fn graceful_shutdown_harness(
         app,
         Arc::clone(&shutdown),
         drain_timeout,
+        None,
     ));
 
     GracefulShutdownHarness {

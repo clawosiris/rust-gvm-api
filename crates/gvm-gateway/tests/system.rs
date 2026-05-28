@@ -1,14 +1,24 @@
 mod common;
 
+use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
 use common::{
     graceful_shutdown_harness, spawn_server, ControlledTargetAdapter, GracefulShutdownHarness,
 };
+use gvm_gateway::config::NativeTlsFiles;
+use gvm_gateway::server;
+use gvm_gateway_app::GatewayService;
+use gvm_gateway_domain::SessionManager;
 use gvm_gateway_gvmd::StaticGvmdAdapter;
+use gvm_gateway_rest::router::build_router;
+use gvm_gateway_rest::shutdown::ShutdownRuntime;
 use http::StatusCode;
+use rcgen::generate_simple_self_signed;
 use reqwest::Client;
+use tempfile::TempDir;
+use tokio::net::TcpListener;
 use tokio::sync::Notify;
 
 #[tokio::test]
@@ -154,6 +164,82 @@ async fn version_returns_api_and_gmp_version() {
     handle.abort();
 }
 
+#[tokio::test]
+async fn https_health_returns_200_in_native_tls_mode() {
+    let cert_dir = TempDir::new().unwrap();
+    let rcgen::CertifiedKey { cert, key_pair } =
+        generate_simple_self_signed(["localhost".to_string()]).unwrap();
+    let cert_path = cert_dir.path().join("cert.pem");
+    let key_path = cert_dir.path().join("key.pem");
+    fs::write(&cert_path, cert.pem()).unwrap();
+    fs::write(&key_path, key_pair.serialize_pem()).unwrap();
+
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let service = static_service(adapter.clone(), adapter);
+    let app = build_router(service);
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let shutdown = Arc::new(ShutdownRuntime::new());
+    let handle = tokio::spawn(server::serve(
+        listener,
+        app,
+        shutdown,
+        Duration::from_secs(1),
+        Some(NativeTlsFiles {
+            certificate_path: cert_path,
+            private_key_path: key_path,
+        }),
+    ));
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let response = Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap()
+        .get(format!("https://localhost:{port}/health"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    handle.abort();
+}
+
+#[tokio::test]
+async fn native_tls_startup_fails_when_pem_pair_is_invalid() {
+    let cert_dir = TempDir::new().unwrap();
+    let cert_path = cert_dir.path().join("cert.pem");
+    let key_path = cert_dir.path().join("key.pem");
+    fs::write(&cert_path, "not a certificate").unwrap();
+    fs::write(&key_path, "not a private key").unwrap();
+
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let service = static_service(adapter.clone(), adapter);
+    let app = build_router(service);
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let shutdown = Arc::new(ShutdownRuntime::new());
+
+    let error = server::serve(
+        listener,
+        app,
+        shutdown,
+        Duration::from_secs(1),
+        Some(NativeTlsFiles {
+            certificate_path: cert_path,
+            private_key_path: key_path,
+        }),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        error.to_string().contains("No certificate was found")
+            || error.to_string().contains("private key")
+            || error.to_string().contains("invalid")
+    );
+}
+
 fn spawn_target_request(
     harness: &GracefulShutdownHarness,
 ) -> tokio::task::JoinHandle<Result<reqwest::Response, reqwest::Error>> {
@@ -167,4 +253,28 @@ fn spawn_target_request(
             .send()
             .await
     })
+}
+
+fn static_service(
+    system_adapter: StaticGvmdAdapter,
+    target_adapter: StaticGvmdAdapter,
+) -> GatewayService {
+    let sessions = Arc::new(SessionManager::default());
+    GatewayService::new(
+        Arc::new(system_adapter),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter.clone()),
+        Arc::new(target_adapter),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        sessions,
+    )
 }

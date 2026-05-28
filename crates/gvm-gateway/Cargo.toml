@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 axum.workspace = true
+axum-server.workspace = true
 clap.workspace = true
 gvm-gateway-app = { path = "../gvm-gateway-app" }
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
@@ -29,6 +30,7 @@ tracing-subscriber.workspace = true
 async-trait.workspace = true
 gvm-mock-server.workspace = true
 http.workspace = true
+rcgen = "0.13.2"
 reqwest.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9.34"
