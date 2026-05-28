@@ -35,6 +35,7 @@ When a structured model exists upstream, use it as the source for API mapping.
 ## 2. Architecture
 
 The REST adapter follows the shared gateway architecture defined in [docs/gateway-architecture.md](../../docs/gateway-architecture.md).
+For REST specifically, that means the crate layering from issue `#26` plus the shared session/connection execution model from issue `#27`.
 
 Current responsibilities inside the architecture:
 
@@ -364,6 +365,9 @@ Current required coverage:
 3. **Session lifecycle controls**
    - `GET /api/v1/sessions/{token}` to inspect session state
    - `DELETE /api/v1/sessions/{token}` for explicit teardown
+   - Session creation and use flow through the shared `SessionManager` / gvmd connection-store model.
+   - One active session token maps to one authenticated backend execution context.
+   - Requests that reuse the same session token must serialize against that backend context; queue saturation/timeouts are surfaced as backpressure errors rather than hidden retries.
 
 4. **Authorization**
    - Authorization behavior follows gvmd user permissions
@@ -408,6 +412,8 @@ Transport-security notes:
 - `terminated_by_proxy` means plain HTTP behind a trusted TLS-terminating proxy and does not require local TLS files.
 - `native` means the gateway itself serves HTTPS and must fail startup unless both the certificate and private-key files are configured and loadable.
 - Proxy mode does not implicitly enable trust for forwarded headers.
+
+This explicit mode contract supersedes the earlier TLS-only ingress assumption from issue `#27` while preserving its shared session/connection model.
 
 ## 5. Implementation Phases (REST-first, aligned with #26 and #27)
 

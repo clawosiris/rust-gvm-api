@@ -39,6 +39,7 @@ Current mandatory coverage (from `rust-gvm` PR #68):
 ## 2. Architecture
 
 The gRPC adapter should follow the shared gateway architecture from [issue #26](https://github.com/clawosiris/rust-gvm-api/issues/26): peer incoming adapters over one application core, one domain layer, and one gvmd outgoing adapter.
+It should also follow the shared session/connection execution model from [issue #27](https://github.com/clawosiris/rust-gvm-api/issues/27): both REST and gRPC resolve session tokens through the same `SessionManager` and the same gvmd connection store.
 
 Current repository status:
 
@@ -126,6 +127,57 @@ message FilterExpression {
   string field = 1;
   string operator = 2;  // "eq", "gt", "lt", "gte", "lte", "contains"
   string value = 3;
+}
+```
+
+### Session Service (`session.proto`)
+
+```protobuf
+syntax = "proto3";
+package gvm.v1;
+
+service SessionService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc GetSession(GetSessionRequest) returns (SessionInfo);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+}
+
+message CreateSessionRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message CreateSessionResponse {
+  string session_token = 1;
+  int32 expires_in = 2;
+  string gmp_version = 3;
+}
+
+message GetSessionRequest {
+  string session_token = 1;
+}
+
+message CloseSessionRequest {
+  string session_token = 1;
+}
+
+message CloseSessionResponse {}
+
+message SessionInfo {
+  string session_token = 1;
+  string user = 2;
+  SessionState state = 3;
+  Timestamp created_at = 4;
+  Timestamp last_used_at = 5;
+  int32 expires_in = 6;
+}
+
+enum SessionState {
+  SESSION_STATE_UNSPECIFIED = 0;
+  SESSION_STATE_ACTIVE = 1;
+  SESSION_STATE_IDLE = 2;
+  SESSION_STATE_EXPIRED = 3;
+  SESSION_STATE_CLOSED = 4;
 }
 ```
 
@@ -363,23 +415,25 @@ message GetStatusResponse {
 
 ## 4. Authentication & Authorization
 
-### 1. JWT via Metadata
+### 1. Session Token via Metadata
 
-Clients pass JWT tokens in gRPC metadata:
+Clients bootstrap a gateway session via `CreateSession`, then pass the opaque session token in gRPC metadata:
 
 ```
-authorization: Bearer <jwt-token>
+authorization: Bearer <session-token>
 ```
 
-Auth interceptor validates the token and extracts user identity before the RPC handler.
+The interceptor resolves that token through the shared `SessionManager`, refreshes idle-expiry on successful use, and routes the RPC through the same gvmd-bound backend session model used by REST.
 
-### 2. Mutual TLS (mTLS)
+### 2. TLS and Optional mTLS
 
-For service-to-service communication:
-- Server presents its certificate
-- Client presents its certificate
-- Server validates client cert against a trusted CA
-- Client identity extracted from certificate CN/SAN
+The repository-wide transport-security contract remains authoritative for the gateway listener:
+
+- `native` for direct TLS termination in the gateway
+- `terminated_by_proxy` for a trusted upstream TLS terminator
+- `disabled` only where intentional plain HTTP is acceptable for the deployment
+
+If a future gRPC deployment uses service-to-service mTLS, that is an additional transport-layer control rather than the primary application identity model.
 
 ### 3. Per-RPC Authorization
 
@@ -438,9 +492,14 @@ endpoint = "unix:///run/gvmd/gvmd.sock"
 connect_timeout_secs = 5
 request_timeout_secs = 60
 
-[auth]
-jwt_secret = "${JWT_SECRET}"
-jwt_expiration_secs = 3600
+[sessions]
+idle_timeout_secs = 300
+max_sessions_global = 1000
+max_sessions_per_user = 10
+per_session_queue_depth = 32
+per_session_queue_timeout_secs = 30
+
+[transport]
 mtls_enabled = false
 ```
 
@@ -451,7 +510,9 @@ mtls_enabled = false
 - Server bootstrap (tonic) integrated into unified `gvm-gateway` binary
 - gRPC health checking protocol (`grpc.health.v1`)
 - gRPC reflection
-- GMP connection pool (shared with REST API)
+- Shared `SessionManager` integration and session lifecycle RPCs
+- gvmd connection store keyed by session token
+- One in-flight GMP command lane per session with explicit backpressure behavior
 - System service (version, status)
 - Unified configuration + CLI (shared with REST)
 - Structured logging (shared tracing subscriber)
@@ -468,12 +529,12 @@ mtls_enabled = false
 
 ### Phase 3: Auth & Security
 
-- JWT interceptor
+- Session-token metadata interceptor
 - mTLS support
 - Per-RPC authorization
 - Rate limiting interceptor
 - Audit logging interceptor
-- Request ID propagation via metadata
+- W3C trace-context propagation via metadata where applicable
 
 ### Phase 4: Advanced Features
 
@@ -530,8 +591,8 @@ Client                 gvm-gateway-grpc                 gvmd
 | `tonic-reflection` | gRPC reflection service |
 | `tonic-health` | gRPC health checking |
 | `tokio` | Async runtime |
+| `tokio-rustls` | Native TLS support when the gateway terminates TLS directly |
 | `serde` / `serde_json` | Config serialization |
-| `jsonwebtoken` | JWT handling |
 | `clap` | CLI parsing |
 | `tracing` | Structured logging |
 | `prometheus` | Metrics |
@@ -551,8 +612,8 @@ Client                 gvm-gateway-grpc                 gvmd
 
 ## 10. Security Considerations
 
-- **TLS by default**: All gRPC traffic encrypted; mTLS optional for service mesh
-- **No credential storage**: JWT secret from env, GMP credentials per-session
+- **Transport security is explicit**: direct TLS or trusted proxy termination are deployment choices; mTLS remains optional for service-mesh scenarios
+- **No credential storage**: bootstrap credentials are used to create a gateway session; opaque session tokens must be treated as bearer secrets and redacted from logs
 - **Message size limits**: Configurable max receive size (default 64 MB)
 - **Keepalive**: Detect dead connections, prevent resource leaks
 - **No unsafe code**: `#[deny(unsafe_code)]` crate-wide

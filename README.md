@@ -54,11 +54,22 @@ Outgoing adapter
 rust-gvm -> gvmd
 ```
 
-See [Gateway Architecture](docs/gateway-architecture.md) for the authoritative architecture description derived from issue `#26`.
+See [Gateway Architecture](docs/gateway-architecture.md) for the authoritative architecture description derived from issues `#26` and `#27`.
 
 ## Status
 
 The repository now contains a working REST gateway baseline in the `gvm-gateway*` workspace crates, including container/runtime packaging, shutdown control, transport-security modes, and tracing. gRPC and MCP remain planned surfaces; their specs and analysis docs should be read as forward-looking design material rather than shipped runtime behavior.
+
+## Shared Session Model
+
+The gateway's multi-request execution model is session-backed rather than stateless:
+
+- clients create a session and receive an opaque bearer token
+- the domain `SessionManager` owns token lifecycle, expiry, and session limits
+- the gvmd adapter owns the live authenticated backend connection bound to that session
+- commands for one session execute serially against gvmd, with explicit backpressure on queue saturation
+
+That session/connection model is shared architecture for REST today and planned gRPC later, even though the exact transport-security deployment mode is now configurable (`disabled`, `terminated_by_proxy`, `native`).
 
 ## Getting Started
 

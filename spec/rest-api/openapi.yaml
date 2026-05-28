@@ -21,6 +21,10 @@ info:
     4. `DELETE /api/v1/sessions/{token}` ends the session.
 
     Sessions expire after a configurable idle timeout (default 5 min).
+    One active session token maps to one authenticated backend execution
+    context; commands on the same token are serialized against that backend
+    session and queue saturation is surfaced as backpressure rather than
+    hidden retry behavior.
 
     ## Tracing (OpenTelemetry)
 

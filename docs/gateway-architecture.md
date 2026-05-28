@@ -1,7 +1,7 @@
 # Gateway Architecture
 
 This document is the repository-local architecture reference for `rust-gvm-api`.
-It reflects the design intent captured in [issue #26](https://github.com/clawosiris/rust-gvm-api/issues/26) and the current repository shape on `main`.
+It reflects the design intent captured in [issue #26](https://github.com/clawosiris/rust-gvm-api/issues/26), the shared session/connection model from [issue #27](https://github.com/clawosiris/rust-gvm-api/issues/27), and the current repository shape on `main`.
 
 ## Core Rules
 
@@ -78,9 +78,44 @@ rust-gvm -> gvmd
 - The gvmd adapter owns authenticated backend connections and per-session execution serialization.
 - Shared use cases in `gvm-gateway-app` coordinate those responsibilities without leaking transport/framework concerns into the domain.
 
+## Shared Session Execution Model
+
+- Persistent sessions are the shared execution model for multi-request workflows across REST and planned gRPC.
+- A successful session bootstrap yields an opaque bearer token that identifies one authenticated gateway session.
+- The domain `SessionManager` owns:
+  - token generation and lookup
+  - per-user and global session limits
+  - idle-expiry rules
+  - explicit teardown and invalidation
+- The gvmd adapter owns:
+  - the live authenticated backend connection bound to a session token
+  - single-flight execution on that connection
+  - backend disconnect detection and cleanup
+- Requests that resolve to the same session token must execute serially against gvmd.
+- Queue saturation and per-request timeouts are backpressure events, not silent retries or reordering.
+
+## Session Lifecycle Shape
+
+1. The client authenticates and creates a gateway session.
+2. The gateway authenticates against gvmd and binds the resulting backend connection to a new opaque session token.
+3. Subsequent adapter calls resolve that token through the same shared application/domain path.
+4. Every successful command dispatch refreshes the session's idle-expiry window.
+5. Explicit teardown, idle expiry, or backend disconnect invalidates the token and closes the bound connection.
+
+## Transport-Security Note
+
+Issue `#27` originally assumed TLS-only public transport. The current repository has since refined that into the explicit shared transport-security contract from issue `#130`:
+
+- `disabled` for intentional plain HTTP
+- `terminated_by_proxy` for HTTP behind a trusted TLS-terminating proxy
+- `native` for direct HTTPS from the gateway process
+
+That newer transport contract supersedes the older blanket "no plain HTTP" assumption while leaving the session/connection architecture from `#27` intact.
+
 ## Development Implications
 
 - Architecture discussions and new adapter work should update this document together with issue `#26` when the design changes materially.
+- Shared session/connection behavior changes should stay aligned with issue `#27` or its successor issues.
 - Specs under `spec/rest-api/` and `spec/grpc-api/` should treat this document as the architectural source of truth.
 - Repo docs must distinguish clearly between:
   - implemented gateway surfaces on `main`
