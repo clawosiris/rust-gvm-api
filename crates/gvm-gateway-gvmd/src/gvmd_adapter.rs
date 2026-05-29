@@ -28,8 +28,8 @@ use gvm_gateway_domain::{
     ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
     ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
     SchedulePort, ScheduleQuery, SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task,
-    TaskAction, TaskPage, TaskPort, TaskQuery, Timezone, TlsCertificate, TlsCertificatePage,
-    User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    TaskAction, TaskPage, TaskPort, TaskQuery, Timezone, TlsCertificate, TlsCertificatePage, User,
+    UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
