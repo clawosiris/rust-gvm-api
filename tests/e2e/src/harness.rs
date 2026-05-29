@@ -170,11 +170,33 @@ impl E2eHarness {
         self.get_target(token, &created.id).await
     }
 
+    pub async fn list_targets(&self, token: &str) -> Result<ListResponse<Target>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/targets?perPage=1000", token),
+            StatusCode::OK,
+            "list targets",
+        )
+        .await
+    }
+
     pub async fn get_target(&self, token: &str, target_id: &str) -> Result<Target> {
         self.send_json(
             self.authed(Method::GET, &format!("/api/v1/targets/{target_id}"), token),
             StatusCode::OK,
             "get target",
+        )
+        .await
+    }
+
+    pub async fn delete_target(&self, token: &str, target_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/targets/{target_id}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete target",
         )
         .await
     }
@@ -204,6 +226,15 @@ impl E2eHarness {
         self.get_task(token, &created.id).await
     }
 
+    pub async fn list_tasks(&self, token: &str) -> Result<ListResponse<Task>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/tasks?perPage=1000", token),
+            StatusCode::OK,
+            "list tasks",
+        )
+        .await
+    }
+
     pub async fn start_task(&self, token: &str, task_id: &str) -> Result<TaskAction> {
         self.send_json(
             self.authed(
@@ -213,6 +244,15 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "start task",
+        )
+        .await
+    }
+
+    pub async fn delete_task(&self, token: &str, task_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(Method::DELETE, &format!("/api/v1/tasks/{task_id}"), token),
+            StatusCode::NO_CONTENT,
+            "delete task",
         )
         .await
     }
@@ -401,6 +441,34 @@ impl E2eHarness {
         serde_json::from_str(&body)
             .with_context(|| format!("{action}: parse response body as JSON: {}", truncate(&body)))
     }
+
+    async fn send_empty(
+        &self,
+        request: reqwest::RequestBuilder,
+        expected_status: StatusCode,
+        action: &str,
+    ) -> Result<()> {
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("{action}: send HTTP request"))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .with_context(|| format!("{action}: read HTTP response body"))?;
+
+        if status != expected_status {
+            bail!(
+                "{action}: expected HTTP {} but received {} with body {}",
+                expected_status,
+                status,
+                truncate(&body)
+            );
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -471,6 +539,8 @@ pub struct Target {
     pub id: String,
     pub name: String,
     pub hosts: Vec<String>,
+    #[serde(rename = "portList")]
+    pub port_list: Option<ResourceRef>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -478,6 +548,10 @@ pub struct Task {
     pub id: String,
     pub name: String,
     pub status: String,
+    pub target: Option<ResourceRef>,
+    #[serde(rename = "scanConfig")]
+    pub scan_config: Option<ResourceRef>,
+    pub scanner: Option<ResourceRef>,
     #[serde(rename = "currentReport")]
     pub current_report: Option<ResourceRef>,
     #[serde(rename = "lastReport")]
@@ -562,6 +636,6 @@ fn chrono_like_timestamp() -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_else(|_| Duration::from_secs(0))
-        .as_secs();
+        .as_nanos();
     now.to_string()
 }
