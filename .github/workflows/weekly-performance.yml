@@ -1,0 +1,54 @@
+name: Weekly Performance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 23 * * 0"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  GVM_GATEWAY_E2E_BASE_URL: http://127.0.0.1:8080
+  GVM_GATEWAY_E2E_USERNAME: admin
+  GVM_GATEWAY_E2E_PASSWORD: admin
+  GVM_GATEWAY_E2E_TARGET_HOST: openvasd
+  GVM_GATEWAY_E2E_READY_TIMEOUT_SECS: "120"
+  GVM_GATEWAY_E2E_RESOURCE_TIMEOUT_SECS: "1200"
+  GVM_GATEWAY_E2E_POLL_INTERVAL_SECS: "10"
+  GVM_GATEWAY_PERF_ITERATIONS: "5"
+  GVM_GATEWAY_PERF_WARMUP_ITERATIONS: "1"
+  GVM_GATEWAY_PERF_OUTPUT_DIR: dist/performance
+
+jobs:
+  rest-smoke-performance:
+    name: REST Smoke Performance
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Configure git credentials for private deps
+        run: git config --global url."https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Start compose-backed runtime
+        run: ./scripts/compose-dev.sh up -d --build
+      - name: Run performance suite
+        run: ./scripts/run-performance-tests.sh
+      - name: Capture compose diagnostics
+        if: always()
+        run: |
+          mkdir -p dist/performance
+          ./scripts/compose-dev.sh ps > dist/performance/compose-ps.txt || true
+          ./scripts/compose-dev.sh logs --no-color > dist/performance/compose.log || true
+      - name: Upload performance artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: weekly-performance
+          path: dist/performance/*
+      - name: Tear down compose stack
+        if: always()
+        run: ./scripts/compose-dev.sh down -v

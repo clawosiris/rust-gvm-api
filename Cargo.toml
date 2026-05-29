@@ -7,6 +7,7 @@ members = [
     "crates/gvm-gateway-gvmd",
     "crates/gvm-gateway",
     "tests/e2e",
+    "tests/performance",
 ]
 
 [workspace.package]

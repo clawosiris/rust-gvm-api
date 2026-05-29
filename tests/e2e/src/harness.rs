@@ -1027,22 +1027,12 @@ impl E2eHarness {
     }
 
     pub async fn delete_session(&self, token: &str) -> Result<()> {
-        let response = self
-            .authed(Method::DELETE, &format!("/api/v1/sessions/{token}"), token)
-            .send()
-            .await
-            .context("delete REST session")?;
-        if response.status() == StatusCode::NO_CONTENT {
-            return Ok(());
-        }
-
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        bail!(
-            "delete session returned unexpected status {} with body {}",
-            status,
-            truncate(&body)
-        );
+        self.send_empty(
+            self.authed(Method::DELETE, &format!("/api/v1/sessions/{token}"), token),
+            StatusCode::NO_CONTENT,
+            "delete session",
+        )
+        .await
     }
 
     pub fn select_discovery_scan_config<'a>(
