@@ -1,9 +1,17 @@
-name: Nightly E2E
+name: E2E
 
 on:
   workflow_dispatch:
   schedule:
     - cron: "0 3 * * *"
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -45,7 +53,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: nightly-e2e-compose-diagnostics
+          name: e2e-compose-diagnostics
           path: dist/e2e/*
       - name: Tear down compose stack
         if: always()
