@@ -65,7 +65,7 @@ Suggested crate layout:
 - `gvm-gateway-rest`
 - `gvm-gateway-mcp`
 - `gvm-gateway` composition root
-- `gvm-gateway-grpc` should follow the same adapter pattern when it is implemented; the older checked-in `crates/gvm-grpc-api` placeholder should either converge into that shape or be removed
+- `gvm-gateway-grpc` should follow the same adapter pattern when it is implemented
 
 The shared gateway core should continue to own:
 
