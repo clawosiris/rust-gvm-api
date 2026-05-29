@@ -1,8 +1,8 @@
-# OpenSpec: GVM REST API (`gvm-rest-api`)
+# OpenSpec: GVM REST API
 
 ## 1. Overview
 
-A RESTful API server that exposes Greenbone Vulnerability Management (GVM) operations over HTTP/JSON. Built on [axum](https://github.com/tokio-rs/axum) and [rust-gvm](https://github.com/clawosiris/rust-gvm), providing a standards-compliant alternative to GMP's raw XML protocol.
+The REST surface of the `gvm-gateway`, exposing Greenbone Vulnerability Management (GVM) operations over HTTP/JSON. Built on [axum](https://github.com/tokio-rs/axum) and [rust-gvm](https://github.com/clawosiris/rust-gvm), providing a standards-compliant alternative to GMP's raw XML protocol.
 
 ### Goals
 
@@ -34,84 +34,45 @@ When a structured model exists upstream, use it as the source for API mapping.
 
 ## 2. Architecture
 
-```
-┌─────────────────────────────────────────────────┐
-│                  gvm-rest-api                    │
-│                                                  │
-│  ┌───────────┐  ┌───────────┐  ┌──────────────┐ │
-│  │  Router   │  │ Session   │  │  Middleware   │ │
-│  │  (axum)   │──│ Lifecycle  │──│  (CORS/Rate/ │ │
-│  │           │  │ + Bearer   │  │   Trace/Comp)│ │
-│  └─────┬─────┘  └───────────┘  └──────────────┘ │
-│        │                                         │
-│  ┌─────┴─────────────────────────────────────┐   │
-│  │           Service Layer                    │   │
-│  │  ┌─────────┐ ┌──────────┐ ┌────────────┐ │   │
-│  │  │ Scans   │ │ Targets  │ │  Reports    │ │   │
-│  │  │ Service │ │ Service  │ │  Service    │ │   │
-│  │  └────┬────┘ └────┬─────┘ └─────┬──────┘ │   │
-│  └───────┼───────────┼─────────────┼────────┘   │
-│          └───────────┼─────────────┘             │
-│                ┌─────┴─────┐                     │
-│                │ GMP Pool  │                     │
-│                │(gvm-client│                     │
-│                │ conn pool)│                     │
-│                └─────┬─────┘                     │
-└──────────────────────┼───────────────────────────┘
-                       │ GMP/XML
-                 ┌─────┴─────┐
-                 │   gvmd    │
-                 └───────────┘
+The REST adapter follows the shared gateway architecture defined in [docs/gateway-architecture.md](../../docs/gateway-architecture.md).
+For REST specifically, that means the crate layering from issue `#26` plus the shared session/connection execution model from issue `#27`.
+
+Current responsibilities inside the architecture:
+
+- `gvm-gateway-rest` is the REST incoming adapter.
+- `gvm-gateway-app` is the shared application/use-case layer.
+- `gvm-gateway-domain` owns session rules, invariants, and port traits.
+- `gvm-gateway-gvmd` is the gvmd outgoing adapter built on `rust-gvm`.
+- `gvm-gateway` is the composition root and runtime bootstrap.
+
+```text
+HTTP clients
+    │
+    ▼
+gvm-gateway-rest
+    │
+    ▼
+gvm-gateway-app
+    │
+    ▼
+gvm-gateway-domain
+    │
+    ▼
+gvm-gateway-gvmd
+    │
+    ▼
+rust-gvm -> gvmd
 ```
 
 ### Crate Structure
 
-```
-crates/gvm-rest-api/
-├── src/
-│   ├── main.rs          # Entry point, server bootstrap
-│   ├── lib.rs           # Library root
-│   ├── config.rs        # CLI args + config file loading
-│   ├── error.rs         # Error types → HTTP status mapping
-│   ├── auth/
-│   │   ├── mod.rs
-│   │   └── bearer.rs    # Session-token extraction / validation
-│   ├── middleware/
-│   │   ├── mod.rs
-│   │   ├── rate_limit.rs
-│   │   ├── audit.rs     # Request/response audit logging
-│   │   └── request_id.rs
-│   ├── routes/
-│   │   ├── mod.rs
-│   │   ├── health.rs    # GET /health, GET /ready
-│   │   ├── version.rs   # GET /api/v1/version
-│   │   ├── sessions.rs  # /api/v1/sessions/*
-│   │   ├── scans.rs     # /api/v1/scans/*
-│   │   ├── targets.rs   # /api/v1/targets/*
-│   │   ├── tasks.rs     # /api/v1/tasks/*
-│   │   ├── reports.rs   # /api/v1/reports/*
-│   │   ├── results.rs   # /api/v1/results/*
-│   │   ├── configs.rs   # /api/v1/scan-configs/*
-│   │   ├── scanners.rs  # /api/v1/scanners/*
-│   │   ├── alerts.rs    # /api/v1/alerts/*
-│   │   ├── schedules.rs # /api/v1/schedules/*
-│   │   ├── users.rs     # /api/v1/users/* + /groups/* + /roles/* + /permissions/* + /user-settings/*
-│   │   └── feeds.rs     # /api/v1/feeds/*
-│   ├── models/
-│   │   ├── mod.rs
-│   │   ├── scan.rs
-│   │   ├── target.rs
-│   │   ├── task.rs
-│   │   ├── report.rs
-│   │   ├── result.rs
-│   │   ├── pagination.rs
-│   │   └── filter.rs
-│   ├── pool.rs          # GMP connection pool
-│   └── openapi.rs       # OpenAPI spec generation
-├── tests/
-│   ├── api/             # Integration tests per route
-│   └── fixtures/        # Test data
-└── Cargo.toml
+```text
+crates/
+├── gvm-gateway-domain/   # Session model, lifecycle rules, port traits
+├── gvm-gateway-app/      # Shared use cases and orchestration
+├── gvm-gateway-rest/     # REST router, handlers, middleware, OpenAPI exposure
+├── gvm-gateway-gvmd/     # gvmd adapter over rust-gvm
+└── gvm-gateway/          # Composition root, config, listeners, shutdown, tracing
 ```
 
 ## 3. API Design
@@ -404,6 +365,9 @@ Current required coverage:
 3. **Session lifecycle controls**
    - `GET /api/v1/sessions/{token}` to inspect session state
    - `DELETE /api/v1/sessions/{token}` for explicit teardown
+   - Session creation and use flow through the shared `SessionManager` / gvmd connection-store model.
+   - One active session token maps to one authenticated backend execution context.
+   - Requests that reuse the same session token must serialize against that backend context; queue saturation/timeouts are surfaced as backpressure errors rather than hidden retries.
 
 4. **Authorization**
    - Authorization behavior follows gvmd user permissions
@@ -448,6 +412,8 @@ Transport-security notes:
 - `terminated_by_proxy` means plain HTTP behind a trusted TLS-terminating proxy and does not require local TLS files.
 - `native` means the gateway itself serves HTTPS and must fail startup unless both the certificate and private-key files are configured and loadable.
 - Proxy mode does not implicitly enable trust for forwarded headers.
+
+This explicit mode contract supersedes the earlier TLS-only ingress assumption from issue `#27` while preserving its shared session/connection model.
 
 ## 5. Implementation Phases (REST-first, aligned with #26 and #27)
 

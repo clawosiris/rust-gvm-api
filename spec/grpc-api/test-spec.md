@@ -1,4 +1,4 @@
-# Test Spec: GVM gRPC API (`gvm-grpc-api`)
+# Test Spec: GVM gRPC Gateway (`gvm-gateway-grpc`, planned)
 
 ## 1. Test Strategy
 
@@ -221,17 +221,17 @@ buf breaking proto --against .git#branch=main
 ### Test Environment
 
 ```yaml
-# tests/docker-compose.yml
-# Compatible with Docker Compose and Podman Compose
+# Planned gRPC stack should follow the same Compose-compatible shape used by the
+# current repository-level compose.yaml for the REST gateway runtime.
 services:
   gvmd:
     image: greenbone/gvmd:latest
     # ... (Greenbone Community stack)
 
-  gvm-grpc-api:
+  gvm-gateway-grpc:
     build: ../..
     environment:
-      GMP_SOCKET_PATH: /run/gvmd/gvmd.sock
+      GVM_GATEWAY_GVMD_ENDPOINT: unix:///run/gvmd/gvmd.sock
     depends_on:
       gvmd:
         condition: service_healthy
@@ -258,6 +258,9 @@ services:
 | `connection_pool_contention` | 100 concurrent RPCs with pool_size=10 | All succeed (queued) |
 
 ## 7. Test Data & Fixtures
+
+```
+Target future top-level test fixture layout:
 
 ```
 tests/

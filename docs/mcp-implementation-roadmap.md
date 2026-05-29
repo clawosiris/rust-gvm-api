@@ -65,7 +65,7 @@ Suggested crate layout:
 - `gvm-gateway-rest`
 - `gvm-gateway-mcp`
 - `gvm-gateway` composition root
-- `gvm-grpc-api` can either converge into the shared gateway shape or remain a separately composed surface until the contracts settle
+- `gvm-gateway-grpc` should follow the same adapter pattern when it is implemented; the older checked-in `crates/gvm-grpc-api` placeholder should either converge into that shape or be removed
 
 The shared gateway core should continue to own:
 

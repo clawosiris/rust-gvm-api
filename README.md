@@ -8,51 +8,68 @@
 > To create a nightly/alpha build, create an alpha release in the orchestrator.
 > See [RELEASING.md](./RELEASING.md) for details, including automated Debian and Arch Linux package artifacts.
 
-REST and gRPC API servers for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), with MCP planned as a peer API surface, all built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm).
+Gateway API surfaces for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm). REST is implemented on `main`; gRPC and MCP remain planned peer adapters over the same shared core.
 
 ## Overview
 
-This project provides modern, standards-compliant API layers on top of the Greenbone Management Protocol (GMP). Instead of speaking GMP's raw XML over Unix sockets or SSH, consumers interact through higher-level gateway surfaces such as REST, gRPC, and planned MCP tooling.
+This project provides a modern gateway on top of the Greenbone Management Protocol (GMP). Instead of speaking GMP's raw XML over Unix sockets or SSH, consumers interact through higher-level gateway surfaces while the gateway keeps XML parsing and protocol-shape handling inside `rust-gvm`.
 
 ### Crates
 
 | Crate | Description |
 |-------|-------------|
-| `gvm-rest-api` | RESTful API server (OpenAPI 3.1, JSON, axum) |
-| `gvm-grpc-api` | gRPC API server (Protocol Buffers, tonic, server-streaming) |
-| `gvm-gateway-*` | Shared gateway core and adapters that will also host MCP |
+| `gvm-gateway-domain` | Domain model, session lifecycle rules, port traits |
+| `gvm-gateway-app` | Shared gateway use cases and orchestration |
+| `gvm-gateway-rest` | REST incoming adapter |
+| `gvm-gateway-gvmd` | gvmd outgoing adapter built on `rust-gvm` |
+| `gvm-gateway` | Composition root and runtime bootstrap |
 
 ### Architecture
 
 ```
-┌──────────────┐     HTTP/JSON     ┌──────────────────┐
-│  REST Client │◄─────────────────►│ gvm-gateway-rest │
-└──────────────┘                   └────────┬─────────┘
-                                            │
-┌──────────────┐     gRPC/Proto    ┌────────┴─────────┐
-│  gRPC Client │◄─────────────────►│   gvm-grpc-api   │
-└──────────────┘                   └────────┬─────────┘
-                                            │
-┌──────────────┐     MCP Tools     ┌────────┴─────────┐
-│  MCP Client  │◄─────────────────►│ gvm-gateway-mcp │
-└──────────────┘                   └────────┬─────────┘
-                                            │
-                                   ┌────────┴─────────┐
-                                   │  gvm-gateway-*   │
-                                   │ shared core/app  │
-                                   └────────┬─────────┘
-                                            │
-                                   ┌────────┴─────────┐
-                                   │    rust-gvm      │
-                                   │   GMP transport   │
-                                   └──────────────────┘
+Clients
+  ├─ REST
+  ├─ gRPC (planned)
+  └─ MCP  (planned)
+         │
+         ▼
+Incoming adapters
+  ├─ gvm-gateway-rest
+  ├─ gvm-gateway-grpc (planned)
+  └─ gvm-gateway-mcp  (planned)
+         │
+         ▼
+Application core
+  └─ gvm-gateway-app
+         │
+         ▼
+Domain
+  └─ gvm-gateway-domain
+         │
+         ▼
+Outgoing adapter
+  └─ gvm-gateway-gvmd
+         │
+         ▼
+rust-gvm -> gvmd
 ```
 
-Both API servers use `gvm-client` from [rust-gvm](https://github.com/clawosiris/rust-gvm) to communicate with `gvmd` over the Greenbone Management Protocol.
+See [Gateway Architecture](docs/gateway-architecture.md) for the authoritative architecture description derived from issues `#26` and `#27`.
 
 ## Status
 
-🚧 **Early development** — not yet functional. See the [OpenSpecs](spec/) for the design.
+The repository now contains a working REST gateway baseline in the `gvm-gateway*` workspace crates, including container/runtime packaging, shutdown control, transport-security modes, and tracing. gRPC and MCP remain planned surfaces; their specs and analysis docs should be read as forward-looking design material rather than shipped runtime behavior.
+
+## Shared Session Model
+
+The gateway's multi-request execution model is session-backed rather than stateless:
+
+- clients create a session and receive an opaque bearer token
+- the domain `SessionManager` owns token lifecycle, expiry, and session limits
+- the gvmd adapter owns the live authenticated backend connection bound to that session
+- commands for one session execute serially against gvmd, with explicit backpressure on queue saturation
+
+That session/connection model is shared architecture for REST today and planned gRPC later, even though the exact transport-security deployment mode is now configurable (`disabled`, `terminated_by_proxy`, `native`).
 
 ## Getting Started
 
@@ -168,6 +185,7 @@ Useful follow-up commands:
 
 - [REST API OpenSpec](spec/rest-api/openspec.md)
 - [gRPC API OpenSpec](spec/grpc-api/openspec.md)
+- [Gateway Architecture](docs/gateway-architecture.md)
 - [GMP API Proxy Analysis](docs/gmp-api-proxy-analysis.md)
 - [Proxy Access Control Analysis](docs/proxy-access-control-analysis.md)
 - [MCP Gateway Surface Analysis](docs/mcp-gateway-surface-analysis.md)

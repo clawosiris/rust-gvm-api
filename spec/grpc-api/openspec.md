@@ -1,8 +1,13 @@
-# OpenSpec: GVM gRPC API (`gvm-grpc-api`)
+# OpenSpec: GVM gRPC API
 
 ## 1. Overview
 
-A gRPC API server that exposes Greenbone Vulnerability Management (GVM) operations over HTTP/2 with Protocol Buffers. Built on [tonic](https://github.com/hyperium/tonic) and [rust-gvm](https://github.com/clawosiris/rust-gvm), optimized for high-throughput, streaming, and service-to-service communication.
+The planned gRPC surface of the `gvm-gateway`, exposing Greenbone Vulnerability Management (GVM) operations over HTTP/2 with Protocol Buffers. It is intended to sit beside REST as a peer incoming adapter over the same shared application core.
+
+> [!IMPORTANT]
+> This document is a design target, not a description of the current default workspace build on `main`.
+> The authoritative gateway architecture is [docs/gateway-architecture.md](../../docs/gateway-architecture.md).
+> REST is implemented today; gRPC remains a planned adapter.
 
 ### Goals
 
@@ -33,109 +38,52 @@ Current mandatory coverage (from `rust-gvm` PR #68):
 
 ## 2. Architecture
 
-The gRPC API is part of the unified `gvm-gateway` binary (see [ADR-001](#adr-001-unified-gateway-binary-rest--grpc)).
+The gRPC adapter should follow the shared gateway architecture from [issue #26](https://github.com/clawosiris/rust-gvm-api/issues/26): peer incoming adapters over one application core, one domain layer, and one gvmd outgoing adapter.
+It should also follow the shared session/connection execution model from [issue #27](https://github.com/clawosiris/rust-gvm-api/issues/27): both REST and gRPC resolve session tokens through the same `SessionManager` and the same gvmd connection store.
 
-Both REST and gRPC are served on **a single port** (`:8080`) using HTTP/2 content-type multiplexing.
+Current repository status:
+
+- `gvm-gateway-domain`, `gvm-gateway-app`, `gvm-gateway-rest`, `gvm-gateway-gvmd`, and `gvm-gateway` are the active workspace members on `main`.
+- gRPC is still deferred from the default build and runtime wiring.
+- When implemented, the gRPC adapter should align to the `gvm-gateway-*` crate pattern rather than inventing a separate architecture.
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                      gvm-gateway (:8080)                              │
-│                                                                       │
-│  ┌──────────────────────────────────────────────────────────────┐    │
-│  │                   Protocol Multiplexer                        │    │
-│  │         (routes by Content-Type: application/grpc)            │    │
-│  └──────────────────────────┬───────────────────────────────────┘    │
-│                             │                                         │
-│            ┌────────────────┴────────────────┐                       │
-│            │                                  │                       │
-│  ┌─────────┴─────────┐              ┌────────┴────────┐              │
-│  │   REST (Axum)     │              │   gRPC (Tonic)  │              │
-│  │  ┌─────────────┐  │              │  ┌────────────┐ │              │
-│  │  │ Middleware  │  │              │  │Interceptors│ │              │
-│  │  │(Auth/Trace) │  │              │  │(Auth/Trace)│ │              │
-│  │  └──────┬──────┘  │              │  └─────┬──────┘ │              │
-│  │  ┌──────┴──────┐  │              │  ┌─────┴──────┐ │              │
-│  │  │  Handlers   │  │              │  │  Services  │ │              │
-│  │  │(targets,...)│  │              │  │(Target,...)│ │              │
-│  │  └──────┬──────┘  │              │  └─────┬──────┘ │              │
-│  └─────────┼─────────┘              └────────┼────────┘              │
-│                 │                                 │                   │
-│                 └─────────────┬─────────────────-─┘                   │
-│                               │                                       │
-│                 ┌─────────────┴─────────────┐                         │
-│                 │     Shared Domain Layer    │                         │
-│                 │  (gvm-gateway-domain)      │                         │
-│                 └─────────────┬─────────────┘                         │
-│                               │                                       │
-│                 ┌─────────────┴─────────────┐                         │
-│                 │    GMP Connection Pool     │                         │
-│                 │  (gvm-gateway-gvmd)        │                         │
-│                 └─────────────┬─────────────┘                         │
-└───────────────────────────────┼───────────────────────────────────────┘
-                                │ GMP/XML
-                          ┌─────┴─────┐
-                          │   gvmd    │
-                          └───────────┘
+Clients
+  ├─ REST
+  └─ gRPC
+         │
+         ▼
+Incoming adapters
+  ├─ gvm-gateway-rest
+  └─ gvm-gateway-grpc (planned)
+         │
+         ▼
+Application core
+  └─ gvm-gateway-app
+         │
+         ▼
+Domain
+  └─ gvm-gateway-domain
+         │
+         ▼
+Outgoing adapter
+  └─ gvm-gateway-gvmd
+         │
+         ▼
+rust-gvm -> gvmd
 ```
 
 ### Crate Structure
 
-```
-crates/gvm-grpc-api/
-├── proto/
-│   └── gvm/
-│       └── v1/
-│           ├── common.proto       # Shared types (UUID, Timestamp, Pagination)
-│           ├── target.proto       # Target service
-│           ├── task.proto         # Task service
-│           ├── report.proto       # Report service (with streaming)
-│           ├── result.proto       # Result service
-│           ├── scan_config.proto  # Scan config service
-│           ├── scanner.proto      # Scanner service
-│           ├── alert.proto        # Alert service
-│           ├── schedule.proto     # Schedule service
-│           ├── user.proto         # User service
-│           ├── feed.proto         # Feed service
-│           └── system.proto       # Version, health
-├── src/
-│   ├── main.rs          # Entry point, server bootstrap
-│   ├── lib.rs           # Library root
-│   ├── config.rs        # CLI args + config file loading
-│   ├── error.rs         # GMP errors → gRPC status mapping
-│   ├── auth/
-│   │   ├── mod.rs
-│   │   ├── jwt.rs       # JWT from metadata
-│   │   └── mtls.rs      # Mutual TLS client cert auth
-│   ├── interceptors/
-│   │   ├── mod.rs
-│   │   ├── auth.rs      # Auth interceptor
-│   │   ├── rate_limit.rs
-│   │   ├── audit.rs
-│   ├── services/
-│   │   ├── mod.rs
-│   │   ├── target.rs
-│   │   ├── task.rs
-│   │   ├── report.rs    # Server-streaming for large reports
-│   │   ├── result.rs
-│   │   ├── scan_config.rs
-│   │   ├── scanner.rs
-│   │   ├── alert.rs
-│   │   ├── schedule.rs
-│   │   ├── user.rs
-│   │   ├── feed.rs
-│   │   └── system.rs
-│   ├── convert/
-│   │   ├── mod.rs       # GMP types ↔ Protobuf message conversion
-│   │   ├── target.rs
-│   │   ├── task.rs
-│   │   ├── report.rs
-│   │   └── result.rs
-│   └── pool.rs          # GMP connection pool
-├── build.rs             # tonic-build protobuf compilation
-├── tests/
-│   ├── services/        # Integration tests per service
-│   └── fixtures/        # Test data
-└── Cargo.toml
+```text
+Target gateway shape for gRPC:
+
+crates/
+├── gvm-gateway-domain/   # shared session model, invariants, port traits
+├── gvm-gateway-app/      # shared use cases and orchestration
+├── gvm-gateway-grpc/     # planned gRPC incoming adapter
+├── gvm-gateway-gvmd/     # shared gvmd outgoing adapter
+└── gvm-gateway/          # composition root and runtime wiring
 ```
 
 ## 3. Protobuf Service Definitions
@@ -179,6 +127,57 @@ message FilterExpression {
   string field = 1;
   string operator = 2;  // "eq", "gt", "lt", "gte", "lte", "contains"
   string value = 3;
+}
+```
+
+### Session Service (`session.proto`)
+
+```protobuf
+syntax = "proto3";
+package gvm.v1;
+
+service SessionService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc GetSession(GetSessionRequest) returns (SessionInfo);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+}
+
+message CreateSessionRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message CreateSessionResponse {
+  string session_token = 1;
+  int32 expires_in = 2;
+  string gmp_version = 3;
+}
+
+message GetSessionRequest {
+  string session_token = 1;
+}
+
+message CloseSessionRequest {
+  string session_token = 1;
+}
+
+message CloseSessionResponse {}
+
+message SessionInfo {
+  string session_token = 1;
+  string user = 2;
+  SessionState state = 3;
+  Timestamp created_at = 4;
+  Timestamp last_used_at = 5;
+  int32 expires_in = 6;
+}
+
+enum SessionState {
+  SESSION_STATE_UNSPECIFIED = 0;
+  SESSION_STATE_ACTIVE = 1;
+  SESSION_STATE_IDLE = 2;
+  SESSION_STATE_EXPIRED = 3;
+  SESSION_STATE_CLOSED = 4;
 }
 ```
 
@@ -416,23 +415,25 @@ message GetStatusResponse {
 
 ## 4. Authentication & Authorization
 
-### 1. JWT via Metadata
+### 1. Session Token via Metadata
 
-Clients pass JWT tokens in gRPC metadata:
+Clients bootstrap a gateway session via `CreateSession`, then pass the opaque session token in gRPC metadata:
 
 ```
-authorization: Bearer <jwt-token>
+authorization: Bearer <session-token>
 ```
 
-Auth interceptor validates the token and extracts user identity before the RPC handler.
+The interceptor resolves that token through the shared `SessionManager`, refreshes idle-expiry on successful use, and routes the RPC through the same gvmd-bound backend session model used by REST.
 
-### 2. Mutual TLS (mTLS)
+### 2. TLS and Optional mTLS
 
-For service-to-service communication:
-- Server presents its certificate
-- Client presents its certificate
-- Server validates client cert against a trusted CA
-- Client identity extracted from certificate CN/SAN
+The repository-wide transport-security contract remains authoritative for the gateway listener:
+
+- `native` for direct TLS termination in the gateway
+- `terminated_by_proxy` for a trusted upstream TLS terminator
+- `disabled` only where intentional plain HTTP is acceptable for the deployment
+
+If a future gRPC deployment uses service-to-service mTLS, that is an additional transport-layer control rather than the primary application identity model.
 
 ### 3. Per-RPC Authorization
 
@@ -469,48 +470,37 @@ Using `google.rpc.Status` with `ErrorInfo`, `BadRequest`, and `DebugInfo` detail
 
 ## 6. Configuration
 
-The gRPC API shares a unified configuration file with the REST API (see [ADR-001](#adr-001-unified-gateway-binary-rest--grpc)).
+The planned gRPC adapter should share the gateway configuration surface with the REST adapter instead of inventing a separate runtime architecture.
+The current `main` branch already defines the shared gateway baseline for listener binding, transport-security mode selection, gvmd backend endpoint selection, tracing/export, and shutdown behavior.
+gRPC-specific knobs such as reflection, message-size limits, and keepalive policy remain design-time fields until the adapter is wired into the workspace.
 
 ```toml
-# gvm-gateway.toml
+# Illustrative target shape
 
 [server]
-bind = "0.0.0.0:8080"                 # Single port for REST + gRPC
-max_message_size_bytes = 67_108_864   # 64 MB (for large gRPC responses)
+bind = "0.0.0.0:8080"
+transport_security_mode = "native"    # or "disabled" / "terminated_by_proxy"
+
+[grpc]
+reflection_enabled = true
+max_message_size_bytes = 67_108_864
 keepalive_secs = 60
 keepalive_timeout_secs = 20
 
-[grpc]
-reflection_enabled = true             # gRPC reflection for grpcurl/grpcui (disable in prod)
-
-[tls]
-cert = "/etc/gvm-gateway/tls/cert.pem"
-key = "/etc/gvm-gateway/tls/key.pem"
-ca = "/etc/gvm-gateway/tls/ca.pem"    # For mTLS client verification (optional)
-
 [gmp]
-transport = "unix"
-socket_path = "/run/gvmd/gvmd.sock"
-pool_size = 10
+endpoint = "unix:///run/gvmd/gvmd.sock"
 connect_timeout_secs = 5
 request_timeout_secs = 60
 
-[auth]
-jwt_secret = "${JWT_SECRET}"
-jwt_expiration_secs = 3600
+[sessions]
+idle_timeout_secs = 300
+max_sessions_global = 1000
+max_sessions_per_user = 10
+per_session_queue_depth = 32
+per_session_queue_timeout_secs = 30
+
+[transport]
 mtls_enabled = false
-
-[rate_limit]
-default_rps = 500
-burst = 750
-
-[logging]
-format = "json"
-level = "info"
-
-[telemetry]
-otlp_endpoint = "http://localhost:4317"
-service_name = "gvm-gateway"
 ```
 
 ## 7. Implementation Phases
@@ -520,7 +510,9 @@ service_name = "gvm-gateway"
 - Server bootstrap (tonic) integrated into unified `gvm-gateway` binary
 - gRPC health checking protocol (`grpc.health.v1`)
 - gRPC reflection
-- GMP connection pool (shared with REST API)
+- Shared `SessionManager` integration and session lifecycle RPCs
+- gvmd connection store keyed by session token
+- One in-flight GMP command lane per session with explicit backpressure behavior
 - System service (version, status)
 - Unified configuration + CLI (shared with REST)
 - Structured logging (shared tracing subscriber)
@@ -537,12 +529,12 @@ service_name = "gvm-gateway"
 
 ### Phase 3: Auth & Security
 
-- JWT interceptor
+- Session-token metadata interceptor
 - mTLS support
 - Per-RPC authorization
 - Rate limiting interceptor
 - Audit logging interceptor
-- Request ID propagation via metadata
+- W3C trace-context propagation via metadata where applicable
 
 ### Phase 4: Advanced Features
 
@@ -574,7 +566,7 @@ GMP report responses can be very large (100k+ results). The raw XML can exceed h
 ### Streaming Flow
 
 ```
-Client                    gvm-grpc-api                    gvmd
+Client                 gvm-gateway-grpc                 gvmd
   │                            │                            │
   │── StreamReportResults ────►│                            │
   │                            │── get_report/get_results ─►│
@@ -599,8 +591,8 @@ Client                    gvm-grpc-api                    gvmd
 | `tonic-reflection` | gRPC reflection service |
 | `tonic-health` | gRPC health checking |
 | `tokio` | Async runtime |
+| `tokio-rustls` | Native TLS support when the gateway terminates TLS directly |
 | `serde` / `serde_json` | Config serialization |
-| `jsonwebtoken` | JWT handling |
 | `clap` | CLI parsing |
 | `tracing` | Structured logging |
 | `prometheus` | Metrics |
@@ -620,8 +612,8 @@ Client                    gvm-grpc-api                    gvmd
 
 ## 10. Security Considerations
 
-- **TLS by default**: All gRPC traffic encrypted; mTLS optional for service mesh
-- **No credential storage**: JWT secret from env, GMP credentials per-session
+- **Transport security is explicit**: direct TLS or trusted proxy termination are deployment choices; mTLS remains optional for service-mesh scenarios
+- **No credential storage**: bootstrap credentials are used to create a gateway session; opaque session tokens must be treated as bearer secrets and redacted from logs
 - **Message size limits**: Configurable max receive size (default 64 MB)
 - **Keepalive**: Detect dead connections, prevent resource leaks
 - **No unsafe code**: `#[deny(unsafe_code)]` crate-wide
@@ -650,68 +642,26 @@ protoc -Iproto --go_out=. --go-grpc_out=. proto/gvm/v1/*.proto
 
 **Context:** We need to decide whether REST and gRPC APIs should be separate binaries or combined.
 
-**Decision:** REST and gRPC will be served from a **single binary** (`gvm-gateway`) on separate ports.
+**Decision:** REST and gRPC should live in the same gateway system and share one application/domain core plus one gvmd adapter boundary. The composition root remains `gvm-gateway`.
 
 **Rationale:**
-- **Shared connection pool**: Both APIs connect to gvmd via GMP. A single pool reduces connection overhead and simplifies resource management.
+- **Shared backend boundary**: Both APIs connect to gvmd through the same outgoing adapter shape and should not duplicate GMP integration logic.
 - **Shared domain logic**: Authentication, session management, and business validation are identical across protocols.
 - **Simpler operations**: One container, one deployment, one set of config files, one health check endpoint.
 - **Consistent behavior**: Bug fixes and features apply to both APIs simultaneously.
 
 **Consequences:**
-- Binary size increases slightly (includes both Axum and Tonic dependencies)
-- Both APIs must be deployed together (cannot scale independently)
-- Configuration covers both protocols in a single file
-- Single port simplifies firewall rules and load balancer config
+- Binary size may increase once both adapters ship together.
+- Both APIs may be deployed together unless a later operational need justifies a different composition.
+- Configuration should stay unified at the gateway level even if adapter-specific keys are added.
 
 **Implementation:**
 
-Both protocols are served on a single port using HTTP/2 content-type multiplexing. The server inspects the `Content-Type` header to route requests:
-- `application/grpc` → gRPC handler (Tonic)
-- All other requests → REST handler (Axum)
+The exact listener topology is intentionally left open here. A shared port, separate ports, or another composition strategy are all acceptable as long as the architectural rule from issue `#26` holds:
 
-```rust
-// gvm-gateway/src/main.rs
-use hyper::Request;
-use tonic::body::BoxBody;
-use tower::ServiceExt;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    let config = Config::load()?;
-    let gmp_pool = GmpPool::new(&config.gmp).await?;
-    
-    let rest = rest_router(gmp_pool.clone());
-    let grpc = grpc_server(gmp_pool.clone());
-    
-    // Multiplex based on content-type
-    let service = tower::service_fn(move |req: Request<_>| {
-        let rest = rest.clone();
-        let grpc = grpc.clone();
-        async move {
-            if is_grpc_request(&req) {
-                grpc.oneshot(req).await
-            } else {
-                rest.oneshot(req).await
-            }
-        }
-    });
-    
-    axum::Server::bind(&config.bind)
-        .serve(service.into_make_service())
-        .await?;
-    Ok(())
-}
-
-fn is_grpc_request<B>(req: &Request<B>) -> bool {
-    req.headers()
-        .get("content-type")
-        .map(|v| v.as_bytes().starts_with(b"application/grpc"))
-        .unwrap_or(false)
-}
-```
-
-**Default port:** `8080` (HTTP/2, serves both REST and gRPC)
+- REST and gRPC remain peer incoming adapters.
+- Both call into the same application/domain core.
+- Both use the same gvmd adapter boundary instead of integrating GMP separately.
 
 ---
 
@@ -719,4 +669,5 @@ fn is_grpc_request<B>(req: &Request<B>) -> bool {
 
 - [ ] Bidirectional streaming for interactive scan control?
 - [ ] gRPC-Web support for browser clients (via envoy proxy or tonic-web)?
+- [ ] Shared-port multiplexing vs separate listeners once the adapter is implemented?
 - [ ] Shared protobuf package published as a standalone crate for clients?
