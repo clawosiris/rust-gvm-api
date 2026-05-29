@@ -574,6 +574,15 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn list_reports(&self, token: &str) -> Result<ListResponse<Report>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/reports?perPage=1000", token),
+            StatusCode::OK,
+            "list reports",
+        )
+        .await
+    }
+
     pub async fn get_report_results(&self, token: &str, report_id: &str) -> Result<ResultList> {
         self.send_json(
             self.authed(
@@ -583,6 +592,46 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "get report results",
+        )
+        .await
+    }
+
+    pub async fn get_report_results_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/reports/{report_id}/results?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get report results page",
+        )
+        .await
+    }
+
+    pub async fn get_report_vulnerabilities_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!(
+                    "/api/v1/reports/{report_id}/vulnerabilities?page={page}&perPage={per_page}"
+                ),
+                token,
+            ),
+            StatusCode::OK,
+            "get report vulnerabilities page",
         )
         .await
     }
@@ -988,6 +1037,21 @@ pub struct ScanResult {
     pub host: Option<String>,
     pub port: Option<String>,
     pub severity: Option<f64>,
+    pub threat: Option<String>,
+    pub task: Option<ResourceRef>,
+    pub report: Option<ResourceRef>,
+    pub nvt: Option<NvtRef>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NvtRef {
+    pub oid: Option<String>,
+    pub name: Option<String>,
+    pub family: Option<String>,
+    #[serde(rename = "cvssBase")]
+    pub cvss_base: Option<f64>,
+    pub cves: Option<Vec<String>>,
+    pub tags: Option<String>,
 }
 
 fn env_or_default(key: &str, default: &str) -> String {

@@ -3,7 +3,8 @@
 
 use anyhow::{anyhow, Context, Result};
 use gvm_gateway_e2e::harness::{
-    E2eHarness, ListResponse, PortList, ScanConfig, Scanner, SessionResponse, Target, Task,
+    E2eHarness, ListResponse, PortList, Report, ResultList, ScanConfig, ScanResult, Scanner,
+    SessionResponse, Target, Task,
 };
 
 // Covers the target lifecycle contract clients rely on before creating scans.
@@ -90,7 +91,7 @@ async fn rest_discovery_lifecycle_creates_lists_and_deletes_task() -> Result<()>
     finish_session(&harness, &session, run).await
 }
 
-// Covers the started scan contract: start-task returns a report id, completion links it, and report results are readable.
+// Covers the started scan and report drill-down contract around the report produced by a completed task.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires a compose-backed gvmd environment"]
 async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()> {
@@ -169,6 +170,26 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
                 "report result pagination under-reported total results"
             );
         }
+
+        let reports = harness.list_reports(&session.token).await?;
+        assert_report_list_contains(&reports, &report, &created.task);
+
+        let first_results_page = harness
+            .get_report_results_page(&session.token, &action.report_id, 1, 1)
+            .await?;
+        assert_report_results_page_links_report(
+            "report results",
+            &first_results_page,
+            &report,
+            &created.task,
+            Some(1),
+        );
+        assert_report_result_total_consistent("report results", &first_results_page, &report);
+
+        let vulnerabilities = harness
+            .get_report_vulnerabilities_page(&session.token, &action.report_id, 1, 25)
+            .await?;
+        assert_report_vulnerabilities_page_links_report(&vulnerabilities, &report, &created.task);
 
         Ok(())
     }
@@ -360,6 +381,162 @@ fn assert_task_list_contains(tasks: &ListResponse<Task>, task: &Task) {
         "task list did not include created task {} ({})",
         task.name,
         task.id
+    );
+}
+
+fn assert_report_list_contains(reports: &ListResponse<Report>, report: &Report, task: &Task) {
+    assert_pagination_shape("reports", reports);
+    let listed = reports
+        .data
+        .iter()
+        .find(|listed| listed.id == report.id)
+        .unwrap_or_else(|| panic!("report list did not include completed report {}", report.id));
+    assert_eq!(
+        listed.task.as_ref().map(|task| task.id.as_str()),
+        Some(task.id.as_str()),
+        "listed report did not point back to the completed task"
+    );
+}
+
+fn assert_report_results_page_links_report(
+    resource: &str,
+    page: &ResultList,
+    report: &Report,
+    task: &Task,
+    expected_per_page: Option<u32>,
+) {
+    assert_result_pagination_shape(resource, page, expected_per_page);
+
+    for result in &page.data {
+        assert_scan_result_links_report(resource, result, report, task);
+    }
+}
+
+fn assert_report_vulnerabilities_page_links_report(
+    page: &ResultList,
+    report: &Report,
+    task: &Task,
+) {
+    assert_report_results_page_links_report("report vulnerabilities", page, report, task, Some(25));
+
+    if let Some(total) = report.result_count.as_ref().and_then(|count| count.total) {
+        assert!(
+            page.pagination.total <= total,
+            "vulnerability total {} exceeded report total {}",
+            page.pagination.total,
+            total
+        );
+    }
+
+    for result in &page.data {
+        assert!(
+            result.nvt.is_some() || result.severity.is_some() || !result.name.trim().is_empty(),
+            "vulnerability result {} did not expose finding metadata",
+            result.id
+        );
+    }
+}
+
+fn assert_scan_result_links_report(
+    resource: &str,
+    result: &ScanResult,
+    report: &Report,
+    task: &Task,
+) {
+    assert!(
+        !result.id.trim().is_empty(),
+        "{resource} returned a result with an empty id"
+    );
+    assert!(
+        !result.name.trim().is_empty(),
+        "{resource} returned result {} with an empty name",
+        result.id
+    );
+    if let Some(result_report) = result.report.as_ref() {
+        assert_eq!(
+            result_report.id, report.id,
+            "{resource} result {} did not point back to report {}",
+            result.id, report.id
+        );
+    }
+    if let Some(result_task) = result.task.as_ref() {
+        assert_eq!(
+            result_task.id, task.id,
+            "{resource} result {} did not point back to task {}",
+            result.id, task.id
+        );
+    }
+}
+
+fn assert_report_result_total_consistent(resource: &str, page: &ResultList, report: &Report) {
+    if let Some(total) = report.result_count.as_ref().and_then(|count| count.total) {
+        assert!(
+            page.pagination.total >= total || page.data.len() as u32 >= total,
+            "{resource} pagination under-reported total results"
+        );
+    }
+}
+
+fn assert_result_pagination_shape(
+    resource: &str,
+    response: &ResultList,
+    expected_per_page: Option<u32>,
+) {
+    assert_eq!(
+        response.pagination.page, 1,
+        "{resource} list used an unexpected page"
+    );
+    if let Some(expected_per_page) = expected_per_page {
+        assert_eq!(
+            response.pagination.per_page, expected_per_page,
+            "{resource} list used an unexpected page size"
+        );
+    } else {
+        assert!(
+            response.pagination.per_page > 0,
+            "{resource} list returned a non-positive page size"
+        );
+    }
+    if response.pagination.total == 0 {
+        assert_eq!(
+            response.pagination.total_pages, 0,
+            "{resource} list returned totalPages for an empty result set"
+        );
+    } else {
+        assert!(
+            response.pagination.total_pages >= 1,
+            "{resource} list returned no pages for a non-empty result set"
+        );
+    }
+    assert!(
+        response.data.len() <= response.pagination.per_page as usize,
+        "{resource} list returned more items than its page size"
+    );
+}
+
+fn assert_pagination_shape<T>(resource: &str, response: &ListResponse<T>) {
+    assert_eq!(
+        response.pagination.page, 1,
+        "{resource} list used an unexpected default page"
+    );
+    assert!(
+        response.pagination.per_page > 0,
+        "{resource} list returned a non-positive page size"
+    );
+    if response.pagination.total == 0 {
+        assert_eq!(
+            response.pagination.total_pages, 0,
+            "{resource} list returned totalPages for an empty result set"
+        );
+    } else {
+        assert!(
+            response.pagination.total_pages >= 1,
+            "{resource} list returned no pages for a non-empty result set"
+        );
+    }
+    assert!(
+        response.data.len() <= response.pagination.per_page as usize,
+        "{resource} list returned more items than its page size"
     );
 }
 
