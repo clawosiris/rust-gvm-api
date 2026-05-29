@@ -107,6 +107,14 @@ Start a local gateway + gvmd stack with either Docker Compose or Podman Compose:
 
 The stack definition in [compose.yaml](./compose.yaml) is based on the official Greenbone Community container topology, but trims it to the services needed for `gvmd` plus the gateway. On the first boot, feed and data initialization can take several minutes before `gvmd` is ready.
 
+Run the compose-backed REST end-to-end tests through the wrapper script:
+
+```bash
+./scripts/run-e2e-tests.sh
+```
+
+The wrapper waits for `/ready`, prints feed status for diagnostics, then polls the REST resources required by the discovery scan test: discovery scan configs, OpenVAS scanner availability, and usable port lists. This is stricter than feed status alone because gvmd can accept GMP connections before first-boot data imports have populated REST-visible scan configs.
+
 Useful follow-up commands:
 
 ```bash

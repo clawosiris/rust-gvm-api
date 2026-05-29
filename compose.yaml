@@ -3,42 +3,10 @@ name: rust-gvm-api-dev
 services:
   vulnerability-tests:
     image: registry.community.greenbone.net/community/vulnerability-tests
-    environment:
-      FEED_RELEASE: "24.10"
-      KEEP_ALIVE: 1
+    # Copy only the vts required for e2e tests. This massively improves startup times
+    command: /bin/sh -c 'mkdir -p /mnt/24.10/vt-data/nasl/; for f in byte_func.inc global_settings.nasl host_alive_detection.nasl host_details.inc http_func.inc list_array_func.inc mac_prefix.inc misc_func.inc network_func.inc os_func.inc plugin_feed_info.inc revisions-lib.inc smb_nt.inc traversal_func.inc version_func.inc; do cp -- "$${STORAGE_PATH}/24.10/vt-data/nasl/$${f}" "/mnt/"; done'
     volumes:
       - vt_data_vol:/mnt
-
-  notus-data:
-    image: registry.community.greenbone.net/community/notus-data
-    environment:
-      KEEP_ALIVE: 1
-    volumes:
-      - notus_data_vol:/mnt
-
-  scap-data:
-    image: registry.community.greenbone.net/community/scap-data
-    environment:
-      KEEP_ALIVE: 1
-    volumes:
-      - scap_data_vol:/mnt
-
-  cert-bund-data:
-    image: registry.community.greenbone.net/community/cert-bund-data
-    environment:
-      KEEP_ALIVE: 1
-    volumes:
-      - cert_data_vol:/mnt
-
-  dfn-cert-data:
-    image: registry.community.greenbone.net/community/dfn-cert-data
-    environment:
-      KEEP_ALIVE: 1
-    volumes:
-      - cert_data_vol:/mnt
-    depends_on:
-      cert-bund-data:
-        condition: service_healthy
 
   data-objects:
     image: registry.community.greenbone.net/community/data-objects
@@ -71,12 +39,14 @@ services:
 
   pg-gvm-migrator:
     image: registry.community.greenbone.net/community/pg-gvm-migrator:stable
+    pull_policy: always
     volumes:
       - psql_data_vol:/var/lib/postgresql
       - psql_socket_vol:/var/run/postgresql
 
   pg-gvm:
     image: registry.community.greenbone.net/community/pg-gvm:stable
+    pull_policy: always
     volumes:
       - psql_data_vol:/var/lib/postgresql
       - psql_socket_vol:/var/run/postgresql
@@ -99,6 +69,9 @@ services:
         chmod 644 /mnt/openvas_log.conf
         touch /var/log/openvas/openvas.log
         chmod 666 /var/log/openvas/openvas.log
+    depends_on:
+      vulnerability-tests:
+        condition: service_completed_successfully
 
   openvasd:
     image: registry.community.greenbone.net/community/openvas-scanner:stable
@@ -110,12 +83,7 @@ services:
       - openvas_data_vol:/etc/openvas
       - openvas_log_data_vol:/var/log/openvas
       - gpg_data_vol:/etc/openvas/gnupg
-      - notus_data_vol:/var/lib/notus
     depends_on:
-      vulnerability-tests:
-        condition: service_healthy
-      notus-data:
-        condition: service_healthy
       configure-openvas:
         condition: service_completed_successfully
       gpg-data:
@@ -148,7 +116,6 @@ services:
     volumes:
       - gpg_data_vol:/etc/openvas/gnupg
       - vt_data_vol:/var/lib/openvas/plugins
-      - notus_data_vol:/var/lib/notus
       - ospd_openvas_socket_vol:/run/ospd
       - redis_socket_vol:/run/redis/
       - openvas_data_vol:/etc/openvas/
@@ -160,17 +127,11 @@ services:
         condition: service_completed_successfully
       configure-openvas:
         condition: service_completed_successfully
-      vulnerability-tests:
-        condition: service_healthy
-      notus-data:
-        condition: service_healthy
 
   gvmd:
     image: registry.community.greenbone.net/community/gvmd:stable
     volumes:
       - gvmd_data_vol:/var/lib/gvm
-      - scap_data_vol:/var/lib/gvm/scap-data/
-      - cert_data_vol:/var/lib/gvm/cert-data
       - data_objects_vol:/var/lib/gvm/data-objects/gvmd
       - vt_data_vol:/var/lib/openvas/plugins
       - psql_data_vol:/var/lib/postgresql
@@ -180,12 +141,6 @@ services:
     depends_on:
       pg-gvm:
         condition: service_started
-      scap-data:
-        condition: service_healthy
-      cert-bund-data:
-        condition: service_healthy
-      dfn-cert-data:
-        condition: service_healthy
       data-objects:
         condition: service_healthy
       report-formats:
@@ -216,13 +171,10 @@ services:
 
 volumes:
   gpg_data_vol:
-  scap_data_vol:
-  cert_data_vol:
   data_objects_vol:
+  vt_data_vol:
   gvmd_data_vol:
   psql_data_vol:
-  vt_data_vol:
-  notus_data_vol:
   psql_socket_vol:
   gvmd_socket_vol:
   ospd_openvas_socket_vol:

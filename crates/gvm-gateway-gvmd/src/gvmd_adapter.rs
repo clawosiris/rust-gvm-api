@@ -23,13 +23,13 @@ use gvm_gateway_domain::{
     ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyPermissionInput,
     ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
     ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Pagination,
-    Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, Report,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, Target,
-    TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Timezone,
-    TlsCertificate, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery,
+    Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
+    ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
+    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
+    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
+    SchedulePort, ScheduleQuery, SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task,
+    TaskAction, TaskPage, TaskPort, TaskQuery, Timezone, TlsCertificate, TlsCertificatePage, User,
+    UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -2634,6 +2634,26 @@ impl ScannerPort for GvmdAdapter {
 }
 
 #[async_trait]
+impl SystemPort for GvmdAdapter {
+    async fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
+        match self.probe_version().await {
+            Ok(_) => Ok(ReadinessStatus {
+                status: "ready",
+                reason: None,
+            }),
+            Err(error) => Ok(ReadinessStatus {
+                status: "notReady",
+                reason: Some(error.detail().to_string()),
+            }),
+        }
+    }
+
+    async fn gmp_version(&self) -> Result<String, GatewayError> {
+        self.probe_version().await
+    }
+}
+
+#[async_trait]
 impl AuthPort for GvmdAdapter {
     async fn authenticate_session(
         &self,
@@ -2734,6 +2754,45 @@ mod tests {
         assert_eq!(version, "22.7");
 
         server.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn gvmd_adapter_readiness_reports_ready_when_probe_succeeds() {
+        use gvm_mock_server::{GmpVersion as MockVersion, MockGmpServer, ServerMode};
+
+        // Covers the production `/ready` contract: a reachable GMP backend must
+        // be reported as ready instead of relying on startup-only state.
+        let server = MockGmpServer::builder()
+            .mode(ServerMode::Stateful)
+            .version(MockVersion::V22_7)
+            .unix_socket_auto()
+            .build()
+            .await
+            .unwrap();
+
+        let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+        let status = adapter.readiness().await.unwrap();
+        assert_eq!(status.status, "ready");
+        assert!(status.reason.is_none());
+
+        server.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn gvmd_adapter_readiness_reports_not_ready_when_socket_is_missing() {
+        // Regression coverage for compose startup races: `/ready` must degrade
+        // while gvmd has not created its Unix socket yet.
+        let adapter = GvmdAdapter::unix_socket("/tmp/nonexistent-gvmd-readiness.sock");
+        let status = adapter.readiness().await.unwrap();
+        assert_eq!(status.status, "notReady");
+        assert!(
+            status
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("socket not found")),
+            "readiness reason should explain the missing socket: {:?}",
+            status.reason
+        );
     }
 
     mod integration {

@@ -28,8 +28,9 @@ pub(crate) struct MockSystemPort {
     pub(crate) gmp_version: String,
 }
 
+#[async_trait]
 impl SystemPort for MockSystemPort {
-    fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
+    async fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
         if self.ready {
             Ok(ReadinessStatus {
                 status: "ready",
@@ -43,7 +44,7 @@ impl SystemPort for MockSystemPort {
         }
     }
 
-    fn gmp_version(&self) -> Result<String, GatewayError> {
+    async fn gmp_version(&self) -> Result<String, GatewayError> {
         Ok(self.gmp_version.clone())
     }
 }

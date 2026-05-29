@@ -89,7 +89,7 @@ pub(crate) async fn ready(
             .into_response();
     }
 
-    match service.ready() {
+    match service.ready().await {
         Ok(readiness) if readiness.status == "ready" => (
             StatusCode::OK,
             Json(ReadinessStatusResponse {
@@ -111,7 +111,7 @@ pub(crate) async fn ready(
 }
 
 pub(crate) async fn version(State(service): State<GatewayService>) -> Response {
-    match service.version() {
+    match service.version().await {
         Ok(version) => (
             StatusCode::OK,
             Json(VersionInfoResponse {

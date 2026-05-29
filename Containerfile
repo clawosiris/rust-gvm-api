@@ -13,6 +13,7 @@ WORKDIR /workspace
 COPY .cargo .cargo
 COPY Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml ./
 COPY crates crates
+COPY tests tests
 COPY packaging packaging
 
 RUN cargo build --locked --release -p gvm-gateway

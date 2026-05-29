@@ -14,13 +14,13 @@ impl GatewayService {
     }
 
     /// Returns readiness information.
-    pub fn ready(&self) -> Result<ReadinessStatus, GatewayError> {
-        self.system.readiness()
+    pub async fn ready(&self) -> Result<ReadinessStatus, GatewayError> {
+        self.system.readiness().await
     }
 
     /// Returns version information.
-    pub fn version(&self) -> Result<VersionInfo, GatewayError> {
-        let gmp_version = self.system.gmp_version()?;
+    pub async fn version(&self) -> Result<VersionInfo, GatewayError> {
+        let gmp_version = self.system.gmp_version().await?;
         Ok(VersionInfo {
             api_version: env!("CARGO_PKG_VERSION").to_string(),
             gmp_version,
