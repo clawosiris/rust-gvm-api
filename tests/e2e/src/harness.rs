@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use reqwest::{Client, Method, StatusCode};
+use reqwest::{header, Client, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::json;
@@ -125,6 +125,19 @@ impl E2eHarness {
         Ok(response.data)
     }
 
+    pub async fn get_scan_config(&self, token: &str, scan_config_id: &str) -> Result<ScanConfig> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/scan-configs/{scan_config_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get scan config",
+        )
+        .await
+    }
+
     pub async fn list_scanners(&self, token: &str) -> Result<Vec<Scanner>> {
         let response: ListResponse<Scanner> = self
             .send_json(
@@ -136,6 +149,19 @@ impl E2eHarness {
         Ok(response.data)
     }
 
+    pub async fn get_scanner(&self, token: &str, scanner_id: &str) -> Result<Scanner> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/scanners/{scanner_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get scanner",
+        )
+        .await
+    }
+
     pub async fn list_port_lists(&self, token: &str) -> Result<Vec<PortList>> {
         let response: ListResponse<PortList> = self
             .send_json(
@@ -145,6 +171,141 @@ impl E2eHarness {
             )
             .await?;
         Ok(response.data)
+    }
+
+    pub async fn create_port_list(
+        &self,
+        token: &str,
+        name: &str,
+        port_range: &str,
+    ) -> Result<CreatedResource> {
+        let body = json!({
+            "name": name,
+            "comment": "created by compose-backed E2E supporting resource coverage",
+            "portRange": port_range,
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/port-lists", token)
+                .json(&body),
+            "create port list",
+        )
+        .await
+    }
+
+    pub async fn get_port_list(&self, token: &str, port_list_id: &str) -> Result<PortList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/port-lists/{port_list_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get port list",
+        )
+        .await
+    }
+
+    pub async fn delete_port_list(&self, token: &str, port_list_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/port-lists/{port_list_id}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete port list",
+        )
+        .await
+    }
+
+    pub async fn list_feeds(&self, token: &str) -> Result<Vec<Feed>> {
+        let response: UnpaginatedListResponse<Feed> = self
+            .send_json(
+                self.authed(Method::GET, "/api/v1/feeds", token),
+                StatusCode::OK,
+                "list feeds",
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn list_timezones(&self, token: &str) -> Result<Vec<Timezone>> {
+        let response: UnpaginatedListResponse<Timezone> = self
+            .send_json(
+                self.authed(Method::GET, "/api/v1/timezones", token),
+                StatusCode::OK,
+                "list timezones",
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn list_credential_stores(&self, token: &str) -> Result<Vec<CredentialStore>> {
+        let response: UnpaginatedListResponse<CredentialStore> = self
+            .send_json(
+                self.authed(Method::GET, "/api/v1/credential-stores", token),
+                StatusCode::OK,
+                "list credential stores",
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn list_credentials(&self, token: &str) -> Result<ListResponse<Credential>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/credentials?perPage=1000", token),
+            StatusCode::OK,
+            "list credentials",
+        )
+        .await
+    }
+
+    pub async fn create_username_password_credential(
+        &self,
+        token: &str,
+        name: &str,
+        login: &str,
+        password: &str,
+    ) -> Result<CreatedResource> {
+        let body = json!({
+            "name": name,
+            "comment": "created by compose-backed E2E supporting resource coverage",
+            "type": "up",
+            "login": login,
+            "password": password,
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/credentials", token)
+                .json(&body),
+            "create credential",
+        )
+        .await
+    }
+
+    pub async fn get_credential(&self, token: &str, credential_id: &str) -> Result<Credential> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/credentials/{credential_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get credential",
+        )
+        .await
+    }
+
+    pub async fn delete_credential(&self, token: &str, credential_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/credentials/{credential_id}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete credential",
+        )
+        .await
     }
 
     pub async fn create_target(
@@ -469,6 +630,48 @@ impl E2eHarness {
 
         Ok(())
     }
+
+    async fn send_created_json(
+        &self,
+        request: reqwest::RequestBuilder,
+        action: &str,
+    ) -> Result<CreatedResource> {
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("{action}: send HTTP request"))?;
+        let status = response.status();
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .map(|value| value.to_str())
+            .transpose()
+            .with_context(|| format!("{action}: parse Location response header"))?
+            .map(ToOwned::to_owned);
+        let body = response
+            .text()
+            .await
+            .with_context(|| format!("{action}: read HTTP response body"))?;
+
+        if status != StatusCode::CREATED {
+            bail!(
+                "{action}: expected HTTP {} but received {} with body {}",
+                StatusCode::CREATED,
+                status,
+                truncate(&body)
+            );
+        }
+
+        let body: ResourceCreated = serde_json::from_str(&body).with_context(|| {
+            format!("{action}: parse response body as JSON: {}", truncate(&body))
+        })?;
+        let location = location
+            .with_context(|| format!("{action}: response did not include Location header"))?;
+        Ok(CreatedResource {
+            id: body.id,
+            location,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -496,6 +699,17 @@ pub struct ResourceRef {
 #[derive(Clone, Debug, Deserialize)]
 pub struct ResourceCreated {
     pub id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct UnpaginatedListResponse<T> {
+    pub data: Vec<T>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CreatedResource {
+    pub id: String,
+    pub location: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -532,6 +746,54 @@ pub struct Scanner {
 pub struct PortList {
     pub id: String,
     pub name: String,
+    #[serde(rename = "portCount")]
+    pub port_count: Option<u32>,
+    #[serde(rename = "tcpCount")]
+    pub tcp_count: Option<u32>,
+    #[serde(rename = "udpCount")]
+    pub udp_count: Option<u32>,
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    pub writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Feed {
+    #[serde(rename = "type")]
+    pub feed_type: String,
+    pub name: String,
+    pub version: Option<String>,
+    pub description: Option<String>,
+    #[serde(rename = "currentlySyncing")]
+    pub currently_syncing: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Timezone {
+    pub name: String,
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CredentialStore {
+    pub id: String,
+    pub name: String,
+    pub provider: Option<String>,
+    pub default: bool,
+    pub writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Credential {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub credential_type: Option<String>,
+    pub login: Option<String>,
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    pub writable: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
