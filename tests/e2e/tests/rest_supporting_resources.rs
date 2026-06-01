@@ -3,7 +3,7 @@
 
 use anyhow::{Context, Result};
 use gvm_gateway_e2e::harness::{
-    CreatedResource, Credential, E2eHarness, ListResponse, PortList, SessionResponse,
+    CreatedResource, Credential, E2eHarness, ListResponse, PortList, ScanConfig, SessionResponse,
 };
 
 // Covers stable list/read contracts for supporting catalogs used by setup and discovery flows.
@@ -24,6 +24,69 @@ async fn rest_supporting_catalogs_list_and_read_resources() -> Result<()> {
     }
     .await;
 
+    finish_session(&harness, &session, run).await
+}
+
+// Covers scan-config copy/update/delete against gvmd because scan configs are
+// created by copying an existing base config rather than by building one blank.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires a compose-backed gvmd environment"]
+async fn rest_supporting_scan_config_lifecycle_copies_updates_and_deletes() -> Result<()> {
+    let (harness, session) = ready_session().await?;
+    let mut scan_config_id = None;
+
+    let run = async {
+        let scan_configs = harness.list_scan_configs(&session.token).await?;
+        let base_config = harness.select_discovery_scan_config(&scan_configs)?;
+        let scan_config_name = harness.unique_name("nightly-supporting-scan-config");
+        let created_comment = "created by compose-backed E2E scan-config coverage";
+        let created = harness
+            .create_scan_config_from_base(
+                &session.token,
+                &scan_config_name,
+                created_comment,
+                &base_config.id,
+            )
+            .await?;
+        assert_created_location(&created, "/api/v1/scan-configs");
+        scan_config_id = Some(created.id.clone());
+
+        let scan_config = harness.get_scan_config(&session.token, &created.id).await?;
+        assert_scan_config_matches_created(&scan_config, &created.id, &scan_config_name);
+
+        let updated_comment = "updated by compose-backed E2E scan-config coverage";
+        let updated = harness
+            .update_scan_config_comment(&session.token, &created.id, updated_comment)
+            .await?;
+        assert_eq!(
+            updated.id, created.id,
+            "scan-config id changed after update"
+        );
+        assert_eq!(
+            updated.comment.as_deref(),
+            Some(updated_comment),
+            "scan-config update response did not expose changed comment"
+        );
+        let fetched = harness.get_scan_config(&session.token, &created.id).await?;
+        assert_eq!(
+            fetched.comment.as_deref(),
+            Some(updated_comment),
+            "scan-config read after update did not preserve changed comment"
+        );
+
+        harness
+            .delete_scan_config(&session.token, &created.id)
+            .await?;
+        scan_config_id = None;
+        assert_scan_config_not_listed(&harness, &session.token, &created.id).await?;
+
+        Ok(())
+    }
+    .await;
+
+    if run.is_err() {
+        best_effort_delete_scan_config(&harness, &session.token, scan_config_id.as_deref()).await;
+    }
     finish_session(&harness, &session, run).await
 }
 
@@ -309,6 +372,15 @@ fn assert_port_list_matches_created(port_list: &PortList, expected_id: &str, exp
     assert_eq!(port_list.name, expected_name);
 }
 
+fn assert_scan_config_matches_created(
+    scan_config: &ScanConfig,
+    expected_id: &str,
+    expected_name: &str,
+) {
+    assert_eq!(scan_config.id, expected_id);
+    assert_eq!(scan_config.name, expected_name);
+}
+
 fn assert_credential_matches_created(
     credential: &Credential,
     expected_id: &str,
@@ -326,6 +398,24 @@ fn assert_credential_matches_created(
         Some("nightly-user"),
         "created credential did not preserve login"
     );
+}
+
+async fn assert_scan_config_not_listed(
+    harness: &E2eHarness,
+    token: &str,
+    scan_config_id: &str,
+) -> Result<()> {
+    let scan_configs = harness
+        .list_scan_configs(token)
+        .await
+        .context("list scan configs after deleting scan config")?;
+    assert!(
+        scan_configs
+            .iter()
+            .all(|scan_config| scan_config.id != scan_config_id),
+        "deleted scan config {scan_config_id} was still returned by list scan configs"
+    );
+    Ok(())
 }
 
 async fn assert_port_list_not_listed(
@@ -363,6 +453,18 @@ async fn assert_credential_not_listed(
         "deleted credential {credential_id} was still returned by list credentials"
     );
     Ok(())
+}
+
+async fn best_effort_delete_scan_config(
+    harness: &E2eHarness,
+    token: &str,
+    scan_config_id: Option<&str>,
+) {
+    if let Some(scan_config_id) = scan_config_id {
+        if let Err(error) = harness.delete_scan_config(token, scan_config_id).await {
+            eprintln!("best-effort scan-config cleanup failed for {scan_config_id}: {error:#}");
+        }
+    }
 }
 
 async fn best_effort_delete_port_list(

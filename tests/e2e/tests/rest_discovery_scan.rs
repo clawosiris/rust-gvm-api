@@ -4,8 +4,9 @@
 use anyhow::{anyhow, Context, Result};
 use gvm_gateway_e2e::harness::{
     E2eHarness, ListResponse, PortList, Report, ResultList, ScanConfig, ScanResult, Scanner,
-    SessionResponse, Target, Task,
+    SessionResponse, Target, Task, TlsCertificateList,
 };
+use reqwest::{header::CONTENT_TYPE, Response, StatusCode};
 
 // Covers the target lifecycle contract clients rely on before creating scans.
 #[tokio::test(flavor = "multi_thread")]
@@ -60,8 +61,26 @@ async fn rest_discovery_lifecycle_creates_lists_and_deletes_task() -> Result<()>
         task_id = Some(created.task.id.clone());
         target_id = Some(created.target.id.clone());
 
+        let updated_task_name = harness.unique_name("nightly-updated-discovery-task");
+        let updated_task = harness
+            .update_task_name(&session.token, &created.task.id, &updated_task_name)
+            .await?;
+        assert_eq!(
+            updated_task.id, created.task.id,
+            "task id changed after update"
+        );
+        assert_eq!(
+            updated_task.name, updated_task_name,
+            "task update response did not expose changed name"
+        );
+        let fetched_task = harness.get_task(&session.token, &created.task.id).await?;
+        assert_eq!(
+            fetched_task.name, updated_task_name,
+            "task read after update did not preserve changed name"
+        );
+
         let tasks = harness.list_tasks(&session.token).await?;
-        assert_task_list_contains(&tasks, &created.task);
+        assert_task_list_contains(&tasks, &updated_task);
 
         harness
             .delete_task(&session.token, &created.task.id)
@@ -74,6 +93,67 @@ async fn rest_discovery_lifecycle_creates_lists_and_deletes_task() -> Result<()>
             .await?;
         target_id = None;
         assert_target_not_listed(&harness, &session.token, &created.target.id).await?;
+
+        Ok(())
+    }
+    .await;
+
+    if run.is_err() {
+        best_effort_cleanup(
+            &harness,
+            &session.token,
+            task_id.as_deref(),
+            target_id.as_deref(),
+        )
+        .await;
+    }
+    finish_session(&harness, &session, run).await
+}
+
+// Covers task action behavior for idle tasks without starting another live scan.
+// The current gvmd-backed adapter accepts idle stop as a 200 no-op even though the
+// REST test matrix calls out 409 as the desired illegal-transition response.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires a compose-backed gvmd environment"]
+async fn rest_discovery_task_actions_reject_non_stopped_resume_and_accept_idle_stop() -> Result<()>
+{
+    let (harness, session) = ready_session().await?;
+    let mut task_id = None;
+    let mut target_id = None;
+
+    let run = async {
+        let resources = select_discovery_resources(&harness, &session.token).await?;
+        let created = create_discovery_task(&harness, &session.token, &resources).await?;
+        task_id = Some(created.task.id.clone());
+        target_id = Some(created.target.id.clone());
+
+        let resume = harness
+            .resume_task_response(&session.token, &created.task.id)
+            .await?;
+        assert_problem_response_status_in(
+            resume,
+            &[
+                StatusCode::BAD_REQUEST,
+                StatusCode::CONFLICT,
+                StatusCode::BAD_GATEWAY,
+            ],
+            "resume non-stopped task",
+        )
+        .await?;
+
+        let stop = harness
+            .stop_task_response(&session.token, &created.task.id)
+            .await?;
+        assert_idle_stop_response(stop).await?;
+
+        harness
+            .delete_task(&session.token, &created.task.id)
+            .await?;
+        task_id = None;
+        harness
+            .delete_target(&session.token, &created.target.id)
+            .await?;
+        target_id = None;
 
         Ok(())
     }
@@ -190,6 +270,61 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
             .get_report_vulnerabilities_page(&session.token, &action.report_id, 1, 25)
             .await?;
         assert_report_vulnerabilities_page_links_report(&vulnerabilities, &report, &created.task);
+
+        let top_level_results = harness.list_results_page(&session.token, 1, 1).await?;
+        assert_result_pagination_shape("top-level results", &top_level_results, Some(1));
+
+        let result_to_fetch = first_results_page
+            .data
+            .first()
+            .or_else(|| report_results.data.first())
+            .or_else(|| top_level_results.data.first())
+            .cloned();
+        if let Some(result) = result_to_fetch {
+            let fetched = harness.get_result(&session.token, &result.id).await?;
+            assert_eq!(fetched.id, result.id, "result id drifted on read");
+            assert!(
+                !fetched.name.trim().is_empty(),
+                "fetched result {} returned an empty name",
+                fetched.id
+            );
+            if let Some(report_ref) = result.report.as_ref() {
+                assert_eq!(
+                    fetched.report.as_ref().map(|report| report.id.as_str()),
+                    Some(report_ref.id.as_str()),
+                    "result report reference drifted on read"
+                );
+            }
+        } else {
+            eprintln!("result detail read skipped because the completed scan returned no results");
+        }
+
+        let tls_certificates = harness
+            .get_report_tls_certificates_page(&session.token, &action.report_id, 1, 25)
+            .await?;
+        assert_tls_certificate_pagination_shape("report TLS certificates", &tls_certificates, 25);
+
+        let report_errors = harness
+            .get_report_errors_page(&session.token, &action.report_id, 1, 25)
+            .await?;
+        assert_report_results_page_links_report(
+            "report errors",
+            &report_errors,
+            &report,
+            &created.task,
+            Some(25),
+        );
+
+        let closed_cves = harness
+            .get_report_closed_cves_page(&session.token, &action.report_id, 1, 25)
+            .await?;
+        assert_report_results_page_links_report(
+            "report closed CVEs",
+            &closed_cves,
+            &report,
+            &created.task,
+            Some(25),
+        );
 
         Ok(())
     }
@@ -437,6 +572,42 @@ fn assert_report_vulnerabilities_page_links_report(
     }
 }
 
+fn assert_tls_certificate_pagination_shape(
+    resource: &str,
+    response: &TlsCertificateList,
+    expected_per_page: u32,
+) {
+    assert_eq!(
+        response.pagination.page, 1,
+        "{resource} list used an unexpected page"
+    );
+    assert_eq!(
+        response.pagination.per_page, expected_per_page,
+        "{resource} list used an unexpected page size"
+    );
+    if response.pagination.total == 0 {
+        assert_eq!(
+            response.pagination.total_pages, 0,
+            "{resource} list returned totalPages for an empty result set"
+        );
+    } else {
+        assert!(
+            response.pagination.total_pages >= 1,
+            "{resource} list returned no pages for a non-empty result set"
+        );
+    }
+    assert!(
+        response.data.len() <= response.pagination.per_page as usize,
+        "{resource} list returned more items than its page size"
+    );
+    for certificate in &response.data {
+        assert!(
+            !certificate.subject.trim().is_empty(),
+            "{resource} returned a certificate observation with an empty subject"
+        );
+    }
+}
+
 fn assert_scan_result_links_report(
     resource: &str,
     result: &ScanResult,
@@ -565,6 +736,76 @@ async fn assert_task_not_listed(harness: &E2eHarness, token: &str, task_id: &str
         tasks.data.iter().all(|task| task.id != task_id),
         "deleted task {task_id} was still returned by list tasks"
     );
+    Ok(())
+}
+
+async fn assert_problem_response_status_in(
+    response: Response,
+    expected: &[StatusCode],
+    action: &str,
+) -> Result<()> {
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = response
+        .text()
+        .await
+        .context("read problem response body")?;
+    assert!(
+        expected.contains(&status),
+        "{action}: expected one of {:?} but received {status} with body {body}",
+        expected
+    );
+    let content_type = headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        content_type.starts_with("application/problem+json"),
+        "{action}: expected problem content type but received {content_type}"
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&body).with_context(|| format!("{action}: parse problem body"))?;
+    assert_eq!(json["status"], serde_json::json!(status.as_u16()));
+    for field in ["type", "code", "title", "detail"] {
+        assert!(
+            json[field].as_str().is_some_and(|value| !value.is_empty()),
+            "{action}: problem response field {field} was missing or empty"
+        );
+    }
+    Ok(())
+}
+
+async fn assert_idle_stop_response(response: Response) -> Result<()> {
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = response
+        .text()
+        .await
+        .context("read idle stop response body")?;
+
+    if status == StatusCode::OK {
+        assert!(
+            body.trim().is_empty(),
+            "stop idle task: expected empty success body but received {body}"
+        );
+        return Ok(());
+    }
+
+    assert!(
+        status == StatusCode::CONFLICT,
+        "stop idle task: expected HTTP 200 OK or 409 Conflict but received {status} with body {body}"
+    );
+    let content_type = headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        content_type.starts_with("application/problem+json"),
+        "stop idle task: expected problem content type but received {content_type}"
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&body).context("stop idle task: parse problem body")?;
+    assert_eq!(json["status"], serde_json::json!(status.as_u16()));
     Ok(())
 }
 

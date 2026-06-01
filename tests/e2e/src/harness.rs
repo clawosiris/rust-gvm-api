@@ -114,6 +114,106 @@ impl E2eHarness {
             .await
     }
 
+    pub async fn create_session_with_location(&self) -> Result<CreatedSession> {
+        let response = self
+            .client
+            .post(self.endpoint("/api/v1/sessions"))
+            .basic_auth(&self.config.username, Some(&self.config.password))
+            .send()
+            .await
+            .context("create REST session with Location")?;
+        let status = response.status();
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .map(|value| value.to_str())
+            .transpose()
+            .context("parse session Location response header")?
+            .map(ToOwned::to_owned);
+        let body = response
+            .text()
+            .await
+            .context("read create session response body")?;
+
+        if status != StatusCode::CREATED {
+            bail!(
+                "create REST session: expected HTTP {} but received {} with body {}",
+                StatusCode::CREATED,
+                status,
+                truncate(&body)
+            );
+        }
+
+        let session: SessionResponse = serde_json::from_str(&body)
+            .with_context(|| format!("parse session body as JSON: {}", truncate(&body)))?;
+        let location =
+            location.with_context(|| "create session response did not include Location header")?;
+        Ok(CreatedSession { session, location })
+    }
+
+    pub async fn create_session_with_credentials(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<reqwest::Response> {
+        self.request(Method::POST, "/api/v1/sessions")
+            .basic_auth(username, Some(password))
+            .send()
+            .await
+            .context("create REST session with supplied credentials")
+    }
+
+    pub async fn create_session_with_malformed_basic(&self) -> Result<reqwest::Response> {
+        self.request(Method::POST, "/api/v1/sessions")
+            .header(header::AUTHORIZATION, "Basic bm9fY29sb24=")
+            .send()
+            .await
+            .context("create REST session with malformed Basic credentials")
+    }
+
+    pub async fn get_session(&self, token: &str) -> Result<SessionInfo> {
+        self.send_json(
+            self.request(Method::GET, &format!("/api/v1/sessions/{token}")),
+            StatusCode::OK,
+            "get REST session",
+        )
+        .await
+    }
+
+    pub async fn get_session_response(&self, token: &str) -> Result<reqwest::Response> {
+        self.request(Method::GET, &format!("/api/v1/sessions/{token}"))
+            .send()
+            .await
+            .context("get REST session response")
+    }
+
+    pub async fn get_targets_without_auth(&self) -> Result<reqwest::Response> {
+        self.request(Method::GET, "/api/v1/targets")
+            .send()
+            .await
+            .context("list targets without auth")
+    }
+
+    pub async fn get_targets_with_bearer(&self, token: &str) -> Result<reqwest::Response> {
+        self.request(Method::GET, "/api/v1/targets")
+            .bearer_auth(token)
+            .send()
+            .await
+            .context("list targets with bearer token")
+    }
+
+    pub async fn get_targets_with_basic(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<reqwest::Response> {
+        self.request(Method::GET, "/api/v1/targets")
+            .basic_auth(username, Some(password))
+            .send()
+            .await
+            .context("list targets with request-scoped Basic auth")
+    }
+
     pub async fn list_scan_configs(&self, token: &str) -> Result<Vec<ScanConfig>> {
         let response: ListResponse<ScanConfig> = self
             .send_json(
@@ -134,6 +234,61 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "get scan config",
+        )
+        .await
+    }
+
+    pub async fn create_scan_config_from_base(
+        &self,
+        token: &str,
+        name: &str,
+        comment: &str,
+        base_scan_config_id: &str,
+    ) -> Result<CreatedResource> {
+        let body = json!({
+            "name": name,
+            "comment": comment,
+            "baseScanConfigId": base_scan_config_id,
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/scan-configs", token)
+                .json(&body),
+            "create scan config",
+        )
+        .await
+    }
+
+    pub async fn update_scan_config_comment(
+        &self,
+        token: &str,
+        scan_config_id: &str,
+        comment: &str,
+    ) -> Result<ScanConfig> {
+        let body = json!({
+            "comment": comment,
+        });
+        self.send_json(
+            self.authed(
+                Method::PUT,
+                &format!("/api/v1/scan-configs/{scan_config_id}"),
+                token,
+            )
+            .json(&body),
+            StatusCode::OK,
+            "update scan config",
+        )
+        .await
+    }
+
+    pub async fn delete_scan_config(&self, token: &str, scan_config_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/scan-configs/{scan_config_id}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete scan config",
         )
         .await
     }
@@ -201,6 +356,28 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "get port list",
+        )
+        .await
+    }
+
+    pub async fn update_port_list_comment(
+        &self,
+        token: &str,
+        port_list_id: &str,
+        comment: &str,
+    ) -> Result<PortList> {
+        let body = json!({
+            "comment": comment,
+        });
+        self.send_json(
+            self.authed(
+                Method::PUT,
+                &format!("/api/v1/port-lists/{port_list_id}"),
+                token,
+            )
+            .json(&body),
+            StatusCode::OK,
+            "update port list",
         )
         .await
     }
@@ -279,6 +456,34 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "get schedule",
+        )
+        .await
+    }
+
+    pub async fn update_schedule(
+        &self,
+        token: &str,
+        schedule_id: &str,
+        name: &str,
+        comment: &str,
+        icalendar: &str,
+        timezone: &str,
+    ) -> Result<Schedule> {
+        let body = json!({
+            "name": name,
+            "comment": comment,
+            "icalendar": icalendar,
+            "timezone": timezone,
+        });
+        self.send_json(
+            self.authed(
+                Method::PUT,
+                &format!("/api/v1/schedules/{schedule_id}"),
+                token,
+            )
+            .json(&body),
+            StatusCode::OK,
+            "update schedule",
         )
         .await
     }
@@ -448,6 +653,24 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn update_target_name(
+        &self,
+        token: &str,
+        target_id: &str,
+        name: &str,
+    ) -> Result<Target> {
+        let body = json!({
+            "name": name,
+        });
+        self.send_json(
+            self.authed(Method::PUT, &format!("/api/v1/targets/{target_id}"), token)
+                .json(&body),
+            StatusCode::OK,
+            "update target",
+        )
+        .await
+    }
+
     pub async fn delete_target(&self, token: &str, target_id: &str) -> Result<()> {
         self.send_empty(
             self.authed(
@@ -508,6 +731,62 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn update_task_name(&self, token: &str, task_id: &str, name: &str) -> Result<Task> {
+        let body = json!({
+            "name": name,
+        });
+        self.send_json(
+            self.authed(Method::PUT, &format!("/api/v1/tasks/{task_id}"), token)
+                .json(&body),
+            StatusCode::OK,
+            "update task",
+        )
+        .await
+    }
+
+    pub async fn stop_task_response(
+        &self,
+        token: &str,
+        task_id: &str,
+    ) -> Result<reqwest::Response> {
+        self.authed(
+            Method::POST,
+            &format!("/api/v1/tasks/{task_id}/stop"),
+            token,
+        )
+        .send()
+        .await
+        .context("stop task")
+    }
+
+    pub async fn stop_task(&self, token: &str, task_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::POST,
+                &format!("/api/v1/tasks/{task_id}/stop"),
+                token,
+            ),
+            StatusCode::OK,
+            "stop task",
+        )
+        .await
+    }
+
+    pub async fn resume_task_response(
+        &self,
+        token: &str,
+        task_id: &str,
+    ) -> Result<reqwest::Response> {
+        self.authed(
+            Method::POST,
+            &format!("/api/v1/tasks/{task_id}/resume"),
+            token,
+        )
+        .send()
+        .await
+        .context("resume task")
+    }
+
     pub async fn delete_task(&self, token: &str, task_id: &str) -> Result<()> {
         self.send_empty(
             self.authed(Method::DELETE, &format!("/api/v1/tasks/{task_id}"), token),
@@ -561,6 +840,31 @@ impl E2eHarness {
         );
     }
 
+    pub async fn wait_for_task_stopped(&self, token: &str, task_id: &str) -> Result<Task> {
+        let deadline = Instant::now() + self.config.scan_timeout;
+        let mut last_status = String::from("task status not yet observed");
+
+        while Instant::now() < deadline {
+            let task = self.get_task(token, task_id).await?;
+            last_status = task.status.clone();
+            eprintln!(
+                "task {} status={} while waiting for stop",
+                task.id, task.status
+            );
+
+            match task.status.as_str() {
+                "Stopped" | "Interrupted" => return Ok(task),
+                "Done" => bail!("task {task_id} completed before stop took effect"),
+                _ => tokio::time::sleep(self.config.poll_interval).await,
+            }
+        }
+
+        bail!(
+            "task {task_id} did not stop within {:?}; last status: {last_status}",
+            self.config.scan_timeout
+        );
+    }
+
     pub async fn get_report(&self, token: &str, report_id: &str) -> Result<Report> {
         self.send_json(
             self.authed(
@@ -579,6 +883,33 @@ impl E2eHarness {
             self.authed(Method::GET, "/api/v1/reports?perPage=1000", token),
             StatusCode::OK,
             "list reports",
+        )
+        .await
+    }
+
+    pub async fn list_results_page(
+        &self,
+        token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/results?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "list results page",
+        )
+        .await
+    }
+
+    pub async fn get_result(&self, token: &str, result_id: &str) -> Result<ScanResult> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/results/{result_id}"), token),
+            StatusCode::OK,
+            "get result",
         )
         .await
     }
@@ -611,6 +942,65 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "get report results page",
+        )
+        .await
+    }
+
+    pub async fn get_report_tls_certificates_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<TlsCertificateList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!(
+                    "/api/v1/reports/{report_id}/tls-certificates?page={page}&perPage={per_page}"
+                ),
+                token,
+            ),
+            StatusCode::OK,
+            "get report TLS certificates page",
+        )
+        .await
+    }
+
+    pub async fn get_report_errors_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/reports/{report_id}/errors?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get report errors page",
+        )
+        .await
+    }
+
+    pub async fn get_report_closed_cves_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/reports/{report_id}/closed-cves?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get report closed CVEs page",
         )
         .await
     }
@@ -709,14 +1099,16 @@ impl E2eHarness {
         format!("{prefix}-{}", chrono_like_timestamp())
     }
 
+    pub fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
+        self.client.request(method, self.endpoint(path))
+    }
+
     fn endpoint(&self, path: &str) -> String {
         format!("{}{}", self.config.base_url.trim_end_matches('/'), path)
     }
 
     fn authed(&self, method: Method, path: &str, token: &str) -> reqwest::RequestBuilder {
-        self.client
-            .request(method, self.endpoint(path))
-            .bearer_auth(token)
+        self.request(method, path).bearer_auth(token)
     }
 
     async fn send_json<T>(
@@ -838,6 +1230,26 @@ pub struct SessionResponse {
     pub gmp_version: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct CreatedSession {
+    pub session: SessionResponse,
+    pub location: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SessionInfo {
+    #[serde(rename = "sessionToken")]
+    pub token: String,
+    pub user: String,
+    pub state: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "lastUsedAt")]
+    pub last_used_at: String,
+    #[serde(rename = "expiresIn")]
+    pub expires_in: i64,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct ResourceRef {
     pub id: String,
@@ -880,6 +1292,10 @@ pub struct ListResponse<T> {
 pub struct ScanConfig {
     pub id: String,
     pub name: String,
+    pub comment: Option<String>,
+    #[serde(rename = "inUse")]
+    pub in_use: Option<bool>,
+    pub writable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -894,6 +1310,7 @@ pub struct Scanner {
 pub struct PortList {
     pub id: String,
     pub name: String,
+    pub comment: Option<String>,
     #[serde(rename = "portCount")]
     pub port_count: Option<u32>,
     #[serde(rename = "tcpCount")]
@@ -982,6 +1399,7 @@ pub struct Target {
 pub struct Task {
     pub id: String,
     pub name: String,
+    pub comment: Option<String>,
     pub status: String,
     pub target: Option<ResourceRef>,
     #[serde(rename = "scanConfig")]
@@ -1028,6 +1446,27 @@ pub struct ResultCount {
 pub struct ResultList {
     pub data: Vec<ScanResult>,
     pub pagination: Pagination,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TlsCertificateList {
+    pub data: Vec<TlsCertificate>,
+    pub pagination: Pagination,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TlsCertificate {
+    pub id: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<String>,
+    pub subject: String,
+    pub issuer: Option<String>,
+    #[serde(rename = "notBefore")]
+    pub not_before: Option<String>,
+    #[serde(rename = "notAfter")]
+    pub not_after: Option<String>,
+    #[serde(rename = "fingerprintSha256")]
+    pub fingerprint_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
