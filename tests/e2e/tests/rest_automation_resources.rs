@@ -66,7 +66,7 @@ async fn rest_automation_schedule_lifecycle_creates_reads_lists_and_deletes() ->
     finish_session(&harness, &session, run).await
 }
 
-// Covers alert list/read and create/delete where the backend accepts the current adapter event names.
+// Covers the alert create/read/list/delete contract; create failures must fail the lifecycle test.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires a compose-backed gvmd environment"]
 async fn rest_automation_alert_lifecycle_creates_reads_lists_and_deletes() -> Result<()> {
@@ -78,16 +78,10 @@ async fn rest_automation_alert_lifecycle_creates_reads_lists_and_deletes() -> Re
         assert_alert_list_shape(&harness, &session.token, &initial_alerts).await?;
 
         let alert_name = harness.unique_name("nightly-automation-alert");
-        let created = match harness.create_alert(&session.token, &alert_name).await {
-            Ok(created) => created,
-            Err(error) if is_backend_unsupported_alert_create(&error) => {
-                eprintln!(
-                    "alert create skipped after list/read coverage because gvmd rejected the current adapter event name: {error:#}"
-                );
-                return Ok(());
-            }
-            Err(error) => return Err(error),
-        };
+        let created = harness
+            .create_alert(&session.token, &alert_name)
+            .await
+            .context("create alert for lifecycle coverage")?;
         assert_created_location(&created, "/api/v1/alerts");
         alert_id = Some(created.id.clone());
 
@@ -235,10 +229,6 @@ async fn assert_alert_list_shape(
     }
 
     Ok(())
-}
-
-fn is_backend_unsupported_alert_create(error: &anyhow::Error) -> bool {
-    format!("{error:#}").contains("Failed to recognise event name")
 }
 
 async fn assert_schedule_not_listed(
