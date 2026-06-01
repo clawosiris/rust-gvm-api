@@ -164,9 +164,6 @@ Rules for these exceptions:
 | `DELETE` | `/api/v1/reports/{id}` | Delete report |
 | `GET` | `/api/v1/reports/{id}/export` | Export report bytes for a selected report format (`reportFormatId`) |
 
-Report export is selected by report-format UUID, not by a tiny hardcoded `format=pdf|xml|csv` enum.
-That keeps the REST contract aligned with gvmd's actual capability model and leaves room for additional built-in or backend-specific report formats once `/api/v1/report-formats` is exposed.
-
 On success, the endpoint returns binary bytes with:
 - `Content-Type` derived from the chosen report format when known
 - `Content-Disposition` set for attachment-style download

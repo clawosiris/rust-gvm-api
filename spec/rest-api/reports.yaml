@@ -75,10 +75,7 @@ paths:
           schema:
             type: string
             format: uuid
-          description: |
-            UUID of the gvmd report format to render with. This is the canonical
-            export selector; the API does not define a smaller fixed `format=pdf`
-            style enum because gvmd models export through report-format resources.
+          description: UUID of the report format used to render the exported artifact.
       responses:
         "200":
           description: |
