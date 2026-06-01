@@ -113,6 +113,8 @@ paths:
     $ref: './reports.yaml#/paths/~1reports'
   /reports/{id}:
     $ref: './reports.yaml#/paths/~1reports~1{id}'
+  /reports/{id}/export:
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1export'
   /reports/{id}/results:
     $ref: './reports.yaml#/paths/~1reports~1{id}~1results'
   /reports/{id}/vulnerabilities:
