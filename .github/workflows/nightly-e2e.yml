@@ -1,6 +1,10 @@
 name: E2E
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "0 3 * * *"
@@ -11,6 +15,10 @@ on:
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
