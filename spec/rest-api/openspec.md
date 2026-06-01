@@ -162,7 +162,15 @@ Rules for these exceptions:
 | `GET` | `/api/v1/reports/{id}/errors` | Get report error findings (paginated) |
 | `GET` | `/api/v1/reports/{id}/closed-cves` | Get closed CVE findings for a report (paginated) |
 | `DELETE` | `/api/v1/reports/{id}` | Delete report |
-| `GET` | `/api/v1/reports/{id}/export` | Export report (PDF/XML/CSV) |
+| `GET` | `/api/v1/reports/{id}/export` | Export report bytes for a selected report format (`reportFormatId`) |
+
+Report export is selected by report-format UUID, not by a tiny hardcoded `format=pdf|xml|csv` enum.
+That keeps the REST contract aligned with gvmd's actual capability model and leaves room for additional built-in or backend-specific report formats once `/api/v1/report-formats` is exposed.
+
+On success, the endpoint returns binary bytes with:
+- `Content-Type` derived from the chosen report format when known
+- `Content-Disposition` set for attachment-style download
+- streaming-friendly behavior for large artifacts when practical
 
 #### Results
 
@@ -576,4 +584,3 @@ For each resource (acceptance-test first):
 - [ ] Should we support GMP filter syntax passthrough or only structured query params?
 - [ ] WebSocket vs SSE for real-time task status updates?
 - [ ] Should request-scoped Basic auth remain a compatibility path long-term, or should clients be encouraged to use explicit sessions for all workflows?
-- [ ] Should report export be synchronous or async (poll-based)?

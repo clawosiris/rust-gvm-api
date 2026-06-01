@@ -61,6 +61,74 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /reports/{id}/export:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: exportReport
+      tags: [Reports]
+      summary: Export a report in a selected report format
+      parameters:
+        - name: reportFormatId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID of the gvmd report format to render with. This is the canonical
+            export selector; the API does not define a smaller fixed `format=pdf`
+            style enum because gvmd models export through report-format resources.
+      responses:
+        "200":
+          description: |
+            Rendered report bytes for the selected report format. The concrete
+            `Content-Type` should follow the chosen report format metadata when
+            known; `application/octet-stream` is the fallback for unknown or
+            backend-specific media types.
+          headers:
+            traceparent:
+              $ref: "./common.yaml#/components/headers/Traceparent"
+            Content-Disposition:
+              description: Attachment-style filename for the rendered report artifact.
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/xml:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+                format: binary
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "504":
+          $ref: "./common.yaml#/components/responses/GatewayTimeout"
+
   /reports/{id}/results:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
