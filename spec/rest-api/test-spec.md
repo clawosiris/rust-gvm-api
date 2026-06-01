@@ -151,7 +151,6 @@ async fn test_server() -> TestServer {
 | `get_report_tls_certificates_paginated` | `GET /api/v1/reports/{id}/tls-certificates?page=1&per_page=50` | Report exists | 200, paginated TLS certificate observations |
 | `get_report_errors_paginated` | `GET /api/v1/reports/{id}/errors?page=1&per_page=50` | Report exists | 200, paginated report errors |
 | `get_report_closed_cves_paginated` | `GET /api/v1/reports/{id}/closed-cves?page=1&per_page=50` | Report exists | 200, paginated closed CVE findings |
-| `export_report_pdf` | `GET /api/v1/reports/{id}/export?format=pdf` | Report exists | 200, `application/pdf` |
 
 ### 3.5a Discovery Helpers
 

@@ -60,7 +60,7 @@ tags:
   - name: Tasks
     description: Scan task management and control
   - name: Reports
-    description: Scan report retrieval and export
+    description: Scan report retrieval
   - name: Results
     description: Individual scan result retrieval
   - name: Scan Configs

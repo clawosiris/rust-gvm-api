@@ -162,7 +162,6 @@ Rules for these exceptions:
 | `GET` | `/api/v1/reports/{id}/errors` | Get report error findings (paginated) |
 | `GET` | `/api/v1/reports/{id}/closed-cves` | Get closed CVE findings for a report (paginated) |
 | `DELETE` | `/api/v1/reports/{id}` | Delete report |
-| `GET` | `/api/v1/reports/{id}/export` | Export report (PDF/XML/CSV) |
 
 #### Results
 
@@ -576,4 +575,3 @@ For each resource (acceptance-test first):
 - [ ] Should we support GMP filter syntax passthrough or only structured query params?
 - [ ] WebSocket vs SSE for real-time task status updates?
 - [ ] Should request-scoped Basic auth remain a compatibility path long-term, or should clients be encouraged to use explicit sessions for all workflows?
-- [ ] Should report export be synchronous or async (poll-based)?
