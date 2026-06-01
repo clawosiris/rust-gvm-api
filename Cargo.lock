@@ -681,12 +681,14 @@ name = "gvm-gateway-gvmd"
 version = "0.3.1"
 dependencies = [
  "async-trait",
+ "base64",
  "gvm-client",
  "gvm-connection",
  "gvm-gateway-domain",
  "gvm-gmp",
  "gvm-mock-server",
  "gvm-protocol",
+ "quick-xml",
  "tokio",
  "tracing",
  "tracing-subscriber",

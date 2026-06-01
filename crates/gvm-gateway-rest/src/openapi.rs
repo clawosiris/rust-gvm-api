@@ -337,6 +337,12 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     copy_path(
         &source_paths,
         &mut normalized_paths,
+        "/api/v1/reports/{id}/export",
+        "/reports/{id}/export",
+    );
+    copy_path(
+        &source_paths,
+        &mut normalized_paths,
         "/api/v1/reports/{id}/results",
         "/reports/{id}/results",
     );
@@ -496,6 +502,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         ("/reports", "get"),
         ("/reports/{id}", "get"),
         ("/reports/{id}", "delete"),
+        ("/reports/{id}/export", "get"),
         ("/reports/{id}/results", "get"),
         ("/results", "get"),
         ("/results/{id}", "get"),
@@ -1364,6 +1371,12 @@ pub(crate) struct GetReportQueryDoc {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct ReportExportQueryDoc {
+    #[serde(rename = "reportFormatId")]
+    report_format_id: Uuid,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 pub(crate) struct ReportResultsQueryDoc {
     filter: Option<String>,
     page: Option<u32>,
@@ -1562,6 +1575,13 @@ mod tests {
                 &reports_spec,
                 "/reports/{id}",
                 &["204", "401", "404"],
+            ),
+            (
+                "/reports/{id}/export",
+                "get",
+                &reports_spec,
+                "/reports/{id}/export",
+                &["200", "400", "401", "404"],
             ),
             (
                 "/reports/{id}/results",

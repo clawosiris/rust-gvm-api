@@ -6,7 +6,10 @@
 use aide::transform::TransformOperation;
 use axum::{
     extract::{OriginalUri, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{
+        header::{self, HeaderValue},
+        HeaderMap, StatusCode,
+    },
     response::{IntoResponse, Response},
     Json,
 };
@@ -22,8 +25,8 @@ use crate::{
     dto::{datetime_schema, parse_uuid, PaginationResponse, ResourceRefResponse},
     error::RestError,
     openapi::{
-        ok_json, problem_response, GetReportQueryDoc, ReportListQueryDoc, ReportResultsQueryDoc,
-        ResourceIdPathDoc,
+        ok_json, problem_response, GetReportQueryDoc, ReportExportQueryDoc, ReportListQueryDoc,
+        ReportResultsQueryDoc, ResourceIdPathDoc,
     },
     results::{ResultListResponse, ResultResponse},
     router::bearer_token,
@@ -319,6 +322,34 @@ impl ReportResultsQuery {
     }
 }
 
+/// Parsed query for report export.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReportExportQuery {
+    /// Backend report format identifier used to render the export.
+    pub report_format_id: String,
+}
+
+impl ReportExportQuery {
+    /// Parse query parameters from a raw query string.
+    pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
+        for pair in query.split('&').filter(|entry| !entry.is_empty()) {
+            let mut parts = pair.splitn(2, '=');
+            let key = parts.next().unwrap_or_default();
+            let value = parts.next().unwrap_or_default();
+            if key == "reportFormatId" {
+                validate_uuid("reportFormatId", value)?;
+                return Ok(Self {
+                    report_format_id: value.to_string(),
+                });
+            }
+        }
+
+        Err(GatewayError::InvalidInput(
+            "reportFormatId is required".to_string(),
+        ))
+    }
+}
+
 /// List reports handler.
 pub async fn list_reports(
     State(service): State<GatewayService>,
@@ -380,6 +411,53 @@ pub async fn get_report(
         .await
     {
         Ok(report) => (StatusCode::OK, Json(ReportResponse::from(report))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Export report handler.
+pub async fn export_report(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportExportQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .export_report(&session, &id, &query.report_format_id)
+        .await
+    {
+        Ok(export) => {
+            let content_type = export
+                .content_type
+                .unwrap_or_else(|| "application/octet-stream".to_string());
+            let extension = export.extension.unwrap_or_else(|| "bin".to_string());
+            let filename = format!("report-{id}.{extension}");
+            let mut response = export.bytes.into_response();
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_str(&content_type)
+                    .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+            );
+            response.headers_mut().insert(
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+                    .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
+            );
+            response
+        }
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -635,6 +713,22 @@ pub(crate) fn get_report_docs(op: TransformOperation<'_>) -> TransformOperation<
             "Report details with embedded results",
         ));
 
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/export`.
+pub(crate) fn export_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("exportReport")
+        .tag("Reports")
+        .summary("Export a report in a selected report format")
+        .description("Returns rendered report bytes for a selected report format.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportExportQueryDoc>)>()
+        .response_with::<200, (), _>(|response| response.description("Rendered report bytes"));
+
+    let op = problem_response::<400>(op, "Missing or invalid reportFormatId");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
 }

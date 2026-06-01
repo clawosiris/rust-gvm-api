@@ -14,11 +14,12 @@ use gvm_gateway_domain::{
     ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
     ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Permission,
     PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SystemPort,
-    Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
-    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    ReportExport, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role,
+    RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
+    ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
+    SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -672,6 +673,17 @@ impl ReportPort for MockReportPort {
         _: &GetReportOpts,
     ) -> Result<Report, GatewayError> {
         Err(GatewayError::NotFound(format!("report {id} not found")))
+    }
+
+    async fn export_report(
+        &self,
+        _: &str,
+        report_id: &str,
+        _: &str,
+    ) -> Result<ReportExport, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "report {report_id} not found"
+        )))
     }
 
     async fn delete_report(&self, _: &str, id: &str) -> Result<(), GatewayError> {

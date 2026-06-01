@@ -108,6 +108,7 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/reports/{id}",
             "/reports/{id}/closed-cves",
             "/reports/{id}/errors",
+            "/reports/{id}/export",
             "/reports/{id}/results",
             "/reports/{id}/tls-certificates",
             "/reports/{id}/vulnerabilities",
@@ -310,6 +311,12 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         ("/reports", "get", DocName::Reports, "/reports"),
         ("/reports/{id}", "get", DocName::Reports, "/reports/{id}"),
         ("/reports/{id}", "delete", DocName::Reports, "/reports/{id}"),
+        (
+            "/reports/{id}/export",
+            "get",
+            DocName::Reports,
+            "/reports/{id}/export",
+        ),
         (
             "/reports/{id}/results",
             "get",

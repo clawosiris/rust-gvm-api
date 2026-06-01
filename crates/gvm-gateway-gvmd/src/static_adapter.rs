@@ -15,11 +15,12 @@ use gvm_gateway_domain::{
     ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
     ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Permission,
     PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SystemPort,
-    Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
-    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    ReportExport, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role,
+    RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
+    ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
+    SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery,
 };
 
 /// Static adapter for system readiness and version information.
@@ -472,6 +473,12 @@ impl ReportPort for StaticGvmdAdapter {
         _: &str,
         _: &GetReportOpts,
     ) -> Result<Report, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn export_report(&self, _: &str, _: &str, _: &str) -> Result<ReportExport, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support reports".to_string(),
         ))
