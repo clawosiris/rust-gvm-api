@@ -2,11 +2,8 @@
 // Copyright (C) 2026 Greenbone AG
 
 use anyhow::{Context, Result};
-use gvm_gateway_e2e::harness::{E2eHarness, ListResponse, Target};
-use reqwest::{
-    header::{CONTENT_TYPE, LOCATION},
-    Response, StatusCode,
-};
+use gvm_gateway_e2e::harness::{assert_problem_response_any, E2eHarness, ListResponse, Target};
+use reqwest::StatusCode;
 
 // Covers live-stack authentication failures and session invalidation because
 // the gateway's REST auth boundary must reject unauthenticated, unknown, and
@@ -132,7 +129,7 @@ async fn rest_session_lifecycle_exposes_location_and_session_details() -> Result
     );
 
     let malformed = harness.create_session_with_malformed_basic().await?;
-    assert_problem_response(
+    assert_problem_response_any(
         malformed,
         &[StatusCode::UNAUTHORIZED],
         "malformed Basic session creation",
@@ -141,12 +138,14 @@ async fn rest_session_lifecycle_exposes_location_and_session_details() -> Result
 
     harness.delete_session(&created.session.token).await?;
     let deleted = harness.get_session_response(&created.session.token).await?;
-    assert_problem_response(
+    assert_problem_response_any(
         deleted,
         &[StatusCode::NOT_FOUND, StatusCode::UNAUTHORIZED],
         "deleted session read",
     )
-    .await
+    .await?;
+
+    Ok(())
 }
 
 async fn ready_harness() -> Result<E2eHarness> {
@@ -166,46 +165,6 @@ async fn assert_status(
         status, expected,
         "{action}: expected HTTP {expected} but received {status} with body {body}"
     );
-    Ok(())
-}
-
-async fn assert_problem_response(
-    response: Response,
-    expected: &[StatusCode],
-    action: &str,
-) -> Result<()> {
-    let status = response.status();
-    let headers = response.headers().clone();
-    let body = response
-        .text()
-        .await
-        .context("read problem response body")?;
-    assert!(
-        expected.contains(&status),
-        "{action}: expected one of {:?} but received {status} with body {body}",
-        expected
-    );
-    assert!(
-        headers.get(LOCATION).is_none(),
-        "{action}: problem response unexpectedly included Location"
-    );
-    let content_type = headers
-        .get(CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("");
-    assert!(
-        content_type.starts_with("application/problem+json"),
-        "{action}: expected problem content type but received {content_type}"
-    );
-    let json: serde_json::Value =
-        serde_json::from_str(&body).with_context(|| format!("{action}: parse problem body"))?;
-    assert_eq!(json["status"], serde_json::json!(status.as_u16()));
-    for field in ["type", "code", "title", "detail"] {
-        assert!(
-            json[field].as_str().is_some_and(|value| !value.is_empty()),
-            "{action}: problem response field {field} was missing or empty"
-        );
-    }
     Ok(())
 }
 

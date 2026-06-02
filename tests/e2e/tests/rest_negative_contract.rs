@@ -2,11 +2,8 @@
 // Copyright (C) 2026 Greenbone AG
 
 use anyhow::{Context, Result};
-use gvm_gateway_e2e::harness::{E2eHarness, SessionResponse};
-use reqwest::{
-    header::{CONTENT_TYPE, LOCATION},
-    Method, Response, StatusCode,
-};
+use gvm_gateway_e2e::harness::{assert_problem_response, E2eHarness, SessionResponse};
+use reqwest::{header::CONTENT_TYPE, Method, StatusCode};
 
 const MISSING_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
@@ -88,51 +85,4 @@ async fn finish_session(
         eprintln!("best-effort session cleanup failed: {error:#}");
     }
     run
-}
-
-async fn assert_problem_response(
-    response: Response,
-    expected: StatusCode,
-    action: &str,
-) -> Result<()> {
-    let status = response.status();
-    let headers = response.headers().clone();
-    let body = response
-        .text()
-        .await
-        .with_context(|| format!("{action}: read response body"))?;
-
-    assert_eq!(
-        status, expected,
-        "{action}: expected HTTP {expected} but received {status} with body {body}"
-    );
-    assert!(
-        headers.get(LOCATION).is_none(),
-        "{action}: problem response unexpectedly included Location"
-    );
-    let content_type = headers
-        .get(CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("");
-    assert!(
-        content_type.starts_with("application/problem+json"),
-        "{action}: expected application/problem+json but received {content_type}"
-    );
-
-    let json: serde_json::Value =
-        serde_json::from_str(&body).with_context(|| format!("{action}: parse problem JSON"))?;
-    assert_eq!(json["status"], serde_json::json!(expected.as_u16()));
-    assert!(
-        json["type"]
-            .as_str()
-            .is_some_and(|value| value.starts_with("https://gvm-gateway.greenbone.net/errors/")),
-        "{action}: problem response did not include the gateway problem type"
-    );
-    for field in ["code", "title", "detail"] {
-        assert!(
-            json[field].as_str().is_some_and(|value| !value.is_empty()),
-            "{action}: problem response field {field} was missing or empty"
-        );
-    }
-    Ok(())
 }
