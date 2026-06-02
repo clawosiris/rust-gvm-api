@@ -29,3 +29,4 @@ TASK_*.md
 .env.local
 CODEX_*.md
 spec.md
+tests/performance/dist/

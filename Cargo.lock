@@ -693,6 +693,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gvm-gateway-performance"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "gvm-gateway-e2e",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "gvm-gateway-rest"
 version = "0.3.1"
 dependencies = [
