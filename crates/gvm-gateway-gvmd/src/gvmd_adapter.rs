@@ -95,7 +95,8 @@ use gvm_gmp::{
         GetGroupsResponse, GetPermissionsResponse, GetPortListsResponse, GetReportsResponse,
         GetResultsResponse, GetRolesResponse, GetScanConfigsResponse, GetScannersResponse,
         GetSchedulesResponse, GetTargetsResponse, GetTasksResponse, GetUserSettingsResponse,
-        GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse, StartTaskResponse,
+        GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse, ResumeTaskResponse,
+        StartTaskResponse,
     },
     EntityId,
 };
@@ -1977,10 +1978,7 @@ impl TaskPort for GvmdAdapter {
                 resume_task_cmd(&parse_entity_id(id)?),
             )
             .await?;
-        // resume_task returns ActionResponse (no report_id field) in rust-gvm,
-        // but the GMP protocol does return a report_id. Parse as StartTaskResponse
-        // which shares the same XML structure.
-        let parsed = StartTaskResponse::from_response(&response).map_err(map_parse_error)?;
+        let parsed = ResumeTaskResponse::from_response(&response).map_err(map_parse_error)?;
         let report_id = parsed.report_id.map(|id| id.to_string()).ok_or_else(|| {
             GatewayError::BackendUnavailable("resume_task did not return a report_id".to_string())
         })?;
