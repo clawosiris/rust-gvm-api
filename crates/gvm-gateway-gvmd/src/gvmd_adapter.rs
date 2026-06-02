@@ -12,7 +12,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use gvm_client::GmpClient;
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
@@ -101,10 +100,6 @@ use gvm_gmp::{
     EntityId,
 };
 use gvm_protocol::{Request, Response};
-use quick_xml::{
-    events::{BytesStart, Event},
-    Reader, Writer,
-};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{field, info_span, Instrument};
 
@@ -2114,14 +2109,18 @@ impl ReportPort for GvmdAdapter {
         let report_id = parse_entity_id(report_id)?;
         let report_format_id = parse_entity_id(report_format_id)?;
 
-        let response = client
+        let export = client
             .lock()
             .await
-            .call(get_report_export(&report_id, &report_format_id))
+            .get_report_export(&report_id, &report_format_id)
             .await
             .map_err(map_gvm_error)?;
 
-        parse_report_export_response(&response)
+        Ok(ReportExport {
+            bytes: export.bytes,
+            content_type: export.content_type,
+            extension: export.extension,
+        })
     }
 
     async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
@@ -2261,149 +2260,6 @@ impl ReportPort for GvmdAdapter {
             .await?;
         Ok(filter_result_page(page, query, is_closed_cve_result))
     }
-}
-
-fn get_report_export(report_id: &EntityId, report_format_id: &EntityId) -> impl Request {
-    gvm_protocol::XmlCommand::new("get_reports")
-        .attribute("report_id", report_id.as_str())
-        .attribute("format_id", report_format_id.as_str())
-        .attribute("details", "1")
-        .attribute("ignore_pagination", "1")
-}
-
-fn parse_report_export_response(response: &Response) -> Result<ReportExport, GatewayError> {
-    let xml = std::str::from_utf8(response.data()).map_err(|error| {
-        GatewayError::BackendUnavailable(format!("gvmd returned non-utf8 export response: {error}"))
-    })?;
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(false);
-
-    let mut status: Option<u16> = None;
-    let mut status_text: Option<String> = None;
-    let mut content_type = None;
-    let mut extension = None;
-    let mut saw_report = false;
-    let mut nested_depth = 0usize;
-    let mut nested_xml = Vec::new();
-    let mut base64_body = String::new();
-
-    loop {
-        match reader.read_event() {
-            Ok(Event::Start(event)) if event.name().as_ref() == b"get_reports_response" => {
-                status = parse_status_attr(&event, "status");
-                status_text = parse_string_attr(&event, "status_text");
-            }
-            Ok(Event::Start(event)) if event.name().as_ref() == b"report" && !saw_report => {
-                saw_report = true;
-                content_type = parse_string_attr(&event, "content_type");
-                extension = parse_string_attr(&event, "extension");
-            }
-            Ok(Event::Start(event)) if saw_report => {
-                nested_depth += 1;
-                serialize_event(&mut nested_xml, Event::Start(event.into_owned()))?;
-            }
-            Ok(Event::Empty(event)) if saw_report => {
-                serialize_event(&mut nested_xml, Event::Empty(event.into_owned()))?;
-            }
-            Ok(Event::End(event)) if saw_report => {
-                if event.name().as_ref() == b"report" && nested_depth == 0 {
-                    break;
-                }
-                serialize_event(&mut nested_xml, Event::End(event.into_owned()))?;
-                nested_depth = nested_depth.saturating_sub(1);
-            }
-            Ok(Event::Text(event)) if saw_report => {
-                if nested_depth == 0 && nested_xml.is_empty() {
-                    let chunk = event.decode().map_err(|error| {
-                        GatewayError::BackendUnavailable(format!(
-                            "failed to decode gvmd export text: {error}"
-                        ))
-                    })?;
-                    if !chunk.trim().is_empty() {
-                        base64_body.push_str(&chunk);
-                    }
-                } else {
-                    serialize_event(&mut nested_xml, Event::Text(event.into_owned()))?;
-                }
-            }
-            Ok(Event::CData(event)) if saw_report => {
-                if nested_depth == 0 && nested_xml.is_empty() {
-                    base64_body.push_str(&String::from_utf8_lossy(event.as_ref()));
-                } else {
-                    serialize_event(&mut nested_xml, Event::CData(event.into_owned()))?;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(error) => {
-                return Err(GatewayError::BackendUnavailable(format!(
-                    "failed to parse gvmd export response: {error}"
-                )));
-            }
-        }
-    }
-
-    if let Some(status) = status.filter(|status| *status >= 400) {
-        let message = status_text.unwrap_or_else(|| "gvmd export failed".to_string());
-        return Err(match status {
-            400 => GatewayError::InvalidInput(message),
-            401 => GatewayError::Unauthorized(message),
-            403 => GatewayError::Forbidden(message),
-            404 => GatewayError::NotFound(message),
-            _ => GatewayError::BackendUnavailable(message),
-        });
-    }
-
-    if !saw_report {
-        return Err(GatewayError::NotFound(
-            status_text.unwrap_or_else(|| "report export not found".to_string()),
-        ));
-    }
-
-    let bytes = if nested_xml.is_empty() {
-        BASE64
-            .decode(strip_ascii_whitespace(&base64_body))
-            .map_err(|error| {
-                GatewayError::BackendUnavailable(format!(
-                    "gvmd returned invalid base64 report export: {error}"
-                ))
-            })?
-    } else {
-        nested_xml
-    };
-
-    Ok(ReportExport {
-        bytes,
-        content_type,
-        extension,
-    })
-}
-
-fn parse_status_attr(event: &BytesStart<'_>, name: &str) -> Option<u16> {
-    parse_string_attr(event, name)?.parse().ok()
-}
-
-fn parse_string_attr(event: &BytesStart<'_>, name: &str) -> Option<String> {
-    event
-        .attributes()
-        .flatten()
-        .find(|attribute| attribute.key.as_ref() == name.as_bytes())
-        .map(|attribute| String::from_utf8_lossy(attribute.value.as_ref()).into_owned())
-}
-
-fn serialize_event(buffer: &mut Vec<u8>, event: Event<'_>) -> Result<(), GatewayError> {
-    let mut writer = Writer::new(buffer);
-    writer.write_event(event).map_err(|error| {
-        GatewayError::BackendUnavailable(format!("failed to serialize gvmd export xml: {error}"))
-    })?;
-    Ok(())
-}
-
-fn strip_ascii_whitespace(value: &str) -> String {
-    value
-        .chars()
-        .filter(|ch| !ch.is_ascii_whitespace())
-        .collect()
 }
 
 fn unpaginated_result_query(query: &ResultQuery) -> ResultQuery {
@@ -2905,38 +2761,6 @@ mod tests {
         assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
     }
 
-    #[test]
-    fn parse_report_export_response_decodes_base64_payload() {
-        let response = Response::from(
-            r#"<get_reports_response status="200" status_text="OK">
-                <report id="report-1" format_id="format-1" extension="pdf" content_type="application/pdf">SGVsbG8gUERG</report>
-            </get_reports_response>"#,
-        );
-
-        let export = parse_report_export_response(&response).expect("export parse");
-
-        assert_eq!(export.bytes, b"Hello PDF");
-        assert_eq!(export.content_type.as_deref(), Some("application/pdf"));
-        assert_eq!(export.extension.as_deref(), Some("pdf"));
-    }
-
-    #[test]
-    fn parse_report_export_response_preserves_nested_xml_payload() {
-        let response = Response::from(
-            r#"<get_reports_response status="200" status_text="OK">
-                <report id="report-1" format_id="format-xml" extension="xml" content_type="text/xml"><report id="report-1"><results><result id="r1"/></results></report></report>
-            </get_reports_response>"#,
-        );
-
-        let export = parse_report_export_response(&response).expect("export parse");
-        let xml = String::from_utf8(export.bytes).expect("utf8 xml");
-
-        assert_eq!(export.content_type.as_deref(), Some("text/xml"));
-        assert_eq!(export.extension.as_deref(), Some("xml"));
-        assert!(xml.contains(r#"<report id="report-1">"#));
-        assert!(xml.contains(r#"<result id="r1"/>"#));
-    }
-
     #[tokio::test]
     async fn gvmd_adapter_probe_version_reports_mock_version() {
         use gvm_mock_server::{GmpVersion as MockVersion, MockGmpServer, ServerMode};
@@ -2998,7 +2822,10 @@ mod tests {
     mod integration {
         use super::*;
         use gvm_gateway_domain::{CreateTargetInput, ModifyTargetInput, TargetQuery};
-        use gvm_mock_server::{GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode};
+        use gvm_mock_server::{
+            response_gen::{REPORT_EXPORT_BINARY_FORMAT_ID, REPORT_EXPORT_XML_FORMAT_ID},
+            GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode,
+        };
 
         async fn create_mock_adapter() -> (GvmdAdapter, MockGmpServer, String) {
             let server = MockGmpServer::builder()
@@ -3305,6 +3132,86 @@ mod tests {
                 .await;
 
             assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_export_report_binary_payload() {
+            let report_id = uuid::Uuid::from_u128(0x11111111_1111_1111_1111_111111111111);
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_8)
+                .unix_socket_auto()
+                .seed(move |store| {
+                    store.create(Resource::with_id(
+                        "report",
+                        "Binary export report",
+                        report_id,
+                    ));
+                })
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+
+            let export = adapter
+                .export_report(
+                    token,
+                    &report_id.to_string(),
+                    &REPORT_EXPORT_BINARY_FORMAT_ID.to_string(),
+                )
+                .await
+                .expect("binary export");
+
+            assert_eq!(export.bytes, b"Hello PDF");
+            assert_eq!(export.content_type.as_deref(), Some("application/pdf"));
+            assert_eq!(export.extension.as_deref(), Some("pdf"));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_export_report_xml_payload() {
+            let report_id = uuid::Uuid::from_u128(0x22222222_2222_2222_2222_222222222222);
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_8)
+                .unix_socket_auto()
+                .seed(move |store| {
+                    store.create(Resource::with_id("report", "XML export report", report_id));
+                })
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+
+            let export = adapter
+                .export_report(
+                    token,
+                    &report_id.to_string(),
+                    &REPORT_EXPORT_XML_FORMAT_ID.to_string(),
+                )
+                .await
+                .expect("xml export");
+
+            let xml = String::from_utf8(export.bytes).expect("utf8 xml");
+            assert_eq!(export.content_type.as_deref(), Some("text/xml"));
+            assert_eq!(export.extension.as_deref(), Some("xml"));
+            assert!(xml.contains("<report id="));
+            assert!(xml.contains(r#"<result id="result-1"/>"#));
 
             server.shutdown().await;
         }

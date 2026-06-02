@@ -444,6 +444,8 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         add_location_header_to_created_response(&mut normalized_paths, path);
     }
 
+    synchronize_report_export_responses(&mut normalized_paths);
+
     document["paths"] = Value::Object(normalized_paths);
 
     for (path, method) in [
@@ -555,6 +557,44 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     ensure_basic_auth_scheme(&mut document);
     strip_nullable_types(&mut document);
     document
+}
+
+fn synchronize_report_export_responses(paths: &mut Map<String, Value>) {
+    let Some(responses) = paths
+        .get_mut("/reports/{id}/export")
+        .and_then(|path| path.get_mut("get"))
+        .and_then(|operation| operation.get_mut("responses"))
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+
+    responses.insert(
+        "200".to_string(),
+        json!({
+            "description": "Rendered report bytes for the selected report format.",
+            "headers": {
+                "traceparent": {
+                    "description": "W3C Trace Context traceparent header for distributed tracing.",
+                    "schema": { "type": "string" }
+                },
+                "Content-Disposition": {
+                    "description": "Attachment-style filename for the rendered report artifact.",
+                    "schema": { "type": "string" }
+                }
+            },
+            "content": {
+                "application/pdf": { "schema": { "type": "string", "format": "binary" } },
+                "application/xml": { "schema": { "type": "string", "format": "binary" } },
+                "text/csv": { "schema": { "type": "string", "format": "binary" } },
+                "text/plain": { "schema": { "type": "string", "format": "binary" } },
+                "image/svg+xml": { "schema": { "type": "string", "format": "binary" } },
+                "application/octet-stream": {
+                    "schema": { "type": "string", "format": "binary" }
+                }
+            }
+        }),
+    );
 }
 
 fn tighten_target_query_parameters(document: &mut Value) {

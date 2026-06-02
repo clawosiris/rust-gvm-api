@@ -730,7 +730,9 @@ pub(crate) fn export_report_docs(op: TransformOperation<'_>) -> TransformOperati
 
     let op = problem_response::<400>(op, "Missing or invalid reportFormatId");
     let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
+    let op = problem_response::<404>(op, "Resource not found");
+    let op = problem_response::<502>(op, "Backend service unreachable or connection failed");
+    problem_response::<504>(op, "Backend service did not respond in time")
 }
 
 /// OpenAPI transform for `DELETE /api/v1/reports/{id}`.
