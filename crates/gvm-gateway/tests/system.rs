@@ -167,12 +167,12 @@ async fn version_returns_api_and_gmp_version() {
 #[tokio::test]
 async fn https_health_returns_200_in_native_tls_mode() {
     let cert_dir = TempDir::new().unwrap();
-    let rcgen::CertifiedKey { cert, key_pair } =
+    let rcgen::CertifiedKey { cert, signing_key } =
         generate_simple_self_signed(["localhost".to_string()]).unwrap();
     let cert_path = cert_dir.path().join("cert.pem");
     let key_path = cert_dir.path().join("key.pem");
     fs::write(&cert_path, cert.pem()).unwrap();
-    fs::write(&key_path, key_pair.serialize_pem()).unwrap();
+    fs::write(&key_path, signing_key.serialize_pem()).unwrap();
 
     let adapter = StaticGvmdAdapter::ready("22.7");
     let service = static_service(adapter.clone(), adapter);
