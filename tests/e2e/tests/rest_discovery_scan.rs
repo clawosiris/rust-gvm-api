@@ -6,7 +6,10 @@ use gvm_gateway_e2e::harness::{
     E2eHarness, ListResponse, PortList, Report, ResultList, ScanConfig, ScanResult, Scanner,
     SessionResponse, Target, Task, TlsCertificateList,
 };
-use reqwest::{header::CONTENT_TYPE, Response, StatusCode};
+use reqwest::{
+    header::{CONTENT_DISPOSITION, CONTENT_TYPE},
+    Response, StatusCode,
+};
 
 // Covers the target lifecycle contract clients rely on before creating scans.
 #[tokio::test(flavor = "multi_thread")]
@@ -253,6 +256,25 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
 
         let reports = harness.list_reports(&session.token).await?;
         assert_report_list_contains(&reports, &report, &created.task);
+
+        assert_report_export(
+            &harness,
+            &session.token,
+            &report,
+            &harness.config.pdf_report_format_id,
+            "application/pdf",
+            "pdf",
+        )
+        .await?;
+        assert_report_export(
+            &harness,
+            &session.token,
+            &report,
+            &harness.config.csv_report_format_id,
+            "text/csv",
+            "csv",
+        )
+        .await?;
 
         let first_results_page = harness
             .get_report_results_page(&session.token, &action.report_id, 1, 1)
@@ -531,6 +553,53 @@ fn assert_report_list_contains(reports: &ListResponse<Report>, report: &Report, 
         Some(task.id.as_str()),
         "listed report did not point back to the completed task"
     );
+}
+
+async fn assert_report_export(
+    harness: &E2eHarness,
+    token: &str,
+    report: &Report,
+    report_format_id: &str,
+    expected_content_type: &str,
+    expected_extension: &str,
+) -> Result<()> {
+    let response = harness
+        .export_report_response(token, &report.id, report_format_id)
+        .await?;
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = response.bytes().await.context("read report export body")?;
+
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "report export {expected_extension} returned unexpected status {status}"
+    );
+    assert!(
+        !body.is_empty(),
+        "report export {expected_extension} returned an empty payload"
+    );
+
+    let content_type = headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        content_type.starts_with(expected_content_type),
+        "report export {expected_extension} returned content type {content_type}, expected {expected_content_type}"
+    );
+
+    let content_disposition = headers
+        .get(CONTENT_DISPOSITION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        content_disposition.contains(&report.id)
+            && content_disposition.contains(&format!(".{expected_extension}")),
+        "report export {expected_extension} returned unexpected content disposition {content_disposition}"
+    );
+
+    Ok(())
 }
 
 fn assert_report_results_page_links_report(

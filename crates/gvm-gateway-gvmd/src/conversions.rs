@@ -386,6 +386,7 @@ pub(crate) fn parse_permission_subject_type(
 
 pub(crate) fn map_gvm_error(error: gvm_client::GvmError) -> GatewayError {
     match error {
+        gvm_client::GvmError::Parse(error) => map_parse_error(error),
         gvm_client::GvmError::Server {
             status: 400,
             message,
@@ -631,6 +632,16 @@ mod tests {
         let error = gvm_client::GvmError::Timeout(std::time::Duration::from_secs(5));
         let mapped = map_gvm_error(error);
         assert!(matches!(mapped, GatewayError::GatewayTimeout(_)));
+    }
+
+    #[test]
+    fn map_gvm_error_parse_server_error_uses_parse_mapping() {
+        let error = gvm_client::GvmError::Parse(gvm_gmp::responses::ParseError::ServerError {
+            status: 400,
+            message: "bad request".to_string(),
+        });
+        let mapped = map_gvm_error(error);
+        assert!(matches!(mapped, GatewayError::InvalidInput(detail) if detail == "bad request"));
     }
 
     #[test]

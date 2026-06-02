@@ -64,6 +64,17 @@ pub struct ReportPage {
     pub pagination: Pagination,
 }
 
+/// Exported report artifact for download-style responses.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportExport {
+    /// Rendered report bytes in the selected report format.
+    pub bytes: Vec<u8>,
+    /// Content type reported by the backend when available.
+    pub content_type: Option<String>,
+    /// File extension reported by the backend when available.
+    pub extension: Option<String>,
+}
+
 /// TLS certificate observation associated with a report.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TlsCertificate {

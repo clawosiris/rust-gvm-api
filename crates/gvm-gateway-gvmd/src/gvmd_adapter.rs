@@ -24,12 +24,12 @@ use gvm_gateway_domain::{
     ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
     ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Pagination,
     Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
-    ReadinessStatus, Report, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
-    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
-    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
-    SchedulePort, ScheduleQuery, SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task,
-    TaskAction, TaskPage, TaskPort, TaskQuery, Timezone, TlsCertificate, TlsCertificatePage, User,
-    UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    ReadinessStatus, Report, ReportExport, ReportPage, ReportPort, ReportQuery, ResultPage,
+    ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
+    SchedulePage, SchedulePort, ScheduleQuery, SystemPort, Target, TargetPage, TargetPort,
+    TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Timezone, TlsCertificate,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -2099,6 +2099,30 @@ impl ReportPort for GvmdAdapter {
         Ok(report)
     }
 
+    async fn export_report(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        report_format_id: &str,
+    ) -> Result<ReportExport, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let report_id = parse_entity_id(report_id)?;
+        let report_format_id = parse_entity_id(report_format_id)?;
+
+        let export = client
+            .lock()
+            .await
+            .get_report_export(&report_id, &report_format_id)
+            .await
+            .map_err(map_gvm_error)?;
+
+        Ok(ReportExport {
+            bytes: export.bytes,
+            content_type: export.content_type,
+            extension: export.extension,
+        })
+    }
+
     async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
@@ -2798,7 +2822,10 @@ mod tests {
     mod integration {
         use super::*;
         use gvm_gateway_domain::{CreateTargetInput, ModifyTargetInput, TargetQuery};
-        use gvm_mock_server::{GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode};
+        use gvm_mock_server::{
+            response_gen::{REPORT_EXPORT_BINARY_FORMAT_ID, REPORT_EXPORT_XML_FORMAT_ID},
+            GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode,
+        };
 
         async fn create_mock_adapter() -> (GvmdAdapter, MockGmpServer, String) {
             let server = MockGmpServer::builder()
@@ -3105,6 +3132,86 @@ mod tests {
                 .await;
 
             assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_export_report_binary_payload() {
+            let report_id = uuid::Uuid::from_u128(0x11111111_1111_1111_1111_111111111111);
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_8)
+                .unix_socket_auto()
+                .seed(move |store| {
+                    store.create(Resource::with_id(
+                        "report",
+                        "Binary export report",
+                        report_id,
+                    ));
+                })
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+
+            let export = adapter
+                .export_report(
+                    token,
+                    &report_id.to_string(),
+                    &REPORT_EXPORT_BINARY_FORMAT_ID.to_string(),
+                )
+                .await
+                .expect("binary export");
+
+            assert_eq!(export.bytes, b"Hello PDF");
+            assert_eq!(export.content_type.as_deref(), Some("application/pdf"));
+            assert_eq!(export.extension.as_deref(), Some("pdf"));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_export_report_xml_payload() {
+            let report_id = uuid::Uuid::from_u128(0x22222222_2222_2222_2222_222222222222);
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_8)
+                .unix_socket_auto()
+                .seed(move |store| {
+                    store.create(Resource::with_id("report", "XML export report", report_id));
+                })
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+
+            let export = adapter
+                .export_report(
+                    token,
+                    &report_id.to_string(),
+                    &REPORT_EXPORT_XML_FORMAT_ID.to_string(),
+                )
+                .await
+                .expect("xml export");
+
+            let xml = String::from_utf8(export.bytes).expect("utf8 xml");
+            assert_eq!(export.content_type.as_deref(), Some("text/xml"));
+            assert_eq!(export.extension.as_deref(), Some("xml"));
+            assert!(xml.contains("<report id="));
+            assert!(xml.contains(r#"<result id="result-1"/>"#));
 
             server.shutdown().await;
         }

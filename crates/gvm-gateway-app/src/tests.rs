@@ -179,6 +179,16 @@ async fn service_get_report_requires_valid_session() {
     assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
+/// Report export rejects unknown session tokens before hitting the port.
+#[tokio::test]
+async fn service_export_report_requires_valid_session() {
+    let service = create_test_service();
+    let result = service
+        .export_report("invalid-token", "some-report-id", "some-report-format-id")
+        .await;
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+}
+
 /// Report deletion rejects unknown session tokens before hitting the port.
 #[tokio::test]
 async fn service_delete_report_requires_valid_session() {

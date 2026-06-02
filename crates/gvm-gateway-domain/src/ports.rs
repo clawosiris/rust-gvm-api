@@ -14,10 +14,10 @@ use crate::{
     ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
     ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
     ModifyUserSettingInput, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
-    ReadinessStatus, Report, ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery,
-    Schedule, SchedulePage, ScheduleQuery, Target, TargetPage, TargetQuery, Task, TaskAction,
-    TaskPage, TaskQuery, Timezone, TlsCertificatePage, User, UserPage, UserSetting,
+    ReadinessStatus, Report, ReportExport, ReportPage, ReportQuery, ResultPage, ResultQuery, Role,
+    RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerQuery, Schedule, SchedulePage, ScheduleQuery, Target, TargetPage, TargetQuery, Task,
+    TaskAction, TaskPage, TaskQuery, Timezone, TlsCertificatePage, User, UserPage, UserSetting,
     UserSettingList, UserSettingQuery,
 };
 
@@ -356,6 +356,14 @@ pub trait ReportPort: Send + Sync + 'static {
         id: &str,
         opts: &GetReportOpts,
     ) -> Result<Report, GatewayError>;
+
+    /// Export a report in the selected backend report format.
+    async fn export_report(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        report_format_id: &str,
+    ) -> Result<ReportExport, GatewayError>;
 
     /// Delete a report by identifier.
     async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;

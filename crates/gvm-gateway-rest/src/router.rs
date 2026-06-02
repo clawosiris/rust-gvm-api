@@ -61,10 +61,10 @@ use crate::{
         update_port_list_docs,
     },
     reports::{
-        delete_report, delete_report_docs, get_report, get_report_closed_cves,
-        get_report_closed_cves_docs, get_report_docs, get_report_errors, get_report_errors_docs,
-        get_report_results, get_report_results_docs, get_report_tls_certificates,
-        get_report_tls_certificates_docs, get_report_vulnerabilities,
+        delete_report, delete_report_docs, export_report, export_report_docs, get_report,
+        get_report_closed_cves, get_report_closed_cves_docs, get_report_docs, get_report_errors,
+        get_report_errors_docs, get_report_results, get_report_results_docs,
+        get_report_tls_certificates, get_report_tls_certificates_docs, get_report_vulnerabilities,
         get_report_vulnerabilities_docs, list_reports, list_reports_docs,
     },
     results::{get_result, get_result_docs, list_results, list_results_docs},
@@ -402,6 +402,10 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/reports/{id}",
             get_with(get_report, get_report_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/export",
+            get_with(export_report, export_report_docs),
         )
         .api_route(
             "/api/v1/reports/{id}",
