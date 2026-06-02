@@ -6,7 +6,8 @@ usage() {
 Usage: scripts/run-e2e-tests.sh [--wait-only] [-- <cargo-test-args...>]
 
 Waits for the gateway readiness endpoint and the REST resources required by the
-ignored REST discovery scan end-to-end test.
+compose-backed end-to-end tests, then runs all E2E test targets in the
+gvm-gateway-e2e package, including ignored tests.
 
 Environment:
   GVM_GATEWAY_E2E_BASE_URL             Default: http://127.0.0.1:8080
@@ -295,8 +296,4 @@ if [[ "${WAIT_ONLY}" == "1" ]]; then
   exit 0
 fi
 
-if [[ $# -gt 0 ]]; then
-  exec cargo test -p gvm-gateway-e2e --test rest_discovery_scan -- --ignored --nocapture "$@"
-fi
-
-exec cargo test -p gvm-gateway-e2e --test rest_discovery_scan -- --ignored --nocapture
+exec cargo test -p gvm-gateway-e2e --tests -- --include-ignored --nocapture "$@"

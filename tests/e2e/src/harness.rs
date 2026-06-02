@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use reqwest::{Client, Method, StatusCode};
+use reqwest::{header, Client, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::json;
@@ -114,6 +114,106 @@ impl E2eHarness {
             .await
     }
 
+    pub async fn create_session_with_location(&self) -> Result<CreatedSession> {
+        let response = self
+            .client
+            .post(self.endpoint("/api/v1/sessions"))
+            .basic_auth(&self.config.username, Some(&self.config.password))
+            .send()
+            .await
+            .context("create REST session with Location")?;
+        let status = response.status();
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .map(|value| value.to_str())
+            .transpose()
+            .context("parse session Location response header")?
+            .map(ToOwned::to_owned);
+        let body = response
+            .text()
+            .await
+            .context("read create session response body")?;
+
+        if status != StatusCode::CREATED {
+            bail!(
+                "create REST session: expected HTTP {} but received {} with body {}",
+                StatusCode::CREATED,
+                status,
+                truncate(&body)
+            );
+        }
+
+        let session: SessionResponse = serde_json::from_str(&body)
+            .with_context(|| format!("parse session body as JSON: {}", truncate(&body)))?;
+        let location =
+            location.with_context(|| "create session response did not include Location header")?;
+        Ok(CreatedSession { session, location })
+    }
+
+    pub async fn create_session_with_credentials(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<reqwest::Response> {
+        self.request(Method::POST, "/api/v1/sessions")
+            .basic_auth(username, Some(password))
+            .send()
+            .await
+            .context("create REST session with supplied credentials")
+    }
+
+    pub async fn create_session_with_malformed_basic(&self) -> Result<reqwest::Response> {
+        self.request(Method::POST, "/api/v1/sessions")
+            .header(header::AUTHORIZATION, "Basic bm9fY29sb24=")
+            .send()
+            .await
+            .context("create REST session with malformed Basic credentials")
+    }
+
+    pub async fn get_session(&self, token: &str) -> Result<SessionInfo> {
+        self.send_json(
+            self.request(Method::GET, &format!("/api/v1/sessions/{token}")),
+            StatusCode::OK,
+            "get REST session",
+        )
+        .await
+    }
+
+    pub async fn get_session_response(&self, token: &str) -> Result<reqwest::Response> {
+        self.request(Method::GET, &format!("/api/v1/sessions/{token}"))
+            .send()
+            .await
+            .context("get REST session response")
+    }
+
+    pub async fn get_targets_without_auth(&self) -> Result<reqwest::Response> {
+        self.request(Method::GET, "/api/v1/targets")
+            .send()
+            .await
+            .context("list targets without auth")
+    }
+
+    pub async fn get_targets_with_bearer(&self, token: &str) -> Result<reqwest::Response> {
+        self.request(Method::GET, "/api/v1/targets")
+            .bearer_auth(token)
+            .send()
+            .await
+            .context("list targets with bearer token")
+    }
+
+    pub async fn get_targets_with_basic(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<reqwest::Response> {
+        self.request(Method::GET, "/api/v1/targets")
+            .basic_auth(username, Some(password))
+            .send()
+            .await
+            .context("list targets with request-scoped Basic auth")
+    }
+
     pub async fn list_scan_configs(&self, token: &str) -> Result<Vec<ScanConfig>> {
         let response: ListResponse<ScanConfig> = self
             .send_json(
@@ -123,6 +223,74 @@ impl E2eHarness {
             )
             .await?;
         Ok(response.data)
+    }
+
+    pub async fn get_scan_config(&self, token: &str, scan_config_id: &str) -> Result<ScanConfig> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/scan-configs/{scan_config_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get scan config",
+        )
+        .await
+    }
+
+    pub async fn create_scan_config_from_base(
+        &self,
+        token: &str,
+        name: &str,
+        comment: &str,
+        base_scan_config_id: &str,
+    ) -> Result<CreatedResource> {
+        let body = json!({
+            "name": name,
+            "comment": comment,
+            "baseScanConfigId": base_scan_config_id,
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/scan-configs", token)
+                .json(&body),
+            "create scan config",
+        )
+        .await
+    }
+
+    pub async fn update_scan_config_comment(
+        &self,
+        token: &str,
+        scan_config_id: &str,
+        comment: &str,
+    ) -> Result<ScanConfig> {
+        let body = json!({
+            "comment": comment,
+        });
+        self.send_json(
+            self.authed(
+                Method::PUT,
+                &format!("/api/v1/scan-configs/{scan_config_id}"),
+                token,
+            )
+            .json(&body),
+            StatusCode::OK,
+            "update scan config",
+        )
+        .await
+    }
+
+    pub async fn delete_scan_config(&self, token: &str, scan_config_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/scan-configs/{scan_config_id}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete scan config",
+        )
+        .await
     }
 
     pub async fn list_scanners(&self, token: &str) -> Result<Vec<Scanner>> {
@@ -136,6 +304,19 @@ impl E2eHarness {
         Ok(response.data)
     }
 
+    pub async fn get_scanner(&self, token: &str, scanner_id: &str) -> Result<Scanner> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/scanners/{scanner_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get scanner",
+        )
+        .await
+    }
+
     pub async fn list_port_lists(&self, token: &str) -> Result<Vec<PortList>> {
         let response: ListResponse<PortList> = self
             .send_json(
@@ -145,6 +326,290 @@ impl E2eHarness {
             )
             .await?;
         Ok(response.data)
+    }
+
+    pub async fn create_port_list(
+        &self,
+        token: &str,
+        name: &str,
+        port_range: &str,
+    ) -> Result<CreatedResource> {
+        let body = json!({
+            "name": name,
+            "comment": "created by compose-backed E2E supporting resource coverage",
+            "portRange": port_range,
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/port-lists", token)
+                .json(&body),
+            "create port list",
+        )
+        .await
+    }
+
+    pub async fn get_port_list(&self, token: &str, port_list_id: &str) -> Result<PortList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/port-lists/{port_list_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get port list",
+        )
+        .await
+    }
+
+    pub async fn update_port_list_comment(
+        &self,
+        token: &str,
+        port_list_id: &str,
+        comment: &str,
+    ) -> Result<PortList> {
+        let body = json!({
+            "comment": comment,
+        });
+        self.send_json(
+            self.authed(
+                Method::PUT,
+                &format!("/api/v1/port-lists/{port_list_id}"),
+                token,
+            )
+            .json(&body),
+            StatusCode::OK,
+            "update port list",
+        )
+        .await
+    }
+
+    pub async fn delete_port_list(&self, token: &str, port_list_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/port-lists/{port_list_id}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete port list",
+        )
+        .await
+    }
+
+    pub async fn list_feeds(&self, token: &str) -> Result<Vec<Feed>> {
+        let response: UnpaginatedListResponse<Feed> = self
+            .send_json(
+                self.authed(Method::GET, "/api/v1/feeds", token),
+                StatusCode::OK,
+                "list feeds",
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn list_timezones(&self, token: &str) -> Result<Vec<Timezone>> {
+        let response: UnpaginatedListResponse<Timezone> = self
+            .send_json(
+                self.authed(Method::GET, "/api/v1/timezones", token),
+                StatusCode::OK,
+                "list timezones",
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn list_schedules(&self, token: &str) -> Result<ListResponse<Schedule>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/schedules?perPage=1000", token),
+            StatusCode::OK,
+            "list schedules",
+        )
+        .await
+    }
+
+    pub async fn create_schedule(
+        &self,
+        token: &str,
+        name: &str,
+        icalendar: &str,
+        timezone: &str,
+    ) -> Result<CreatedResource> {
+        let body = json!({
+            "name": name,
+            "comment": "created by compose-backed E2E automation resource coverage",
+            "icalendar": icalendar,
+            "timezone": timezone,
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/schedules", token)
+                .json(&body),
+            "create schedule",
+        )
+        .await
+    }
+
+    pub async fn get_schedule(&self, token: &str, schedule_id: &str) -> Result<Schedule> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/schedules/{schedule_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get schedule",
+        )
+        .await
+    }
+
+    pub async fn update_schedule(
+        &self,
+        token: &str,
+        schedule_id: &str,
+        name: &str,
+        comment: &str,
+        icalendar: &str,
+        timezone: &str,
+    ) -> Result<Schedule> {
+        let body = json!({
+            "name": name,
+            "comment": comment,
+            "icalendar": icalendar,
+            "timezone": timezone,
+        });
+        self.send_json(
+            self.authed(
+                Method::PUT,
+                &format!("/api/v1/schedules/{schedule_id}"),
+                token,
+            )
+            .json(&body),
+            StatusCode::OK,
+            "update schedule",
+        )
+        .await
+    }
+
+    pub async fn delete_schedule(&self, token: &str, schedule_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/schedules/{schedule_id}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete schedule",
+        )
+        .await
+    }
+
+    pub async fn list_credential_stores(&self, token: &str) -> Result<Vec<CredentialStore>> {
+        let response: UnpaginatedListResponse<CredentialStore> = self
+            .send_json(
+                self.authed(Method::GET, "/api/v1/credential-stores", token),
+                StatusCode::OK,
+                "list credential stores",
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn list_credentials(&self, token: &str) -> Result<ListResponse<Credential>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/credentials?perPage=1000", token),
+            StatusCode::OK,
+            "list credentials",
+        )
+        .await
+    }
+
+    pub async fn list_alerts(&self, token: &str) -> Result<ListResponse<Alert>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/alerts?perPage=1000", token),
+            StatusCode::OK,
+            "list alerts",
+        )
+        .await
+    }
+
+    pub async fn create_alert(&self, token: &str, name: &str) -> Result<CreatedResource> {
+        let body = json!({
+            "name": name,
+            "comment": "created by compose-backed E2E automation resource coverage",
+            "event": "task_run_status_changed",
+            "condition": "always",
+            "method": "syslog",
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/alerts", token)
+                .json(&body),
+            "create alert",
+        )
+        .await
+    }
+
+    pub async fn get_alert(&self, token: &str, alert_id: &str) -> Result<Alert> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/alerts/{alert_id}"), token),
+            StatusCode::OK,
+            "get alert",
+        )
+        .await
+    }
+
+    pub async fn delete_alert(&self, token: &str, alert_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(Method::DELETE, &format!("/api/v1/alerts/{alert_id}"), token),
+            StatusCode::NO_CONTENT,
+            "delete alert",
+        )
+        .await
+    }
+
+    pub async fn create_username_password_credential(
+        &self,
+        token: &str,
+        name: &str,
+        login: &str,
+        password: &str,
+    ) -> Result<CreatedResource> {
+        let body = json!({
+            "name": name,
+            "comment": "created by compose-backed E2E supporting resource coverage",
+            "type": "up",
+            "login": login,
+            "password": password,
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/credentials", token)
+                .json(&body),
+            "create credential",
+        )
+        .await
+    }
+
+    pub async fn get_credential(&self, token: &str, credential_id: &str) -> Result<Credential> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/credentials/{credential_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get credential",
+        )
+        .await
+    }
+
+    pub async fn delete_credential(&self, token: &str, credential_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/credentials/{credential_id}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete credential",
+        )
+        .await
     }
 
     pub async fn create_target(
@@ -170,11 +635,51 @@ impl E2eHarness {
         self.get_target(token, &created.id).await
     }
 
+    pub async fn list_targets(&self, token: &str) -> Result<ListResponse<Target>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/targets?perPage=1000", token),
+            StatusCode::OK,
+            "list targets",
+        )
+        .await
+    }
+
     pub async fn get_target(&self, token: &str, target_id: &str) -> Result<Target> {
         self.send_json(
             self.authed(Method::GET, &format!("/api/v1/targets/{target_id}"), token),
             StatusCode::OK,
             "get target",
+        )
+        .await
+    }
+
+    pub async fn update_target_name(
+        &self,
+        token: &str,
+        target_id: &str,
+        name: &str,
+    ) -> Result<Target> {
+        let body = json!({
+            "name": name,
+        });
+        self.send_json(
+            self.authed(Method::PUT, &format!("/api/v1/targets/{target_id}"), token)
+                .json(&body),
+            StatusCode::OK,
+            "update target",
+        )
+        .await
+    }
+
+    pub async fn delete_target(&self, token: &str, target_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/targets/{target_id}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete target",
         )
         .await
     }
@@ -204,6 +709,15 @@ impl E2eHarness {
         self.get_task(token, &created.id).await
     }
 
+    pub async fn list_tasks(&self, token: &str) -> Result<ListResponse<Task>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/tasks?perPage=1000", token),
+            StatusCode::OK,
+            "list tasks",
+        )
+        .await
+    }
+
     pub async fn start_task(&self, token: &str, task_id: &str) -> Result<TaskAction> {
         self.send_json(
             self.authed(
@@ -213,6 +727,71 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "start task",
+        )
+        .await
+    }
+
+    pub async fn update_task_name(&self, token: &str, task_id: &str, name: &str) -> Result<Task> {
+        let body = json!({
+            "name": name,
+        });
+        self.send_json(
+            self.authed(Method::PUT, &format!("/api/v1/tasks/{task_id}"), token)
+                .json(&body),
+            StatusCode::OK,
+            "update task",
+        )
+        .await
+    }
+
+    pub async fn stop_task_response(
+        &self,
+        token: &str,
+        task_id: &str,
+    ) -> Result<reqwest::Response> {
+        self.authed(
+            Method::POST,
+            &format!("/api/v1/tasks/{task_id}/stop"),
+            token,
+        )
+        .send()
+        .await
+        .context("stop task")
+    }
+
+    pub async fn stop_task(&self, token: &str, task_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::POST,
+                &format!("/api/v1/tasks/{task_id}/stop"),
+                token,
+            ),
+            StatusCode::OK,
+            "stop task",
+        )
+        .await
+    }
+
+    pub async fn resume_task_response(
+        &self,
+        token: &str,
+        task_id: &str,
+    ) -> Result<reqwest::Response> {
+        self.authed(
+            Method::POST,
+            &format!("/api/v1/tasks/{task_id}/resume"),
+            token,
+        )
+        .send()
+        .await
+        .context("resume task")
+    }
+
+    pub async fn delete_task(&self, token: &str, task_id: &str) -> Result<()> {
+        self.send_empty(
+            self.authed(Method::DELETE, &format!("/api/v1/tasks/{task_id}"), token),
+            StatusCode::NO_CONTENT,
+            "delete task",
         )
         .await
     }
@@ -261,6 +840,31 @@ impl E2eHarness {
         );
     }
 
+    pub async fn wait_for_task_stopped(&self, token: &str, task_id: &str) -> Result<Task> {
+        let deadline = Instant::now() + self.config.scan_timeout;
+        let mut last_status = String::from("task status not yet observed");
+
+        while Instant::now() < deadline {
+            let task = self.get_task(token, task_id).await?;
+            last_status = task.status.clone();
+            eprintln!(
+                "task {} status={} while waiting for stop",
+                task.id, task.status
+            );
+
+            match task.status.as_str() {
+                "Stopped" | "Interrupted" => return Ok(task),
+                "Done" => bail!("task {task_id} completed before stop took effect"),
+                _ => tokio::time::sleep(self.config.poll_interval).await,
+            }
+        }
+
+        bail!(
+            "task {task_id} did not stop within {:?}; last status: {last_status}",
+            self.config.scan_timeout
+        );
+    }
+
     pub async fn get_report(&self, token: &str, report_id: &str) -> Result<Report> {
         self.send_json(
             self.authed(
@@ -274,6 +878,42 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn list_reports(&self, token: &str) -> Result<ListResponse<Report>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/reports?perPage=1000", token),
+            StatusCode::OK,
+            "list reports",
+        )
+        .await
+    }
+
+    pub async fn list_results_page(
+        &self,
+        token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/results?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "list results page",
+        )
+        .await
+    }
+
+    pub async fn get_result(&self, token: &str, result_id: &str) -> Result<ScanResult> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/results/{result_id}"), token),
+            StatusCode::OK,
+            "get result",
+        )
+        .await
+    }
+
     pub async fn get_report_results(&self, token: &str, report_id: &str) -> Result<ResultList> {
         self.send_json(
             self.authed(
@@ -283,6 +923,105 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "get report results",
+        )
+        .await
+    }
+
+    pub async fn get_report_results_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/reports/{report_id}/results?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get report results page",
+        )
+        .await
+    }
+
+    pub async fn get_report_tls_certificates_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<TlsCertificateList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!(
+                    "/api/v1/reports/{report_id}/tls-certificates?page={page}&perPage={per_page}"
+                ),
+                token,
+            ),
+            StatusCode::OK,
+            "get report TLS certificates page",
+        )
+        .await
+    }
+
+    pub async fn get_report_errors_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/reports/{report_id}/errors?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get report errors page",
+        )
+        .await
+    }
+
+    pub async fn get_report_closed_cves_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/reports/{report_id}/closed-cves?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get report closed CVEs page",
+        )
+        .await
+    }
+
+    pub async fn get_report_vulnerabilities_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ResultList> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!(
+                    "/api/v1/reports/{report_id}/vulnerabilities?page={page}&perPage={per_page}"
+                ),
+                token,
+            ),
+            StatusCode::OK,
+            "get report vulnerabilities page",
         )
         .await
     }
@@ -360,14 +1099,16 @@ impl E2eHarness {
         format!("{prefix}-{}", chrono_like_timestamp())
     }
 
+    pub fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
+        self.client.request(method, self.endpoint(path))
+    }
+
     fn endpoint(&self, path: &str) -> String {
         format!("{}{}", self.config.base_url.trim_end_matches('/'), path)
     }
 
     fn authed(&self, method: Method, path: &str, token: &str) -> reqwest::RequestBuilder {
-        self.client
-            .request(method, self.endpoint(path))
-            .bearer_auth(token)
+        self.request(method, path).bearer_auth(token)
     }
 
     async fn send_json<T>(
@@ -401,6 +1142,76 @@ impl E2eHarness {
         serde_json::from_str(&body)
             .with_context(|| format!("{action}: parse response body as JSON: {}", truncate(&body)))
     }
+
+    async fn send_empty(
+        &self,
+        request: reqwest::RequestBuilder,
+        expected_status: StatusCode,
+        action: &str,
+    ) -> Result<()> {
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("{action}: send HTTP request"))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .with_context(|| format!("{action}: read HTTP response body"))?;
+
+        if status != expected_status {
+            bail!(
+                "{action}: expected HTTP {} but received {} with body {}",
+                expected_status,
+                status,
+                truncate(&body)
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn send_created_json(
+        &self,
+        request: reqwest::RequestBuilder,
+        action: &str,
+    ) -> Result<CreatedResource> {
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("{action}: send HTTP request"))?;
+        let status = response.status();
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .map(|value| value.to_str())
+            .transpose()
+            .with_context(|| format!("{action}: parse Location response header"))?
+            .map(ToOwned::to_owned);
+        let body = response
+            .text()
+            .await
+            .with_context(|| format!("{action}: read HTTP response body"))?;
+
+        if status != StatusCode::CREATED {
+            bail!(
+                "{action}: expected HTTP {} but received {} with body {}",
+                StatusCode::CREATED,
+                status,
+                truncate(&body)
+            );
+        }
+
+        let body: ResourceCreated = serde_json::from_str(&body).with_context(|| {
+            format!("{action}: parse response body as JSON: {}", truncate(&body))
+        })?;
+        let location = location
+            .with_context(|| format!("{action}: response did not include Location header"))?;
+        Ok(CreatedResource {
+            id: body.id,
+            location,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -419,6 +1230,26 @@ pub struct SessionResponse {
     pub gmp_version: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct CreatedSession {
+    pub session: SessionResponse,
+    pub location: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SessionInfo {
+    #[serde(rename = "sessionToken")]
+    pub token: String,
+    pub user: String,
+    pub state: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "lastUsedAt")]
+    pub last_used_at: String,
+    #[serde(rename = "expiresIn")]
+    pub expires_in: i64,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct ResourceRef {
     pub id: String,
@@ -428,6 +1259,17 @@ pub struct ResourceRef {
 #[derive(Clone, Debug, Deserialize)]
 pub struct ResourceCreated {
     pub id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct UnpaginatedListResponse<T> {
+    pub data: Vec<T>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CreatedResource {
+    pub id: String,
+    pub location: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -450,6 +1292,10 @@ pub struct ListResponse<T> {
 pub struct ScanConfig {
     pub id: String,
     pub name: String,
+    pub comment: Option<String>,
+    #[serde(rename = "inUse")]
+    pub in_use: Option<bool>,
+    pub writable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -464,6 +1310,80 @@ pub struct Scanner {
 pub struct PortList {
     pub id: String,
     pub name: String,
+    pub comment: Option<String>,
+    #[serde(rename = "portCount")]
+    pub port_count: Option<u32>,
+    #[serde(rename = "tcpCount")]
+    pub tcp_count: Option<u32>,
+    #[serde(rename = "udpCount")]
+    pub udp_count: Option<u32>,
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    pub writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Feed {
+    #[serde(rename = "type")]
+    pub feed_type: String,
+    pub name: String,
+    pub version: Option<String>,
+    pub description: Option<String>,
+    #[serde(rename = "currentlySyncing")]
+    pub currently_syncing: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Timezone {
+    pub name: String,
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Schedule {
+    pub id: String,
+    pub name: String,
+    pub comment: Option<String>,
+    pub icalendar: Option<String>,
+    pub timezone: Option<String>,
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    pub writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Alert {
+    pub id: String,
+    pub name: String,
+    pub comment: Option<String>,
+    pub event: Option<String>,
+    pub condition: Option<String>,
+    pub method: Option<String>,
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    pub writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CredentialStore {
+    pub id: String,
+    pub name: String,
+    pub provider: Option<String>,
+    pub default: bool,
+    pub writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Credential {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub credential_type: Option<String>,
+    pub login: Option<String>,
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    pub writable: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -471,13 +1391,20 @@ pub struct Target {
     pub id: String,
     pub name: String,
     pub hosts: Vec<String>,
+    #[serde(rename = "portList")]
+    pub port_list: Option<ResourceRef>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Task {
     pub id: String,
     pub name: String,
+    pub comment: Option<String>,
     pub status: String,
+    pub target: Option<ResourceRef>,
+    #[serde(rename = "scanConfig")]
+    pub scan_config: Option<ResourceRef>,
+    pub scanner: Option<ResourceRef>,
     #[serde(rename = "currentReport")]
     pub current_report: Option<ResourceRef>,
     #[serde(rename = "lastReport")]
@@ -522,12 +1449,48 @@ pub struct ResultList {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct TlsCertificateList {
+    pub data: Vec<TlsCertificate>,
+    pub pagination: Pagination,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TlsCertificate {
+    pub id: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<String>,
+    pub subject: String,
+    pub issuer: Option<String>,
+    #[serde(rename = "notBefore")]
+    pub not_before: Option<String>,
+    #[serde(rename = "notAfter")]
+    pub not_after: Option<String>,
+    #[serde(rename = "fingerprintSha256")]
+    pub fingerprint_sha256: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct ScanResult {
     pub id: String,
     pub name: String,
     pub host: Option<String>,
     pub port: Option<String>,
     pub severity: Option<f64>,
+    pub threat: Option<String>,
+    pub task: Option<ResourceRef>,
+    pub report: Option<ResourceRef>,
+    pub nvt: Option<NvtRef>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NvtRef {
+    pub oid: Option<String>,
+    pub name: Option<String>,
+    pub family: Option<String>,
+    #[serde(rename = "cvssBase")]
+    pub cvss_base: Option<f64>,
+    pub cves: Option<Vec<String>>,
+    pub tags: Option<String>,
 }
 
 fn env_or_default(key: &str, default: &str) -> String {
@@ -562,6 +1525,6 @@ fn chrono_like_timestamp() -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_else(|_| Duration::from_secs(0))
-        .as_secs();
+        .as_nanos();
     now.to_string()
 }

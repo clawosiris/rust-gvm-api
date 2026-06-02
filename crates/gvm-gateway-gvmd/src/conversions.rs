@@ -389,6 +389,10 @@ pub(crate) fn map_gvm_error(error: gvm_client::GvmError) -> GatewayError {
         gvm_client::GvmError::Server {
             status: 400,
             message,
+        } if is_authentication_failure(&message) => GatewayError::Unauthorized(message),
+        gvm_client::GvmError::Server {
+            status: 400,
+            message,
         } => GatewayError::InvalidInput(message),
         gvm_client::GvmError::Server {
             status: 401,
@@ -446,6 +450,10 @@ pub(crate) fn map_parse_error(error: gvm_gmp::responses::ParseError) -> GatewayE
         gvm_gmp::responses::ParseError::ServerError {
             status: 400,
             message,
+        } if is_authentication_failure(&message) => GatewayError::Unauthorized(message),
+        gvm_gmp::responses::ParseError::ServerError {
+            status: 400,
+            message,
         } => GatewayError::InvalidInput(message),
         gvm_gmp::responses::ParseError::ServerError {
             status: 401,
@@ -457,6 +465,10 @@ pub(crate) fn map_parse_error(error: gvm_gmp::responses::ParseError) -> GatewayE
         } => GatewayError::Forbidden(message),
         other => GatewayError::BackendUnavailable(other.to_string()),
     }
+}
+
+fn is_authentication_failure(message: &str) -> bool {
+    message.eq_ignore_ascii_case("authentication failed")
 }
 
 // ============================================================================
@@ -573,6 +585,18 @@ mod tests {
     }
 
     #[test]
+    fn map_gvm_error_400_authentication_failed_to_unauthorized() {
+        // gvmd may report failed login as a 400 server error; the REST
+        // contract still exposes credential failure as 401 Unauthorized.
+        let error = gvm_client::GvmError::Server {
+            status: 400,
+            message: "Authentication failed".to_string(),
+        };
+        let mapped = map_gvm_error(error);
+        assert!(matches!(mapped, GatewayError::Unauthorized(_)));
+    }
+
+    #[test]
     fn map_gvm_error_401_to_unauthorized() {
         let error = gvm_client::GvmError::Server {
             status: 401,
@@ -627,6 +651,18 @@ mod tests {
         };
         let mapped = map_parse_error(error);
         assert!(matches!(mapped, GatewayError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn map_parse_error_400_authentication_failed_to_unauthorized() {
+        // Keep structured response parsing aligned with direct client errors
+        // when gvmd encodes authentication failure as a 400 response.
+        let error = gvm_gmp::responses::ParseError::ServerError {
+            status: 400,
+            message: "Authentication failed".to_string(),
+        };
+        let mapped = map_parse_error(error);
+        assert!(matches!(mapped, GatewayError::Unauthorized(_)));
     }
 
     #[test]

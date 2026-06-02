@@ -28,3 +28,4 @@ TASK_*.md
 .env
 .env.local
 CODEX_*.md
+spec.md
