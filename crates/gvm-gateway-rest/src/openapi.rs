@@ -34,7 +34,7 @@ pub(crate) fn problem_response<'a, const N: u16>(
 }
 
 /// Finalize the generated OpenAPI document so its served contract shape matches
-/// the curated repository spec for the implemented subset.
+/// the curated repository spec for the implemented REST surface.
 pub(crate) fn finalize_document(mut document: Value) -> Value {
     document["servers"] = json!([
         {
@@ -126,286 +126,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     ]);
 
     let source_paths = document["paths"].as_object().cloned().unwrap_or_default();
-    let mut normalized_paths = Map::new();
-
-    copy_path(&source_paths, &mut normalized_paths, "/health", "/health");
-    copy_path(&source_paths, &mut normalized_paths, "/ready", "/ready");
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/version",
-        "/version",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/sessions",
-        "/sessions",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/sessions/{token}",
-        "/sessions/{token}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/targets",
-        "/targets",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/targets/{id}",
-        "/targets/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/alerts",
-        "/alerts",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/alerts/{id}",
-        "/alerts/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/timezones",
-        "/timezones",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/schedules",
-        "/schedules",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/schedules/{id}",
-        "/schedules/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/credential-stores",
-        "/credential-stores",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/credentials",
-        "/credentials",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/credentials/{id}",
-        "/credentials/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/port-lists",
-        "/port-lists",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/port-lists/{id}",
-        "/port-lists/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/feeds",
-        "/feeds",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/feeds/sync",
-        "/feeds/sync",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/users",
-        "/users",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/users/{id}",
-        "/users/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/groups",
-        "/groups",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/groups/{id}",
-        "/groups/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/roles",
-        "/roles",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/roles/{id}",
-        "/roles/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/permissions",
-        "/permissions",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/permissions/{id}",
-        "/permissions/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/user-settings",
-        "/user-settings",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/user-settings/{id}",
-        "/user-settings/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/tasks",
-        "/tasks",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/tasks/{id}",
-        "/tasks/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/tasks/{id}/start",
-        "/tasks/{id}/start",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/tasks/{id}/stop",
-        "/tasks/{id}/stop",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/tasks/{id}/resume",
-        "/tasks/{id}/resume",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/reports",
-        "/reports",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/reports/{id}",
-        "/reports/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/reports/{id}/export",
-        "/reports/{id}/export",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/reports/{id}/results",
-        "/reports/{id}/results",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/reports/{id}/vulnerabilities",
-        "/reports/{id}/vulnerabilities",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/reports/{id}/tls-certificates",
-        "/reports/{id}/tls-certificates",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/reports/{id}/errors",
-        "/reports/{id}/errors",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/reports/{id}/closed-cves",
-        "/reports/{id}/closed-cves",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/results",
-        "/results",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/results/{id}",
-        "/results/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/scan-configs",
-        "/scan-configs",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/scan-configs/{id}",
-        "/scan-configs/{id}",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/scanners",
-        "/scanners",
-    );
-    copy_path(
-        &source_paths,
-        &mut normalized_paths,
-        "/api/v1/scanners/{id}",
-        "/scanners/{id}",
-    );
+    let mut normalized_paths = normalize_paths(&source_paths);
     normalized_paths.insert(
         "/openapi.json".to_string(),
         json!({
@@ -1097,15 +818,23 @@ fn is_null_schema(value: &Value) -> bool {
     matches!(value, Value::Object(object) if object.get("type").and_then(Value::as_str) == Some("null"))
 }
 
-fn copy_path(
-    source_paths: &Map<String, Value>,
-    normalized_paths: &mut Map<String, Value>,
-    source: &str,
-    target: &str,
-) {
-    if let Some(path_item) = source_paths.get(source) {
-        normalized_paths.insert(target.to_string(), path_item.clone());
-    }
+fn normalize_paths(source_paths: &Map<String, Value>) -> Map<String, Value> {
+    source_paths
+        .iter()
+        .map(|(source_path, path_item)| {
+            let normalized_path = source_path.strip_prefix("/api/v1").map_or_else(
+                || source_path.clone(),
+                |suffix| {
+                    if suffix.is_empty() {
+                        "/".to_string()
+                    } else {
+                        suffix.to_string()
+                    }
+                },
+            );
+            (normalized_path, path_item.clone())
+        })
+        .collect()
 }
 
 fn add_location_header_to_created_response(normalized_paths: &mut Map<String, Value>, path: &str) {
@@ -1454,12 +1183,13 @@ pub(crate) struct ScanConfigListQueryDoc {
 mod tests {
     use std::collections::BTreeSet;
 
-    use serde_json::Value;
+    use serde_json::{Map, Value};
 
+    use super::normalize_paths;
     use crate::router::build_openapi;
 
     #[test]
-    fn generated_openapi_subset_matches_curated_spec() {
+    fn generated_openapi_matches_curated_spec() {
         let generated = build_openapi();
         let system_spec: Value =
             serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
@@ -1772,6 +1502,26 @@ mod tests {
             schemas.contains_key("TaskAction"),
             "missing TaskAction schema"
         );
+    }
+
+    #[test]
+    fn normalize_paths_strips_runtime_api_prefix() {
+        let source_paths = serde_json::from_value::<Map<String, Value>>(serde_json::json!({
+            "/health": { "get": {} },
+            "/ready": { "get": {} },
+            "/api/v1/version": { "get": {} },
+            "/api/v1/reports/{id}/export": { "get": {} }
+        }))
+        .unwrap();
+
+        let normalized = normalize_paths(&source_paths);
+
+        assert!(normalized.contains_key("/health"));
+        assert!(normalized.contains_key("/ready"));
+        assert!(normalized.contains_key("/version"));
+        assert!(normalized.contains_key("/reports/{id}/export"));
+        assert!(!normalized.contains_key("/api/v1/version"));
+        assert!(!normalized.contains_key("/api/v1/reports/{id}/export"));
     }
 
     fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {
