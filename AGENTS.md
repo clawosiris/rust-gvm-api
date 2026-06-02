@@ -12,3 +12,11 @@
 - Always document the intent of tests.
 - When adding or updating tests, make it clear what behavior, contract, regression, or edge case each test is meant to cover.
 - Prefer test names and nearby comments that explain why the test exists, not just what commands it runs.
+
+## GMP ownership boundary
+
+- All GMP command construction, GMP response parsing, and GMP wire/display-name normalization belongs in `clawosiris/rust-gvm`.
+- `rust-gvm-api` may call typed `rust-gvm` command builders and typed response parsers, then map typed values into gateway domain and REST models.
+- If a fix requires parsing, normalizing, or constructing GMP command or response wire details inside this repository, stop the implementation instead of adding a local workaround.
+- When stopping on this rule, report an issue against `clawosiris/rust-gvm` that describes the missing typed command/response support, the observed gvmd behavior, and the blocked `rust-gvm-api` endpoint or test.
+- If the GMP boundary architecture test fails, do not broaden its allowlist unless the violation is already tracked as a temporary upstream issue against `clawosiris/rust-gvm`.

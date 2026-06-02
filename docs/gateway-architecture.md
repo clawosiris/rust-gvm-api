@@ -8,6 +8,8 @@ It reflects the design intent captured in [issue #26](https://github.com/clawosi
 - The gateway follows a ports-and-adapters (hexagonal) architecture.
 - `rust-gvm-api` must not parse raw GMP XML directly.
   All GMP XML parsing and protocol-shape handling belong in `rust-gvm`; the gateway consumes typed models and protocol APIs from `rust-gvm`.
+- `rust-gvm-api` must not locally construct GMP command XML or normalize GMP wire/display values.
+  If a gateway change needs that behavior, the implementation stops and the missing typed support is reported against [`clawosiris/rust-gvm`](https://github.com/clawosiris/rust-gvm) instead.
 - REST, gRPC, and future MCP are peer incoming adapters over one shared execution core.
 - The domain layer owns session lifecycle rules and invariants, but does not hold live I/O handles.
 - The gvmd outgoing adapter owns live backend connections, session-bound command serialization, and transport concerns.
@@ -115,6 +117,8 @@ That newer transport contract supersedes the older blanket "no plain HTTP" assum
 ## Development Implications
 
 - Architecture discussions and new adapter work should update this document together with issue `#26` when the design changes materially.
+- The GMP boundary architecture test is an executable guard for the `rust-gvm` ownership rule.
+  New local GMP command construction, response parsing, or wire/display-name normalization in `gvm-gateway-gvmd` is a stop-and-report event, not a reason to add another gateway workaround.
 - Shared session/connection behavior changes should stay aligned with issue `#27` or its successor issues.
 - Specs under `spec/rest-api/` and `spec/grpc-api/` should treat this document as the architectural source of truth.
 - Repo docs must distinguish clearly between:
