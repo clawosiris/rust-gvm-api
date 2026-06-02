@@ -19,6 +19,8 @@ const DEFAULT_TARGET_HOST: &str = "openvasd";
 const DEFAULT_READY_TIMEOUT_SECS: u64 = 1_200;
 const DEFAULT_SCAN_TIMEOUT_SECS: u64 = 900;
 const DEFAULT_POLL_INTERVAL_SECS: u64 = 10;
+const DEFAULT_REPORT_FORMAT_PDF_ID: &str = "c402cc3e-b531-11e1-9163-406186ea4fc5";
+const DEFAULT_REPORT_FORMAT_CSV_ID: &str = "c1645568-627a-11e3-a660-406186ea4fc5";
 
 #[derive(Clone, Debug)]
 pub struct E2eConfig {
@@ -29,6 +31,8 @@ pub struct E2eConfig {
     pub ready_timeout: Duration,
     pub scan_timeout: Duration,
     pub poll_interval: Duration,
+    pub pdf_report_format_id: String,
+    pub csv_report_format_id: String,
 }
 
 impl E2eConfig {
@@ -50,6 +54,14 @@ impl E2eConfig {
                 "GVM_GATEWAY_E2E_POLL_INTERVAL_SECS",
                 DEFAULT_POLL_INTERVAL_SECS,
             )?),
+            pdf_report_format_id: env_or_default(
+                "GVM_GATEWAY_E2E_REPORT_FORMAT_PDF_ID",
+                DEFAULT_REPORT_FORMAT_PDF_ID,
+            ),
+            csv_report_format_id: env_or_default(
+                "GVM_GATEWAY_E2E_REPORT_FORMAT_CSV_ID",
+                DEFAULT_REPORT_FORMAT_CSV_ID,
+            ),
         })
     }
 }
@@ -885,6 +897,22 @@ impl E2eHarness {
             "list reports",
         )
         .await
+    }
+
+    pub async fn export_report_response(
+        &self,
+        token: &str,
+        report_id: &str,
+        report_format_id: &str,
+    ) -> Result<reqwest::Response> {
+        self.authed(
+            Method::GET,
+            &format!("/api/v1/reports/{report_id}/export?reportFormatId={report_format_id}"),
+            token,
+        )
+        .send()
+        .await
+        .context("export report")
     }
 
     pub async fn list_results_page(
