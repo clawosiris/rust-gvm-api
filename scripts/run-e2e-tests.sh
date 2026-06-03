@@ -116,6 +116,18 @@ if resource_type == "port-lists":
     print("selected port list {} ({})".format(selected.get("name"), selected.get("id")))
     sys.exit(0)
 
+if resource_type == "report-formats":
+    if not items:
+        print("no report formats returned from REST API")
+        sys.exit(1)
+    preferred = next((item for item in items if item.get("id") == "c402cc3e-b531-11e1-9163-406186ea4fc5"), None)
+    if preferred is None:
+        preferred = next((item for item in items if lower(item.get("extension")) == "pdf"), None)
+    if preferred is None:
+        preferred = items[0]
+    print("selected report format {} ({})".format(preferred.get("name"), preferred.get("id")))
+    sys.exit(0)
+
 print(f"unknown resource type: {resource_type}", file=sys.stderr)
 sys.exit(2)
 ' "${resource_type}"
@@ -289,6 +301,7 @@ RESOURCE_DEADLINE="$(( $(date +%s) + RESOURCE_TIMEOUT_SECS ))"
 wait_for_rest_resource "${SESSION_TOKEN}" "scan configs" "scan-configs" "/api/v1/scan-configs" "${RESOURCE_DEADLINE}"
 wait_for_rest_resource "${SESSION_TOKEN}" "scanners" "scanners" "/api/v1/scanners" "${RESOURCE_DEADLINE}"
 wait_for_rest_resource "${SESSION_TOKEN}" "port lists" "port-lists" "/api/v1/port-lists" "${RESOURCE_DEADLINE}"
+wait_for_rest_resource "${SESSION_TOKEN}" "report formats" "report-formats" "/api/v1/report-formats" "${RESOURCE_DEADLINE}"
 delete_session "${SESSION_TOKEN}"
 trap - EXIT
 
