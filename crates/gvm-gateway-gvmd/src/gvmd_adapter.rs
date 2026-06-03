@@ -19,19 +19,20 @@ use gvm_gateway_domain::{
     CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
     CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
     CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage,
-    IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
-    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
-    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
-    ModifyUserSettingInput, Note, NotePage, Override, OverridePage, Pagination, Permission,
-    PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportExport, ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage,
-    ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
-    SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort, SupportingResourceQuery,
-    SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
-    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificate,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host,
+    HostPage, IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
+    ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
+    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
+    OverridePage, Pagination, Permission, PermissionPage, PortList, PortListPage, PortListPort,
+    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
+    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
+    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificate, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -50,7 +51,9 @@ use gvm_gmp::{
             create_group, delete_group, get_group, get_groups, modify_group, GetGroupsOpts,
             GroupOpts,
         },
+        hosts::{get_host, get_hosts, GetHostsOpts},
         notes::{get_note, get_notes, GetNotesOpts},
+        nvts::{get_nvt, get_nvt_families, get_nvts, GetNvtsOpts},
         overrides::{get_override, get_overrides, GetOverridesOpts},
         permissions::{
             create_permission, delete_permission, get_permission, get_permissions,
@@ -100,12 +103,13 @@ use gvm_gmp::{
         CreatePermissionResponse, CreatePortListResponse, CreateRoleResponse,
         CreateScanConfigResponse, CreateScheduleResponse, CreateTargetResponse, CreateTaskResponse,
         CreateUserResponse, GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse,
-        GetFiltersResponse, GetGroupsResponse, GetNotesResponse, GetOverridesResponse,
-        GetPermissionsResponse, GetPortListsResponse, GetReportFormatsResponse, GetReportsResponse,
-        GetResultsResponse, GetRolesResponse, GetScanConfigsResponse, GetScannersResponse,
-        GetSchedulesResponse, GetTagsResponse, GetTargetsResponse, GetTasksResponse,
-        GetTicketsResponse, GetUserSettingsResponse, GetUsersResponse, GetVersionResponse,
-        ModifyUserSettingResponse, ResumeTaskResponse, StartTaskResponse,
+        GetFiltersResponse, GetGroupsResponse, GetHostsResponse, GetNotesResponse,
+        GetNvtFamiliesResponse, GetNvtsResponse, GetOverridesResponse, GetPermissionsResponse,
+        GetPortListsResponse, GetReportFormatsResponse, GetReportsResponse, GetResultsResponse,
+        GetRolesResponse, GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse,
+        GetTagsResponse, GetTargetsResponse, GetTasksResponse, GetTicketsResponse,
+        GetUserSettingsResponse, GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse,
+        ResumeTaskResponse, StartTaskResponse,
     },
     EntityId, PaginatedFilter, Pagination as GmpPagination,
 };
@@ -115,11 +119,11 @@ use tracing::{field, info_span, Instrument};
 
 use crate::conversions::{
     alert_from_gmp, credential_from_gmp, feed_from_gmp, filter_from_gmp, group_from_gmp,
-    map_gvm_error, map_parse_error, note_from_gmp, override_from_gmp, parse_alert_condition,
-    parse_alert_event, parse_alert_method, parse_alive_test, parse_credential_type,
-    parse_entity_id, parse_hosts_ordering, parse_permission_subject_type,
-    parse_snmp_auth_algorithm, parse_snmp_privacy_algorithm, parse_user_auth_type,
-    permission_from_gmp, port_list_from_gmp, reject_unsupported_credentials,
+    host_from_gmp, map_gvm_error, map_parse_error, note_from_gmp, nvt_family_from_gmp,
+    nvt_from_gmp, override_from_gmp, parse_alert_condition, parse_alert_event, parse_alert_method,
+    parse_alive_test, parse_credential_type, parse_entity_id, parse_hosts_ordering,
+    parse_permission_subject_type, parse_snmp_auth_algorithm, parse_snmp_privacy_algorithm,
+    parse_user_auth_type, permission_from_gmp, port_list_from_gmp, reject_unsupported_credentials,
     report_format_from_gmp, report_from_gmp, result_from_gmp, role_from_gmp, scan_config_from_gmp,
     scanner_from_gmp, schedule_from_gmp, tag_from_gmp, target_from_gmp, task_from_gmp,
     ticket_from_gmp, user_from_gmp, user_setting_from_gmp,
@@ -2598,6 +2602,68 @@ impl ScannerPort for GvmdAdapter {
 
 #[async_trait]
 impl SupportingResourcePort for GvmdAdapter {
+    async fn list_hosts(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<HostPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_hosts(GetHostsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetHostsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(host_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| {
+            left.meta
+                .name
+                .cmp(&right.meta.name)
+                .then_with(|| left.ip.cmp(&right.ip))
+                .then_with(|| left.meta.id.cmp(&right.meta.id))
+        });
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        Ok(HostPage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_host(&self, session_token: &str, id: &str) -> Result<Host, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_host(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetHostsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(host_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("host {id} not found")))
+    }
+
     async fn list_report_formats(
         &self,
         session_token: &str,
@@ -2956,6 +3022,92 @@ impl SupportingResourcePort for GvmdAdapter {
             .next()
             .map(override_from_gmp)
             .ok_or_else(|| GatewayError::NotFound(format!("override {id} not found")))
+    }
+
+    async fn list_nvts(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<NvtPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_nvts(GetNvtsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetNvtsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(nvt_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| {
+            left.oid
+                .cmp(&right.oid)
+                .then_with(|| left.name.cmp(&right.name))
+        });
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        Ok(NvtPage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_nvt(&self, session_token: &str, oid: &str) -> Result<Nvt, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_nvt(oid))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetNvtsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(nvt_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("nvt {oid} not found")))
+    }
+
+    async fn list_nvt_families(
+        &self,
+        session_token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<NvtFamilyPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_nvt_families())
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetNvtFamiliesResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(nvt_family_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.name.cmp(&right.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        Ok(NvtFamilyPage {
+            data: paged_slice(items, page, per_page),
+            pagination: paged_pagination(total, page, per_page),
+        })
     }
 }
 

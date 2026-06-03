@@ -3,8 +3,8 @@
 
 use anyhow::{Context, Result};
 use gvm_gateway_e2e::harness::{
-    CreatedResource, Credential, E2eHarness, ListResponse, NoteResource, OverrideResource,
-    PortList, ScanConfig, Scanner, SessionResponse, Target, Task,
+    CreatedResource, Credential, E2eHarness, ListResponse, NoteResource, NvtCatalogEntry,
+    OverrideResource, PortList, ScanConfig, Scanner, SessionResponse, Target, Task,
 };
 
 // Covers stable list/read contracts for supporting catalogs used by setup and discovery flows.
@@ -27,6 +27,8 @@ async fn rest_supporting_catalogs_list_and_read_resources() -> Result<()> {
         assert_ticket_catalog(&harness, &session.token).await?;
         assert_note_catalog(&harness, &session.token).await?;
         assert_override_catalog(&harness, &session.token).await?;
+        assert_nvt_catalog(&harness, &session.token).await?;
+        assert_nvt_family_catalog(&harness, &session.token).await?;
         Ok(())
     }
     .await;
@@ -62,6 +64,8 @@ async fn rest_supporting_triage_resources_filter_on_completed_scan_context() -> 
             "completed discovery task ended in unexpected status {}",
             completed.status
         );
+
+        assert_host_catalog_after_completed_scan(&harness, &session.token).await?;
 
         let notes = harness
             .list_notes_filtered(&session.token, &format!("task_id={}", created.task.id))
@@ -419,6 +423,39 @@ async fn assert_report_format_catalog(harness: &E2eHarness, token: &str) -> Resu
     Ok(())
 }
 
+async fn assert_host_catalog_after_completed_scan(harness: &E2eHarness, token: &str) -> Result<()> {
+    let hosts = harness.list_hosts(token).await?;
+    assert_pagination_shape("hosts", &hosts);
+    let Some(selected) = hosts
+        .data
+        .iter()
+        .find(|host| {
+            host.hostname.as_deref() == Some(harness.config.target_host.as_str())
+                || host.ip.as_deref() == Some(harness.config.target_host.as_str())
+                || host.name == harness.config.target_host
+        })
+        .or_else(|| hosts.data.first())
+    else {
+        eprintln!("host catalog is empty even after a completed discovery scan; skipping item read assertion");
+        return Ok(());
+    };
+
+    let fetched = harness.get_host(token, &selected.id).await?;
+    assert_named_resource_matches(
+        "host",
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    assert_eq!(fetched.ip, selected.ip, "host ip drifted on read");
+    assert_eq!(
+        fetched.hostname, selected.hostname,
+        "host hostname drifted on read"
+    );
+    Ok(())
+}
+
 async fn assert_filter_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
     let filters = harness.list_filters(token).await?;
     assert_pagination_shape("filters", &filters);
@@ -508,6 +545,35 @@ async fn assert_override_catalog(harness: &E2eHarness, token: &str) -> Result<()
 
     let fetched = harness.get_override(token, &selected.id).await?;
     assert_override_matches_read("override", &fetched, selected, None);
+    Ok(())
+}
+
+async fn assert_nvt_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let nvts = harness.list_nvts(token).await?;
+    assert_pagination_shape("nvts", &nvts);
+    let Some(selected) = nvts.data.first() else {
+        eprintln!("nvt catalog is empty; skipping item read assertion");
+        return Ok(());
+    };
+
+    let fetched = harness.get_nvt(token, &selected.oid).await?;
+    assert_nvt_matches_read(&fetched, selected);
+    Ok(())
+}
+
+async fn assert_nvt_family_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let families = harness.list_nvt_families(token).await?;
+    assert_pagination_shape("nvt families", &families);
+    if families.data.is_empty() {
+        eprintln!("nvt family catalog is empty; skipping content assertions");
+        return Ok(());
+    }
+    for family in &families.data {
+        assert!(
+            !family.name.trim().is_empty(),
+            "nvt family catalog returned an empty name"
+        );
+    }
     Ok(())
 }
 
@@ -623,6 +689,23 @@ fn assert_override_matches_read(
             );
         }
     }
+}
+
+fn assert_nvt_matches_read(fetched: &NvtCatalogEntry, selected: &NvtCatalogEntry) {
+    assert_eq!(fetched.oid, selected.oid, "nvt oid drifted on read");
+    assert_eq!(fetched.name, selected.name, "nvt name drifted on read");
+    assert_eq!(
+        fetched.family, selected.family,
+        "nvt family drifted on read"
+    );
+    assert_eq!(
+        fetched.cvss_base, selected.cvss_base,
+        "nvt cvss base drifted on read"
+    );
+    assert_eq!(
+        fetched.solution_type, selected.solution_type,
+        "nvt solution type drifted on read"
+    );
 }
 
 #[derive(Clone, Debug)]

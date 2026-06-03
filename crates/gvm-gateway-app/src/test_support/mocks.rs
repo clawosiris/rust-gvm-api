@@ -9,19 +9,19 @@ use gvm_gateway_domain::{
     CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
     CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
     CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage,
-    IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
-    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
-    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
-    ModifyUserSettingInput, Note, NotePage, Override, OverridePage, Permission, PermissionPage,
-    PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportExport,
-    ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
-    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
-    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
-    SchedulePort, ScheduleQuery, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
-    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
-    TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery,
+    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host,
+    HostPage, IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
+    ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
+    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
+    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
+    ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
+    ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
+    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort,
+    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
+    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -888,6 +888,26 @@ pub(crate) struct MockSupportingResourcePort;
 
 #[async_trait]
 impl SupportingResourcePort for MockSupportingResourcePort {
+    async fn list_hosts(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<HostPage, GatewayError> {
+        Ok(HostPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_host(&self, _: &str, id: &str) -> Result<Host, GatewayError> {
+        Err(GatewayError::NotFound(format!("host {id} not found")))
+    }
+
     async fn list_report_formats(
         &self,
         _: &str,
@@ -1008,5 +1028,42 @@ impl SupportingResourcePort for MockSupportingResourcePort {
 
     async fn get_override(&self, _: &str, id: &str) -> Result<Override, GatewayError> {
         Err(GatewayError::NotFound(format!("override {id} not found")))
+    }
+
+    async fn list_nvts(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<NvtPage, GatewayError> {
+        Ok(NvtPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_nvt(&self, _: &str, oid: &str) -> Result<Nvt, GatewayError> {
+        Err(GatewayError::NotFound(format!("nvt {oid} not found")))
+    }
+
+    async fn list_nvt_families(
+        &self,
+        _: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<NvtFamilyPage, GatewayError> {
+        Ok(NvtFamilyPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page,
+                per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
     }
 }

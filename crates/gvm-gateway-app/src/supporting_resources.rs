@@ -4,13 +4,48 @@
 //! Supporting-resource use cases.
 
 use gvm_gateway_domain::{
-    Filter, FilterPage, GatewayError, Note, NotePage, Override, OverridePage, ReportFormat,
-    ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket, TicketPage,
+    Filter, FilterPage, GatewayError, Host, HostPage, Note, NotePage, Nvt, NvtFamilyPage, NvtPage,
+    Override, OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage,
+    Ticket, TicketPage,
 };
 
 use crate::GatewayService;
 
 impl GatewayService {
+    /// Lists hosts for an authenticated session.
+    pub async fn list_hosts(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<HostPage, GatewayError> {
+        self.execute_with_resource(
+            "hosts.list",
+            session_token,
+            "list",
+            "host",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_hosts(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches a host for an authenticated session.
+    pub async fn get_host(&self, session_token: &str, id: &str) -> Result<Host, GatewayError> {
+        self.execute_with_resource(
+            "hosts.get",
+            session_token,
+            "read",
+            "host",
+            Some(id),
+            |session| async move { self.supporting_resources.get_host(&session.token, id).await },
+        )
+        .await
+    }
+
     /// Lists report formats for an authenticated session.
     pub async fn list_report_formats(
         &self,
@@ -233,6 +268,62 @@ impl GatewayService {
             |session| async move {
                 self.supporting_resources
                     .get_override(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists NVTs for an authenticated session.
+    pub async fn list_nvts(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<NvtPage, GatewayError> {
+        self.execute_with_resource(
+            "nvts.list",
+            session_token,
+            "list",
+            "nvt",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_nvts(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches an NVT for an authenticated session.
+    pub async fn get_nvt(&self, session_token: &str, oid: &str) -> Result<Nvt, GatewayError> {
+        self.execute_with_resource(
+            "nvts.get",
+            session_token,
+            "read",
+            "nvt",
+            Some(oid),
+            |session| async move { self.supporting_resources.get_nvt(&session.token, oid).await },
+        )
+        .await
+    }
+
+    /// Lists NVT families for an authenticated session.
+    pub async fn list_nvt_families(
+        &self,
+        session_token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<NvtFamilyPage, GatewayError> {
+        self.execute_with_resource(
+            "nvt_families.list",
+            session_token,
+            "list",
+            "nvt_family",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_nvt_families(&session.token, page, per_page)
                     .await
             },
         )
