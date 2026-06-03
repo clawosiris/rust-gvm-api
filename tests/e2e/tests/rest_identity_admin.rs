@@ -8,12 +8,17 @@ use gvm_gateway_e2e::harness::{
 };
 use reqwest::StatusCode;
 
+static IDENTITY_ADMIN_E2E_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 // Covers the shipped identity/admin list and read surface against a live gvmd
 // stack so route registration, pagination, and typed REST response mapping do
-// not drift from the implemented OpenAPI contract.
+// not drift from the implemented OpenAPI contract. This test is serialized with
+// the group lifecycle test because the live group list can include groups that
+// another test is about to delete.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires a compose-backed gvmd environment"]
 async fn rest_identity_admin_catalogs_list_and_read_resources() -> Result<()> {
+    let _guard = IDENTITY_ADMIN_E2E_LOCK.lock().await;
     let (harness, session) = ready_session().await?;
 
     let run = async {
@@ -33,6 +38,7 @@ async fn rest_identity_admin_catalogs_list_and_read_resources() -> Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires a compose-backed gvmd environment"]
 async fn rest_identity_admin_routes_reject_missing_and_invalid_auth() -> Result<()> {
+    let _guard = IDENTITY_ADMIN_E2E_LOCK.lock().await;
     let harness = ready_harness().await?;
 
     assert_problem_response_any(
@@ -60,6 +66,7 @@ async fn rest_identity_admin_routes_reject_missing_and_invalid_auth() -> Result<
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires a compose-backed gvmd environment"]
 async fn rest_identity_user_settings_list_and_read_current_user_setting() -> Result<()> {
+    let _guard = IDENTITY_ADMIN_E2E_LOCK.lock().await;
     let (harness, session) = ready_session().await?;
 
     let run = async {
@@ -95,6 +102,7 @@ async fn rest_identity_user_settings_list_and_read_current_user_setting() -> Res
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires a compose-backed gvmd environment"]
 async fn rest_identity_group_lifecycle_creates_reads_lists_and_deletes() -> Result<()> {
+    let _guard = IDENTITY_ADMIN_E2E_LOCK.lock().await;
     let (harness, session) = ready_session().await?;
     let mut group_id = None;
 
