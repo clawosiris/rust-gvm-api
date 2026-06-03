@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use gvm_gateway_domain::{
     AlertPort, AuthPort, CredentialPort, FeedPort, GatewayError, IdentityPort, PortListPort,
-    ReportPort, ResultPort, ScanConfigPort, ScannerPort, SchedulePort, SessionManager, SystemPort,
-    TargetPort, TaskPort,
+    ReportPort, ResultPort, ScanConfigPort, ScannerPort, SchedulePort, SessionManager,
+    SupportingResourcePort, SystemPort, TargetPort, TaskPort,
 };
 use tracing::{field, info_span, Instrument};
 
@@ -33,6 +33,7 @@ pub struct GatewayService {
     pub(crate) results: Arc<dyn ResultPort>,
     pub(crate) scan_configs: Arc<dyn ScanConfigPort>,
     pub(crate) scanners: Arc<dyn ScannerPort>,
+    pub(crate) supporting_resources: Arc<dyn SupportingResourcePort>,
     pub(crate) sessions: Arc<SessionManager>,
 }
 
@@ -54,6 +55,7 @@ impl GatewayService {
         results: Arc<dyn ResultPort>,
         scan_configs: Arc<dyn ScanConfigPort>,
         scanners: Arc<dyn ScannerPort>,
+        supporting_resources: Arc<dyn SupportingResourcePort>,
         sessions: Arc<SessionManager>,
     ) -> Self {
         Self {
@@ -71,6 +73,7 @@ impl GatewayService {
             results,
             scan_configs,
             scanners,
+            supporting_resources,
             sessions,
         }
     }
@@ -262,6 +265,7 @@ impl Clone for GatewayService {
             results: Arc::clone(&self.results),
             scan_configs: Arc::clone(&self.scan_configs),
             scanners: Arc::clone(&self.scanners),
+            supporting_resources: Arc::clone(&self.supporting_resources),
             sessions: Arc::clone(&self.sessions),
         }
     }

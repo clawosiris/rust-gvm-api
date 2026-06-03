@@ -9,16 +9,17 @@ use crate::{
     Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreateGroupInput,
     CreatePermissionInput, CreatePortListInput, CreateRoleInput, CreateScanConfigInput,
     CreateScheduleInput, CreateTargetInput, CreateTaskInput, CreateUserInput, Credential,
-    CredentialPage, CredentialQuery, CredentialStore, Feed, GatewayError, GetReportOpts, Group,
-    GroupPage, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
-    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
-    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
-    ModifyUserSettingInput, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportPage, ReportQuery, ResultPage, ResultQuery, Role,
-    RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerQuery, Schedule, SchedulePage, ScheduleQuery, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Timezone, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery,
+    CredentialPage, CredentialQuery, CredentialStore, Feed, Filter, FilterPage, GatewayError,
+    GetReportOpts, Group, GroupPage, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
+    ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
+    ModifyUserInput, ModifyUserSettingInput, Permission, PermissionPage, PortList, PortListPage,
+    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
+    ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
+    ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
+    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User,
+    UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Port for system information needed by the gateway.
@@ -471,6 +472,54 @@ pub trait ScannerPort: Send + Sync + 'static {
 
     /// Fetch a scanner by identifier.
     async fn get_scanner(&self, session_token: &str, id: &str) -> Result<Scanner, GatewayError>;
+}
+
+/// Port for supporting report-format, filter, tag, and ticket catalogs.
+#[async_trait]
+pub trait SupportingResourcePort: Send + Sync + 'static {
+    /// List report formats for the session.
+    async fn list_report_formats(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<ReportFormatPage, GatewayError>;
+
+    /// Fetch a report format by identifier.
+    async fn get_report_format(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ReportFormat, GatewayError>;
+
+    /// List saved filters for the session.
+    async fn list_filters(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<FilterPage, GatewayError>;
+
+    /// Fetch a saved filter by identifier.
+    async fn get_filter(&self, session_token: &str, id: &str) -> Result<Filter, GatewayError>;
+
+    /// List tags for the session.
+    async fn list_tags(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<TagPage, GatewayError>;
+
+    /// Fetch a tag by identifier.
+    async fn get_tag(&self, session_token: &str, id: &str) -> Result<Tag, GatewayError>;
+
+    /// List tickets for the session.
+    async fn list_tickets(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<TicketPage, GatewayError>;
+
+    /// Fetch a ticket by identifier.
+    async fn get_ticket(&self, session_token: &str, id: &str) -> Result<Ticket, GatewayError>;
 }
 
 /// Port for target CRUD operations.

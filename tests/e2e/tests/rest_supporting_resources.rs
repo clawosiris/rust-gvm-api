@@ -20,6 +20,10 @@ async fn rest_supporting_catalogs_list_and_read_resources() -> Result<()> {
         assert_timezone_catalog(&harness, &session.token).await?;
         assert_credential_store_catalog(&harness, &session.token).await?;
         assert_credential_list_shape(&harness, &session.token).await?;
+        assert_report_format_catalog(&harness, &session.token).await?;
+        assert_filter_catalog(&harness, &session.token).await?;
+        assert_tag_catalog(&harness, &session.token).await?;
+        assert_ticket_catalog(&harness, &session.token).await?;
         Ok(())
     }
     .await;
@@ -313,6 +317,99 @@ async fn assert_credential_list_shape(harness: &E2eHarness, token: &str) -> Resu
             "credential list returned an empty name"
         );
     }
+    Ok(())
+}
+
+async fn assert_report_format_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let report_formats = harness.list_report_formats(token).await?;
+    assert_pagination_shape("report formats", &report_formats);
+    assert!(
+        !report_formats.data.is_empty(),
+        "report-format catalog did not return any entries"
+    );
+    let selected = harness.select_report_format_by_extension(
+        &report_formats.data,
+        "pdf",
+        Some(&harness.config.pdf_report_format_id),
+    )?;
+    let fetched = harness.get_report_format(token, &selected.id).await?;
+    assert_named_resource_matches(
+        "report format",
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    assert_eq!(
+        fetched.extension, selected.extension,
+        "report format extension drifted on read"
+    );
+    Ok(())
+}
+
+async fn assert_filter_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let filters = harness.list_filters(token).await?;
+    assert_pagination_shape("filters", &filters);
+    let Some(selected) = filters.data.first() else {
+        eprintln!("filter catalog is empty; skipping item read assertion");
+        return Ok(());
+    };
+
+    let fetched = harness.get_filter(token, &selected.id).await?;
+    assert_named_resource_matches(
+        "filter",
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    assert_eq!(
+        fetched.filter_type, selected.filter_type,
+        "filter type drifted on read"
+    );
+    Ok(())
+}
+
+async fn assert_tag_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let tags = harness.list_tags(token).await?;
+    assert_pagination_shape("tags", &tags);
+    let Some(selected) = tags.data.first() else {
+        eprintln!("tag catalog is empty; skipping item read assertion");
+        return Ok(());
+    };
+
+    let fetched = harness.get_tag(token, &selected.id).await?;
+    assert_named_resource_matches(
+        "tag",
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    assert_eq!(fetched.value, selected.value, "tag value drifted on read");
+    Ok(())
+}
+
+async fn assert_ticket_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let tickets = harness.list_tickets(token).await?;
+    assert_pagination_shape("tickets", &tickets);
+    let Some(selected) = tickets.data.first() else {
+        eprintln!("ticket catalog is empty; skipping item read assertion");
+        return Ok(());
+    };
+
+    let fetched = harness.get_ticket(token, &selected.id).await?;
+    assert_named_resource_matches(
+        "ticket",
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    assert_eq!(
+        fetched.status, selected.status,
+        "ticket status drifted on read"
+    );
     Ok(())
 }
 

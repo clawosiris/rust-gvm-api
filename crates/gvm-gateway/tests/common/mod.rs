@@ -44,6 +44,7 @@ fn static_gateway_service(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
         sessions,
     )
 }
@@ -54,6 +55,7 @@ fn live_gateway_service(
 ) -> GatewayService {
     GatewayService::new(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
         Arc::new(target_adapter.clone()),
@@ -84,6 +86,7 @@ fn target_port_gateway_service(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         target_adapter,
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(StaticGvmdAdapter::ready("22.7")),

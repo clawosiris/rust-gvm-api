@@ -712,6 +712,7 @@ dependencies = [
  "async-trait",
  "axum",
  "base64",
+ "form_urlencoded",
  "gvm-gateway-app",
  "gvm-gateway-domain",
  "gvm-gateway-gvmd",

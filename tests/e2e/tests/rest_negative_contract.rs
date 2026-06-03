@@ -36,6 +36,19 @@ async fn rest_negative_contract_returns_problem_responses() -> Result<()> {
         )
         .await?;
 
+        let report_formats_post = harness
+            .request(Method::POST, "/api/v1/report-formats")
+            .bearer_auth(&session.token)
+            .send()
+            .await
+            .context("send report-format POST request")?;
+        assert_problem_response(
+            report_formats_post,
+            StatusCode::METHOD_NOT_ALLOWED,
+            "unsupported report-format mutation",
+        )
+        .await?;
+
         let invalid_uuid = harness
             .request(Method::GET, "/api/v1/targets/not-a-uuid")
             .bearer_auth(&session.token)

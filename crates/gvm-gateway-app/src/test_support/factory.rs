@@ -36,6 +36,7 @@ pub(crate) fn create_test_service() -> GatewayService {
         Arc::new(MockResultPort),
         Arc::new(MockScanConfigPort),
         Arc::new(MockScannerPort),
+        Arc::new(MockSupportingResourcePort),
         Arc::new(SessionManager::default()),
     )
 }

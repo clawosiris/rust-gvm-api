@@ -17,7 +17,7 @@ use axum::{
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, patch},
+    routing::{get, patch, post},
     Router,
 };
 use gvm_gateway_app::GatewayService;
@@ -85,6 +85,12 @@ use crate::{
         get_session_docs,
     },
     shutdown::ShutdownRuntime,
+    supporting_resources::{
+        get_filter, get_filter_docs, get_report_format, get_report_format_docs, get_tag,
+        get_tag_docs, get_ticket, get_ticket_docs, list_filters, list_filters_docs,
+        list_report_formats, list_report_formats_docs, list_tags, list_tags_docs, list_tickets,
+        list_tickets_docs,
+    },
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
         create_target, create_target_docs, delete_target, delete_target_docs, get_target,
@@ -292,6 +298,83 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route("/api/v1/feeds", get_with(list_feeds, list_feeds_docs))
         .route("/api/v1/feeds", patch(method_not_allowed_collection))
         .api_route("/api/v1/feeds/sync", post_with(sync_feeds, sync_feeds_docs))
+        // Supporting resources
+        .api_route(
+            "/api/v1/report-formats",
+            get_with(list_report_formats, list_report_formats_docs),
+        )
+        .route(
+            "/api/v1/report-formats",
+            post(method_not_allowed_collection)
+                .put(method_not_allowed_collection)
+                .delete(method_not_allowed_collection)
+                .patch(method_not_allowed_collection),
+        )
+        .api_route(
+            "/api/v1/report-formats/{id}",
+            get_with(get_report_format, get_report_format_docs),
+        )
+        .route(
+            "/api/v1/report-formats/{id}",
+            post(method_not_allowed_item)
+                .put(method_not_allowed_item)
+                .delete(method_not_allowed_item)
+                .patch(method_not_allowed_item),
+        )
+        .api_route("/api/v1/filters", get_with(list_filters, list_filters_docs))
+        .route(
+            "/api/v1/filters",
+            post(method_not_allowed_collection)
+                .put(method_not_allowed_collection)
+                .delete(method_not_allowed_collection)
+                .patch(method_not_allowed_collection),
+        )
+        .api_route(
+            "/api/v1/filters/{id}",
+            get_with(get_filter, get_filter_docs),
+        )
+        .route(
+            "/api/v1/filters/{id}",
+            post(method_not_allowed_item)
+                .put(method_not_allowed_item)
+                .delete(method_not_allowed_item)
+                .patch(method_not_allowed_item),
+        )
+        .api_route("/api/v1/tags", get_with(list_tags, list_tags_docs))
+        .route(
+            "/api/v1/tags",
+            post(method_not_allowed_collection)
+                .put(method_not_allowed_collection)
+                .delete(method_not_allowed_collection)
+                .patch(method_not_allowed_collection),
+        )
+        .api_route("/api/v1/tags/{id}", get_with(get_tag, get_tag_docs))
+        .route(
+            "/api/v1/tags/{id}",
+            post(method_not_allowed_item)
+                .put(method_not_allowed_item)
+                .delete(method_not_allowed_item)
+                .patch(method_not_allowed_item),
+        )
+        .api_route("/api/v1/tickets", get_with(list_tickets, list_tickets_docs))
+        .route(
+            "/api/v1/tickets",
+            post(method_not_allowed_collection)
+                .put(method_not_allowed_collection)
+                .delete(method_not_allowed_collection)
+                .patch(method_not_allowed_collection),
+        )
+        .api_route(
+            "/api/v1/tickets/{id}",
+            get_with(get_ticket, get_ticket_docs),
+        )
+        .route(
+            "/api/v1/tickets/{id}",
+            post(method_not_allowed_item)
+                .put(method_not_allowed_item)
+                .delete(method_not_allowed_item)
+                .patch(method_not_allowed_item),
+        )
         // Identity and access control
         .api_route("/api/v1/users", get_with(list_users, list_users_docs))
         .api_route("/api/v1/users", post_with(create_user, create_user_docs))
@@ -717,7 +800,8 @@ mod tests {
         let reports: Arc<dyn gvm_gateway_domain::ReportPort> = adapter.clone();
         let results: Arc<dyn gvm_gateway_domain::ResultPort> = adapter.clone();
         let scan_configs: Arc<dyn gvm_gateway_domain::ScanConfigPort> = adapter.clone();
-        let scanners: Arc<dyn gvm_gateway_domain::ScannerPort> = adapter;
+        let scanners: Arc<dyn gvm_gateway_domain::ScannerPort> = adapter.clone();
+        let supporting_resources: Arc<dyn gvm_gateway_domain::SupportingResourcePort> = adapter;
 
         GatewayService::new(
             system,
@@ -734,6 +818,7 @@ mod tests {
             results,
             scan_configs,
             scanners,
+            supporting_resources,
             Arc::new(gvm_gateway_domain::SessionManager::default()),
         )
     }
@@ -827,5 +912,31 @@ mod tests {
         assert!(output.contains("http_method=GET"));
         assert!(output.contains("http_route=/health"));
         assert!(!output.contains("secret=user-token"));
+    }
+
+    #[tokio::test]
+    async fn supporting_resource_mutations_return_problem_responses() {
+        let service = static_gateway_service();
+        let app = build_router(service);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/report-formats")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok()),
+            Some("application/problem+json")
+        );
     }
 }

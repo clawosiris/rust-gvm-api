@@ -1,0 +1,400 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /report-formats:
+    get:
+      operationId: getReportFormats
+      tags: [Report Formats]
+      summary: List report formats
+      description: Returns a paginated list of report formats available for report export.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of report formats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportFormatList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /report-formats/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportFormat
+      tags: [Report Formats]
+      summary: Get a report format
+      description: Returns the details for a single report format.
+      responses:
+        "200":
+          description: Report format details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportFormat"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /filters:
+    get:
+      operationId: getFilters
+      tags: [Filters]
+      summary: List filters
+      description: Returns a paginated list of saved filters.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of saved filters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilterList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /filters/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getFilter
+      tags: [Filters]
+      summary: Get a filter
+      description: Returns the details for a single saved filter.
+      responses:
+        "200":
+          description: Filter details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Filter"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /tags:
+    get:
+      operationId: getTags
+      tags: [Tags]
+      summary: List tags
+      description: Returns a paginated list of tags.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /tags/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getTag
+      tags: [Tags]
+      summary: Get a tag
+      description: Returns the details for a single tag.
+      responses:
+        "200":
+          description: Tag details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagResource"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /tickets:
+    get:
+      operationId: getTickets
+      tags: [Tickets]
+      summary: List tickets
+      description: Returns a paginated list of tickets.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of tickets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /tickets/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getTicket
+      tags: [Tickets]
+      summary: Get a ticket
+      description: Returns the details for a single ticket.
+      responses:
+        "200":
+          description: Ticket details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+components:
+  schemas:
+    SupportingResourceMeta:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+
+    ReportFormat:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+        - active
+        - predefined
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        contentType:
+          type: string
+        extension:
+          type: string
+        summary:
+          type: string
+        trust:
+          type: string
+        active:
+          type: boolean
+        predefined:
+          type: boolean
+
+    ReportFormatList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportFormat"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Filter:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        type:
+          type: string
+        term:
+          type: string
+
+    FilterList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Filter"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    TagResource:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+        - active
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        value:
+          type: string
+        resourceType:
+          type: string
+        resourceCount:
+          type: integer
+        active:
+          type: boolean
+
+    TagList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TagResource"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Ticket:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        status:
+          type: string
+        assignedTo:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        result:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        task:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        openNote:
+          type: string
+        fixedNote:
+          type: string
+        closedNote:
+          type: string
+
+    TicketList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ticket"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"

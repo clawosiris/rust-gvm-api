@@ -275,6 +275,7 @@ fn static_service(
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(StaticGvmdAdapter::ready("22.7")),
         Arc::new(StaticGvmdAdapter::ready("22.7")),
+        Arc::new(StaticGvmdAdapter::ready("22.7")),
         sessions,
     )
 }

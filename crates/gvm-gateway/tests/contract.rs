@@ -55,6 +55,10 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         serde_yaml::from_str(include_str!("../../../spec/rest-api/port-lists.yaml")).unwrap();
     let feeds_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/feeds.yaml")).unwrap();
+    let supporting_resources_spec: Value = serde_yaml::from_str(include_str!(
+        "../../../spec/rest-api/supporting-resources.yaml"
+    ))
+    .unwrap();
     let identity_spec: Value =
         serde_yaml::from_str(include_str!("../../../spec/rest-api/identity.yaml")).unwrap();
     let scan_configs_spec: Value =
@@ -77,6 +81,7 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         credentials: &credentials_spec,
         port_lists: &port_lists_spec,
         feeds: &feeds_spec,
+        supporting_resources: &supporting_resources_spec,
         identity: &identity_spec,
         scan_configs: &scan_configs_spec,
         scanners: &scanners_spec,
@@ -96,6 +101,8 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/credentials/{id}",
             "/feeds",
             "/feeds/sync",
+            "/filters",
+            "/filters/{id}",
             "/groups",
             "/groups/{id}",
             "/openapi.json",
@@ -104,6 +111,8 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/port-lists",
             "/port-lists/{id}",
             "/ready",
+            "/report-formats",
+            "/report-formats/{id}",
             "/reports",
             "/reports/{id}",
             "/reports/{id}/closed-cves",
@@ -124,6 +133,10 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
             "/schedules/{id}",
             "/sessions",
             "/sessions/{token}",
+            "/tags",
+            "/tags/{id}",
+            "/tickets",
+            "/tickets/{id}",
             "/targets",
             "/targets/{id}",
             "/tasks",
@@ -237,6 +250,39 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
         ),
         ("/feeds", "get", DocName::Feeds, "/feeds"),
         ("/feeds/sync", "post", DocName::Feeds, "/feeds/sync"),
+        (
+            "/report-formats",
+            "get",
+            DocName::SupportingResources,
+            "/report-formats",
+        ),
+        (
+            "/report-formats/{id}",
+            "get",
+            DocName::SupportingResources,
+            "/report-formats/{id}",
+        ),
+        ("/filters", "get", DocName::SupportingResources, "/filters"),
+        (
+            "/filters/{id}",
+            "get",
+            DocName::SupportingResources,
+            "/filters/{id}",
+        ),
+        ("/tags", "get", DocName::SupportingResources, "/tags"),
+        (
+            "/tags/{id}",
+            "get",
+            DocName::SupportingResources,
+            "/tags/{id}",
+        ),
+        ("/tickets", "get", DocName::SupportingResources, "/tickets"),
+        (
+            "/tickets/{id}",
+            "get",
+            DocName::SupportingResources,
+            "/tickets/{id}",
+        ),
         ("/users", "get", DocName::Identity, "/users"),
         ("/users", "post", DocName::Identity, "/users"),
         ("/users/{id}", "get", DocName::Identity, "/users/{id}"),
@@ -533,6 +579,7 @@ enum DocName {
     Credentials,
     PortLists,
     Feeds,
+    SupportingResources,
     Identity,
     Tasks,
     ScanConfigs,
@@ -555,6 +602,7 @@ struct SpecDocs<'a> {
     credentials: &'a Value,
     port_lists: &'a Value,
     feeds: &'a Value,
+    supporting_resources: &'a Value,
     identity: &'a Value,
     scan_configs: &'a Value,
     scanners: &'a Value,
@@ -1094,6 +1142,7 @@ fn doc<'a>(docs: &'a SpecDocs<'a>, name: DocName) -> &'a Value {
         DocName::Credentials => docs.credentials,
         DocName::PortLists => docs.port_lists,
         DocName::Feeds => docs.feeds,
+        DocName::SupportingResources => docs.supporting_resources,
         DocName::Identity => docs.identity,
         DocName::Tasks => docs.tasks,
         DocName::Reports => docs.reports,

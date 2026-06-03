@@ -294,6 +294,7 @@ mod tests {
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
             Arc::new(MockScannerPort),
+            Arc::new(MockSupportingResourcePort),
             sessions,
         )
     }
@@ -363,6 +364,7 @@ mod tests {
             Arc::new(MockResultPort),
             Arc::new(MockScanConfigPort),
             Arc::new(MockScannerPort),
+            Arc::new(MockSupportingResourcePort),
             Arc::new(SessionManager::default()),
         );
 

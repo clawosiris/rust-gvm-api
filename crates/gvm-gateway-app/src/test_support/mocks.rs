@@ -9,17 +9,18 @@ use gvm_gateway_domain::{
     CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
     CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
     CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, GatewayError, GetReportOpts, Group, GroupPage, IdentityPort, IdentityQuery,
-    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyPermissionInput,
-    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
-    ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Permission,
-    PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportExport, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role,
-    RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
-    ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
-    TaskQuery, Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery,
+    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage,
+    IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
+    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, Permission, PermissionPage, PortList, PortListPage, PortListPort,
+    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
+    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
+    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -877,5 +878,94 @@ impl ScannerPort for MockScannerPort {
 
     async fn get_scanner(&self, _: &str, id: &str) -> Result<Scanner, GatewayError> {
         Err(GatewayError::NotFound(format!("scanner {id} not found")))
+    }
+}
+
+/// Mock supporting-resource port for tests that validate supporting catalog session flow.
+#[derive(Clone, Default)]
+pub(crate) struct MockSupportingResourcePort;
+
+#[async_trait]
+impl SupportingResourcePort for MockSupportingResourcePort {
+    async fn list_report_formats(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<ReportFormatPage, GatewayError> {
+        Ok(ReportFormatPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_format(&self, _: &str, id: &str) -> Result<ReportFormat, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "report format {id} not found"
+        )))
+    }
+
+    async fn list_filters(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<FilterPage, GatewayError> {
+        Ok(FilterPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_filter(&self, _: &str, id: &str) -> Result<Filter, GatewayError> {
+        Err(GatewayError::NotFound(format!("filter {id} not found")))
+    }
+
+    async fn list_tags(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<TagPage, GatewayError> {
+        Ok(TagPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_tag(&self, _: &str, id: &str) -> Result<Tag, GatewayError> {
+        Err(GatewayError::NotFound(format!("tag {id} not found")))
+    }
+
+    async fn list_tickets(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<TicketPage, GatewayError> {
+        Ok(TicketPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_ticket(&self, _: &str, id: &str) -> Result<Ticket, GatewayError> {
+        Err(GatewayError::NotFound(format!("ticket {id} not found")))
     }
 }

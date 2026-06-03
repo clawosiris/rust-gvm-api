@@ -87,6 +87,14 @@ tags:
     description: Current-user preference management
   - name: Feeds
     description: Feed status
+  - name: Report Formats
+    description: Report export format discovery
+  - name: Filters
+    description: Saved filter discovery
+  - name: Tags
+    description: Tag discovery
+  - name: Tickets
+    description: Ticket discovery
   - name: System
     description: System and health endpoints
 
@@ -181,6 +189,22 @@ paths:
     $ref: './feeds.yaml#/paths/~1feeds'
   /feeds/sync:
     $ref: './feeds.yaml#/paths/~1feeds~1sync'
+  /report-formats:
+    $ref: './supporting-resources.yaml#/paths/~1report-formats'
+  /report-formats/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1report-formats~1{id}'
+  /filters:
+    $ref: './supporting-resources.yaml#/paths/~1filters'
+  /filters/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1filters~1{id}'
+  /tags:
+    $ref: './supporting-resources.yaml#/paths/~1tags'
+  /tags/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1tags~1{id}'
+  /tickets:
+    $ref: './supporting-resources.yaml#/paths/~1tickets'
+  /tickets/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1tickets~1{id}'
   /health:
     $ref: './system.yaml#/paths/~1health'
   /ready:

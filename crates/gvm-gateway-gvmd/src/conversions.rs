@@ -9,9 +9,10 @@
 use std::{collections::HashMap, str::FromStr};
 
 use gvm_gateway_domain::{
-    Alert, CreateTargetInput, Credential, Feed, GatewayError, Group, IdentityResourceMeta, NvtRef,
-    Permission, PortList, Report, ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner,
-    Schedule, Target, Task, User, UserSetting,
+    Alert, CreateTargetInput, Credential, Feed, Filter, GatewayError, Group, IdentityResourceMeta,
+    NvtRef, Permission, PortList, Report, ReportFormat, ResourceRef, ResultCount, Role, ScanConfig,
+    ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag, Target, Task, Ticket, User,
+    UserSetting,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -297,6 +298,51 @@ pub(crate) fn scanner_from_gmp(scanner: gvm_gmp::responses::Scanner) -> Scanner 
     }
 }
 
+pub(crate) fn report_format_from_gmp(
+    report_format: gvm_gmp::responses::ReportFormat,
+) -> ReportFormat {
+    ReportFormat {
+        meta: supporting_meta_from_gmp(report_format.meta),
+        content_type: report_format.content_type,
+        extension: report_format.extension,
+        summary: report_format.summary,
+        trust: report_format.trust,
+        active: report_format.active,
+        predefined: report_format.predefined,
+    }
+}
+
+pub(crate) fn filter_from_gmp(filter: gvm_gmp::responses::Filter) -> Filter {
+    Filter {
+        meta: supporting_meta_from_gmp(filter.meta),
+        filter_type: filter.type_,
+        term: filter.term,
+    }
+}
+
+pub(crate) fn tag_from_gmp(tag: gvm_gmp::responses::Tag) -> Tag {
+    Tag {
+        meta: supporting_meta_from_gmp(tag.meta),
+        value: tag.value,
+        resource_type: tag.resource_type,
+        resource_count: tag.resource_count,
+        active: tag.active,
+    }
+}
+
+pub(crate) fn ticket_from_gmp(ticket: gvm_gmp::responses::Ticket) -> Ticket {
+    Ticket {
+        meta: supporting_meta_from_gmp(ticket.meta),
+        status: ticket.status,
+        assigned_to: ticket.assigned_to.map(resource_ref_from_named_entity),
+        result: ticket.result.map(resource_ref_from_named_entity),
+        task: ticket.task.map(resource_ref_from_named_entity),
+        open_note: ticket.open_note,
+        fixed_note: ticket.fixed_note,
+        closed_note: ticket.closed_note,
+    }
+}
+
 // ============================================================================
 // Shared Parsing / Validation Helpers
 // ============================================================================
@@ -420,6 +466,20 @@ fn identity_meta_from_gmp(meta: gvm_gmp::responses::common::EntityMeta) -> Ident
         name: meta.name,
         comment: meta.comment,
         owner: None,
+        creation_time: meta.creation_time,
+        modification_time: meta.modification_time,
+        writable: meta.writable,
+        in_use: meta.in_use,
+    }
+}
+
+fn supporting_meta_from_gmp(
+    meta: gvm_gmp::responses::common::EntityMeta,
+) -> SupportingResourceMeta {
+    SupportingResourceMeta {
+        id: meta.id.to_string(),
+        name: meta.name,
+        comment: meta.comment,
         creation_time: meta.creation_time,
         modification_time: meta.modification_time,
         writable: meta.writable,
