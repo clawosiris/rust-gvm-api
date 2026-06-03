@@ -334,13 +334,32 @@ fn paged_pagination(total: u32, page: u32, per_page: u32) -> Pagination {
     }
 }
 
-fn paged_slice<T>(items: Vec<T>, page: u32, per_page: u32) -> Vec<T> {
-    let start = ((page.saturating_sub(1)) * per_page) as usize;
-    items
-        .into_iter()
-        .skip(start)
-        .take(per_page as usize)
-        .collect()
+fn gvmd_total(filtered: Option<u32>, total: Option<u32>, current_len: usize) -> u32 {
+    filtered.or(total).unwrap_or(current_len as u32)
+}
+
+fn paginated_filter(
+    prefix: Option<&str>,
+    filter_string: Option<&str>,
+    page: u32,
+    per_page: u32,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(prefix) = prefix.map(str::trim).filter(|value| !value.is_empty()) {
+        parts.push(prefix.to_string());
+    }
+    if let Some(filter_string) = filter_string
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        parts.push(filter_string.to_string());
+    }
+    parts.push(format!(
+        "first={} rows={}",
+        page.saturating_sub(1).saturating_mul(per_page) + 1,
+        per_page
+    ));
+    Some(parts.join(" "))
 }
 
 #[async_trait]
@@ -363,7 +382,12 @@ impl AlertPort for GvmdAdapter {
             .lock()
             .await
             .call(get_alerts(GetAlertsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -371,34 +395,16 @@ impl AlertPort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetAlertsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(alert_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.name.cmp(&right.name));
-
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-        let data = items
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(AlertPage {
-            data,
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -557,7 +563,12 @@ impl SchedulePort for GvmdAdapter {
             .lock()
             .await
             .call(get_schedules(GetSchedulesOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -566,31 +577,15 @@ impl SchedulePort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetSchedulesResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(schedule_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.name.cmp(&right.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
         Ok(SchedulePage {
-            data: items
-                .into_iter()
-                .skip(start)
-                .take(query.per_page as usize)
-                .collect(),
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -698,7 +693,12 @@ impl CredentialPort for GvmdAdapter {
             .lock()
             .await
             .call(get_credentials(GetCredentialsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -706,31 +706,15 @@ impl CredentialPort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetCredentialsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(credential_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.name.cmp(&right.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
         Ok(CredentialPage {
-            data: items
-                .into_iter()
-                .skip(start)
-                .take(query.per_page as usize)
-                .collect(),
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -880,7 +864,12 @@ impl PortListPort for GvmdAdapter {
             .lock()
             .await
             .call(get_port_lists(GetPortListsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -888,31 +877,15 @@ impl PortListPort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetPortListsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(port_list_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.name.cmp(&right.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
         Ok(PortListPage {
-            data: items
-                .into_iter()
-                .skip(start)
-                .take(query.per_page as usize)
-                .collect(),
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -1028,7 +1001,12 @@ impl IdentityPort for GvmdAdapter {
                 session_token,
                 "users.list",
                 get_users(GetUsersOpts {
-                    filter_string: query.filter_string.clone(),
+                    filter_string: paginated_filter(
+                        None,
+                        query.filter_string.as_deref(),
+                        query.page,
+                        query.per_page,
+                    ),
                     filter_id,
                     trash: None,
                     details: Some(true),
@@ -1036,16 +1014,15 @@ impl IdentityPort for GvmdAdapter {
             )
             .await?;
         let parsed = GetUsersResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(user_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(UserPage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -1162,7 +1139,12 @@ impl IdentityPort for GvmdAdapter {
                 session_token,
                 "groups.list",
                 get_groups(GetGroupsOpts {
-                    filter_string: query.filter_string.clone(),
+                    filter_string: paginated_filter(
+                        None,
+                        query.filter_string.as_deref(),
+                        query.page,
+                        query.per_page,
+                    ),
                     filter_id,
                     trash: None,
                     details: Some(true),
@@ -1170,16 +1152,15 @@ impl IdentityPort for GvmdAdapter {
             )
             .await?;
         let parsed = GetGroupsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(group_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(GroupPage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -1273,7 +1254,12 @@ impl IdentityPort for GvmdAdapter {
             .lock()
             .await
             .call(get_roles(GetRolesOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -1281,16 +1267,15 @@ impl IdentityPort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetRolesResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(role_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(RolePage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -1384,7 +1369,12 @@ impl IdentityPort for GvmdAdapter {
             .lock()
             .await
             .call(get_permissions(GetPermissionsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -1392,16 +1382,15 @@ impl IdentityPort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetPermissionsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(permission_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(PermissionPage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -1605,7 +1594,12 @@ impl TargetPort for GvmdAdapter {
                 session_token,
                 "targets.list",
                 get_targets(GetTargetsOpts {
-                    filter_string: query.filter_string.clone(),
+                    filter_string: paginated_filter(
+                        None,
+                        query.filter_string.as_deref(),
+                        query.page,
+                        query.per_page,
+                    ),
                     filter_id,
                     trash: None,
                     details: Some(true),
@@ -1613,34 +1607,16 @@ impl TargetPort for GvmdAdapter {
             )
             .await?;
         let parsed = GetTargetsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(target_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.name.cmp(&right.name));
-
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-        let data = items
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(TargetPage {
-            data,
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -1766,7 +1742,12 @@ impl TaskPort for GvmdAdapter {
                 session_token,
                 "tasks.list",
                 get_tasks(GetTasksOpts {
-                    filter_string: query.filter_string.clone(),
+                    filter_string: paginated_filter(
+                        None,
+                        query.filter_string.as_deref(),
+                        query.page,
+                        query.per_page,
+                    ),
                     filter_id,
                     trash: None,
                     details: Some(true),
@@ -1776,34 +1757,16 @@ impl TaskPort for GvmdAdapter {
             )
             .await?;
         let parsed = GetTasksResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(task_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.name.cmp(&right.name));
-
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-        let data = items
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(TaskPage {
-            data,
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -2017,7 +1980,12 @@ impl ReportPort for GvmdAdapter {
             .lock()
             .await
             .call(get_reports(GetReportsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 details: Some(true),
                 ignore_pagination: None,
@@ -2032,27 +2000,11 @@ impl ReportPort for GvmdAdapter {
             .map(report_from_gmp)
             .collect::<Vec<_>>();
 
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-        let data = items
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(ReportPage {
-            data,
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -2154,15 +2106,12 @@ impl ReportPort for GvmdAdapter {
         // Validate that the report_id is a valid UUID
         let _ = parse_entity_id(report_id)?;
 
-        let filter = {
-            let mut parts = vec![format!("report_id={report_id}")];
-            if let Some(ref filter_string) = query.filter_string {
-                if !filter_string.trim().is_empty() {
-                    parts.push(filter_string.clone());
-                }
-            }
-            Some(parts.join(" "))
-        };
+        let filter = paginated_filter(
+            Some(&format!("report_id={report_id}")),
+            query.filter_string.as_deref(),
+            query.page,
+            query.per_page,
+        );
 
         let response = client
             .lock()
@@ -2181,27 +2130,11 @@ impl ReportPort for GvmdAdapter {
             .map(result_from_gmp)
             .collect::<Vec<_>>();
 
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-        let data = items
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(ResultPage {
-            data,
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -2388,7 +2321,12 @@ impl ResultPort for GvmdAdapter {
             .lock()
             .await
             .call(get_results(GetResultsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 details: Some(true),
             }))
@@ -2401,27 +2339,11 @@ impl ResultPort for GvmdAdapter {
             .map(result_from_gmp)
             .collect::<Vec<_>>();
 
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-        let data = items
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(ResultPage {
-            data,
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -2463,7 +2385,12 @@ impl ScanConfigPort for GvmdAdapter {
             .lock()
             .await
             .call(get_scan_configs(GetScanConfigsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2471,34 +2398,16 @@ impl ScanConfigPort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetScanConfigsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(scan_config_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.name.cmp(&right.name));
-
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-        let data = items
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(ScanConfigPage {
-            data,
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -2609,7 +2518,12 @@ impl ScannerPort for GvmdAdapter {
             .lock()
             .await
             .call(get_scanners(GetScannersOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2617,34 +2531,16 @@ impl ScannerPort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetScannersResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(scanner_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.name.cmp(&right.name));
-
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let total_pages = if total == 0 {
-            0
-        } else {
-            ((total - 1) / query.per_page) + 1
-        };
-        let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-        let data = items
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
         Ok(ScannerPage {
-            data,
-            pagination: Pagination {
-                page: query.page,
-                per_page: query.per_page,
-                total,
-                total_pages,
-            },
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
 
@@ -2686,7 +2582,12 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_report_formats(GetReportFormatsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2694,15 +2595,14 @@ impl SupportingResourcePort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetReportFormatsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(report_format_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
         Ok(ReportFormatPage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -2746,7 +2646,12 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_filters(GetFiltersOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2754,15 +2659,14 @@ impl SupportingResourcePort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetFiltersResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(filter_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
         Ok(FilterPage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -2802,7 +2706,12 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_tags(GetTagsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2810,15 +2719,14 @@ impl SupportingResourcePort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetTagsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(tag_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
         Ok(TagPage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -2858,7 +2766,12 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_tickets(GetTicketsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2866,15 +2779,14 @@ impl SupportingResourcePort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetTicketsResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
+        let items = parsed
             .items
             .into_iter()
             .map(ticket_from_gmp)
             .collect::<Vec<_>>();
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
         Ok(TicketPage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -2914,7 +2826,12 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_notes(GetNotesOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2923,11 +2840,9 @@ impl SupportingResourcePort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetNotesResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed.items;
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let paged = paged_slice(items, query.page, query.per_page);
-        let data = paged.into_iter().map(note_from_gmp).collect();
+        let items = parsed.items;
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+        let data = items.into_iter().map(note_from_gmp).collect();
         Ok(NotePage {
             data,
             pagination: paged_pagination(total, query.page, query.per_page),
@@ -2969,7 +2884,12 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_overrides(GetOverridesOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2978,11 +2898,9 @@ impl SupportingResourcePort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetOverridesResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed.items;
-        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
-        let paged = paged_slice(items, query.page, query.per_page);
-        let data = paged.into_iter().map(override_from_gmp).collect();
+        let items = parsed.items;
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+        let data = items.into_iter().map(override_from_gmp).collect();
         Ok(OverridePage {
             data,
             pagination: paged_pagination(total, query.page, query.per_page),
@@ -3109,6 +3027,18 @@ mod tests {
         let adapter = GvmdAdapter::unix_socket("/tmp/nonexistent.sock");
         let result = adapter.session_client("missing-token");
         assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+    }
+
+    #[test]
+    fn paginated_filter_appends_backend_paging_terms() {
+        assert_eq!(
+            paginated_filter(Some("report_id=abc"), Some("severity>5"), 3, 25),
+            Some("report_id=abc severity>5 first=51 rows=25".to_string())
+        );
+        assert_eq!(
+            paginated_filter(None, Some("   "), 1, 10),
+            Some("first=1 rows=10".to_string())
+        );
     }
 
     #[tokio::test]
@@ -3412,46 +3342,31 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn gvmd_adapter_list_targets_paginated() {
-            let server = MockGmpServer::builder()
-                .mode(ServerMode::Stateful)
-                .version(MockVersion::V22_7)
-                .unix_socket_auto()
-                .seed(|store| {
-                    for i in 1..=15 {
-                        let mut resource = Resource::new("target", &format!("Target-{i:02}"));
-                        resource.set_attr("hosts", &format!("10.0.0.{i}"));
-                        store.create(resource);
-                    }
-                })
-                .build()
-                .await
-                .unwrap();
-
-            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
-            let token = "test-token";
-            adapter
-                .connect_session(token, "admin", "admin")
-                .await
-                .unwrap();
+        async fn gvmd_adapter_list_targets_emits_backend_pagination_filter() {
+            let (adapter, server, token) = create_mock_adapter().await;
+            server.clear_history();
 
             let result = adapter
                 .list_targets(
-                    token,
+                    &token,
                     &TargetQuery {
-                        filter_string: None,
+                        filter_string: Some("name~Target".to_string()),
                         filter_id: None,
-                        page: 1,
+                        page: 2,
                         per_page: 10,
                     },
                 )
                 .await;
 
             assert!(result.is_ok());
-            let page = result.unwrap();
-            assert_eq!(page.data.len(), 10);
-            assert_eq!(page.pagination.total, 15);
-            assert_eq!(page.pagination.total_pages, 2);
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "get_targets")
+                .expect("get_targets command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("<get_targets"));
+            assert!(xml.contains("filter=\"name~Target first=11 rows=10\""));
 
             server.shutdown().await;
         }
