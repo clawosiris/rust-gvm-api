@@ -7,6 +7,7 @@ use aide::{
     openapi::{License, SecurityScheme, Server, Tag},
     transform::{TransformOpenApi, TransformOperation, TransformResponse},
 };
+use axum::http::Method;
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,9 @@ use uuid::Uuid;
 
 // Runtime DTO imports are no longer needed centrally — OpenAPI transforms
 // now live alongside their handlers in each module.
+use crate::auth_policy::{
+    classify_runtime_route, runtime_path_from_openapi_path, RestRouteAuthPolicy,
+};
 
 pub(crate) fn ok_json<T>(
     description: &'static str,
@@ -185,90 +189,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
 
     document["paths"] = Value::Object(normalized_paths);
 
-    for (path, method) in [
-        ("/health", "get"),
-        ("/ready", "get"),
-        ("/version", "get"),
-        ("/openapi.json", "get"),
-    ] {
-        if let Some(operation) = document["paths"][path][method].as_object_mut() {
-            operation.insert("security".to_string(), json!([]));
-        }
-    }
-
-    // Session endpoints: POST uses basicAuth to create a persistent session;
-    // GET/DELETE operate on the explicit path token and keep bearer-only docs.
-    if let Some(operation) = document["paths"]["/sessions"]["post"].as_object_mut() {
-        operation.insert("security".to_string(), json!([{"basicAuth": []}]));
-    }
-    for (path, method) in [
-        ("/sessions/{token}", "get"),
-        ("/sessions/{token}", "delete"),
-    ] {
-        if let Some(operation) = document["paths"][path][method].as_object_mut() {
-            operation.insert("security".to_string(), json!([{"bearerAuth": []}]));
-        }
-    }
-
-    for (path, method) in [
-        ("/targets", "get"),
-        ("/targets", "post"),
-        ("/targets/{id}", "get"),
-        ("/targets/{id}", "put"),
-        ("/targets/{id}", "delete"),
-        ("/alerts", "get"),
-        ("/alerts", "post"),
-        ("/alerts/{id}", "get"),
-        ("/alerts/{id}", "put"),
-        ("/alerts/{id}", "delete"),
-        ("/schedules", "get"),
-        ("/schedules", "post"),
-        ("/schedules/{id}", "get"),
-        ("/schedules/{id}", "put"),
-        ("/schedules/{id}", "delete"),
-        ("/credentials", "get"),
-        ("/credentials", "post"),
-        ("/credentials/{id}", "get"),
-        ("/credentials/{id}", "put"),
-        ("/credentials/{id}", "delete"),
-        ("/port-lists", "get"),
-        ("/port-lists", "post"),
-        ("/port-lists/{id}", "get"),
-        ("/port-lists/{id}", "put"),
-        ("/port-lists/{id}", "delete"),
-        ("/feeds", "get"),
-        ("/feeds/sync", "post"),
-        ("/report-formats", "get"),
-        ("/report-formats/{id}", "get"),
-        ("/filters", "get"),
-        ("/filters/{id}", "get"),
-        ("/tags", "get"),
-        ("/tags/{id}", "get"),
-        ("/tickets", "get"),
-        ("/tickets/{id}", "get"),
-        ("/notes", "get"),
-        ("/notes/{id}", "get"),
-        ("/overrides", "get"),
-        ("/overrides/{id}", "get"),
-        ("/reports", "get"),
-        ("/reports/{id}", "get"),
-        ("/reports/{id}", "delete"),
-        ("/reports/{id}/export", "get"),
-        ("/reports/{id}/results", "get"),
-        ("/results", "get"),
-        ("/results/{id}", "get"),
-        ("/scan-configs", "get"),
-        ("/scan-configs", "post"),
-        ("/scan-configs/{id}", "get"),
-        ("/scan-configs/{id}", "put"),
-        ("/scan-configs/{id}", "delete"),
-        ("/scanners", "get"),
-        ("/scanners/{id}", "get"),
-    ] {
-        if let Some(operation) = document["paths"][path][method].as_object_mut() {
-            operation.remove("security");
-        }
-    }
+    apply_route_auth_security(&mut document);
 
     tighten_target_query_parameters(&mut document);
     tighten_target_payload_schemas(&mut document);
@@ -344,6 +265,59 @@ fn synchronize_report_export_responses(paths: &mut Map<String, Value>) {
             }
         }),
     );
+}
+
+fn apply_route_auth_security(document: &mut Value) {
+    let Some(paths) = document["paths"].as_object_mut() else {
+        return;
+    };
+
+    for (openapi_path, methods) in paths {
+        let runtime_path = runtime_path_from_openapi_path(openapi_path);
+        let Some(methods) = methods.as_object_mut() else {
+            continue;
+        };
+
+        for (method_name, operation) in methods {
+            let Some(operation) = operation.as_object_mut() else {
+                continue;
+            };
+            let Some(method) = openapi_method(method_name) else {
+                continue;
+            };
+            let Some(policy) = classify_runtime_route(&method, &runtime_path) else {
+                continue;
+            };
+
+            match policy {
+                RestRouteAuthPolicy::Protected => {
+                    operation.remove("security");
+                }
+                RestRouteAuthPolicy::Public => {
+                    operation.insert("security".to_string(), json!([]));
+                }
+                RestRouteAuthPolicy::SessionCreate => {
+                    operation.insert("security".to_string(), json!([{"basicAuth": []}]));
+                }
+                RestRouteAuthPolicy::SessionTokenPath => {
+                    operation.insert("security".to_string(), json!([{"bearerAuth": []}]));
+                }
+            }
+        }
+    }
+}
+
+fn openapi_method(method_name: &str) -> Option<Method> {
+    Some(match method_name {
+        "get" => Method::GET,
+        "post" => Method::POST,
+        "put" => Method::PUT,
+        "delete" => Method::DELETE,
+        "patch" => Method::PATCH,
+        "options" => Method::OPTIONS,
+        "head" => Method::HEAD,
+        _ => return None,
+    })
 }
 
 fn tighten_target_query_parameters(document: &mut Value) {
@@ -1211,7 +1185,7 @@ pub(crate) struct ScanConfigListQueryDoc {
 mod tests {
     use std::collections::BTreeSet;
 
-    use serde_json::{Map, Value};
+    use serde_json::{json, Map, Value};
 
     use super::normalize_paths;
     use crate::router::build_openapi;
@@ -1530,6 +1504,34 @@ mod tests {
             schemas.contains_key("TaskAction"),
             "missing TaskAction schema"
         );
+    }
+
+    #[test]
+    fn generated_openapi_applies_route_auth_policy_consistently() {
+        let generated = build_openapi();
+
+        assert_eq!(op(&generated, "/health", "get")["security"], json!([]));
+        assert_eq!(
+            op(&generated, "/sessions", "post")["security"],
+            json!([{"basicAuth": []}])
+        );
+        assert_eq!(
+            op(&generated, "/sessions/{token}", "get")["security"],
+            json!([{"bearerAuth": []}])
+        );
+
+        for (path, method) in [
+            ("/alerts", "get"),
+            ("/credentials/stores", "get"),
+            ("/feeds", "get"),
+            ("/report-formats", "get"),
+            ("/users", "get"),
+        ] {
+            assert!(
+                op(&generated, path, method).get("security").is_none(),
+                "{method} {path} should inherit dual protected-route auth"
+            );
+        }
     }
 
     #[test]

@@ -16,6 +16,7 @@ use gvm_gateway_domain::GatewayError;
 use serde::Deserialize;
 
 use crate::{
+    auth_policy::{classify_runtime_route, RestRouteAuthPolicy},
     error::RestError,
     rate_limit::{is_rate_limited_path, too_many_requests_response, RateLimitConfig, RateLimiter},
 };
@@ -211,42 +212,10 @@ fn uses_request_scoped_basic_auth(request: &Request) -> bool {
         return false;
     }
 
-    let path = request.uri().path();
-    if matches!(
-        path,
-        "/health" | "/ready" | "/api/v1/version" | "/api/v1/openapi.json"
-    ) {
-        return false;
-    }
-
-    // Keep the explicit session lifecycle contract unchanged: POST /sessions
-    // uses Basic credentials to create a persistent bearer session, while
-    // session inspection/deletion continue to operate on their path token.
-    if (path == "/api/v1/sessions" && request.method() == Method::POST)
-        || path.starts_with("/api/v1/sessions/")
-    {
-        return false;
-    }
-
-    is_protected_resource_path(path)
-}
-
-fn is_protected_resource_path(path: &str) -> bool {
-    [
-        "/api/v1/targets",
-        "/api/v1/tasks",
-        "/api/v1/reports",
-        "/api/v1/results",
-        "/api/v1/scan-configs",
-        "/api/v1/scanners",
-    ]
-    .iter()
-    .any(|prefix| {
-        path == *prefix
-            || path
-                .strip_prefix(prefix)
-                .is_some_and(|rest| rest.starts_with('/'))
-    })
+    matches!(
+        classify_runtime_route(request.method(), request.uri().path()),
+        Some(RestRouteAuthPolicy::Protected)
+    )
 }
 
 fn is_basic_auth(headers: &HeaderMap) -> Option<&str> {
@@ -276,4 +245,71 @@ fn basic_credentials(headers: &HeaderMap) -> Result<(String, String), GatewayErr
     }
 
     Ok((username.to_string(), password.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::Body,
+        http::{header, Request},
+    };
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+
+    use super::uses_request_scoped_basic_auth;
+
+    fn basic_request(method: &str, path: &str) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(path)
+            .header(
+                header::AUTHORIZATION,
+                format!("Basic {}", BASE64.encode("alice:secret")),
+            )
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    #[test]
+    fn request_scoped_basic_auth_skips_public_routes() {
+        for path in [
+            "/health",
+            "/ready",
+            "/api/v1/version",
+            "/api/v1/openapi.json",
+        ] {
+            assert!(
+                !uses_request_scoped_basic_auth(&basic_request("GET", path)),
+                "{path} should stay public"
+            );
+        }
+    }
+
+    #[test]
+    fn request_scoped_basic_auth_keeps_session_lifecycle_special_cases() {
+        assert!(!uses_request_scoped_basic_auth(&basic_request(
+            "POST",
+            "/api/v1/sessions"
+        )));
+        assert!(!uses_request_scoped_basic_auth(&basic_request(
+            "GET",
+            "/api/v1/sessions/token"
+        )));
+    }
+
+    #[test]
+    fn request_scoped_basic_auth_applies_to_protected_routes_by_default() {
+        for path in [
+            "/api/v1/alerts",
+            "/api/v1/credentials/stores",
+            "/api/v1/feeds",
+            "/api/v1/report-formats",
+            "/api/v1/users",
+            "/api/v1/future-resource",
+        ] {
+            assert!(
+                uses_request_scoped_basic_auth(&basic_request("GET", path)),
+                "{path} should use request-scoped Basic auth"
+            );
+        }
+    }
 }
