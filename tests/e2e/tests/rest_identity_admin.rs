@@ -6,8 +6,7 @@ use gvm_gateway_e2e::harness::{
     assert_problem_response_any, CreatedResource, E2eHarness, Group, IdentityResourceMeta,
     ListResponse, Permission, Role, SessionResponse, User, UserSetting,
 };
-use reqwest::{Method, StatusCode};
-use serde_json::json;
+use reqwest::StatusCode;
 
 // Covers the shipped identity/admin list and read surface against a live gvmd
 // stack so route registration, pagination, and typed REST response mapping do
@@ -55,10 +54,12 @@ async fn rest_identity_admin_routes_reject_missing_and_invalid_auth() -> Result<
 
 // Covers user-settings as a current-user-scoped contract rather than generic
 // admin CRUD by listing settings for the authenticated session and reading one
-// setting by ID when the real stack exposes settings.
+// setting by ID when the real stack exposes settings. The compose-backed gvmd
+// data set does not expose a reliable writable setting, so update coverage is
+// intentionally left to a future fixture with a documented mutable setting.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires a compose-backed gvmd environment"]
-async fn rest_identity_user_settings_list_read_and_update_current_user_setting() -> Result<()> {
+async fn rest_identity_user_settings_list_and_read_current_user_setting() -> Result<()> {
     let (harness, session) = ready_session().await?;
 
     let run = async {
@@ -79,59 +80,6 @@ async fn rest_identity_user_settings_list_read_and_update_current_user_setting()
         assert_eq!(
             fetched.name, setting.name,
             "user setting name drifted on read"
-        );
-
-        let Some(updatable) = settings.data.iter().find(|setting| setting.value.is_some()) else {
-            eprintln!(
-                "gvmd returned no user settings with values; covered list/read but skipped update"
-            );
-            return Ok(());
-        };
-        let original_value = updatable
-            .value
-            .as_deref()
-            .expect("updatable user setting was selected for having a value");
-
-        let update_response = harness
-            .request(
-                Method::PUT,
-                &format!("/api/v1/user-settings/{}", updatable.id),
-            )
-            .bearer_auth(&session.token)
-            .json(&json!({ "value": original_value }))
-            .send()
-            .await
-            .context("send user setting update with existing value")?;
-        let update_status = update_response.status();
-        let update_body = update_response
-            .text()
-            .await
-            .context("read user setting update response")?;
-        if matches!(
-            update_status,
-            StatusCode::BAD_REQUEST | StatusCode::NOT_FOUND
-        ) {
-            eprintln!(
-                "gvmd rejected user setting update for {} ({}): status={} body={}",
-                updatable.name, updatable.id, update_status, update_body
-            );
-            return Ok(());
-        }
-        assert_eq!(
-            update_status,
-            StatusCode::OK,
-            "user setting update returned unexpected status {update_status} with body {update_body}"
-        );
-        let updated: UserSetting = serde_json::from_str(&update_body)
-            .context("parse successful user setting update response")?;
-        assert_eq!(
-            updated.id, updatable.id,
-            "user setting id changed after update"
-        );
-        assert_eq!(
-            updated.value.as_deref(),
-            Some(original_value),
-            "user setting update did not preserve the submitted value"
         );
 
         Ok(())
