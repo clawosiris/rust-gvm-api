@@ -47,8 +47,8 @@
 | `task_from_structured_response` | Map `rust-gvm` task response models to REST Task schema |
 | `report_from_structured_response` | Map `rust-gvm` report response models to REST Report schema |
 | `result_from_structured_response` | Map `rust-gvm` result response models to REST Result schema |
-| `pagination_defaults` | Missing page/per_page → defaults (1, 25) |
-| `pagination_bounds` | per_page > 1000 → clamped to 1000 |
+| `pagination_defaults` | Missing page/perPage → defaults (1, 25) |
+| `pagination_bounds` | perPage > 1000 → clamped to 1000 |
 | `filter_to_gmp_string` | Structured filter params → GMP filter expression |
 | `uuid_validation` | Invalid UUID → 400 error |
 | `severity_range_validation` | severity_min=-1 or >10 → 400 |
@@ -119,7 +119,7 @@ async fn test_server() -> TestServer {
 | Test | Request | Setup | Expected |
 |------|---------|-------|----------|
 | `list_targets_empty` | `GET /api/v1/targets` | No targets | 200, empty `data[]`, pagination |
-| `list_targets_paginated` | `GET /api/v1/targets?page=2&per_page=10` | 25 targets | 200, 10 items, correct pagination |
+| `list_targets_paginated` | `GET /api/v1/targets?page=2&perPage=10` | 25 targets | 200, 10 items, correct pagination |
 | `create_target` | `POST /api/v1/targets` + body | — | 201, target with ID |
 | `create_target_location_header` | `POST /api/v1/targets` + body | — | 201 + `Location: /api/v1/targets/{id}` |
 | `create_target_missing_name` | `POST /api/v1/targets` (no name) | — | 400, RFC 9457 |
@@ -146,11 +146,11 @@ async fn test_server() -> TestServer {
 |------|---------|-------|----------|
 | `list_reports` | `GET /api/v1/reports` | Reports exist | 200, summaries |
 | `get_report_with_results` | `GET /api/v1/reports/{id}` | Report exists | 200, includes results |
-| `get_report_results_paginated` | `GET /api/v1/reports/{id}/results?page=1&per_page=50` | Large report | 200, 50 results |
-| `get_report_vulnerabilities_paginated` | `GET /api/v1/reports/{id}/vulnerabilities?page=1&per_page=50` | Report exists | 200, paginated vulnerability findings |
-| `get_report_tls_certificates_paginated` | `GET /api/v1/reports/{id}/tls-certificates?page=1&per_page=50` | Report exists | 200, paginated TLS certificate observations |
-| `get_report_errors_paginated` | `GET /api/v1/reports/{id}/errors?page=1&per_page=50` | Report exists | 200, paginated report errors |
-| `get_report_closed_cves_paginated` | `GET /api/v1/reports/{id}/closed-cves?page=1&per_page=50` | Report exists | 200, paginated closed CVE findings |
+| `get_report_results_paginated` | `GET /api/v1/reports/{id}/results?page=1&perPage=50` | Large report | 200, 50 results |
+| `get_report_vulnerabilities_paginated` | `GET /api/v1/reports/{id}/vulnerabilities?page=1&perPage=50` | Report exists | 200, paginated vulnerability findings |
+| `get_report_tls_certificates_paginated` | `GET /api/v1/reports/{id}/tls-certificates?page=1&perPage=50` | Report exists | 200, paginated TLS certificate observations |
+| `get_report_errors_paginated` | `GET /api/v1/reports/{id}/errors?page=1&perPage=50` | Report exists | 200, paginated report errors |
+| `get_report_closed_cves_paginated` | `GET /api/v1/reports/{id}/closed-cves?page=1&perPage=50` | Report exists | 200, paginated closed CVE findings |
 | `export_report_pdf_by_format_id` | `GET /api/v1/reports/{id}/export?reportFormatId={pdf-format-id}` | Report exists + PDF report format exists | 200, `application/pdf` |
 | `export_report_csv_by_format_id` | `GET /api/v1/reports/{id}/export?reportFormatId={csv-format-id}` | Report exists + CSV report format exists | 200, `text/csv` |
 | `export_report_unknown_format` | `GET /api/v1/reports/{id}/export?reportFormatId={bad-id}` | Report exists | 404 |
