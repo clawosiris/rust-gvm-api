@@ -61,15 +61,12 @@ impl SupportingListQuery {
         let mut page = None;
         let mut per_page = None;
 
-        for pair in query.split('&').filter(|entry| !entry.is_empty()) {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next().unwrap_or_default();
-            let value = parts.next().unwrap_or_default();
-            match key {
-                "filter" => filter_string = Some(value.to_string()),
+        for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+            match key.as_ref() {
+                "filter" => filter_string = Some(value.into_owned()),
                 "filterId" => {
-                    validate_uuid("filterId", value)?;
-                    filter_id = Some(value.to_string());
+                    validate_uuid("filterId", value.as_ref())?;
+                    filter_id = Some(value.into_owned());
                 }
                 "page" => {
                     page = Some(value.parse::<u32>().map_err(|_| {
@@ -626,4 +623,37 @@ pub(crate) fn get_ticket_docs(op: TransformOperation<'_>) -> TransformOperation<
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SupportingListQuery;
+
+    #[test]
+    fn supporting_query_decodes_percent_encoded_filter_values() {
+        let parsed = SupportingListQuery::try_from_query_string(
+            "filter=name~webserver%20and%20severity%3E5&perPage=10&page=2",
+        )
+        .expect("supporting-resource query should parse");
+
+        assert_eq!(
+            parsed.filter_string.as_deref(),
+            Some("name~webserver and severity>5")
+        );
+        assert_eq!(parsed.page, 2);
+        assert_eq!(parsed.per_page, 10);
+    }
+
+    #[test]
+    fn supporting_query_rejects_zero_page_after_decoding() {
+        let error = SupportingListQuery::try_from_query_string("page=0")
+            .expect_err("page=0 should remain invalid");
+
+        match error {
+            gvm_gateway_domain::GatewayError::InvalidInput(detail) => {
+                assert_eq!(detail, "page must be greater than or equal to 1");
+            }
+            other => panic!("unexpected error variant: {:?}", other),
+        }
+    }
 }
