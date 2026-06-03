@@ -288,11 +288,11 @@ mod tests {
     fn request_scoped_basic_auth_keeps_session_lifecycle_special_cases() {
         assert!(!uses_request_scoped_basic_auth(&basic_request(
             "POST",
-            "/api/v1/sessions"
+            "/api/v1/session"
         )));
         assert!(!uses_request_scoped_basic_auth(&basic_request(
             "GET",
-            "/api/v1/sessions/token"
+            "/api/v1/session"
         )));
     }
 

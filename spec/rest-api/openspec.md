@@ -267,11 +267,11 @@ On success, the endpoint returns binary bytes with:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/sessions` | Authenticate with HTTP Basic credentials and create a session (`201 Created` + `Location`) |
-| `GET` | `/api/v1/sessions/{token}` | Inspect current session state |
-| `DELETE` | `/api/v1/sessions/{token}` | Close and destroy a session |
+| `POST` | `/api/v1/session` | Authenticate with HTTP Basic credentials and create a session (`201 Created` + `Location`) |
+| `GET` | `/api/v1/session` | Inspect current session state |
+| `DELETE` | `/api/v1/session` | Close and destroy a session |
 
-Protected routes accept either an existing Bearer session token or request-scoped HTTP Basic credentials. `POST /api/v1/sessions` remains the persistent-session creation path.
+Protected routes accept either an existing Bearer session token or request-scoped HTTP Basic credentials. `POST /api/v1/session` remains the persistent-session creation path.
 
 #### Feeds
 
@@ -350,7 +350,7 @@ When a create operation returns a canonical resource identifier, the response mu
 
 Current required coverage:
 
-- `POST /api/v1/sessions` → `Location: /api/v1/sessions/{token}`
+- `POST /api/v1/session` → `Location: /api/v1/session`
 - `POST /api/v1/targets` → `Location: /api/v1/targets/{id}`
 - `POST /api/v1/tasks` → `Location: /api/v1/tasks/{id}`
 - `POST /api/v1/scan-configs` → `Location: /api/v1/scan-configs/{id}`
@@ -358,7 +358,7 @@ Current required coverage:
 ### Authentication & Authorization
 
 1. **Session token flow** — Persistent auth model
-   - `POST /api/v1/sessions` with Basic credentials
+   - `POST /api/v1/session` with Basic credentials
    - API returns an opaque session token
    - Subsequent requests use `Authorization: Bearer <sessionToken>`
 
@@ -368,8 +368,8 @@ Current required coverage:
    - Bearer authentication takes precedence whenever the `Authorization` scheme is `Bearer`; malformed Basic credentials fail with `401 Unauthorized`
 
 3. **Session lifecycle controls**
-   - `GET /api/v1/sessions/{token}` to inspect session state
-   - `DELETE /api/v1/sessions/{token}` for explicit teardown
+   - `GET /api/v1/session` to inspect session state
+   - `DELETE /api/v1/session` for explicit teardown
    - Session creation and use flow through the shared `SessionManager` / gvmd connection-store model.
    - One active session token maps to one authenticated backend execution context.
    - Requests that reuse the same session token must serialize against that backend context; queue saturation/timeouts are surfaced as backpressure errors rather than hidden retries.
@@ -469,9 +469,9 @@ No implementation work should start without an acceptance test that defines the 
 
 - Generate REST server stubs/types from the OpenAPI 3.1 spec in `spec/rest-api/`.
 - Implement session endpoints first (acceptance-test first for each endpoint):
-  - `POST /sessions`
-  - `GET /sessions/{token}`
-  - `DELETE /sessions/{token}`
+  - `POST /session`
+  - `GET /session`
+  - `DELETE /session`
 - Implement bearer-token extraction and session resolution middleware.
 - Map domain errors to HTTP status/problem responses consistently.
 

@@ -334,7 +334,7 @@ impl TargetHarness {
 
     pub async fn create_session_with_basic(&self, user: &str, password: &str) -> Response {
         self.client
-            .post(self.url("/api/v1/sessions"))
+            .post(self.url("/api/v1/session"))
             .basic_auth(user, Some(password))
             .send()
             .await

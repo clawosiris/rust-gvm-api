@@ -147,7 +147,7 @@ impl E2eHarness {
     pub async fn create_session(&self) -> Result<SessionResponse> {
         let request = self
             .client
-            .post(self.endpoint("/api/v1/sessions"))
+            .post(self.endpoint("/api/v1/session"))
             .basic_auth(&self.config.username, Some(&self.config.password));
         self.send_json(request, StatusCode::CREATED, "create REST session")
             .await
@@ -156,7 +156,7 @@ impl E2eHarness {
     pub async fn create_session_with_location(&self) -> Result<CreatedSession> {
         let response = self
             .client
-            .post(self.endpoint("/api/v1/sessions"))
+            .post(self.endpoint("/api/v1/session"))
             .basic_auth(&self.config.username, Some(&self.config.password))
             .send()
             .await
@@ -195,7 +195,7 @@ impl E2eHarness {
         username: &str,
         password: &str,
     ) -> Result<reqwest::Response> {
-        self.request(Method::POST, "/api/v1/sessions")
+        self.request(Method::POST, "/api/v1/session")
             .basic_auth(username, Some(password))
             .send()
             .await
@@ -203,7 +203,7 @@ impl E2eHarness {
     }
 
     pub async fn create_session_with_malformed_basic(&self) -> Result<reqwest::Response> {
-        self.request(Method::POST, "/api/v1/sessions")
+        self.request(Method::POST, "/api/v1/session")
             .header(header::AUTHORIZATION, "Basic bm9fY29sb24=")
             .send()
             .await
@@ -212,7 +212,7 @@ impl E2eHarness {
 
     pub async fn get_session(&self, token: &str) -> Result<SessionInfo> {
         self.send_json(
-            self.request(Method::GET, &format!("/api/v1/sessions/{token}")),
+            self.authed(Method::GET, "/api/v1/session", token),
             StatusCode::OK,
             "get REST session",
         )
@@ -220,7 +220,7 @@ impl E2eHarness {
     }
 
     pub async fn get_session_response(&self, token: &str) -> Result<reqwest::Response> {
-        self.request(Method::GET, &format!("/api/v1/sessions/{token}"))
+        self.authed(Method::GET, "/api/v1/session", token)
             .send()
             .await
             .context("get REST session response")
@@ -1398,7 +1398,7 @@ impl E2eHarness {
 
     pub async fn delete_session(&self, token: &str) -> Result<()> {
         self.send_empty(
-            self.authed(Method::DELETE, &format!("/api/v1/sessions/{token}"), token),
+            self.authed(Method::DELETE, "/api/v1/session", token),
             StatusCode::NO_CONTENT,
             "delete session",
         )
@@ -1746,8 +1746,6 @@ pub struct CreatedSession {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SessionInfo {
-    #[serde(rename = "sessionToken")]
-    pub token: String,
     pub user: String,
     pub state: String,
     #[serde(rename = "createdAt")]

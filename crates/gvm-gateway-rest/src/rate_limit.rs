@@ -153,7 +153,7 @@ fn rate_limit_subject(request: &Request) -> String {
     if let Some(credentials) = auth.strip_prefix("Basic ") {
         return format!("basic:{}", stable_hash(credentials));
     }
-    if path == "/api/v1/sessions" {
+    if path == "/api/v1/session" {
         return "session-create:anonymous".to_string();
     }
     "anonymous".to_string()
