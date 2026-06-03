@@ -173,7 +173,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     );
 
     for path in [
-        "/sessions",
+        "/session",
         "/targets",
         "/alerts",
         "/schedules",
@@ -299,7 +299,7 @@ fn apply_route_auth_security(document: &mut Value) {
                 RestRouteAuthPolicy::SessionCreate => {
                     operation.insert("security".to_string(), json!([{"basicAuth": []}]));
                 }
-                RestRouteAuthPolicy::SessionTokenPath => {
+                RestRouteAuthPolicy::SessionCurrent => {
                     operation.insert("security".to_string(), json!([{"bearerAuth": []}]));
                 }
             }
@@ -965,13 +965,6 @@ impl ProblemDetailDoc {
     }
 }
 
-// -- Session path parameter --------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct SessionTokenPathDoc {
-    token: String,
-}
-
 // -- Shared path/query parameter schemas -------------------------------------
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -1222,24 +1215,24 @@ mod tests {
                 &["200"],
             ),
             (
-                "/sessions",
+                "/session",
                 "post",
                 &sessions_spec,
-                "/sessions",
+                "/session",
                 &["201", "401", "502"],
             ),
             (
-                "/sessions/{token}",
+                "/session",
                 "get",
                 &sessions_spec,
-                "/sessions/{token}",
+                "/session",
                 &["200", "404"],
             ),
             (
-                "/sessions/{token}",
+                "/session",
                 "delete",
                 &sessions_spec,
-                "/sessions/{token}",
+                "/session",
                 &["204", "404"],
             ),
             (
@@ -1512,11 +1505,11 @@ mod tests {
 
         assert_eq!(op(&generated, "/health", "get")["security"], json!([]));
         assert_eq!(
-            op(&generated, "/sessions", "post")["security"],
+            op(&generated, "/session", "post")["security"],
             json!([{"basicAuth": []}])
         );
         assert_eq!(
-            op(&generated, "/sessions/{token}", "get")["security"],
+            op(&generated, "/session", "get")["security"],
             json!([{"bearerAuth": []}])
         );
 

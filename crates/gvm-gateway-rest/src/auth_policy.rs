@@ -12,8 +12,8 @@ pub(crate) enum RestRouteAuthPolicy {
     Public,
     /// Basic-auth-only session creation endpoint.
     SessionCreate,
-    /// Bearer-only session lifecycle endpoint keyed by path token.
-    SessionTokenPath,
+    /// Bearer-only current-session lifecycle endpoint.
+    SessionCurrent,
     /// Protected endpoint that accepts bearer auth or request-scoped Basic auth.
     Protected,
 }
@@ -28,12 +28,12 @@ pub(crate) fn classify_runtime_route(method: &Method, path: &str) -> Option<Rest
         return Some(RestRouteAuthPolicy::Public);
     }
 
-    if path == "/api/v1/sessions" && *method == Method::POST {
+    if path == "/api/v1/session" && *method == Method::POST {
         return Some(RestRouteAuthPolicy::SessionCreate);
     }
 
-    if path.starts_with("/api/v1/sessions/") {
-        return Some(RestRouteAuthPolicy::SessionTokenPath);
+    if path == "/api/v1/session" {
+        return Some(RestRouteAuthPolicy::SessionCurrent);
     }
 
     if path.starts_with("/api/v1/") {
@@ -81,12 +81,12 @@ mod tests {
     #[test]
     fn classifies_session_routes() {
         assert_eq!(
-            classify_runtime_route(&Method::POST, "/api/v1/sessions"),
+            classify_runtime_route(&Method::POST, "/api/v1/session"),
             Some(RestRouteAuthPolicy::SessionCreate)
         );
         assert_eq!(
-            classify_runtime_route(&Method::GET, "/api/v1/sessions/token"),
-            Some(RestRouteAuthPolicy::SessionTokenPath)
+            classify_runtime_route(&Method::GET, "/api/v1/session"),
+            Some(RestRouteAuthPolicy::SessionCurrent)
         );
     }
 

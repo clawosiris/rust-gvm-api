@@ -176,7 +176,7 @@ create_session() {
   status="$(
     curl -sS -o "${response}" -w '%{http_code}' \
       -u "${USERNAME}:${PASSWORD}" \
-      -X POST "${BASE_URL}/api/v1/sessions"
+      -X POST "${BASE_URL}/api/v1/session"
   )"
   local body
   body="$(cat "${response}")"
@@ -194,7 +194,7 @@ delete_session() {
   local token="$1"
   curl -sS -o /dev/null -X DELETE \
     -H "Authorization: Bearer ${token}" \
-    "${BASE_URL}/api/v1/sessions/${token}" \
+    "${BASE_URL}/api/v1/session" \
     || true
 }
 

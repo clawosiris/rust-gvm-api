@@ -78,7 +78,8 @@ async fn rest_request_scoped_basic_auth_lists_targets_without_persistent_session
 }
 
 // Covers session create/read/close semantics so persistent-session clients can
-// rely on Location, session metadata, and malformed Basic auth rejection.
+// rely on the singular current-session URI, session metadata, and malformed
+// Basic auth rejection.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires a compose-backed gvmd environment"]
 async fn rest_session_lifecycle_exposes_location_and_session_details() -> Result<()> {
@@ -86,10 +87,8 @@ async fn rest_session_lifecycle_exposes_location_and_session_details() -> Result
 
     let created = harness.create_session_with_location().await?;
     assert!(
-        created
-            .location
-            .ends_with(&format!("/api/v1/sessions/{}", created.session.token)),
-        "session Location {} did not point at returned token",
+        created.location.ends_with("/api/v1/session"),
+        "session Location {} did not point at the current-session resource",
         created.location
     );
     assert!(
@@ -106,10 +105,6 @@ async fn rest_session_lifecycle_exposes_location_and_session_details() -> Result
     );
 
     let session = harness.get_session(&created.session.token).await?;
-    assert_eq!(
-        session.token, created.session.token,
-        "session read returned a different token"
-    );
     assert_eq!(
         session.user, harness.config.username,
         "session read returned an unexpected user"

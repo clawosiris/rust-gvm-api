@@ -18,7 +18,7 @@ async fn create_session_valid_credentials() {
     let client = Client::new();
 
     let response = client
-        .post(format!("http://{addr}/api/v1/sessions"))
+        .post(format!("http://{addr}/api/v1/session"))
         .header("Authorization", "Basic YWRtaW46c2VjcmV0")
         .send()
         .await
@@ -35,7 +35,7 @@ async fn create_session_valid_credentials() {
     let json = response.json::<serde_json::Value>().await.unwrap();
     let token = json["sessionToken"].as_str().unwrap();
     assert!(token.starts_with("gvm_sess_"));
-    assert_eq!(location, format!("/api/v1/sessions/{token}"));
+    assert_eq!(location, "/api/v1/session");
     assert_eq!(json["expiresIn"], 300);
     assert_eq!(json["gmpVersion"], "22.7");
 
@@ -48,7 +48,7 @@ async fn create_session_missing_auth() {
     let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
 
     let response = Client::new()
-        .post(format!("http://{addr}/api/v1/sessions"))
+        .post(format!("http://{addr}/api/v1/session"))
         .send()
         .await
         .unwrap();
@@ -64,7 +64,7 @@ async fn get_session_returns_details() {
     let client = Client::new();
 
     let create_resp = client
-        .post(format!("http://{addr}/api/v1/sessions"))
+        .post(format!("http://{addr}/api/v1/session"))
         .header("Authorization", "Basic YWRtaW46c2VjcmV0")
         .send()
         .await
@@ -75,14 +75,14 @@ async fn get_session_returns_details() {
         .to_string();
 
     let response = client
-        .get(format!("http://{addr}/api/v1/sessions/{token}"))
+        .get(format!("http://{addr}/api/v1/session"))
+        .bearer_auth(&token)
         .send()
         .await
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
     let json = response.json::<serde_json::Value>().await.unwrap();
-    assert_eq!(json["sessionToken"], token);
     assert_eq!(json["user"], "admin");
     assert_eq!(json["state"], "active");
     assert!(json["createdAt"].as_str().unwrap().ends_with('Z'));
@@ -97,7 +97,8 @@ async fn get_session_not_found() {
     let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
 
     let response = Client::new()
-        .get(format!("http://{addr}/api/v1/sessions/nonexistent-token"))
+        .get(format!("http://{addr}/api/v1/session"))
+        .bearer_auth("nonexistent-token")
         .send()
         .await
         .unwrap();
@@ -113,7 +114,7 @@ async fn delete_session_closes_and_invalidates() {
     let client = Client::new();
 
     let create_resp = client
-        .post(format!("http://{addr}/api/v1/sessions"))
+        .post(format!("http://{addr}/api/v1/session"))
         .header("Authorization", "Basic YWRtaW46c2VjcmV0")
         .send()
         .await
@@ -124,14 +125,16 @@ async fn delete_session_closes_and_invalidates() {
         .to_string();
 
     let response = client
-        .delete(format!("http://{addr}/api/v1/sessions/{token}"))
+        .delete(format!("http://{addr}/api/v1/session"))
+        .bearer_auth(&token)
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
     let response = client
-        .get(format!("http://{addr}/api/v1/sessions/{token}"))
+        .get(format!("http://{addr}/api/v1/session"))
+        .bearer_auth(&token)
         .send()
         .await
         .unwrap();
@@ -156,7 +159,7 @@ async fn session_reaper_cleans_up_expired_sessions() {
 
     let client = Client::new();
     let create_resp = client
-        .post(format!("http://{addr}/api/v1/sessions"))
+        .post(format!("http://{addr}/api/v1/session"))
         .header("Authorization", "Basic YWRtaW46c2VjcmV0")
         .send()
         .await
@@ -170,7 +173,8 @@ async fn session_reaper_cleans_up_expired_sessions() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let response = client
-        .get(format!("http://{addr}/api/v1/sessions/{token}"))
+        .get(format!("http://{addr}/api/v1/session"))
+        .bearer_auth(&token)
         .send()
         .await
         .unwrap();
@@ -186,7 +190,8 @@ async fn delete_session_not_found() {
     let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
 
     let response = Client::new()
-        .delete(format!("http://{addr}/api/v1/sessions/nonexistent-token"))
+        .delete(format!("http://{addr}/api/v1/session"))
+        .bearer_auth("nonexistent-token")
         .send()
         .await
         .unwrap();

@@ -194,11 +194,11 @@ async fn test_server() -> TestServer {
 
 | Test | Request | Expected |
 |------|---------|----------|
-| `create_session_valid_credentials` | `POST /api/v1/sessions` + valid Basic auth | 201, session token + metadata |
-| `create_session_location_header` | `POST /api/v1/sessions` + valid Basic auth | 201 + `Location: /api/v1/sessions/{token}` |
-| `create_session_invalid_credentials` | `POST /api/v1/sessions` + bad Basic auth | 401 |
-| `get_session_valid_token` | `GET /api/v1/sessions/{token}` | 200, session details |
-| `delete_session_valid_token` | `DELETE /api/v1/sessions/{token}` | 204 |
+| `create_session_valid_credentials` | `POST /api/v1/session` + valid Basic auth | 201, session token + metadata |
+| `create_session_location_header` | `POST /api/v1/session` + valid Basic auth | 201 + `Location: /api/v1/session` |
+| `create_session_invalid_credentials` | `POST /api/v1/session` + bad Basic auth | 401 |
+| `get_session_valid_token` | `GET /api/v1/session` + `Authorization: Bearer <sessionToken>` | 200, session details |
+| `delete_session_valid_token` | `DELETE /api/v1/session` + `Authorization: Bearer <sessionToken>` | 204 |
 | `protected_endpoint_no_auth` | `GET /api/v1/targets` (no token) | 401 |
 | `protected_endpoint_unknown_token` | `GET /api/v1/targets` + unknown token | 401 |
 | `protected_endpoint_valid_auth` | `GET /api/v1/targets` + valid session token | 200 |

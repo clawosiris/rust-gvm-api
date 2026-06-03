@@ -4,7 +4,7 @@
 openapi: 3.1.0
 
 paths:
-  /sessions:
+  /session:
     post:
       operationId: createSession
       tags: [Sessions]
@@ -31,14 +31,12 @@ paths:
           $ref: "./common.yaml#/components/responses/TooManyRequests"
         "502":
           $ref: "./common.yaml#/components/responses/BadGateway"
-
-  /sessions/{token}:
-    parameters:
-      - $ref: "./common.yaml#/components/parameters/SessionToken"
     get:
       operationId: getSession
       tags: [Sessions]
       summary: Inspect a session
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Session details
@@ -56,6 +54,8 @@ paths:
       summary: Close and destroy a session
       description: |
         Ends the session and invalidates the token immediately.
+      security:
+        - bearerAuth: []
       responses:
         "204":
           description: Session closed
@@ -92,15 +92,12 @@ components:
     SessionInfo:
       type: object
       required:
-        - sessionToken
         - user
         - state
         - createdAt
         - lastUsedAt
         - expiresIn
       properties:
-        sessionToken:
-          type: string
         user:
           type: string
           description: Username this session authenticated as.

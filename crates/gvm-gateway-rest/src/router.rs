@@ -173,15 +173,12 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route("/api/v1/version", get_with(version, version_docs))
         // Session lifecycle
         .api_route(
-            "/api/v1/sessions",
+            "/api/v1/session",
             post_with(create_session, create_session_docs),
         )
+        .api_route("/api/v1/session", get_with(get_session, get_session_docs))
         .api_route(
-            "/api/v1/sessions/{token}",
-            get_with(get_session, get_session_docs),
-        )
-        .api_route(
-            "/api/v1/sessions/{token}",
+            "/api/v1/session",
             delete_with(delete_session, delete_session_docs),
         )
         // Targets
@@ -951,6 +948,51 @@ mod tests {
         assert!(output.contains("http_method=GET"));
         assert!(output.contains("http_route=/health"));
         assert!(!output.contains("secret=user-token"));
+    }
+
+    #[tokio::test]
+    async fn session_trace_labels_do_not_include_bearer_tokens() {
+        let _trace_lock = lock_tracing().await;
+        let logs = capture_tracing();
+        let service = static_gateway_service();
+        let app = build_router(service);
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/session")
+                    .header(axum::http::header::AUTHORIZATION, "Basic YWRtaW46c2VjcmV0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let created: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let token = created["sessionToken"].as_str().unwrap();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/session")
+                    .header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+        assert!(output.contains("http_route=/api/v1/session"));
+        assert!(!output.contains(token));
     }
 
     #[tokio::test]

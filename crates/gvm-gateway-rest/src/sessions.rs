@@ -5,7 +5,7 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -17,16 +17,17 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dto::{created_resource_location, datetime_schema},
+    dto::datetime_schema,
     error::RestError,
-    openapi::{ok_json, problem_response, SessionTokenPathDoc},
+    openapi::{ok_json, problem_response},
+    router::bearer_token,
 };
 
 // ============================================================================
 // Response DTOs
 // ============================================================================
 
-/// JSON body returned by `POST /api/v1/sessions`.
+/// JSON body returned by `POST /api/v1/session`.
 #[derive(Serialize, JsonSchema)]
 #[schemars(rename = "SessionCreated")]
 pub(crate) struct SessionCreatedResponse {
@@ -55,12 +56,10 @@ fn parse_session_state(s: &str) -> SessionState {
     serde_json::from_value(serde_json::Value::String(s.to_string())).unwrap_or(SessionState::Active)
 }
 
-/// JSON body returned by `GET /api/v1/sessions/{token}`.
+/// JSON body returned by `GET /api/v1/session`.
 #[derive(Serialize, JsonSchema)]
 #[schemars(rename = "SessionInfo")]
 pub(crate) struct SessionInfoResponse {
-    #[serde(rename = "sessionToken")]
-    session_token: String,
     user: String,
     state: SessionState,
     #[serde(rename = "createdAt")]
@@ -79,7 +78,7 @@ pub(crate) struct SessionInfoResponse {
 
 /// Create a new session via HTTP Basic authentication.
 ///
-/// `POST /api/v1/sessions`
+/// `POST /api/v1/session`
 pub async fn create_session(
     State(service): State<GatewayService>,
     headers: HeaderMap,
@@ -93,7 +92,7 @@ pub async fn create_session(
 
     match service.create_session(&username, &password).await {
         Ok(created) => {
-            let location = created_resource_location(&instance, &created.token);
+            let location = instance.clone();
             (
                 StatusCode::CREATED,
                 [(header::LOCATION, location)],
@@ -111,19 +110,22 @@ pub async fn create_session(
 
 /// Inspect a session.
 ///
-/// `GET /api/v1/sessions/{token}`
+/// `GET /api/v1/session`
 pub async fn get_session(
     State(service): State<GatewayService>,
-    Path(token): Path<String>,
+    headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
     let instance = uri.path().to_string();
+    let token = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
 
     match service.get_session(&token) {
         Ok(info) => (
             StatusCode::OK,
             Json(SessionInfoResponse {
-                session_token: info.token,
                 user: info.user,
                 state: parse_session_state(&info.state),
                 created_at: format_rfc3339(info.created_at),
@@ -138,13 +140,17 @@ pub async fn get_session(
 
 /// Close and destroy a session.
 ///
-/// `DELETE /api/v1/sessions/{token}`
+/// `DELETE /api/v1/session`
 pub async fn delete_session(
     State(service): State<GatewayService>,
-    Path(token): Path<String>,
+    headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
     let instance = uri.path().to_string();
+    let token = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
 
     match service.delete_session(&token).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
@@ -191,7 +197,7 @@ fn extract_basic_credentials(headers: &HeaderMap) -> Result<(String, String), Ga
 // OpenAPI transforms
 // ============================================================================
 
-/// OpenAPI transform for `POST /api/v1/sessions`.
+/// OpenAPI transform for `POST /api/v1/session`.
 pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     let op = op
         .id("createSession")
@@ -208,7 +214,7 @@ pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperat
     problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 
-/// OpenAPI transform for `GET /api/v1/sessions/{token}`.
+/// OpenAPI transform for `GET /api/v1/session`.
 pub(crate) fn get_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     let op = op
         .id("getSession")
@@ -216,14 +222,13 @@ pub(crate) fn get_session_docs(op: TransformOperation<'_>) -> TransformOperation
         .summary("Inspect a session")
         .description("Returns the current state and metadata for a session.")
         .security_requirement("bearerAuth")
-        .input::<Path<SessionTokenPathDoc>>()
         .response_with::<200, Json<SessionInfoResponse>, _>(ok_json("Session details"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Session not found")
 }
 
-/// OpenAPI transform for `DELETE /api/v1/sessions/{token}`.
+/// OpenAPI transform for `DELETE /api/v1/session`.
 pub(crate) fn delete_session_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     let op = op
         .id("deleteSession")
@@ -231,7 +236,6 @@ pub(crate) fn delete_session_docs(op: TransformOperation<'_>) -> TransformOperat
         .summary("Close and destroy a session")
         .description("Ends the session and invalidates the token immediately.")
         .security_requirement("bearerAuth")
-        .input::<Path<SessionTokenPathDoc>>()
         .response_with::<204, (), _>(|response| response.description("Session closed"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
