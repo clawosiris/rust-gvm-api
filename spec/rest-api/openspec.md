@@ -296,7 +296,7 @@ Swagger/ReDoc endpoints are not part of the current published contract.
 #### Pagination
 
 ```http
-GET /api/v1/targets?page=1&per_page=25&sort=name&order=asc
+GET /api/v1/targets?page=1&perPage=25&sort=name&order=asc
 ```
 
 Response includes pagination metadata:
@@ -306,12 +306,15 @@ Response includes pagination metadata:
   "data": [...],
   "pagination": {
     "page": 1,
-    "per_page": 25,
+    "perPage": 25,
     "total": 142,
-    "total_pages": 6
+    "totalPages": 6
   }
 }
 ```
+
+`perPage` / `totalPages` are the canonical public JSON field names.
+For request compatibility, the gateway may continue to accept legacy snake_case query aliases such as `per_page`, but published examples and generated SDKs should use camelCase.
 
 #### Filtering
 
