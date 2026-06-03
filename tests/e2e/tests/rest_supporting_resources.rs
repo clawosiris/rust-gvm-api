@@ -98,10 +98,8 @@ async fn rest_supporting_triage_resources_filter_on_completed_scan_context() -> 
     }
     .await;
 
-    if run.is_err() {
-        best_effort_delete_task(&harness, &session.token, task_id.as_deref()).await;
-        best_effort_delete_target(&harness, &session.token, target_id.as_deref()).await;
-    }
+    best_effort_delete_task(&harness, &session.token, task_id.as_deref()).await;
+    best_effort_delete_target(&harness, &session.token, target_id.as_deref()).await;
     finish_session(&harness, &session, run).await
 }
 

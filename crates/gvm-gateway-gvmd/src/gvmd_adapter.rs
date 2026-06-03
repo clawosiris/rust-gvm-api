@@ -220,6 +220,40 @@ impl GvmdAdapter {
             .ok_or_else(|| GatewayError::SessionInvalidated("missing gvmd session".to_string()))
     }
 
+    async fn fetch_note_details(
+        client: &SharedClient,
+        note_id: &EntityId,
+    ) -> Result<gvm_gmp::responses::Note, GatewayError> {
+        let response = client
+            .lock()
+            .await
+            .call(get_note(note_id))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetNotesResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .ok_or_else(|| GatewayError::NotFound(format!("note {} not found", note_id.as_str())))
+    }
+
+    async fn fetch_override_details(
+        client: &SharedClient,
+        override_id: &EntityId,
+    ) -> Result<gvm_gmp::responses::Override, GatewayError> {
+        let response = client
+            .lock()
+            .await
+            .call(get_override(override_id))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetOverridesResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed.items.into_iter().next().ok_or_else(|| {
+            GatewayError::NotFound(format!("override {} not found", override_id.as_str()))
+        })
+    }
+
     async fn call_with_session<R: Request>(
         &self,
         session_token: &str,
@@ -2922,15 +2956,21 @@ impl SupportingResourcePort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetNotesResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
-            .items
-            .into_iter()
-            .map(note_from_gmp)
-            .collect::<Vec<_>>();
+        let mut items = parsed.items;
         items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
         let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let paged = paged_slice(items, query.page, query.per_page);
+        let mut data = Vec::with_capacity(paged.len());
+        for item in paged {
+            let full = if item.result.is_some() {
+                item
+            } else {
+                Self::fetch_note_details(&client, &item.meta.id).await?
+            };
+            data.push(note_from_gmp(full));
+        }
         Ok(NotePage {
-            data: paged_slice(items, query.page, query.per_page),
+            data,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -2978,15 +3018,21 @@ impl SupportingResourcePort for GvmdAdapter {
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetOverridesResponse::from_response(&response).map_err(map_parse_error)?;
-        let mut items = parsed
-            .items
-            .into_iter()
-            .map(override_from_gmp)
-            .collect::<Vec<_>>();
+        let mut items = parsed.items;
         items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
         let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let paged = paged_slice(items, query.page, query.per_page);
+        let mut data = Vec::with_capacity(paged.len());
+        for item in paged {
+            let full = if item.result.is_some() {
+                item
+            } else {
+                Self::fetch_override_details(&client, &item.meta.id).await?
+            };
+            data.push(override_from_gmp(full));
+        }
         Ok(OverridePage {
-            data: paged_slice(items, query.page, query.per_page),
+            data,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
