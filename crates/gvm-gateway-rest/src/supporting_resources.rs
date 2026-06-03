@@ -20,6 +20,7 @@ use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceRefResponse},
     error::RestError,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
+    results::NvtRefResponse,
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -319,6 +320,123 @@ impl From<gvm_gateway_domain::TicketPage> for TicketListResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Note")]
+pub(crate) struct NoteResponse {
+    #[serde(flatten)]
+    meta: SupportingResourceMetaResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nvt: Option<NvtRefResponse>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    hosts: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task: Option<ResourceRefResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<ResourceRefResponse>,
+    active: bool,
+    #[serde(rename = "endTime", skip_serializing_if = "Option::is_none")]
+    end_time: Option<String>,
+}
+
+impl From<gvm_gateway_domain::Note> for NoteResponse {
+    fn from(note: gvm_gateway_domain::Note) -> Self {
+        Self {
+            meta: SupportingResourceMetaResponse::from(note.meta),
+            text: note.text,
+            nvt: note.nvt.map(NvtRefResponse::from),
+            hosts: note.hosts,
+            port: note.port,
+            severity: note.severity,
+            task: note.task.map(ResourceRefResponse::from),
+            result: note.result.map(ResourceRefResponse::from),
+            active: note.active,
+            end_time: note.end_time,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "NoteList")]
+pub(crate) struct NoteListResponse {
+    data: Vec<NoteResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::NotePage> for NoteListResponse {
+    fn from(page: gvm_gateway_domain::NotePage) -> Self {
+        Self {
+            data: page.data.into_iter().map(NoteResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Override")]
+pub(crate) struct OverrideResponse {
+    #[serde(flatten)]
+    meta: SupportingResourceMetaResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nvt: Option<NvtRefResponse>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    hosts: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+    #[serde(rename = "newSeverity", skip_serializing_if = "Option::is_none")]
+    new_severity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    task: Option<ResourceRefResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<ResourceRefResponse>,
+    active: bool,
+    #[serde(rename = "endTime", skip_serializing_if = "Option::is_none")]
+    end_time: Option<String>,
+}
+
+impl From<gvm_gateway_domain::Override> for OverrideResponse {
+    fn from(override_: gvm_gateway_domain::Override) -> Self {
+        Self {
+            meta: SupportingResourceMetaResponse::from(override_.meta),
+            text: override_.text,
+            nvt: override_.nvt.map(NvtRefResponse::from),
+            hosts: override_.hosts,
+            port: override_.port,
+            severity: override_.severity,
+            new_severity: override_.new_severity,
+            task: override_.task.map(ResourceRefResponse::from),
+            result: override_.result.map(ResourceRefResponse::from),
+            active: override_.active,
+            end_time: override_.end_time,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "OverrideList")]
+pub(crate) struct OverrideListResponse {
+    data: Vec<OverrideResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::OverridePage> for OverrideListResponse {
+    fn from(page: gvm_gateway_domain::OverridePage) -> Self {
+        Self {
+            data: page.data.into_iter().map(OverrideResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
 fn supporting_query(query: SupportingListQuery) -> SupportingResourceQuery {
     SupportingResourceQuery {
         filter_string: query.filter_string,
@@ -513,6 +631,97 @@ pub async fn get_ticket(
     }
 }
 
+/// Lists notes visible to the authenticated session.
+pub async fn list_notes(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match SupportingListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.list_notes(&session, supporting_query(query)).await {
+        Ok(page) => (StatusCode::OK, Json(NoteListResponse::from(page))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Returns a single note by id.
+pub async fn get_note(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.get_note(&session, &id).await {
+        Ok(item) => (StatusCode::OK, Json(NoteResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Lists overrides visible to the authenticated session.
+pub async fn list_overrides(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match SupportingListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .list_overrides(&session, supporting_query(query))
+        .await
+    {
+        Ok(page) => (StatusCode::OK, Json(OverrideListResponse::from(page))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Returns a single override by id.
+pub async fn get_override(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.get_override(&session, &id).await {
+        Ok(item) => (StatusCode::OK, Json(OverrideResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
 pub(crate) fn list_report_formats_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     let op = op
         .id("getReportFormats")
@@ -620,6 +829,70 @@ pub(crate) fn get_ticket_docs(op: TransformOperation<'_>) -> TransformOperation<
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
         .response_with::<200, Json<TicketResponse>, _>(ok_json("Ticket details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn list_notes_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getNotes")
+        .tag("Notes")
+        .summary("List notes")
+        .description(
+            "Returns a paginated list of notes that annotate findings. Filter expressions can scope notes to the related task, result, NVT, host, or port selectors exposed by each note.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<NoteListResponse>, _>(ok_json("Paginated list of notes"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_note_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getNote")
+        .tag("Notes")
+        .summary("Get a note")
+        .description(
+            "Returns the details for a single note, including any related task/result identifiers and the NVT/host/port selectors the note annotates.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<NoteResponse>, _>(ok_json("Note details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn list_overrides_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getOverrides")
+        .tag("Overrides")
+        .summary("List overrides")
+        .description(
+            "Returns a paginated list of overrides that change finding interpretation. Filter expressions can scope overrides to the related task, result, NVT, host, or port selectors exposed by each override.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<OverrideListResponse>, _>(ok_json(
+            "Paginated list of overrides",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_override_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getOverride")
+        .tag("Overrides")
+        .summary("Get an override")
+        .description(
+            "Returns the details for a single override, including any related task/result identifiers, the annotated NVT/host/port selectors, and the replacement severity when one is set.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<OverrideResponse>, _>(ok_json("Override details"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")

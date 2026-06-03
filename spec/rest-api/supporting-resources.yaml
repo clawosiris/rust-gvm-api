@@ -184,6 +184,96 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /notes:
+    get:
+      operationId: getNotes
+      tags: [Notes]
+      summary: List notes
+      description: Returns a paginated list of notes that annotate findings. Filter expressions can scope notes to the related task, result, NVT, host, or port selectors exposed by each note.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of notes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /notes/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getNote
+      tags: [Notes]
+      summary: Get a note
+      description: Returns the details for a single note, including any related task/result identifiers and the NVT/host/port selectors the note annotates.
+      responses:
+        "200":
+          description: Note details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /overrides:
+    get:
+      operationId: getOverrides
+      tags: [Overrides]
+      summary: List overrides
+      description: Returns a paginated list of overrides that change finding interpretation. Filter expressions can scope overrides to the related task, result, NVT, host, or port selectors exposed by each override.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of overrides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverrideList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /overrides/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getOverride
+      tags: [Overrides]
+      summary: Get an override
+      description: Returns the details for a single override, including any related task/result identifiers, the annotated NVT/host/port selectors, and the replacement severity when one is set.
+      responses:
+        "200":
+          description: Override details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Override"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
 components:
   schemas:
     SupportingResourceMeta:
@@ -396,5 +486,123 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Ticket"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Note:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+        - active
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        text:
+          type: string
+        nvt:
+          $ref: "./results.yaml#/components/schemas/NvtRef"
+        hosts:
+          type: array
+          items:
+            type: string
+        port:
+          type: string
+        severity:
+          type: string
+        task:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        result:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        active:
+          type: boolean
+        endTime:
+          type: string
+
+    NoteList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Note"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Override:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+        - active
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        text:
+          type: string
+        nvt:
+          $ref: "./results.yaml#/components/schemas/NvtRef"
+        hosts:
+          type: array
+          items:
+            type: string
+        port:
+          type: string
+        severity:
+          type: string
+        newSeverity:
+          type: string
+        task:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        result:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        active:
+          type: boolean
+        endTime:
+          type: string
+
+    OverrideList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Override"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"

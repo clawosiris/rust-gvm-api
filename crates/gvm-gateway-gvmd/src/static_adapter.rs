@@ -14,14 +14,15 @@ use gvm_gateway_domain::{
     IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
     ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
     ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
-    ModifyUserSettingInput, Permission, PermissionPage, PortList, PortListPage, PortListPort,
-    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    ModifyUserSettingInput, Note, NotePage, Override, OverridePage, Permission, PermissionPage,
+    PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportExport,
+    ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
+    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
+    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
+    SchedulePort, ScheduleQuery, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
+    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery,
 };
 
 /// Static adapter for system readiness and version information.
@@ -671,6 +672,30 @@ impl SupportingResourcePort for StaticGvmdAdapter {
 
     async fn get_ticket(&self, _: &str, _: &str) -> Result<Ticket, GatewayError> {
         unsupported!("static adapter does not support tickets")
+    }
+
+    async fn list_notes(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<NotePage, GatewayError> {
+        unsupported!("static adapter does not support notes")
+    }
+
+    async fn get_note(&self, _: &str, _: &str) -> Result<Note, GatewayError> {
+        unsupported!("static adapter does not support notes")
+    }
+
+    async fn list_overrides(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<OverridePage, GatewayError> {
+        unsupported!("static adapter does not support overrides")
+    }
+
+    async fn get_override(&self, _: &str, _: &str) -> Result<Override, GatewayError> {
+        unsupported!("static adapter does not support overrides")
     }
 }
 

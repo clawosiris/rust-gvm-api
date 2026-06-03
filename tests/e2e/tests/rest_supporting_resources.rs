@@ -3,7 +3,8 @@
 
 use anyhow::{Context, Result};
 use gvm_gateway_e2e::harness::{
-    CreatedResource, Credential, E2eHarness, ListResponse, PortList, ScanConfig, SessionResponse,
+    CreatedResource, Credential, E2eHarness, ListResponse, NoteResource, OverrideResource,
+    PortList, ScanConfig, Scanner, SessionResponse, Target, Task,
 };
 
 // Covers stable list/read contracts for supporting catalogs used by setup and discovery flows.
@@ -24,10 +25,83 @@ async fn rest_supporting_catalogs_list_and_read_resources() -> Result<()> {
         assert_filter_catalog(&harness, &session.token).await?;
         assert_tag_catalog(&harness, &session.token).await?;
         assert_ticket_catalog(&harness, &session.token).await?;
+        assert_note_catalog(&harness, &session.token).await?;
+        assert_override_catalog(&harness, &session.token).await?;
         Ok(())
     }
     .await;
 
+    finish_session(&harness, &session, run).await
+}
+
+// Covers the triage-resource list/read contract in the context of a completed
+// discovery scan, even when the stack does not auto-create notes/overrides.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires a compose-backed gvmd environment"]
+async fn rest_supporting_triage_resources_filter_on_completed_scan_context() -> Result<()> {
+    let (harness, session) = ready_session().await?;
+    let mut task_id = None;
+    let mut target_id = None;
+
+    let run = async {
+        let resources = select_discovery_resources(&harness, &session.token).await?;
+        let created = create_discovery_task(&harness, &session.token, &resources).await?;
+        task_id = Some(created.task.id.clone());
+        target_id = Some(created.target.id.clone());
+
+        let action = harness.start_task(&session.token, &created.task.id).await?;
+        assert!(
+            !action.report_id.is_empty(),
+            "start-task response did not include a report id"
+        );
+        let completed = harness
+            .wait_for_task_completion(&session.token, &created.task.id)
+            .await?;
+        assert!(
+            matches!(completed.status.as_str(), "Done" | "Stopped"),
+            "completed discovery task ended in unexpected status {}",
+            completed.status
+        );
+
+        let notes = harness
+            .list_notes_filtered(&session.token, &format!("task_id={}", created.task.id))
+            .await?;
+        assert_pagination_shape("filtered notes", &notes);
+        if let Some(selected) = notes.data.first() {
+            let fetched = harness.get_note(&session.token, &selected.id).await?;
+            assert_note_matches_read("note", &fetched, selected, Some(&created.task.id));
+        } else {
+            eprintln!(
+                "completed scan produced no note resources; deepest boundary reached is filtered list/read contract on task-scoped triage context"
+            );
+        }
+
+        let overrides = harness
+            .list_overrides_filtered(&session.token, &format!("task_id={}", created.task.id))
+            .await?;
+        assert_pagination_shape("filtered overrides", &overrides);
+        if let Some(selected) = overrides.data.first() {
+            let fetched = harness.get_override(&session.token, &selected.id).await?;
+            assert_override_matches_read(
+                "override",
+                &fetched,
+                selected,
+                Some(&created.task.id),
+            );
+        } else {
+            eprintln!(
+                "completed scan produced no override resources; deepest boundary reached is filtered list/read contract on task-scoped triage context"
+            );
+        }
+
+        Ok(())
+    }
+    .await;
+
+    if run.is_err() {
+        best_effort_delete_task(&harness, &session.token, task_id.as_deref()).await;
+        best_effort_delete_target(&harness, &session.token, target_id.as_deref()).await;
+    }
     finish_session(&harness, &session, run).await
 }
 
@@ -413,6 +487,32 @@ async fn assert_ticket_catalog(harness: &E2eHarness, token: &str) -> Result<()> 
     Ok(())
 }
 
+async fn assert_note_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let notes = harness.list_notes(token).await?;
+    assert_pagination_shape("notes", &notes);
+    let Some(selected) = notes.data.first() else {
+        eprintln!("note catalog is empty; skipping item read assertion");
+        return Ok(());
+    };
+
+    let fetched = harness.get_note(token, &selected.id).await?;
+    assert_note_matches_read("note", &fetched, selected, None);
+    Ok(())
+}
+
+async fn assert_override_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let overrides = harness.list_overrides(token).await?;
+    assert_pagination_shape("overrides", &overrides);
+    let Some(selected) = overrides.data.first() else {
+        eprintln!("override catalog is empty; skipping item read assertion");
+        return Ok(());
+    };
+
+    let fetched = harness.get_override(token, &selected.id).await?;
+    assert_override_matches_read("override", &fetched, selected, None);
+    Ok(())
+}
+
 fn assert_pagination_shape<T>(resource: &str, response: &ListResponse<T>) {
     assert_eq!(
         response.pagination.page, 1,
@@ -451,6 +551,153 @@ fn assert_named_resource_matches(
         actual_name, expected_name,
         "{resource} name drifted on read"
     );
+}
+
+fn assert_note_matches_read(
+    resource: &str,
+    fetched: &NoteResource,
+    selected: &NoteResource,
+    expected_task_id: Option<&str>,
+) {
+    assert_named_resource_matches(
+        resource,
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    assert_eq!(
+        fetched.text, selected.text,
+        "{resource} text drifted on read"
+    );
+    assert_eq!(
+        fetched.severity, selected.severity,
+        "{resource} severity drifted on read"
+    );
+    assert_eq!(
+        fetched.active, selected.active,
+        "{resource} active flag drifted on read"
+    );
+    if let Some(task_id) = expected_task_id {
+        if let Some(task) = fetched.task.as_ref() {
+            assert_eq!(
+                task.id, task_id,
+                "{resource} task reference drifted from filtered task context"
+            );
+        }
+    }
+}
+
+fn assert_override_matches_read(
+    resource: &str,
+    fetched: &OverrideResource,
+    selected: &OverrideResource,
+    expected_task_id: Option<&str>,
+) {
+    assert_named_resource_matches(
+        resource,
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    assert_eq!(
+        fetched.text, selected.text,
+        "{resource} text drifted on read"
+    );
+    assert_eq!(
+        fetched.severity, selected.severity,
+        "{resource} severity drifted on read"
+    );
+    assert_eq!(
+        fetched.new_severity, selected.new_severity,
+        "{resource} replacement severity drifted on read"
+    );
+    assert_eq!(
+        fetched.active, selected.active,
+        "{resource} active flag drifted on read"
+    );
+    if let Some(task_id) = expected_task_id {
+        if let Some(task) = fetched.task.as_ref() {
+            assert_eq!(
+                task.id, task_id,
+                "{resource} task reference drifted from filtered task context"
+            );
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DiscoveryResources {
+    scan_config: ScanConfig,
+    scanner: Scanner,
+    port_list: PortList,
+}
+
+#[derive(Clone, Debug)]
+struct CreatedDiscoveryTask {
+    target: Target,
+    task: Task,
+}
+
+async fn select_discovery_resources(
+    harness: &E2eHarness,
+    token: &str,
+) -> Result<DiscoveryResources> {
+    let scan_configs = harness.list_scan_configs(token).await?;
+    let scan_config = harness.select_discovery_scan_config(&scan_configs)?.clone();
+
+    let scanners = harness.list_scanners(token).await?;
+    let scanner = harness.select_scanner(&scanners)?.clone();
+
+    let port_lists = harness.list_port_lists(token).await?;
+    let port_list = harness.select_port_list(&port_lists)?.clone();
+
+    Ok(DiscoveryResources {
+        scan_config,
+        scanner,
+        port_list,
+    })
+}
+
+async fn create_discovery_task(
+    harness: &E2eHarness,
+    token: &str,
+    resources: &DiscoveryResources,
+) -> Result<CreatedDiscoveryTask> {
+    let target_name = harness.unique_name("nightly-triage-target");
+    let target = harness
+        .create_target(token, &target_name, &resources.port_list.id)
+        .await?;
+
+    let task_name = harness.unique_name("nightly-triage-task");
+    let task = harness
+        .create_task(
+            token,
+            &task_name,
+            &target.id,
+            &resources.scan_config.id,
+            &resources.scanner.id,
+        )
+        .await?;
+
+    Ok(CreatedDiscoveryTask { target, task })
+}
+
+async fn best_effort_delete_task(harness: &E2eHarness, token: &str, task_id: Option<&str>) {
+    if let Some(task_id) = task_id {
+        if let Err(error) = harness.delete_task(token, task_id).await {
+            eprintln!("best-effort task cleanup failed for {task_id}: {error:#}");
+        }
+    }
+}
+
+async fn best_effort_delete_target(harness: &E2eHarness, token: &str, target_id: Option<&str>) {
+    if let Some(target_id) = target_id {
+        if let Err(error) = harness.delete_target(token, target_id).await {
+            eprintln!("best-effort target cleanup failed for {target_id}: {error:#}");
+        }
+    }
 }
 
 fn assert_created_location(created: &CreatedResource, collection_path: &str) {

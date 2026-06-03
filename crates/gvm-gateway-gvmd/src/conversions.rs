@@ -10,9 +10,9 @@ use std::{collections::HashMap, str::FromStr};
 
 use gvm_gateway_domain::{
     Alert, CreateTargetInput, Credential, Feed, Filter, GatewayError, Group, IdentityResourceMeta,
-    NvtRef, Permission, PortList, Report, ReportFormat, ResourceRef, ResultCount, Role, ScanConfig,
-    ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag, Target, Task, Ticket, User,
-    UserSetting,
+    Note, NvtRef, Override, Permission, PortList, Report, ReportFormat, ResourceRef, ResultCount,
+    Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag, Target, Task,
+    Ticket, User, UserSetting,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -343,6 +343,37 @@ pub(crate) fn ticket_from_gmp(ticket: gvm_gmp::responses::Ticket) -> Ticket {
     }
 }
 
+pub(crate) fn note_from_gmp(note: gvm_gmp::responses::Note) -> Note {
+    Note {
+        meta: supporting_meta_from_gmp(note.meta),
+        text: note.text,
+        nvt: note.nvt_oid.map(nvt_ref_from_oid),
+        hosts: note.hosts,
+        port: note.port,
+        severity: note.severity,
+        task: note.task.map(resource_ref_from_named_entity),
+        result: note.result.map(resource_ref_from_named_entity),
+        active: note.active,
+        end_time: note.end_time,
+    }
+}
+
+pub(crate) fn override_from_gmp(override_: gvm_gmp::responses::Override) -> Override {
+    Override {
+        meta: supporting_meta_from_gmp(override_.meta),
+        text: override_.text,
+        nvt: override_.nvt_oid.map(nvt_ref_from_oid),
+        hosts: override_.hosts,
+        port: override_.port,
+        severity: override_.severity,
+        new_severity: override_.new_severity,
+        task: override_.task.map(resource_ref_from_named_entity),
+        result: override_.result.map(resource_ref_from_named_entity),
+        active: override_.active,
+        end_time: override_.end_time,
+    }
+}
+
 // ============================================================================
 // Shared Parsing / Validation Helpers
 // ============================================================================
@@ -491,6 +522,17 @@ fn resource_ref_from_named_entity(entity: gvm_gmp::responses::NamedEntity) -> Re
     ResourceRef {
         id: entity.id.to_string(),
         name: Some(entity.name),
+    }
+}
+
+fn nvt_ref_from_oid(oid: String) -> NvtRef {
+    NvtRef {
+        oid: Some(oid),
+        name: None,
+        family: None,
+        cvss_base: None,
+        cves: vec![],
+        tags: None,
     }
 }
 

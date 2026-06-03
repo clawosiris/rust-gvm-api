@@ -525,6 +525,80 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn list_notes(&self, token: &str) -> Result<ListResponse<NoteResource>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/notes?perPage=1000", token),
+            StatusCode::OK,
+            "list notes",
+        )
+        .await
+    }
+
+    pub async fn list_notes_filtered(
+        &self,
+        token: &str,
+        filter: &str,
+    ) -> Result<ListResponse<NoteResource>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/notes?perPage=1000&filter={filter}"),
+                token,
+            ),
+            StatusCode::OK,
+            "list notes with filter",
+        )
+        .await
+    }
+
+    pub async fn get_note(&self, token: &str, note_id: &str) -> Result<NoteResource> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/notes/{note_id}"), token),
+            StatusCode::OK,
+            "get note",
+        )
+        .await
+    }
+
+    pub async fn list_overrides(&self, token: &str) -> Result<ListResponse<OverrideResource>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/overrides?perPage=1000", token),
+            StatusCode::OK,
+            "list overrides",
+        )
+        .await
+    }
+
+    pub async fn list_overrides_filtered(
+        &self,
+        token: &str,
+        filter: &str,
+    ) -> Result<ListResponse<OverrideResource>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/overrides?perPage=1000&filter={filter}"),
+                token,
+            ),
+            StatusCode::OK,
+            "list overrides with filter",
+        )
+        .await
+    }
+
+    pub async fn get_override(&self, token: &str, override_id: &str) -> Result<OverrideResource> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/overrides/{override_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get override",
+        )
+        .await
+    }
+
     pub async fn list_timezones(&self, token: &str) -> Result<Vec<Timezone>> {
         let response: UnpaginatedListResponse<Timezone> = self
             .send_json(
@@ -1816,6 +1890,40 @@ pub struct Ticket {
     pub fixed_note: Option<String>,
     #[serde(rename = "closedNote")]
     pub closed_note: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NoteResource {
+    pub id: String,
+    pub name: String,
+    pub text: Option<String>,
+    pub nvt: Option<NvtRef>,
+    pub hosts: Vec<String>,
+    pub port: Option<String>,
+    pub severity: Option<String>,
+    pub task: Option<ResourceRef>,
+    pub result: Option<ResourceRef>,
+    pub active: bool,
+    #[serde(rename = "endTime")]
+    pub end_time: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct OverrideResource {
+    pub id: String,
+    pub name: String,
+    pub text: Option<String>,
+    pub nvt: Option<NvtRef>,
+    pub hosts: Vec<String>,
+    pub port: Option<String>,
+    pub severity: Option<String>,
+    #[serde(rename = "newSeverity")]
+    pub new_severity: Option<String>,
+    pub task: Option<ResourceRef>,
+    pub result: Option<ResourceRef>,
+    pub active: bool,
+    #[serde(rename = "endTime")]
+    pub end_time: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Greenbone AG
 
-//! Supporting resource catalogs used by report export, saved filters, tags,
-//! and ticket workflows.
+//! Supporting resource catalogs used by report export, finding triage, saved
+//! filters, tags, and ticket workflows.
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Pagination, ResourceRef};
+use crate::{NvtRef, Pagination, ResourceRef};
 
 /// Common query options used by supporting-resource list endpoints.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -162,6 +162,95 @@ pub struct Ticket {
 pub struct TicketPage {
     /// Page items.
     pub data: Vec<Ticket>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain note representation.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Note {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// Optional note text body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Optional related NVT selector.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvt: Option<NvtRef>,
+    /// Optional host selectors associated with the note.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<String>,
+    /// Optional port selector.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<String>,
+    /// Optional matching severity selector.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Optional related task reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task: Option<ResourceRef>,
+    /// Optional related result reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<ResourceRef>,
+    /// Whether the note is active.
+    pub active: bool,
+    /// Optional note expiry timestamp.
+    #[serde(rename = "endTime", skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<String>,
+}
+
+/// Paginated note list response.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct NotePage {
+    /// Page items.
+    pub data: Vec<Note>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain override representation.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Override {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// Optional override text body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Optional related NVT selector.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvt: Option<NvtRef>,
+    /// Optional host selectors associated with the override.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<String>,
+    /// Optional port selector.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<String>,
+    /// Optional matching severity selector.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Optional replacement severity.
+    #[serde(rename = "newSeverity", skip_serializing_if = "Option::is_none")]
+    pub new_severity: Option<String>,
+    /// Optional related task reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task: Option<ResourceRef>,
+    /// Optional related result reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<ResourceRef>,
+    /// Whether the override is active.
+    pub active: bool,
+    /// Optional override expiry timestamp.
+    #[serde(rename = "endTime", skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<String>,
+}
+
+/// Paginated override list response.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct OverridePage {
+    /// Page items.
+    pub data: Vec<Override>,
     /// Pagination metadata.
     pub pagination: Pagination,
 }

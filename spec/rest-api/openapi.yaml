@@ -205,6 +205,14 @@ paths:
     $ref: './supporting-resources.yaml#/paths/~1tickets'
   /tickets/{id}:
     $ref: './supporting-resources.yaml#/paths/~1tickets~1{id}'
+  /notes:
+    $ref: './supporting-resources.yaml#/paths/~1notes'
+  /notes/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1notes~1{id}'
+  /overrides:
+    $ref: './supporting-resources.yaml#/paths/~1overrides'
+  /overrides/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1overrides~1{id}'
   /health:
     $ref: './system.yaml#/paths/~1health'
   /ready:
