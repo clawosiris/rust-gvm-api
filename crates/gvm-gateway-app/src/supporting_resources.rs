@@ -4,8 +4,8 @@
 //! Supporting-resource use cases.
 
 use gvm_gateway_domain::{
-    Filter, FilterPage, GatewayError, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag,
-    TagPage, Ticket, TicketPage,
+    Filter, FilterPage, GatewayError, Note, NotePage, Override, OverridePage, ReportFormat,
+    ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket, TicketPage,
 };
 
 use crate::GatewayService;
@@ -157,6 +157,82 @@ impl GatewayService {
             |session| async move {
                 self.supporting_resources
                     .get_ticket(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists notes for an authenticated session.
+    pub async fn list_notes(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<NotePage, GatewayError> {
+        self.execute_with_resource(
+            "notes.list",
+            session_token,
+            "list",
+            "note",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_notes(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches a note for an authenticated session.
+    pub async fn get_note(&self, session_token: &str, id: &str) -> Result<Note, GatewayError> {
+        self.execute_with_resource(
+            "notes.get",
+            session_token,
+            "read",
+            "note",
+            Some(id),
+            |session| async move { self.supporting_resources.get_note(&session.token, id).await },
+        )
+        .await
+    }
+
+    /// Lists overrides for an authenticated session.
+    pub async fn list_overrides(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<OverridePage, GatewayError> {
+        self.execute_with_resource(
+            "overrides.list",
+            session_token,
+            "list",
+            "override",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_overrides(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches an override for an authenticated session.
+    pub async fn get_override(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<Override, GatewayError> {
+        self.execute_with_resource(
+            "overrides.get",
+            session_token,
+            "read",
+            "override",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .get_override(&session.token, id)
                     .await
             },
         )

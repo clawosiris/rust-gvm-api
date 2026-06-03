@@ -13,13 +13,13 @@ use crate::{
     GetReportOpts, Group, GroupPage, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
     ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Permission, PermissionPage, PortList, PortListPage,
-    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
-    ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
-    ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User,
-    UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Override, OverridePage, Permission,
+    PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report, ReportExport,
+    ReportFormat, ReportFormatPage, ReportPage, ReportQuery, ResultPage, ResultQuery, Role,
+    RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerQuery, Schedule, SchedulePage, ScheduleQuery, SupportingResourceQuery, Tag, TagPage,
+    Target, TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Port for system information needed by the gateway.
@@ -474,7 +474,7 @@ pub trait ScannerPort: Send + Sync + 'static {
     async fn get_scanner(&self, session_token: &str, id: &str) -> Result<Scanner, GatewayError>;
 }
 
-/// Port for supporting report-format, filter, tag, and ticket catalogs.
+/// Port for supporting report-format, triage, filter, tag, and ticket catalogs.
 #[async_trait]
 pub trait SupportingResourcePort: Send + Sync + 'static {
     /// List report formats for the session.
@@ -520,6 +520,26 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
 
     /// Fetch a ticket by identifier.
     async fn get_ticket(&self, session_token: &str, id: &str) -> Result<Ticket, GatewayError>;
+
+    /// List notes for the session.
+    async fn list_notes(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<NotePage, GatewayError>;
+
+    /// Fetch a note by identifier.
+    async fn get_note(&self, session_token: &str, id: &str) -> Result<Note, GatewayError>;
+
+    /// List overrides for the session.
+    async fn list_overrides(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<OverridePage, GatewayError>;
+
+    /// Fetch an override by identifier.
+    async fn get_override(&self, session_token: &str, id: &str) -> Result<Override, GatewayError>;
 }
 
 /// Port for target CRUD operations.

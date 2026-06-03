@@ -13,14 +13,15 @@ use gvm_gateway_domain::{
     IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
     ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
     ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
-    ModifyUserSettingInput, Permission, PermissionPage, PortList, PortListPage, PortListPort,
-    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    ModifyUserSettingInput, Note, NotePage, Override, OverridePage, Permission, PermissionPage,
+    PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportExport,
+    ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
+    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
+    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
+    SchedulePort, ScheduleQuery, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
+    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -967,5 +968,45 @@ impl SupportingResourcePort for MockSupportingResourcePort {
 
     async fn get_ticket(&self, _: &str, id: &str) -> Result<Ticket, GatewayError> {
         Err(GatewayError::NotFound(format!("ticket {id} not found")))
+    }
+
+    async fn list_notes(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<NotePage, GatewayError> {
+        Ok(NotePage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_note(&self, _: &str, id: &str) -> Result<Note, GatewayError> {
+        Err(GatewayError::NotFound(format!("note {id} not found")))
+    }
+
+    async fn list_overrides(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<OverridePage, GatewayError> {
+        Ok(OverridePage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_override(&self, _: &str, id: &str) -> Result<Override, GatewayError> {
+        Err(GatewayError::NotFound(format!("override {id} not found")))
     }
 }
