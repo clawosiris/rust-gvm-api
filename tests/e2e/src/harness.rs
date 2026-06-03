@@ -445,6 +445,86 @@ impl E2eHarness {
         Ok(response.data)
     }
 
+    pub async fn list_report_formats(&self, token: &str) -> Result<ListResponse<ReportFormat>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/report-formats?perPage=1000", token),
+            StatusCode::OK,
+            "list report formats",
+        )
+        .await
+    }
+
+    pub async fn get_report_format(
+        &self,
+        token: &str,
+        report_format_id: &str,
+    ) -> Result<ReportFormat> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/report-formats/{report_format_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get report format",
+        )
+        .await
+    }
+
+    pub async fn list_filters(&self, token: &str) -> Result<ListResponse<FilterResource>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/filters?perPage=1000", token),
+            StatusCode::OK,
+            "list filters",
+        )
+        .await
+    }
+
+    pub async fn get_filter(&self, token: &str, filter_id: &str) -> Result<FilterResource> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/filters/{filter_id}"), token),
+            StatusCode::OK,
+            "get filter",
+        )
+        .await
+    }
+
+    pub async fn list_tags(&self, token: &str) -> Result<ListResponse<TagResource>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/tags?perPage=1000", token),
+            StatusCode::OK,
+            "list tags",
+        )
+        .await
+    }
+
+    pub async fn get_tag(&self, token: &str, tag_id: &str) -> Result<TagResource> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/tags/{tag_id}"), token),
+            StatusCode::OK,
+            "get tag",
+        )
+        .await
+    }
+
+    pub async fn list_tickets(&self, token: &str) -> Result<ListResponse<Ticket>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/tickets?perPage=1000", token),
+            StatusCode::OK,
+            "list tickets",
+        )
+        .await
+    }
+
+    pub async fn get_ticket(&self, token: &str, ticket_id: &str) -> Result<Ticket> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/tickets/{ticket_id}"), token),
+            StatusCode::OK,
+            "get ticket",
+        )
+        .await
+    }
+
     pub async fn list_timezones(&self, token: &str) -> Result<Vec<Timezone>> {
         let response: UnpaginatedListResponse<Timezone> = self
             .send_json(
@@ -1257,6 +1337,59 @@ impl E2eHarness {
             location,
         })
     }
+
+    pub fn select_report_format_by_extension<'a>(
+        &self,
+        report_formats: &'a [ReportFormat],
+        expected_extension: &str,
+        preferred_id: Option<&str>,
+    ) -> Result<&'a ReportFormat> {
+        if let Some(preferred_id) = preferred_id {
+            if let Some(report_format) = report_formats
+                .iter()
+                .find(|report_format| report_format.id == preferred_id)
+            {
+                return Ok(report_format);
+            }
+        }
+
+        let expected_extension = lower(expected_extension);
+        report_formats
+            .iter()
+            .find(|report_format| {
+                report_format
+                    .extension
+                    .as_deref()
+                    .is_some_and(|extension| lower(extension) == expected_extension)
+            })
+            .or_else(|| {
+                report_formats.iter().find(|report_format| {
+                    report_format
+                        .name
+                        .to_lowercase()
+                        .contains(expected_extension.as_str())
+                })
+            })
+            .with_context(|| {
+                format!(
+                    "no report format found for extension {}; available formats: {}",
+                    expected_extension,
+                    report_formats
+                        .iter()
+                        .map(|report_format| {
+                            format!(
+                                "{} ({}, ext={:?}, contentType={:?})",
+                                report_format.name,
+                                report_format.id,
+                                report_format.extension,
+                                report_format.content_type
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+    }
 }
 
 pub async fn assert_problem_response(
@@ -1471,6 +1604,57 @@ pub struct Feed {
     pub description: Option<String>,
     #[serde(rename = "currentlySyncing")]
     pub currently_syncing: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ReportFormat {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "contentType")]
+    pub content_type: Option<String>,
+    pub extension: Option<String>,
+    pub summary: Option<String>,
+    pub trust: Option<String>,
+    pub active: bool,
+    pub predefined: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FilterResource {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub filter_type: Option<String>,
+    pub term: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TagResource {
+    pub id: String,
+    pub name: String,
+    pub value: Option<String>,
+    #[serde(rename = "resourceType")]
+    pub resource_type: Option<String>,
+    #[serde(rename = "resourceCount")]
+    pub resource_count: Option<u32>,
+    pub active: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Ticket {
+    pub id: String,
+    pub name: String,
+    pub status: Option<String>,
+    #[serde(rename = "assignedTo")]
+    pub assigned_to: Option<ResourceRef>,
+    pub result: Option<ResourceRef>,
+    pub task: Option<ResourceRef>,
+    #[serde(rename = "openNote")]
+    pub open_note: Option<String>,
+    #[serde(rename = "fixedNote")]
+    pub fixed_note: Option<String>,
+    #[serde(rename = "closedNote")]
+    pub closed_note: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

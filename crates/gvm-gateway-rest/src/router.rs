@@ -85,6 +85,12 @@ use crate::{
         get_session_docs,
     },
     shutdown::ShutdownRuntime,
+    supporting_resources::{
+        get_filter, get_filter_docs, get_report_format, get_report_format_docs, get_tag,
+        get_tag_docs, get_ticket, get_ticket_docs, list_filters, list_filters_docs,
+        list_report_formats, list_report_formats_docs, list_tags, list_tags_docs, list_tickets,
+        list_tickets_docs,
+    },
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
         create_target, create_target_docs, delete_target, delete_target_docs, get_target,
@@ -292,6 +298,27 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route("/api/v1/feeds", get_with(list_feeds, list_feeds_docs))
         .route("/api/v1/feeds", patch(method_not_allowed_collection))
         .api_route("/api/v1/feeds/sync", post_with(sync_feeds, sync_feeds_docs))
+        // Supporting resources
+        .api_route(
+            "/api/v1/report-formats",
+            get_with(list_report_formats, list_report_formats_docs),
+        )
+        .api_route(
+            "/api/v1/report-formats/{id}",
+            get_with(get_report_format, get_report_format_docs),
+        )
+        .api_route("/api/v1/filters", get_with(list_filters, list_filters_docs))
+        .api_route(
+            "/api/v1/filters/{id}",
+            get_with(get_filter, get_filter_docs),
+        )
+        .api_route("/api/v1/tags", get_with(list_tags, list_tags_docs))
+        .api_route("/api/v1/tags/{id}", get_with(get_tag, get_tag_docs))
+        .api_route("/api/v1/tickets", get_with(list_tickets, list_tickets_docs))
+        .api_route(
+            "/api/v1/tickets/{id}",
+            get_with(get_ticket, get_ticket_docs),
+        )
         // Identity and access control
         .api_route("/api/v1/users", get_with(list_users, list_users_docs))
         .api_route("/api/v1/users", post_with(create_user, create_user_docs))
@@ -717,7 +744,8 @@ mod tests {
         let reports: Arc<dyn gvm_gateway_domain::ReportPort> = adapter.clone();
         let results: Arc<dyn gvm_gateway_domain::ResultPort> = adapter.clone();
         let scan_configs: Arc<dyn gvm_gateway_domain::ScanConfigPort> = adapter.clone();
-        let scanners: Arc<dyn gvm_gateway_domain::ScannerPort> = adapter;
+        let scanners: Arc<dyn gvm_gateway_domain::ScannerPort> = adapter.clone();
+        let supporting_resources: Arc<dyn gvm_gateway_domain::SupportingResourcePort> = adapter;
 
         GatewayService::new(
             system,
@@ -734,6 +762,7 @@ mod tests {
             results,
             scan_configs,
             scanners,
+            supporting_resources,
             Arc::new(gvm_gateway_domain::SessionManager::default()),
         )
     }

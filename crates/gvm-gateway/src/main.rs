@@ -97,6 +97,7 @@ fn gateway_service(
         live_adapter.clone(),
         live_adapter.clone(),
         live_adapter.clone(),
+        live_adapter.clone(),
         live_adapter,
         sessions,
     )

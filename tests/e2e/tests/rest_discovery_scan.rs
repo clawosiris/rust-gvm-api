@@ -3,8 +3,8 @@
 
 use anyhow::{anyhow, Context, Result};
 use gvm_gateway_e2e::harness::{
-    E2eHarness, ListResponse, PortList, Report, ResultList, ScanConfig, ScanResult, Scanner,
-    SessionResponse, Target, Task, TlsCertificateList,
+    E2eHarness, ListResponse, PortList, Report, ReportFormat, ResultList, ScanConfig, ScanResult,
+    Scanner, SessionResponse, Target, Task, TlsCertificateList,
 };
 use reqwest::{
     header::{CONTENT_DISPOSITION, CONTENT_TYPE},
@@ -257,11 +257,25 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
         let reports = harness.list_reports(&session.token).await?;
         assert_report_list_contains(&reports, &report, &created.task);
 
+        let report_formats = harness.list_report_formats(&session.token).await?;
+        let pdf_report_format = harness.select_report_format_by_extension(
+            &report_formats.data,
+            "pdf",
+            Some(&harness.config.pdf_report_format_id),
+        )?;
+        let csv_report_format = harness.select_report_format_by_extension(
+            &report_formats.data,
+            "csv",
+            Some(&harness.config.csv_report_format_id),
+        )?;
+        assert_report_format_round_trip(&harness, &session.token, pdf_report_format).await?;
+        assert_report_format_round_trip(&harness, &session.token, csv_report_format).await?;
+
         assert_report_export(
             &harness,
             &session.token,
             &report,
-            &harness.config.pdf_report_format_id,
+            &pdf_report_format.id,
             "application/pdf",
             "pdf",
         )
@@ -270,7 +284,7 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
             &harness,
             &session.token,
             &report,
-            &harness.config.csv_report_format_id,
+            &csv_report_format.id,
             "text/csv",
             "csv",
         )
@@ -599,6 +613,24 @@ async fn assert_report_export(
         "report export {expected_extension} returned unexpected content disposition {content_disposition}"
     );
 
+    Ok(())
+}
+
+async fn assert_report_format_round_trip(
+    harness: &E2eHarness,
+    token: &str,
+    expected: &ReportFormat,
+) -> Result<()> {
+    let fetched = harness.get_report_format(token, &expected.id).await?;
+    assert_eq!(fetched.id, expected.id, "report-format id changed on read");
+    assert_eq!(
+        fetched.name, expected.name,
+        "report-format read did not preserve the name"
+    );
+    assert_eq!(
+        fetched.extension, expected.extension,
+        "report-format read did not preserve the extension"
+    );
     Ok(())
 }
 

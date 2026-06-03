@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Greenbone AG
+
+//! Supporting resource catalogs used by report export, saved filters, tags,
+//! and ticket workflows.
+
+use serde::{Deserialize, Serialize};
+
+use crate::{Pagination, ResourceRef};
+
+/// Common query options used by supporting-resource list endpoints.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SupportingResourceQuery {
+    /// Optional GMP filter string.
+    pub filter_string: Option<String>,
+    /// Optional saved filter identifier.
+    pub filter_id: Option<String>,
+    /// Requested page number.
+    pub page: u32,
+    /// Requested page size.
+    pub per_page: u32,
+}
+
+/// Common metadata shared by supporting resources.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SupportingResourceMeta {
+    /// Resource identifier.
+    pub id: String,
+    /// Resource name.
+    pub name: String,
+    /// Optional comment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    /// Optional creation timestamp.
+    #[serde(rename = "creationTime", skip_serializing_if = "Option::is_none")]
+    pub creation_time: Option<String>,
+    /// Optional modification timestamp.
+    #[serde(rename = "modificationTime", skip_serializing_if = "Option::is_none")]
+    pub modification_time: Option<String>,
+    /// Whether the resource is writable.
+    pub writable: bool,
+    /// Whether the resource is in use.
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+}
+
+/// Domain report-format representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportFormat {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// MIME content type when known.
+    #[serde(rename = "contentType", skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    /// File extension when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
+    /// Optional human-readable summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Trust indicator when exposed by gvmd.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust: Option<String>,
+    /// Whether the report format is active.
+    pub active: bool,
+    /// Whether the report format is predefined by the backend.
+    pub predefined: bool,
+}
+
+/// Paginated report-format list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportFormatPage {
+    /// Page items.
+    pub data: Vec<ReportFormat>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain saved-filter representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Filter {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// Optional resource type the filter targets.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub filter_type: Option<String>,
+    /// Optional filter term.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub term: Option<String>,
+}
+
+/// Paginated filter list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct FilterPage {
+    /// Page items.
+    pub data: Vec<Filter>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain tag representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Tag {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// Optional tag value payload.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// Optional resource kind associated with the tag.
+    #[serde(rename = "resourceType", skip_serializing_if = "Option::is_none")]
+    pub resource_type: Option<String>,
+    /// Optional number of matching resources.
+    #[serde(rename = "resourceCount", skip_serializing_if = "Option::is_none")]
+    pub resource_count: Option<u32>,
+    /// Whether the tag is active.
+    pub active: bool,
+}
+
+/// Paginated tag list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TagPage {
+    /// Page items.
+    pub data: Vec<Tag>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain ticket representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Ticket {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// Optional ticket status.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// Optional assigned user reference.
+    #[serde(rename = "assignedTo", skip_serializing_if = "Option::is_none")]
+    pub assigned_to: Option<ResourceRef>,
+    /// Optional related result reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<ResourceRef>,
+    /// Optional related task reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task: Option<ResourceRef>,
+    /// Optional note for the open state.
+    #[serde(rename = "openNote", skip_serializing_if = "Option::is_none")]
+    pub open_note: Option<String>,
+    /// Optional note for the fixed state.
+    #[serde(rename = "fixedNote", skip_serializing_if = "Option::is_none")]
+    pub fixed_note: Option<String>,
+    /// Optional note for the closed state.
+    #[serde(rename = "closedNote", skip_serializing_if = "Option::is_none")]
+    pub closed_note: Option<String>,
+}
+
+/// Paginated ticket list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TicketPage {
+    /// Page items.
+    pub data: Vec<Ticket>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}

@@ -19,17 +19,19 @@ use gvm_gateway_domain::{
     CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
     CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
     CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, GatewayError, GetReportOpts, Group, GroupPage, IdentityPort, IdentityQuery,
-    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyPermissionInput,
-    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
-    ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Pagination,
-    Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportPage, ReportPort, ReportQuery, ResultPage,
-    ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
-    SchedulePage, SchedulePort, ScheduleQuery, SystemPort, Target, TargetPage, TargetPort,
-    TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Timezone, TlsCertificate,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage,
+    IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
+    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, Pagination, Permission, PermissionPage, PortList, PortListPage,
+    PortListPort, PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat,
+    ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery,
+    Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult,
+    Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort,
+    ScheduleQuery, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage,
+    Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
+    Ticket, TicketPage, Timezone, TlsCertificate, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -43,6 +45,7 @@ use gvm_gmp::{
             modify_credential, CredentialOpts, GetCredentialsOpts,
         },
         feed::get_feeds,
+        filters::{get_filter, get_filters, GetFiltersOpts},
         groups::{
             create_group, delete_group, get_group, get_groups, modify_group, GetGroupsOpts,
             GroupOpts,
@@ -55,6 +58,7 @@ use gvm_gmp::{
             create_port_list, delete_port_list, get_port_list, get_port_lists, modify_port_list,
             GetPortListsOpts, PortListOpts,
         },
+        report_formats::{get_report_format, get_report_formats, GetReportFormatsOpts},
         reports::{delete_report, get_report, get_reports, GetReportsOpts},
         results::{get_result, get_results, GetResultsOpts},
         roles::{
@@ -69,6 +73,7 @@ use gvm_gmp::{
             create_schedule, delete_schedule, get_schedule, get_schedules, modify_schedule,
             GetSchedulesOpts, ScheduleOpts,
         },
+        tags::{get_tag, get_tags, GetTagsOpts},
         targets::{
             create_target, delete_target, get_target, get_targets, modify_target, CreateTargetOpts,
             GetTargetsOpts, ModifyTargetOpts,
@@ -79,6 +84,7 @@ use gvm_gmp::{
             start_task as start_task_cmd, stop_task as stop_task_cmd, CreateTaskOpts, GetTasksOpts,
             ModifyTaskOpts,
         },
+        tickets::{get_ticket, get_tickets, GetTicketsOpts},
         user_settings::{
             get_user_setting, get_user_settings, modify_user_setting, GetUserSettingsOpts,
             ModifyUserSettingOpts,
@@ -92,9 +98,10 @@ use gvm_gmp::{
         CreatePermissionResponse, CreatePortListResponse, CreateRoleResponse,
         CreateScanConfigResponse, CreateScheduleResponse, CreateTargetResponse, CreateTaskResponse,
         CreateUserResponse, GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse,
-        GetGroupsResponse, GetPermissionsResponse, GetPortListsResponse, GetReportsResponse,
-        GetResultsResponse, GetRolesResponse, GetScanConfigsResponse, GetScannersResponse,
-        GetSchedulesResponse, GetTargetsResponse, GetTasksResponse, GetUserSettingsResponse,
+        GetFiltersResponse, GetGroupsResponse, GetPermissionsResponse, GetPortListsResponse,
+        GetReportFormatsResponse, GetReportsResponse, GetResultsResponse, GetRolesResponse,
+        GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse, GetTagsResponse,
+        GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetUserSettingsResponse,
         GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse, ResumeTaskResponse,
         StartTaskResponse,
     },
@@ -105,13 +112,14 @@ use tokio::sync::Mutex as AsyncMutex;
 use tracing::{field, info_span, Instrument};
 
 use crate::conversions::{
-    alert_from_gmp, credential_from_gmp, feed_from_gmp, group_from_gmp, map_gvm_error,
-    map_parse_error, parse_alert_condition, parse_alert_event, parse_alert_method,
+    alert_from_gmp, credential_from_gmp, feed_from_gmp, filter_from_gmp, group_from_gmp,
+    map_gvm_error, map_parse_error, parse_alert_condition, parse_alert_event, parse_alert_method,
     parse_alive_test, parse_credential_type, parse_entity_id, parse_hosts_ordering,
     parse_permission_subject_type, parse_snmp_auth_algorithm, parse_snmp_privacy_algorithm,
     parse_user_auth_type, permission_from_gmp, port_list_from_gmp, reject_unsupported_credentials,
-    report_from_gmp, result_from_gmp, role_from_gmp, scan_config_from_gmp, scanner_from_gmp,
-    schedule_from_gmp, target_from_gmp, task_from_gmp, user_from_gmp, user_setting_from_gmp,
+    report_format_from_gmp, report_from_gmp, result_from_gmp, role_from_gmp, scan_config_from_gmp,
+    scanner_from_gmp, schedule_from_gmp, tag_from_gmp, target_from_gmp, task_from_gmp,
+    ticket_from_gmp, user_from_gmp, user_setting_from_gmp,
 };
 
 type SharedClient = Arc<AsyncMutex<GmpClient<UnixSocketConnection>>>;
@@ -2652,6 +2660,237 @@ impl ScannerPort for GvmdAdapter {
             .next()
             .map(scanner_from_gmp)
             .ok_or_else(|| GatewayError::NotFound(format!("scanner {id} not found")))
+    }
+}
+
+#[async_trait]
+impl SupportingResourcePort for GvmdAdapter {
+    async fn list_report_formats(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<ReportFormatPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_report_formats(GetReportFormatsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetReportFormatsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(report_format_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        Ok(ReportFormatPage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_report_format(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ReportFormat, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_report_format(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetReportFormatsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(report_format_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("report format {id} not found")))
+    }
+
+    async fn list_filters(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<FilterPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_filters(GetFiltersOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetFiltersResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(filter_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        Ok(FilterPage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_filter(&self, session_token: &str, id: &str) -> Result<Filter, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_filter(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetFiltersResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(filter_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("filter {id} not found")))
+    }
+
+    async fn list_tags(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<TagPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_tags(GetTagsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetTagsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(tag_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        Ok(TagPage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_tag(&self, session_token: &str, id: &str) -> Result<Tag, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_tag(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetTagsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(tag_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("tag {id} not found")))
+    }
+
+    async fn list_tickets(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<TicketPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = client
+            .lock()
+            .await
+            .call(get_tickets(GetTicketsOpts {
+                filter_string: query.filter_string.clone(),
+                filter_id,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetTicketsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(ticket_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| left.meta.name.cmp(&right.meta.name));
+        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        Ok(TicketPage {
+            data: paged_slice(items, query.page, query.per_page),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_ticket(&self, session_token: &str, id: &str) -> Result<Ticket, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(get_ticket(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetTicketsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(ticket_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("ticket {id} not found")))
     }
 }
 

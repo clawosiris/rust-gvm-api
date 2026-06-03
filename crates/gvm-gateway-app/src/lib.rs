@@ -18,6 +18,7 @@ mod scanners;
 mod schedules;
 mod service;
 mod session;
+mod supporting_resources;
 mod system;
 mod targets;
 mod tasks;

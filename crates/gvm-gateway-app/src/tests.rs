@@ -50,6 +50,7 @@ async fn service_ready_returns_not_ready() {
         Arc::new(MockResultPort),
         Arc::new(MockScanConfigPort),
         Arc::new(MockScannerPort),
+        Arc::new(MockSupportingResourcePort),
         Arc::new(SessionManager::default()),
     );
     let ready = service.ready().await.unwrap();
@@ -265,6 +266,7 @@ async fn audit_logs_redact_sensitive_fields_and_record_session_creation_failure(
         Arc::new(MockResultPort),
         Arc::new(MockScanConfigPort),
         Arc::new(MockScannerPort),
+        Arc::new(MockSupportingResourcePort),
         Arc::new(SessionManager::default()),
     );
 
@@ -367,6 +369,7 @@ async fn spans_are_emitted_for_session_and_command_lifecycle() {
         Arc::new(MockResultPort),
         Arc::new(MockScanConfigPort),
         Arc::new(MockScannerPort),
+        Arc::new(MockSupportingResourcePort),
         Arc::new(SessionManager::default()),
     );
 

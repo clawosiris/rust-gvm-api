@@ -10,17 +10,18 @@ use gvm_gateway_domain::{
     CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
     CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
     CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, GatewayError, GetReportOpts, Group, GroupPage, IdentityPort, IdentityQuery,
-    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyPermissionInput,
-    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
-    ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Permission,
-    PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportExport, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role,
-    RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
-    ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SystemPort, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
-    TaskQuery, Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery,
+    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage,
+    IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
+    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, Permission, PermissionPage, PortList, PortListPage, PortListPort,
+    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
+    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
+    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Static adapter for system readiness and version information.
@@ -619,6 +620,57 @@ impl ScannerPort for StaticGvmdAdapter {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support scanners".to_string(),
         ))
+    }
+}
+
+#[async_trait]
+impl SupportingResourcePort for StaticGvmdAdapter {
+    async fn list_report_formats(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<ReportFormatPage, GatewayError> {
+        unsupported!("static adapter does not support report formats")
+    }
+
+    async fn get_report_format(&self, _: &str, _: &str) -> Result<ReportFormat, GatewayError> {
+        unsupported!("static adapter does not support report formats")
+    }
+
+    async fn list_filters(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<FilterPage, GatewayError> {
+        unsupported!("static adapter does not support filters")
+    }
+
+    async fn get_filter(&self, _: &str, _: &str) -> Result<Filter, GatewayError> {
+        unsupported!("static adapter does not support filters")
+    }
+
+    async fn list_tags(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<TagPage, GatewayError> {
+        unsupported!("static adapter does not support tags")
+    }
+
+    async fn get_tag(&self, _: &str, _: &str) -> Result<Tag, GatewayError> {
+        unsupported!("static adapter does not support tags")
+    }
+
+    async fn list_tickets(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<TicketPage, GatewayError> {
+        unsupported!("static adapter does not support tickets")
+    }
+
+    async fn get_ticket(&self, _: &str, _: &str) -> Result<Ticket, GatewayError> {
+        unsupported!("static adapter does not support tickets")
     }
 }
 

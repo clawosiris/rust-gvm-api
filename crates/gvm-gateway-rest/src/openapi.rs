@@ -80,6 +80,22 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
             "description": "Feed status"
         },
         {
+            "name": "Report Formats",
+            "description": "Report export format discovery"
+        },
+        {
+            "name": "Filters",
+            "description": "Saved filter discovery"
+        },
+        {
+            "name": "Tags",
+            "description": "Tag discovery"
+        },
+        {
+            "name": "Tickets",
+            "description": "Ticket discovery"
+        },
+        {
             "name": "Users",
             "description": "User management"
         },
@@ -222,6 +238,14 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         ("/port-lists/{id}", "delete"),
         ("/feeds", "get"),
         ("/feeds/sync", "post"),
+        ("/report-formats", "get"),
+        ("/report-formats/{id}", "get"),
+        ("/filters", "get"),
+        ("/filters/{id}", "get"),
+        ("/tags", "get"),
+        ("/tags/{id}", "get"),
+        ("/tickets", "get"),
+        ("/tickets/{id}", "get"),
         ("/reports", "get"),
         ("/reports/{id}", "get"),
         ("/reports/{id}", "delete"),
