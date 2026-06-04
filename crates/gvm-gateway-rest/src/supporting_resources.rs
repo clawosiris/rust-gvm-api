@@ -20,6 +20,7 @@ use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceRefResponse},
     error::RestError,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
+    query::parse_collection_query,
     results::NvtRefResponse,
     router::bearer_token,
     targets::validate_uuid,
@@ -57,45 +58,13 @@ pub struct SupportingListQuery {
 impl SupportingListQuery {
     /// Parses a raw query string into a normalized supporting-resource query.
     pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
-        let mut filter_string = None;
-        let mut filter_id = None;
-        let mut page = None;
-        let mut per_page = None;
-
-        for (key, value) in form_urlencoded::parse(query.as_bytes()) {
-            match key.as_ref() {
-                "filter" => filter_string = Some(value.into_owned()),
-                "filterId" => {
-                    validate_uuid("filterId", value.as_ref())?;
-                    filter_id = Some(value.into_owned());
-                }
-                "page" => {
-                    page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("page must be a positive integer".to_string())
-                    })?);
-                }
-                "perPage" | "per_page" => {
-                    per_page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("perPage must be a positive integer".to_string())
-                    })?);
-                }
-                _ => {}
-            }
-        }
-
-        let page = page.unwrap_or(1);
-        if page == 0 {
-            return Err(GatewayError::InvalidInput(
-                "page must be greater than or equal to 1".to_string(),
-            ));
-        }
-        let per_page = per_page.unwrap_or(25).clamp(1, 1000);
+        let parsed = parse_collection_query(query)?;
 
         Ok(Self {
-            filter_string,
-            filter_id,
-            page,
-            per_page,
+            filter_string: parsed.filter_string,
+            filter_id: parsed.filter_id,
+            page: parsed.page,
+            per_page: parsed.per_page,
         })
     }
 }
