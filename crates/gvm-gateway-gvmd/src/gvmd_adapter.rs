@@ -338,6 +338,19 @@ fn gvmd_total(filtered: Option<u32>, total: Option<u32>, current_len: usize) -> 
     filtered.or(total).unwrap_or(current_len as u32)
 }
 
+fn paged_slice<T>(items: Vec<T>, page: u32, per_page: u32) -> Vec<T> {
+    let start = ((page.saturating_sub(1)) * per_page) as usize;
+    items
+        .into_iter()
+        .skip(start)
+        .take(per_page as usize)
+        .collect()
+}
+
+fn needs_client_side_pagination_fallback<T>(items: &[T], total: u32, page: u32) -> bool {
+    page > 1 && items.is_empty() && total == 0
+}
+
 fn paginated_filter(
     prefix: Option<&str>,
     filter_string: Option<&str>,
@@ -1600,7 +1613,7 @@ impl TargetPort for GvmdAdapter {
                         query.page,
                         query.per_page,
                     ),
-                    filter_id,
+                    filter_id: filter_id.clone(),
                     trash: None,
                     details: Some(true),
                 }),
@@ -1613,6 +1626,33 @@ impl TargetPort for GvmdAdapter {
             .map(target_from_gmp)
             .collect::<Vec<_>>();
         let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        if needs_client_side_pagination_fallback(&items, total, query.page) {
+            let fallback = self
+                .call_with_session(
+                    session_token,
+                    "targets.list",
+                    get_targets(GetTargetsOpts {
+                        filter_string: query.filter_string.clone(),
+                        filter_id,
+                        trash: None,
+                        details: Some(true),
+                    }),
+                )
+                .await?;
+            let parsed = GetTargetsResponse::from_response(&fallback).map_err(map_parse_error)?;
+            let items = parsed
+                .items
+                .into_iter()
+                .map(target_from_gmp)
+                .collect::<Vec<_>>();
+            let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+            return Ok(TargetPage {
+                data: paged_slice(items, query.page, query.per_page),
+                pagination: paged_pagination(total, query.page, query.per_page),
+            });
+        }
 
         Ok(TargetPage {
             data: items,
