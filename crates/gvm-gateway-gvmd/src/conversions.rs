@@ -246,18 +246,18 @@ pub(crate) fn report_from_gmp(report: gvm_gmp::responses::Report) -> Report {
 }
 
 pub(crate) fn result_from_gmp(result: gvm_gmp::responses::ScanResult) -> ScanResult {
-    let severity = result
-        .severity
-        .as_deref()
-        .and_then(|v| v.parse::<f64>().ok());
+    let severity = result.severity_score();
 
-    let nvt = result.nvt.map(|n| NvtRef {
-        oid: Some(n.oid),
-        name: n.name,
-        family: n.family,
-        cvss_base: n.cvss_base.as_deref().and_then(|v| v.parse::<f64>().ok()),
-        cves: vec![],
-        tags: None,
+    let nvt = result.nvt.map(|n| {
+        let cvss_base = n.cvss_base_score();
+        NvtRef {
+            oid: Some(n.oid),
+            name: n.name,
+            family: n.family,
+            cvss_base,
+            cves: vec![],
+            tags: None,
+        }
     });
 
     ScanResult {
@@ -385,18 +385,15 @@ pub(crate) fn override_from_gmp(override_: gvm_gmp::responses::Override) -> Over
 }
 
 pub(crate) fn nvt_from_gmp(nvt: gvm_gmp::responses::Nvt) -> Nvt {
+    let cvss_base = nvt.cvss_base_score();
+    let severity = nvt.severity_score();
+
     Nvt {
         oid: nvt.oid,
         name: nvt.name,
         family: nvt.family,
-        cvss_base: nvt
-            .cvss_base
-            .as_deref()
-            .and_then(|value| value.parse::<f64>().ok()),
-        severity: nvt
-            .severity
-            .as_deref()
-            .and_then(|value| value.parse::<f64>().ok()),
+        cvss_base,
+        severity,
         tags: nvt.tags,
         solution_type: nvt.solution_type,
     }
