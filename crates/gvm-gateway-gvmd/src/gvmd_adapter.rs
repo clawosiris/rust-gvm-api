@@ -107,7 +107,7 @@ use gvm_gmp::{
         GetTicketsResponse, GetUserSettingsResponse, GetUsersResponse, GetVersionResponse,
         ModifyUserSettingResponse, ResumeTaskResponse, StartTaskResponse,
     },
-    EntityId,
+    EntityId, PaginatedFilter, Pagination as GmpPagination,
 };
 use gvm_protocol::{Request, Response};
 use tokio::sync::Mutex as AsyncMutex;
@@ -357,22 +357,14 @@ fn paginated_filter(
     page: u32,
     per_page: u32,
 ) -> Option<String> {
-    let mut parts = Vec::new();
-    if let Some(prefix) = prefix.map(str::trim).filter(|value| !value.is_empty()) {
-        parts.push(prefix.to_string());
+    let mut filter = PaginatedFilter::new();
+    if let Some(prefix) = prefix {
+        filter = filter.with_clause(prefix);
     }
-    if let Some(filter_string) = filter_string
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        parts.push(filter_string.to_string());
-    }
-    parts.push(format!(
-        "first={} rows={}",
-        page.saturating_sub(1).saturating_mul(per_page) + 1,
-        per_page
-    ));
-    Some(parts.join(" "))
+    filter = filter.with_filter_string(filter_string);
+    filter
+        .with_pagination(GmpPagination::new(page as usize, per_page as usize))
+        .build()
 }
 
 #[async_trait]
