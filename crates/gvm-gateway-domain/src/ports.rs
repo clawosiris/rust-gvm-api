@@ -10,16 +10,17 @@ use crate::{
     CreatePermissionInput, CreatePortListInput, CreateRoleInput, CreateScanConfigInput,
     CreateScheduleInput, CreateTargetInput, CreateTaskInput, CreateUserInput, Credential,
     CredentialPage, CredentialQuery, CredentialStore, Feed, Filter, FilterPage, GatewayError,
-    GetReportOpts, Group, GroupPage, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
-    ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Override, OverridePage, Permission,
-    PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report, ReportExport,
-    ReportFormat, ReportFormatPage, ReportPage, ReportQuery, ResultPage, ResultQuery, Role,
-    RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerQuery, Schedule, SchedulePage, ScheduleQuery, SupportingResourceQuery, Tag, TagPage,
-    Target, TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    GetReportOpts, Group, GroupPage, Host, HostPage, IdentityQuery, ModifyAlertInput,
+    ModifyCredentialInput, ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput,
+    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput,
+    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage,
+    NvtPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
+    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
+    ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
+    ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
+    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User,
+    UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Port for system information needed by the gateway.
@@ -474,9 +475,19 @@ pub trait ScannerPort: Send + Sync + 'static {
     async fn get_scanner(&self, session_token: &str, id: &str) -> Result<Scanner, GatewayError>;
 }
 
-/// Port for supporting report-format, triage, filter, tag, and ticket catalogs.
+/// Port for supporting report-format, triage, asset, and NVT catalogs.
 #[async_trait]
 pub trait SupportingResourcePort: Send + Sync + 'static {
+    /// List hosts for the session.
+    async fn list_hosts(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<HostPage, GatewayError>;
+
+    /// Fetch a host by identifier.
+    async fn get_host(&self, session_token: &str, id: &str) -> Result<Host, GatewayError>;
+
     /// List report formats for the session.
     async fn list_report_formats(
         &self,
@@ -540,6 +551,24 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
 
     /// Fetch an override by identifier.
     async fn get_override(&self, session_token: &str, id: &str) -> Result<Override, GatewayError>;
+
+    /// List NVTs for the session.
+    async fn list_nvts(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<NvtPage, GatewayError>;
+
+    /// Fetch an NVT by OID.
+    async fn get_nvt(&self, session_token: &str, oid: &str) -> Result<Nvt, GatewayError>;
+
+    /// List NVT families for the session.
+    async fn list_nvt_families(
+        &self,
+        session_token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<NvtFamilyPage, GatewayError>;
 }
 
 /// Port for target CRUD operations.

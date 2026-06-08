@@ -10,19 +10,19 @@ use gvm_gateway_domain::{
     CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
     CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
     CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage,
-    IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput,
-    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
-    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
-    ModifyUserSettingInput, Note, NotePage, Override, OverridePage, Permission, PermissionPage,
-    PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportExport,
-    ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
-    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
-    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
-    SchedulePort, ScheduleQuery, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
-    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
-    TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery,
+    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host,
+    HostPage, IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
+    ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
+    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
+    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
+    ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
+    ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
+    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort,
+    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
+    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Static adapter for system readiness and version information.
@@ -626,6 +626,18 @@ impl ScannerPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl SupportingResourcePort for StaticGvmdAdapter {
+    async fn list_hosts(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<HostPage, GatewayError> {
+        unsupported!("static adapter does not support hosts")
+    }
+
+    async fn get_host(&self, _: &str, _: &str) -> Result<Host, GatewayError> {
+        unsupported!("static adapter does not support hosts")
+    }
+
     async fn list_report_formats(
         &self,
         _: &str,
@@ -696,6 +708,27 @@ impl SupportingResourcePort for StaticGvmdAdapter {
 
     async fn get_override(&self, _: &str, _: &str) -> Result<Override, GatewayError> {
         unsupported!("static adapter does not support overrides")
+    }
+
+    async fn list_nvts(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<NvtPage, GatewayError> {
+        unsupported!("static adapter does not support nvts")
+    }
+
+    async fn get_nvt(&self, _: &str, _: &str) -> Result<Nvt, GatewayError> {
+        unsupported!("static adapter does not support nvts")
+    }
+
+    async fn list_nvt_families(
+        &self,
+        _: &str,
+        _: u32,
+        _: u32,
+    ) -> Result<NvtFamilyPage, GatewayError> {
+        unsupported!("static adapter does not support nvt families")
     }
 }
 

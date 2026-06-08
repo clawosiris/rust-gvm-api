@@ -445,6 +445,42 @@ impl E2eHarness {
         Ok(response.data)
     }
 
+    pub async fn list_hosts(&self, token: &str) -> Result<ListResponse<HostResource>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/hosts?perPage=1000", token),
+            StatusCode::OK,
+            "list hosts",
+        )
+        .await
+    }
+
+    pub async fn list_hosts_page(
+        &self,
+        token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ListResponse<HostResource>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/hosts?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "list hosts page",
+        )
+        .await
+    }
+
+    pub async fn get_host(&self, token: &str, host_id: &str) -> Result<HostResource> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/hosts/{host_id}"), token),
+            StatusCode::OK,
+            "get host",
+        )
+        .await
+    }
+
     pub async fn list_report_formats(&self, token: &str) -> Result<ListResponse<ReportFormat>> {
         self.send_json(
             self.authed(Method::GET, "/api/v1/report-formats?perPage=1000", token),
@@ -595,6 +631,51 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "get override",
+        )
+        .await
+    }
+
+    pub async fn list_nvts(&self, token: &str) -> Result<ListResponse<NvtCatalogEntry>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/nvts?perPage=1000", token),
+            StatusCode::OK,
+            "list nvts",
+        )
+        .await
+    }
+
+    pub async fn list_nvts_page(
+        &self,
+        token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ListResponse<NvtCatalogEntry>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/nvts?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "list nvts page",
+        )
+        .await
+    }
+
+    pub async fn get_nvt(&self, token: &str, oid: &str) -> Result<NvtCatalogEntry> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/nvts/{oid}"), token),
+            StatusCode::OK,
+            "get nvt",
+        )
+        .await
+    }
+
+    pub async fn list_nvt_families(&self, token: &str) -> Result<ListResponse<NvtFamily>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/nvt-families?perPage=1000", token),
+            StatusCode::OK,
+            "list nvt families",
         )
         .await
     }
@@ -1862,6 +1943,16 @@ pub struct FilterResource {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct HostResource {
+    pub id: String,
+    pub name: String,
+    pub ip: Option<String>,
+    pub hostname: Option<String>,
+    pub severity: Option<String>,
+    pub os: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct TagResource {
     pub id: String,
     pub name: String,
@@ -1922,6 +2013,26 @@ pub struct OverrideResource {
     pub active: bool,
     #[serde(rename = "endTime")]
     pub end_time: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NvtCatalogEntry {
+    pub oid: String,
+    pub name: String,
+    pub family: Option<String>,
+    #[serde(rename = "cvssBase")]
+    pub cvss_base: Option<f64>,
+    pub severity: Option<f64>,
+    pub tags: Option<String>,
+    #[serde(rename = "solutionType")]
+    pub solution_type: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NvtFamily {
+    pub name: String,
+    #[serde(rename = "maxNvtCount")]
+    pub max_nvt_count: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

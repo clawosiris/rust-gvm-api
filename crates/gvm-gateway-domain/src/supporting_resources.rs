@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Greenbone AG
 
 //! Supporting resource catalogs used by report export, finding triage, saved
-//! filters, tags, and ticket workflows.
+//! filters, tags, tickets, asset inventory, and NVT discovery workflows.
 
 use serde::{Deserialize, Serialize};
 
@@ -44,6 +44,35 @@ pub struct SupportingResourceMeta {
     pub in_use: bool,
 }
 
+/// Domain host (asset) representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Host {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// Optional IP address.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip: Option<String>,
+    /// Optional hostname.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+    /// Optional severity summary exposed by gvmd.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Optional detected operating system.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
+}
+
+/// Paginated host list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct HostPage {
+    /// Page items.
+    pub data: Vec<Host>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
 /// Domain report-format representation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReportFormat {
@@ -73,6 +102,58 @@ pub struct ReportFormat {
 pub struct ReportFormatPage {
     /// Page items.
     pub data: Vec<ReportFormat>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain NVT representation.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Nvt {
+    /// NVT OID.
+    pub oid: String,
+    /// NVT name.
+    pub name: String,
+    /// Optional NVT family.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    /// Optional CVSS base score.
+    #[serde(rename = "cvssBase", skip_serializing_if = "Option::is_none")]
+    pub cvss_base: Option<f64>,
+    /// Optional severity score.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<f64>,
+    /// Optional NVT tags payload.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<String>,
+    /// Optional solution type.
+    #[serde(rename = "solutionType", skip_serializing_if = "Option::is_none")]
+    pub solution_type: Option<String>,
+}
+
+/// Paginated NVT list response.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct NvtPage {
+    /// Page items.
+    pub data: Vec<Nvt>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain NVT family representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct NvtFamily {
+    /// Family name.
+    pub name: String,
+    /// Optional maximum NVT count exposed by gvmd.
+    #[serde(rename = "maxNvtCount", skip_serializing_if = "Option::is_none")]
+    pub max_nvt_count: Option<u32>,
+}
+
+/// Paginated NVT family list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct NvtFamilyPage {
+    /// Page items.
+    pub data: Vec<NvtFamily>,
     /// Pagination metadata.
     pub pagination: Pagination,
 }

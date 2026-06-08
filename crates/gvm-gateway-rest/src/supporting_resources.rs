@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Greenbone AG
 
-//! Report-format, filter, tag, and ticket DTOs plus REST handlers.
+//! Host, report-format, triage, filter, tag, ticket, and NVT DTOs plus REST handlers.
 
 use aide::transform::TransformOperation;
 use axum::{
@@ -55,6 +55,28 @@ pub struct SupportingListQuery {
     pub per_page: u32,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct PaginationOnlyQueryParams {
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
+    per_page: Option<u32>,
+}
+
+/// Normalized query parameters for pagination-only collection endpoints.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PaginationOnlyQuery {
+    /// One-based page number.
+    pub page: u32,
+    /// Requested page size, clamped server-side.
+    pub per_page: u32,
+}
+
 impl SupportingListQuery {
     /// Parses a raw query string into a normalized supporting-resource query.
     pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
@@ -69,12 +91,57 @@ impl SupportingListQuery {
     }
 }
 
+impl PaginationOnlyQuery {
+    /// Parses a raw query string into a normalized pagination-only query.
+    pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
+        let mut page = None;
+        let mut per_page = None;
+
+        for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+            match key.as_ref() {
+                "filter" | "filterId" => {
+                    return Err(GatewayError::InvalidInput(format!(
+                        "{} is not supported on this endpoint",
+                        key.as_ref()
+                    )))
+                }
+                "page" => {
+                    page = Some(value.parse::<u32>().map_err(|_| {
+                        GatewayError::InvalidInput("page must be a positive integer".to_string())
+                    })?);
+                }
+                "perPage" | "per_page" => {
+                    per_page = Some(value.parse::<u32>().map_err(|_| {
+                        GatewayError::InvalidInput("perPage must be a positive integer".to_string())
+                    })?);
+                }
+                _ => {}
+            }
+        }
+
+        let page = page.unwrap_or(1);
+        if page == 0 {
+            return Err(GatewayError::InvalidInput(
+                "page must be greater than or equal to 1".to_string(),
+            ));
+        }
+        let per_page = per_page.unwrap_or(25).clamp(1, 1000);
+
+        Ok(Self { page, per_page })
+    }
+}
+
 fn default_page() -> Option<u32> {
     Some(1)
 }
 
 fn default_per_page() -> Option<u32> {
     Some(25)
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct NvtOidPathDoc {
+    id: String,
 }
 
 #[derive(Clone, Debug, Serialize, JsonSchema)]
@@ -103,6 +170,49 @@ impl From<gvm_gateway_domain::SupportingResourceMeta> for SupportingResourceMeta
             modification_time: meta.modification_time,
             writable: meta.writable,
             in_use: meta.in_use,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Host")]
+pub(crate) struct HostResponse {
+    #[serde(flatten)]
+    meta: SupportingResourceMetaResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ip: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hostname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    os: Option<String>,
+}
+
+impl From<gvm_gateway_domain::Host> for HostResponse {
+    fn from(host: gvm_gateway_domain::Host) -> Self {
+        Self {
+            meta: SupportingResourceMetaResponse::from(host.meta),
+            ip: host.ip,
+            hostname: host.hostname,
+            severity: host.severity,
+            os: host.os,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "HostList")]
+pub(crate) struct HostListResponse {
+    data: Vec<HostResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::HostPage> for HostListResponse {
+    fn from(page: gvm_gateway_domain::HostPage) -> Self {
+        Self {
+            data: page.data.into_iter().map(HostResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
         }
     }
 }
@@ -406,12 +516,136 @@ impl From<gvm_gateway_domain::OverridePage> for OverrideListResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Nvt")]
+pub(crate) struct NvtResponse {
+    oid: String,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    family: Option<String>,
+    #[serde(rename = "cvssBase", skip_serializing_if = "Option::is_none")]
+    cvss_base: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tags: Option<String>,
+    #[serde(rename = "solutionType", skip_serializing_if = "Option::is_none")]
+    solution_type: Option<String>,
+}
+
+impl From<gvm_gateway_domain::Nvt> for NvtResponse {
+    fn from(nvt: gvm_gateway_domain::Nvt) -> Self {
+        Self {
+            oid: nvt.oid,
+            name: nvt.name,
+            family: nvt.family,
+            cvss_base: nvt.cvss_base,
+            severity: nvt.severity,
+            tags: nvt.tags,
+            solution_type: nvt.solution_type,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "NvtList")]
+pub(crate) struct NvtListResponse {
+    data: Vec<NvtResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::NvtPage> for NvtListResponse {
+    fn from(page: gvm_gateway_domain::NvtPage) -> Self {
+        Self {
+            data: page.data.into_iter().map(NvtResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "NvtFamily")]
+pub(crate) struct NvtFamilyResponse {
+    name: String,
+    #[serde(rename = "maxNvtCount", skip_serializing_if = "Option::is_none")]
+    max_nvt_count: Option<u32>,
+}
+
+impl From<gvm_gateway_domain::NvtFamily> for NvtFamilyResponse {
+    fn from(nvt_family: gvm_gateway_domain::NvtFamily) -> Self {
+        Self {
+            name: nvt_family.name,
+            max_nvt_count: nvt_family.max_nvt_count,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "NvtFamilyList")]
+pub(crate) struct NvtFamilyListResponse {
+    data: Vec<NvtFamilyResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::NvtFamilyPage> for NvtFamilyListResponse {
+    fn from(page: gvm_gateway_domain::NvtFamilyPage) -> Self {
+        Self {
+            data: page.data.into_iter().map(NvtFamilyResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
 fn supporting_query(query: SupportingListQuery) -> SupportingResourceQuery {
     SupportingResourceQuery {
         filter_string: query.filter_string,
         filter_id: query.filter_id,
         page: query.page,
         per_page: query.per_page,
+    }
+}
+
+/// Lists hosts visible to the authenticated session.
+pub async fn list_hosts(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match SupportingListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.list_hosts(&session, supporting_query(query)).await {
+        Ok(page) => (StatusCode::OK, Json(HostListResponse::from(page))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Returns a single host by id.
+pub async fn get_host(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.get_host(&session, &id).await {
+        Ok(item) => (StatusCode::OK, Json(HostResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
 
@@ -691,6 +925,101 @@ pub async fn get_override(
     }
 }
 
+/// Lists NVTs visible to the authenticated session.
+pub async fn list_nvts(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match SupportingListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.list_nvts(&session, supporting_query(query)).await {
+        Ok(page) => (StatusCode::OK, Json(NvtListResponse::from(page))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Returns a single NVT by OID.
+pub async fn get_nvt(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.get_nvt(&session, &id).await {
+        Ok(item) => (StatusCode::OK, Json(NvtResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Lists NVT families visible to the authenticated session.
+pub async fn list_nvt_families(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match PaginationOnlyQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .list_nvt_families(&session, query.page, query.per_page)
+        .await
+    {
+        Ok(page) => (StatusCode::OK, Json(NvtFamilyListResponse::from(page))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+pub(crate) fn list_hosts_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getHosts")
+        .tag("Hosts")
+        .summary("List hosts")
+        .description("Returns a paginated list of discovered hosts/assets.")
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<HostListResponse>, _>(ok_json(
+            "Paginated list of discovered hosts",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_host_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getHost")
+        .tag("Hosts")
+        .summary("Get a host")
+        .description("Returns the details for a single discovered host/asset.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<HostResponse>, _>(ok_json("Host details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
 pub(crate) fn list_report_formats_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     let op = op
         .id("getReportFormats")
@@ -867,9 +1196,55 @@ pub(crate) fn get_override_docs(op: TransformOperation<'_>) -> TransformOperatio
     problem_response::<404>(op, "Resource not found")
 }
 
+pub(crate) fn list_nvts_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getNvts")
+        .tag("NVTs")
+        .summary("List NVTs")
+        .description(
+            "Returns a paginated list of network vulnerability tests available in the feed catalog.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<NvtListResponse>, _>(ok_json("Paginated list of NVTs"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_nvt_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getNvt")
+        .tag("NVTs")
+        .summary("Get an NVT")
+        .description("Returns the details for a single network vulnerability test by OID.")
+        .security_requirement("bearerAuth")
+        .input::<Path<NvtOidPathDoc>>()
+        .response_with::<200, Json<NvtResponse>, _>(ok_json("NVT details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn list_nvt_families_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getNvtFamilies")
+        .tag("NVT Families")
+        .summary("List NVT families")
+        .description(
+            "Returns a paginated list of NVT families. This endpoint is collection-only and does not accept filter expressions.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Query<PaginationOnlyQueryParams>>()
+        .response_with::<200, Json<NvtFamilyListResponse>, _>(ok_json(
+            "Paginated list of NVT families",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::SupportingListQuery;
+    use super::{PaginationOnlyQuery, SupportingListQuery};
 
     #[test]
     fn supporting_query_decodes_percent_encoded_filter_values() {
@@ -894,6 +1269,19 @@ mod tests {
         match error {
             gvm_gateway_domain::GatewayError::InvalidInput(detail) => {
                 assert_eq!(detail, "page must be greater than or equal to 1");
+            }
+            other => panic!("unexpected error variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pagination_only_query_rejects_filter_params() {
+        let error = PaginationOnlyQuery::try_from_query_string("filter=name~general")
+            .expect_err("filter should be rejected");
+
+        match error {
+            gvm_gateway_domain::GatewayError::InvalidInput(detail) => {
+                assert_eq!(detail, "filter is not supported on this endpoint");
             }
             other => panic!("unexpected error variant: {:?}", other),
         }

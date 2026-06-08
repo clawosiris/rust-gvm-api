@@ -84,6 +84,10 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
             "description": "Feed status"
         },
         {
+            "name": "Hosts",
+            "description": "Discovered host inventory"
+        },
+        {
             "name": "Report Formats",
             "description": "Report export format discovery"
         },
@@ -98,6 +102,14 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         {
             "name": "Tickets",
             "description": "Ticket discovery"
+        },
+        {
+            "name": "NVTs",
+            "description": "NVT catalog discovery"
+        },
+        {
+            "name": "NVT Families",
+            "description": "NVT family discovery"
         },
         {
             "name": "Users",

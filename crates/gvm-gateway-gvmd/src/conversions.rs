@@ -9,10 +9,10 @@
 use std::{collections::HashMap, str::FromStr};
 
 use gvm_gateway_domain::{
-    Alert, CreateTargetInput, Credential, Feed, Filter, GatewayError, Group, IdentityResourceMeta,
-    Note, NvtRef, Override, Permission, PortList, Report, ReportFormat, ResourceRef, ResultCount,
-    Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag, Target, Task,
-    Ticket, User, UserSetting,
+    Alert, CreateTargetInput, Credential, Feed, Filter, GatewayError, Group, Host,
+    IdentityResourceMeta, Note, Nvt, NvtFamily, NvtRef, Override, Permission, PortList, Report,
+    ReportFormat, ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
+    SupportingResourceMeta, Tag, Target, Task, Ticket, User, UserSetting,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -246,18 +246,18 @@ pub(crate) fn report_from_gmp(report: gvm_gmp::responses::Report) -> Report {
 }
 
 pub(crate) fn result_from_gmp(result: gvm_gmp::responses::ScanResult) -> ScanResult {
-    let severity = result
-        .severity
-        .as_deref()
-        .and_then(|v| v.parse::<f64>().ok());
+    let severity = result.severity_score();
 
-    let nvt = result.nvt.map(|n| NvtRef {
-        oid: Some(n.oid),
-        name: n.name,
-        family: n.family,
-        cvss_base: n.cvss_base.as_deref().and_then(|v| v.parse::<f64>().ok()),
-        cves: vec![],
-        tags: None,
+    let nvt = result.nvt.map(|n| {
+        let cvss_base = n.cvss_base_score();
+        NvtRef {
+            oid: Some(n.oid),
+            name: n.name,
+            family: n.family,
+            cvss_base,
+            cves: vec![],
+            tags: None,
+        }
     });
 
     ScanResult {
@@ -309,6 +309,16 @@ pub(crate) fn report_format_from_gmp(
         trust: report_format.trust,
         active: report_format.active,
         predefined: report_format.predefined,
+    }
+}
+
+pub(crate) fn host_from_gmp(host: gvm_gmp::responses::Host) -> Host {
+    Host {
+        meta: supporting_meta_from_gmp(host.meta),
+        ip: host.ip,
+        hostname: host.hostname,
+        severity: host.severity,
+        os: host.os,
     }
 }
 
@@ -371,6 +381,28 @@ pub(crate) fn override_from_gmp(override_: gvm_gmp::responses::Override) -> Over
         result: override_.result.map(resource_ref_from_named_entity),
         active: override_.active,
         end_time: override_.end_time,
+    }
+}
+
+pub(crate) fn nvt_from_gmp(nvt: gvm_gmp::responses::Nvt) -> Nvt {
+    let cvss_base = nvt.cvss_base_score();
+    let severity = nvt.severity_score();
+
+    Nvt {
+        oid: nvt.oid,
+        name: nvt.name,
+        family: nvt.family,
+        cvss_base,
+        severity,
+        tags: nvt.tags,
+        solution_type: nvt.solution_type,
+    }
+}
+
+pub(crate) fn nvt_family_from_gmp(nvt_family: gvm_gmp::responses::NvtFamily) -> NvtFamily {
+    NvtFamily {
+        name: nvt_family.name,
+        max_nvt_count: nvt_family.max_nvt_count,
     }
 }
 

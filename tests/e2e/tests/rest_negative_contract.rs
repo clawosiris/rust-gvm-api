@@ -49,6 +49,19 @@ async fn rest_negative_contract_returns_problem_responses() -> Result<()> {
         )
         .await?;
 
+        let hosts_post = harness
+            .request(Method::POST, "/api/v1/hosts")
+            .bearer_auth(&session.token)
+            .send()
+            .await
+            .context("send hosts POST request")?;
+        assert_problem_response(
+            hosts_post,
+            StatusCode::METHOD_NOT_ALLOWED,
+            "unsupported host mutation",
+        )
+        .await?;
+
         let notes_post = harness
             .request(Method::POST, "/api/v1/notes")
             .bearer_auth(&session.token)
@@ -72,6 +85,32 @@ async fn rest_negative_contract_returns_problem_responses() -> Result<()> {
             overrides_post,
             StatusCode::METHOD_NOT_ALLOWED,
             "unsupported override mutation",
+        )
+        .await?;
+
+        let nvts_post = harness
+            .request(Method::POST, "/api/v1/nvts")
+            .bearer_auth(&session.token)
+            .send()
+            .await
+            .context("send nvts POST request")?;
+        assert_problem_response(
+            nvts_post,
+            StatusCode::METHOD_NOT_ALLOWED,
+            "unsupported nvt mutation",
+        )
+        .await?;
+
+        let nvt_families_post = harness
+            .request(Method::POST, "/api/v1/nvt-families")
+            .bearer_auth(&session.token)
+            .send()
+            .await
+            .context("send nvt-families POST request")?;
+        assert_problem_response(
+            nvt_families_post,
+            StatusCode::METHOD_NOT_ALLOWED,
+            "unsupported nvt-family mutation",
         )
         .await?;
 

@@ -4,6 +4,51 @@
 openapi: 3.1.0
 
 paths:
+  /hosts:
+    get:
+      operationId: getHosts
+      tags: [Hosts]
+      summary: List hosts
+      description: Returns a paginated list of discovered hosts/assets.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of discovered hosts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /hosts/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getHost
+      tags: [Hosts]
+      summary: Get a host
+      description: Returns the details for a single discovered host/asset.
+      responses:
+        "200":
+          description: Host details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Host"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
   /report-formats:
     get:
       operationId: getReportFormats
@@ -274,8 +319,124 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /nvts:
+    get:
+      operationId: getNvts
+      tags: [NVTs]
+      summary: List NVTs
+      description: Returns a paginated list of network vulnerability tests available in the feed catalog.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of NVTs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NvtList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
+  /nvts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: NVT OID
+        schema:
+          type: string
+    get:
+      operationId: getNvt
+      tags: [NVTs]
+      summary: Get an NVT
+      description: Returns the details for a single network vulnerability test by OID.
+      responses:
+        "200":
+          description: NVT details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Nvt"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /nvt-families:
+    get:
+      operationId: getNvtFamilies
+      tags: [NVT Families]
+      summary: List NVT families
+      description: Returns a paginated list of NVT families. This endpoint is collection-only and does not accept filter expressions.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of NVT families
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NvtFamilyList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+
 components:
   schemas:
+    Host:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        ip:
+          type: string
+        hostname:
+          type: string
+        severity:
+          type: string
+        os:
+          type: string
+
+    HostList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Host"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
     SupportingResourceMeta:
       type: object
       required:
@@ -604,5 +765,62 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Override"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Nvt:
+      type: object
+      required:
+        - oid
+        - name
+      properties:
+        oid:
+          type: string
+        name:
+          type: string
+        family:
+          type: string
+        cvssBase:
+          type: number
+        severity:
+          type: number
+        tags:
+          type: string
+        solutionType:
+          type: string
+
+    NvtList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Nvt"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    NvtFamily:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        maxNvtCount:
+          type: integer
+
+    NvtFamilyList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/NvtFamily"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"

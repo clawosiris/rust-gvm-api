@@ -86,11 +86,13 @@ use crate::{
     },
     shutdown::ShutdownRuntime,
     supporting_resources::{
-        get_filter, get_filter_docs, get_note, get_note_docs, get_override, get_override_docs,
-        get_report_format, get_report_format_docs, get_tag, get_tag_docs, get_ticket,
-        get_ticket_docs, list_filters, list_filters_docs, list_notes, list_notes_docs,
-        list_overrides, list_overrides_docs, list_report_formats, list_report_formats_docs,
-        list_tags, list_tags_docs, list_tickets, list_tickets_docs,
+        get_filter, get_filter_docs, get_host, get_host_docs, get_note, get_note_docs, get_nvt,
+        get_nvt_docs, get_override, get_override_docs, get_report_format, get_report_format_docs,
+        get_tag, get_tag_docs, get_ticket, get_ticket_docs, list_filters, list_filters_docs,
+        list_hosts, list_hosts_docs, list_notes, list_notes_docs, list_nvt_families,
+        list_nvt_families_docs, list_nvts, list_nvts_docs, list_overrides, list_overrides_docs,
+        list_report_formats, list_report_formats_docs, list_tags, list_tags_docs, list_tickets,
+        list_tickets_docs,
     },
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
@@ -297,6 +299,22 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .route("/api/v1/feeds", patch(method_not_allowed_collection))
         .api_route("/api/v1/feeds/sync", post_with(sync_feeds, sync_feeds_docs))
         // Supporting resources
+        .api_route("/api/v1/hosts", get_with(list_hosts, list_hosts_docs))
+        .route(
+            "/api/v1/hosts",
+            post(method_not_allowed_collection)
+                .put(method_not_allowed_collection)
+                .delete(method_not_allowed_collection)
+                .patch(method_not_allowed_collection),
+        )
+        .api_route("/api/v1/hosts/{id}", get_with(get_host, get_host_docs))
+        .route(
+            "/api/v1/hosts/{id}",
+            post(method_not_allowed_item)
+                .put(method_not_allowed_item)
+                .delete(method_not_allowed_item)
+                .patch(method_not_allowed_item),
+        )
         .api_route(
             "/api/v1/report-formats",
             get_with(list_report_formats, list_report_formats_docs),
@@ -410,6 +428,33 @@ fn documented_router() -> ApiRouter<GatewayService> {
                 .put(method_not_allowed_item)
                 .delete(method_not_allowed_item)
                 .patch(method_not_allowed_item),
+        )
+        .api_route("/api/v1/nvts", get_with(list_nvts, list_nvts_docs))
+        .route(
+            "/api/v1/nvts",
+            post(method_not_allowed_collection)
+                .put(method_not_allowed_collection)
+                .delete(method_not_allowed_collection)
+                .patch(method_not_allowed_collection),
+        )
+        .api_route("/api/v1/nvts/{id}", get_with(get_nvt, get_nvt_docs))
+        .route(
+            "/api/v1/nvts/{id}",
+            post(method_not_allowed_item)
+                .put(method_not_allowed_item)
+                .delete(method_not_allowed_item)
+                .patch(method_not_allowed_item),
+        )
+        .api_route(
+            "/api/v1/nvt-families",
+            get_with(list_nvt_families, list_nvt_families_docs),
+        )
+        .route(
+            "/api/v1/nvt-families",
+            post(method_not_allowed_collection)
+                .put(method_not_allowed_collection)
+                .delete(method_not_allowed_collection)
+                .patch(method_not_allowed_collection),
         )
         // Identity and access control
         .api_route("/api/v1/users", get_with(list_users, list_users_docs))
