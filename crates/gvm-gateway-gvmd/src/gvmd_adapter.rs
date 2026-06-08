@@ -99,8 +99,8 @@ use gvm_gmp::{
         },
     },
     responses::{
-        ActionResponse, CreateAlertResponse, CreateCredentialResponse, CreateGroupResponse,
-        CreatePermissionResponse, CreatePortListResponse, CreateRoleResponse,
+        ActionResponse, AuthenticateResponse, CreateAlertResponse, CreateCredentialResponse,
+        CreateGroupResponse, CreatePermissionResponse, CreatePortListResponse, CreateRoleResponse,
         CreateScanConfigResponse, CreateScheduleResponse, CreateTargetResponse, CreateTaskResponse,
         CreateUserResponse, GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse,
         GetFiltersResponse, GetGroupsResponse, GetHostsResponse, GetNotesResponse,
@@ -197,10 +197,11 @@ impl GvmdAdapter {
             let mut client = GmpClient::connect(connection)
                 .await
                 .map_err(map_gvm_error)?;
-            client
+            let response = client
                 .call(authenticate(username, password))
                 .await
                 .map_err(map_gvm_error)?;
+            AuthenticateResponse::from_response(&response).map_err(map_parse_error)?;
 
             self.sessions
                 .lock()
@@ -3431,6 +3432,41 @@ mod tests {
             let result = adapter.connect_session("token", "admin", "admin").await;
 
             assert!(result.is_ok());
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_connect_session_auth_failure_returns_unauthorized() {
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_7)
+                .unix_socket_auto()
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let result = adapter.connect_session("token", "admin", "wrong").await;
+
+            assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
+            let disconnect_result = adapter.disconnect_session("token").await;
+            assert!(disconnect_result.is_ok());
+            let follow_up = adapter
+                .list_targets(
+                    "token",
+                    &TargetQuery {
+                        filter_string: None,
+                        filter_id: None,
+                        page: 1,
+                        per_page: 25,
+                    },
+                )
+                .await;
+            assert!(matches!(
+                follow_up,
+                Err(GatewayError::SessionInvalidated(_))
+            ));
+
             server.shutdown().await;
         }
 

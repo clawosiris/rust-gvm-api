@@ -118,7 +118,7 @@ async fn protected_endpoint_expired_session_rejected() {
 }
 
 #[tokio::test]
-async fn protected_endpoint_closed_session_rejected() {
+async fn protected_endpoint_invalidated_session_rejected() {
     let harness = target_harness(|_| {}).await;
     harness.sessions.remove(&harness.token).unwrap();
 

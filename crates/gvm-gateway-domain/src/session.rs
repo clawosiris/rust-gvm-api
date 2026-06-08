@@ -32,8 +32,6 @@ pub enum SessionState {
     Active,
     /// Session has expired.
     Expired,
-    /// Session has been closed.
-    Closed,
 }
 
 /// Full session details returned by inspection endpoints.
@@ -43,13 +41,13 @@ pub struct SessionInfo {
     pub token: String,
     /// Authenticated user.
     pub user: String,
-    /// State label: "active", "expired", or "closed".
+    /// State label: "active" or "expired".
     pub state: String,
     /// Creation time (epoch seconds).
     pub created_at: u64,
     /// Last usage time (epoch seconds).
     pub last_used_at: u64,
-    /// Remaining seconds until idle expiry (0 when expired/closed).
+    /// Remaining seconds until idle expiry (0 when expired).
     pub expires_in: i64,
 }
 
@@ -164,7 +162,6 @@ impl SessionManager {
                 }
             }
             SessionState::Expired => ("expired".to_string(), 0),
-            SessionState::Closed => ("closed".to_string(), 0),
         };
 
         Ok(SessionInfo {
@@ -231,7 +228,7 @@ impl SessionManager {
                 SessionState::Active => {
                     now.saturating_sub(stored.last_used_at) >= self.idle_timeout_secs
                 }
-                SessionState::Expired | SessionState::Closed => true,
+                SessionState::Expired => true,
             };
             if dominated {
                 expired_tokens.push(token.clone());
@@ -500,9 +497,9 @@ mod tests {
         assert!(second.is_empty());
     }
 
-    /// drain_expired includes Closed sessions.
+    /// drain_expired includes explicitly expired sessions.
     #[test]
-    fn session_manager_drain_expired_includes_closed() {
+    fn session_manager_drain_expired_includes_expired_sessions() {
         let manager = SessionManager::default();
         let session = manager.create("alice").unwrap();
         manager.expire(&session.token).unwrap();
