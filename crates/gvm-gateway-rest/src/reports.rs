@@ -228,6 +228,8 @@ impl GetReportQuery {
 pub struct ReportResultsQuery {
     /// Optional filter string.
     pub filter_string: Option<String>,
+    /// Optional filter identifier.
+    pub filter_id: Option<String>,
     /// Page number.
     pub page: u32,
     /// Page size.
@@ -241,6 +243,7 @@ impl ReportResultsQuery {
 
         Ok(Self {
             filter_string: parsed.filter_string,
+            filter_id: parsed.filter_id,
             page: parsed.page,
             per_page: parsed.per_page,
         })
@@ -423,7 +426,7 @@ pub async fn get_report_results(
             &id,
             ResultQuery {
                 filter_string: query.filter_string,
-                filter_id: None,
+                filter_id: query.filter_id,
                 page: query.page,
                 per_page: query.per_page,
             },
@@ -465,7 +468,7 @@ pub async fn get_report_vulnerabilities(
             &id,
             ResultQuery {
                 filter_string: query.filter_string,
-                filter_id: None,
+                filter_id: query.filter_id,
                 page: query.page,
                 per_page: query.per_page,
             },
@@ -503,7 +506,7 @@ pub async fn get_report_tls_certificates(
             &id,
             ResultQuery {
                 filter_string: query.filter_string,
-                filter_id: None,
+                filter_id: query.filter_id,
                 page: query.page,
                 per_page: query.per_page,
             },
@@ -545,7 +548,7 @@ pub async fn get_report_errors(
             &id,
             ResultQuery {
                 filter_string: query.filter_string,
-                filter_id: None,
+                filter_id: query.filter_id,
                 page: query.page,
                 per_page: query.per_page,
             },
@@ -583,7 +586,7 @@ pub async fn get_report_closed_cves(
             &id,
             ResultQuery {
                 filter_string: query.filter_string,
-                filter_id: None,
+                filter_id: query.filter_id,
                 page: query.page,
                 per_page: query.per_page,
             },
@@ -769,12 +772,16 @@ mod tests {
         );
 
         let results = ReportResultsQuery::try_from_query_string(
-            "filter=severity%3E5+and+location~%22host%26port%3D443%22&page=2&perPage=10",
+            "filter=severity%3E5+and+location~%22host%26port%3D443%22&filterId=123e4567%2De89b%2D12d3%2Da456%2D426614174000&page=2&perPage=10",
         )
         .expect("encoded filter should parse");
         assert_eq!(
             results.filter_string.as_deref(),
             Some("severity>5 and location~\"host&port=443\"")
+        );
+        assert_eq!(
+            results.filter_id.as_deref(),
+            Some("123e4567-e89b-12d3-a456-426614174000")
         );
         assert_eq!(results.page, 2);
         assert_eq!(results.per_page, 10);

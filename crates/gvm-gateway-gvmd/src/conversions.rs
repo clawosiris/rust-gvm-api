@@ -12,7 +12,7 @@ use gvm_gateway_domain::{
     Alert, CreateTargetInput, Credential, Feed, Filter, GatewayError, Group, Host,
     IdentityResourceMeta, Note, Nvt, NvtFamily, NvtRef, Override, Permission, PortList, Report,
     ReportFormat, ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
-    SupportingResourceMeta, Tag, Target, Task, Ticket, User, UserSetting,
+    SupportingResourceMeta, Tag, Target, Task, Ticket, TlsCertificate, User, UserSetting,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -269,6 +269,99 @@ pub(crate) fn result_from_gmp(result: gvm_gmp::responses::ScanResult) -> ScanRes
         threat: result.threat,
         nvt,
         description: result.description,
+        task: None,
+        report: None,
+    }
+}
+
+pub(crate) fn result_from_report_vulnerability(
+    vulnerability: gvm_gmp::responses::ReportVulnerability,
+) -> ScanResult {
+    ScanResult {
+        id: vulnerability.id.unwrap_or_default(),
+        name: vulnerability.name.unwrap_or_default(),
+        host: vulnerability.host,
+        port: vulnerability.port,
+        severity: vulnerability
+            .severity
+            .as_deref()
+            .and_then(|value| value.parse::<f64>().ok()),
+        threat: vulnerability.threat,
+        nvt: Some(NvtRef {
+            oid: None,
+            name: None,
+            family: vulnerability.family,
+            cvss_base: None,
+            cves: vulnerability.cves,
+            tags: None,
+        }),
+        description: None,
+        task: None,
+        report: None,
+    }
+}
+
+pub(crate) fn tls_certificate_from_report_tls_certificate(
+    certificate: gvm_gmp::responses::ReportTlsCertificate,
+) -> TlsCertificate {
+    TlsCertificate {
+        id: certificate.id,
+        host: certificate.host,
+        port: certificate.port,
+        subject: certificate.subject.or(certificate.name).unwrap_or_default(),
+        issuer: certificate.issuer,
+        not_before: certificate.activation_time,
+        not_after: certificate.expiration_time,
+        fingerprint_sha256: None,
+    }
+}
+
+pub(crate) fn result_from_report_error(error: gvm_gmp::responses::ReportError) -> ScanResult {
+    ScanResult {
+        id: error.id.unwrap_or_default(),
+        name: error.name.unwrap_or_default(),
+        host: error.host,
+        port: error.port,
+        severity: None,
+        threat: Some("Alarm".to_string()),
+        nvt: error.nvt_name.map(|name| NvtRef {
+            oid: None,
+            name: Some(name),
+            family: None,
+            cvss_base: None,
+            cves: Vec::new(),
+            tags: None,
+        }),
+        description: error.description,
+        task: None,
+        report: None,
+    }
+}
+
+pub(crate) fn result_from_report_closed_cve(
+    closed_cve: gvm_gmp::responses::ReportClosedCve,
+) -> ScanResult {
+    ScanResult {
+        id: closed_cve.id.unwrap_or_default(),
+        name: closed_cve
+            .name
+            .unwrap_or_else(|| closed_cve.cve.clone().unwrap_or_default()),
+        host: closed_cve.host,
+        port: None,
+        severity: closed_cve
+            .severity
+            .as_deref()
+            .and_then(|value| value.parse::<f64>().ok()),
+        threat: None,
+        nvt: Some(NvtRef {
+            oid: None,
+            name: None,
+            family: None,
+            cvss_base: None,
+            cves: closed_cve.cve.into_iter().collect(),
+            tags: None,
+        }),
+        description: None,
         task: None,
         report: None,
     }
