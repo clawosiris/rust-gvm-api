@@ -556,6 +556,8 @@ async fn assert_nvt_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
         return Ok(());
     };
 
+    assert_nvt_pagination_round_trip(harness, token, &nvts).await?;
+
     let fetched = harness.get_nvt(token, &selected.oid).await?;
     assert_nvt_matches_read(&fetched, selected);
     Ok(())
@@ -601,6 +603,56 @@ fn assert_pagination_shape<T>(resource: &str, response: &ListResponse<T>) {
         response.data.len() <= response.pagination.per_page as usize,
         "{resource} list returned more items than its page size"
     );
+}
+
+async fn assert_nvt_pagination_round_trip(
+    harness: &E2eHarness,
+    token: &str,
+    full_page: &ListResponse<NvtCatalogEntry>,
+) -> Result<()> {
+    if full_page.pagination.total < 2 {
+        eprintln!("nvt catalog has fewer than two items; skipping page-2 assertion");
+        return Ok(());
+    }
+
+    let first_page = harness.list_nvts_page(token, 1, 1).await?;
+    let second_page = harness.list_nvts_page(token, 2, 1).await?;
+
+    assert_eq!(first_page.pagination.page, 1, "nvt page 1 drifted");
+    assert_eq!(second_page.pagination.page, 2, "nvt page 2 drifted");
+    assert_eq!(first_page.pagination.per_page, 1, "nvt page 1 size drifted");
+    assert_eq!(
+        second_page.pagination.per_page, 1,
+        "nvt page 2 size drifted"
+    );
+    assert_eq!(
+        first_page.pagination.total, full_page.pagination.total,
+        "nvt page 1 total drifted"
+    );
+    assert_eq!(
+        second_page.pagination.total, full_page.pagination.total,
+        "nvt page 2 total drifted"
+    );
+    assert_eq!(
+        first_page.data.len(),
+        1,
+        "nvt page 1 should contain exactly one item"
+    );
+    assert_eq!(
+        second_page.data.len(),
+        1,
+        "nvt page 2 should contain exactly one item"
+    );
+    assert_eq!(
+        first_page.data[0].oid, full_page.data[0].oid,
+        "nvt page 1 did not preserve the first item"
+    );
+    assert_eq!(
+        second_page.data[0].oid, full_page.data[1].oid,
+        "nvt page 2 did not preserve the second item"
+    );
+
+    Ok(())
 }
 
 fn assert_named_resource_matches(

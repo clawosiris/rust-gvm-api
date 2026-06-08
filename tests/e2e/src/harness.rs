@@ -454,6 +454,24 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn list_hosts_page(
+        &self,
+        token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ListResponse<HostResource>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/hosts?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "list hosts page",
+        )
+        .await
+    }
+
     pub async fn get_host(&self, token: &str, host_id: &str) -> Result<HostResource> {
         self.send_json(
             self.authed(Method::GET, &format!("/api/v1/hosts/{host_id}"), token),
@@ -622,6 +640,24 @@ impl E2eHarness {
             self.authed(Method::GET, "/api/v1/nvts?perPage=1000", token),
             StatusCode::OK,
             "list nvts",
+        )
+        .await
+    }
+
+    pub async fn list_nvts_page(
+        &self,
+        token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ListResponse<NvtCatalogEntry>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/nvts?page={page}&perPage={per_page}"),
+                token,
+            ),
+            StatusCode::OK,
+            "list nvts page",
         )
         .await
     }

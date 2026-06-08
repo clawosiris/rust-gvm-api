@@ -2620,7 +2620,12 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_hosts(GetHostsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2640,9 +2645,9 @@ impl SupportingResourcePort for GvmdAdapter {
                 .then_with(|| left.ip.cmp(&right.ip))
                 .then_with(|| left.meta.id.cmp(&right.meta.id))
         });
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
         Ok(HostPage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -3042,7 +3047,12 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_nvts(GetNvtsOpts {
-                filter_string: query.filter_string.clone(),
+                filter_string: paginated_filter(
+                    None,
+                    query.filter_string.as_deref(),
+                    query.page,
+                    query.per_page,
+                ),
                 filter_id,
                 details: Some(true),
             }))
@@ -3059,9 +3069,9 @@ impl SupportingResourcePort for GvmdAdapter {
                 .cmp(&right.oid)
                 .then_with(|| left.name.cmp(&right.name))
         });
-        let total = parsed.counts.total.unwrap_or(items.len() as u32);
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
         Ok(NvtPage {
-            data: paged_slice(items, query.page, query.per_page),
+            data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
@@ -3908,6 +3918,67 @@ mod tests {
                 "get_overrides",
                 "filter=\"name~Target first=11 rows=10\""
             );
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_list_hosts_emits_backend_pagination_filter() {
+            let (adapter, server, token) = create_mock_adapter().await;
+            server.clear_history();
+
+            let result = adapter
+                .list_hosts(
+                    &token,
+                    &SupportingResourceQuery {
+                        filter_string: Some("name~host".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    },
+                )
+                .await;
+
+            assert!(result.is_ok());
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "get_assets")
+                .expect("get_assets command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("<get_assets"));
+            assert!(xml.contains("asset_type=\"host\""));
+            assert!(xml.contains("filter=\"name~host first=11 rows=10\""));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_list_nvts_emits_backend_pagination_filter() {
+            let (adapter, server, token) = create_mock_adapter().await;
+            server.clear_history();
+
+            let result = adapter
+                .list_nvts(
+                    &token,
+                    &SupportingResourceQuery {
+                        filter_string: Some("family=Databases".to_string()),
+                        filter_id: None,
+                        page: 3,
+                        per_page: 25,
+                    },
+                )
+                .await;
+
+            assert!(result.is_ok());
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "get_nvts")
+                .expect("get_nvts command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("<get_nvts"));
+            assert!(xml.contains("filter=\"family=Databases first=51 rows=25\""));
 
             server.shutdown().await;
         }
