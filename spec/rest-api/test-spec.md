@@ -63,7 +63,7 @@
 | `malformed_bearer_header_rejected` | Invalid bearer header syntax → 401 |
 | `unknown_session_token_rejected` | Unknown bearer token → 401 |
 | `expired_session_token_rejected` | Expired token → 401 |
-| `closed_session_token_rejected` | Closed token → 401 |
+| `invalidated_session_token_rejected` | Deleted or invalidated token → 401 |
 | `valid_session_token_allows_request` | Active token → request proceeds |
 | `request_scoped_basic_auth_allows_request` | Basic credentials on protected endpoint → request proceeds without explicit session management |
 | `request_scoped_basic_auth_cleans_up` | Request-scoped Basic execution tears down backend/session state after success or failure |

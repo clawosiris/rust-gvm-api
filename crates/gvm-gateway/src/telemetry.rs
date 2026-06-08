@@ -3,6 +3,8 @@
 
 //! OpenTelemetry and tracing setup for the gateway composition root.
 
+use std::sync::{Mutex, OnceLock};
+
 use opentelemetry::{
     global, propagation::TextMapCompositePropagator, trace::TracerProvider as _, KeyValue,
 };
@@ -15,6 +17,11 @@ use opentelemetry_sdk::{
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::config::GatewayConfig;
+
+fn tracer_provider_slot() -> &'static Mutex<Option<SdkTracerProvider>> {
+    static TRACER_PROVIDER: OnceLock<Mutex<Option<SdkTracerProvider>>> = OnceLock::new();
+    TRACER_PROVIDER.get_or_init(|| Mutex::new(None))
+}
 
 /// Initializes tracing and optional OTLP export.
 pub fn init_tracing(
@@ -36,16 +43,35 @@ pub fn init_tracing(
             .with_resource(build_resource(config))
             .build();
         let tracer = provider.tracer(config.telemetry_service_name.clone());
+        *tracer_provider_slot()
+            .lock()
+            .expect("tracer provider slot poisoned") = Some(provider.clone());
         global::set_tracer_provider(provider);
         registry
             .with(fmt_layer)
             .with(tracing_opentelemetry::layer().with_tracer(tracer))
             .try_init()?;
     } else {
+        *tracer_provider_slot()
+            .lock()
+            .expect("tracer provider slot poisoned") = None;
         registry.with(fmt_layer).try_init()?;
     }
 
     Ok(())
+}
+
+/// Flush any registered tracing provider before process exit.
+pub fn shutdown_tracing() {
+    if let Some(provider) = tracer_provider_slot()
+        .lock()
+        .expect("tracer provider slot poisoned")
+        .take()
+    {
+        if let Err(error) = provider.shutdown() {
+            tracing::warn!(?error, "failed to flush tracer provider during shutdown");
+        }
+    }
 }
 
 pub(crate) fn build_trace_propagator() -> TextMapCompositePropagator {

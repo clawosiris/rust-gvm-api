@@ -15,7 +15,12 @@ use gvm_gateway_gvmd::GvmdAdapter;
 use gvm_gateway_rest::{router::build_router_with_runtime_and_security, shutdown::ShutdownRuntime};
 use tokio::net::TcpListener;
 
-use gvm_gateway::{config::load_config, config::CliArgs, server, telemetry::init_tracing};
+use gvm_gateway::{
+    config::load_config,
+    config::CliArgs,
+    server,
+    telemetry::{init_tracing, shutdown_tracing},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -49,14 +54,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     });
 
-    server::serve(
+    let serve_result = server::serve(
         listener,
         app,
         shutdown,
         std::time::Duration::from_secs(config.shutdown_drain_timeout_secs),
         native_tls,
     )
-    .await?;
+    .await;
+    shutdown_tracing();
+    serve_result?;
     Ok(())
 }
 

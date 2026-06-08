@@ -7,10 +7,10 @@ use reqwest::StatusCode;
 
 // Covers live-stack authentication failures and session invalidation because
 // the gateway's REST auth boundary must reject unauthenticated, unknown, and
-// explicitly closed credentials before proxying protected work to gvmd.
+// explicitly deleted credentials before proxying protected work to gvmd.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires a compose-backed gvmd environment"]
-async fn rest_auth_contract_rejects_invalid_and_closed_sessions() -> Result<()> {
+async fn rest_auth_contract_rejects_invalid_and_invalidated_sessions() -> Result<()> {
     let harness = ready_harness().await?;
 
     assert_status(

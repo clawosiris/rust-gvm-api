@@ -48,8 +48,6 @@ pub(crate) enum SessionState {
     Idle,
     #[serde(rename = "expired")]
     Expired,
-    #[serde(rename = "closed")]
-    Closed,
 }
 
 fn parse_session_state(s: &str) -> SessionState {
