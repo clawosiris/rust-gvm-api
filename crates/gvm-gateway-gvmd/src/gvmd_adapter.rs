@@ -355,6 +355,10 @@ fn needs_client_side_pagination_fallback<T>(items: &[T], total: u32, page: u32) 
     page > 1 && items.is_empty() && total == 0
 }
 
+fn backend_ignored_pagination<T>(items: &[T], per_page: u32) -> bool {
+    items.len() > per_page as usize
+}
+
 fn paginated_filter(
     prefix: Option<&str>,
     filter_string: Option<&str>,
@@ -3053,7 +3057,7 @@ impl SupportingResourcePort for GvmdAdapter {
                     query.page,
                     query.per_page,
                 ),
-                filter_id,
+                filter_id: filter_id.clone(),
                 details: Some(true),
             }))
             .await
@@ -3070,6 +3074,40 @@ impl SupportingResourcePort for GvmdAdapter {
                 .then_with(|| left.name.cmp(&right.name))
         });
         let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        if needs_client_side_pagination_fallback(&items, total, query.page)
+            || backend_ignored_pagination(&items, query.per_page)
+        {
+            let fallback = self
+                .call_with_session(
+                    session_token,
+                    "nvts.list",
+                    get_nvts(GetNvtsOpts {
+                        filter_string: query.filter_string.clone(),
+                        filter_id,
+                        details: Some(true),
+                    }),
+                )
+                .await?;
+            let parsed = GetNvtsResponse::from_response(&fallback).map_err(map_parse_error)?;
+            let mut items = parsed
+                .items
+                .into_iter()
+                .map(nvt_from_gmp)
+                .collect::<Vec<_>>();
+            items.sort_by(|left, right| {
+                left.oid
+                    .cmp(&right.oid)
+                    .then_with(|| left.name.cmp(&right.name))
+            });
+            let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+            return Ok(NvtPage {
+                data: paged_slice(items, query.page, query.per_page),
+                pagination: paged_pagination(total, query.page, query.per_page),
+            });
+        }
+
         Ok(NvtPage {
             data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
@@ -3948,6 +3986,7 @@ mod tests {
             let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
             assert!(xml.contains("<get_assets"));
             assert!(xml.contains("asset_type=\"host\""));
+            assert!(xml.contains("type=\"host\""));
             assert!(xml.contains("filter=\"name~host first=11 rows=10\""));
 
             server.shutdown().await;
