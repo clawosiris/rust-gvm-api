@@ -16,6 +16,7 @@ Environment:
   GVM_GATEWAY_E2E_READY_TIMEOUT_SECS   Default: 1200
   GVM_GATEWAY_E2E_RESOURCE_TIMEOUT_SECS Default: 1200
   GVM_GATEWAY_E2E_POLL_INTERVAL_SECS   Default: 10
+  RUST_TEST_THREADS                    Default: 1
 
 Options:
   --wait-only  Stop after the REST readiness/resource checks.
@@ -309,4 +310,8 @@ if [[ "${WAIT_ONLY}" == "1" ]]; then
   exit 0
 fi
 
+# The compose-backed E2E lane shares one mutable gvmd environment. Run test
+# cases serially by default so lifecycle tests do not interrupt each other's
+# backend sessions; callers may still set RUST_TEST_THREADS explicitly.
+export RUST_TEST_THREADS="${RUST_TEST_THREADS:-1}"
 exec cargo test -p gvm-gateway-e2e --tests -- --include-ignored --nocapture "$@"

@@ -1619,6 +1619,8 @@ impl TargetPort for GvmdAdapter {
             .collect::<Vec<_>>();
         let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
+        // Compatibility for backends/mocks that accept pagination terms but do
+        // not report totals for later pages; preserve the REST page contract.
         if needs_client_side_pagination_fallback(&items, total, query.page) {
             let fallback = self
                 .call_with_session(
@@ -3063,6 +3065,7 @@ mod tests {
 
     #[test]
     fn paginated_filter_appends_backend_paging_terms() {
+        // GMP filter paging is one-based: page 3 with 25 rows starts at item 51.
         assert_eq!(
             paginated_filter(Some("report_id=abc"), Some("severity>5"), 3, 25),
             Some("report_id=abc severity>5 first=51 rows=25".to_string())
@@ -3133,7 +3136,6 @@ mod tests {
 
     mod integration {
         use super::*;
-        use gvm_gateway_domain::{CreateTargetInput, ModifyTargetInput, TargetQuery};
         use gvm_mock_server::{
             response_gen::{REPORT_EXPORT_BINARY_FORMAT_ID, REPORT_EXPORT_XML_FORMAT_ID},
             GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode,
@@ -3156,6 +3158,63 @@ mod tests {
                 .unwrap();
 
             (adapter, server, token.to_string())
+        }
+
+        fn assert_paginated_commands(
+            server: &MockGmpServer,
+            command_name: &str,
+            expected_filter: &str,
+            expected_count: usize,
+        ) {
+            let matching_commands = server
+                .command_history()
+                .into_iter()
+                .filter(|record| record.command_name() == command_name)
+                .collect::<Vec<_>>();
+
+            assert_eq!(
+                matching_commands.len(),
+                expected_count,
+                "{command_name} should be called {expected_count} time(s) for this paginated list request"
+            );
+            let first_xml = String::from_utf8(matching_commands[0].raw_xml().to_vec())
+                .expect("xml command should be UTF-8");
+            assert!(
+                first_xml.contains(expected_filter),
+                "{command_name} should include backend pagination filter {expected_filter:?}; xml={first_xml}"
+            );
+        }
+
+        macro_rules! assert_backend_pagination {
+            ($adapter:expr, $server:expr, $call:expr, $command_name:literal, $expected_filter:literal) => {{
+                $server.clear_history();
+
+                let result = $call.await;
+                assert!(
+                    result.is_ok(),
+                    "{} should accept the paginated query: {:?}",
+                    $command_name,
+                    result
+                );
+                assert_paginated_commands(&$server, $command_name, $expected_filter, 1);
+            }};
+            ($adapter:expr, $server:expr, $call:expr, $command_name:literal, $expected_filter:literal, $expected_count:literal) => {{
+                $server.clear_history();
+
+                let result = $call.await;
+                assert!(
+                    result.is_ok(),
+                    "{} should accept the paginated query: {:?}",
+                    $command_name,
+                    result
+                );
+                assert_paginated_commands(
+                    &$server,
+                    $command_name,
+                    $expected_filter,
+                    $expected_count,
+                );
+            }};
         }
 
         #[tokio::test]
@@ -3374,31 +3433,329 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn gvmd_adapter_list_targets_emits_backend_pagination_filter() {
+        async fn gvmd_adapter_direct_lists_emit_backend_pagination_filter() {
             let (adapter, server, token) = create_mock_adapter().await;
-            server.clear_history();
 
-            let result = adapter
-                .list_targets(
+            // Regression coverage for issue #210: directly backed gvmd
+            // collections must push REST pagination through GMP filters instead
+            // of fetching full collections and slicing locally.
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_alerts(
+                    &token,
+                    &AlertQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_alerts",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_schedules(
+                    &token,
+                    &ScheduleQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_schedules",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_credentials(
+                    &token,
+                    &CredentialQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_credentials",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_port_lists(
+                    &token,
+                    &PortListQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_port_lists",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_users(
+                    &token,
+                    &IdentityQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_users",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_groups(
+                    &token,
+                    &IdentityQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_groups",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_roles(
+                    &token,
+                    &IdentityQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_roles",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_permissions(
+                    &token,
+                    &IdentityQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_permissions",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_targets(
                     &token,
                     &TargetQuery {
                         filter_string: Some("name~Target".to_string()),
                         filter_id: None,
                         page: 2,
                         per_page: 10,
-                    },
-                )
-                .await;
-
-            assert!(result.is_ok());
-            let history = server.command_history();
-            let command = history
-                .iter()
-                .find(|record| record.command_name() == "get_targets")
-                .expect("get_targets command should be recorded");
-            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
-            assert!(xml.contains("<get_targets"));
-            assert!(xml.contains("filter=\"name~Target first=11 rows=10\""));
+                    }
+                ),
+                "get_targets",
+                "filter=\"name~Target first=11 rows=10\"",
+                2
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_tasks(
+                    &token,
+                    &TaskQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_tasks",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_reports(
+                    &token,
+                    &ReportQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_reports",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_results(
+                    &token,
+                    &ResultQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_results",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.get_report_results(
+                    &token,
+                    "550e8400-e29b-41d4-a716-446655440000",
+                    &ResultQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_results",
+                "filter=\"report_id=550e8400-e29b-41d4-a716-446655440000 name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_scan_configs(
+                    &token,
+                    &ScanConfigQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_configs",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_scanners(
+                    &token,
+                    &ScannerQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_scanners",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_report_formats(
+                    &token,
+                    &SupportingResourceQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_report_formats",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_filters(
+                    &token,
+                    &SupportingResourceQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_filters",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_tags(
+                    &token,
+                    &SupportingResourceQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_tags",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_tickets(
+                    &token,
+                    &SupportingResourceQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_tickets",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_notes(
+                    &token,
+                    &SupportingResourceQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_notes",
+                "filter=\"name~Target first=11 rows=10\""
+            );
+            assert_backend_pagination!(
+                adapter,
+                server,
+                adapter.list_overrides(
+                    &token,
+                    &SupportingResourceQuery {
+                        filter_string: Some("name~Target".to_string()),
+                        filter_id: None,
+                        page: 2,
+                        per_page: 10,
+                    }
+                ),
+                "get_overrides",
+                "filter=\"name~Target first=11 rows=10\""
+            );
 
             server.shutdown().await;
         }
