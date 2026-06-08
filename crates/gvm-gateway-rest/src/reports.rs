@@ -28,6 +28,7 @@ use crate::{
         ok_json, problem_response, GetReportQueryDoc, ReportExportQueryDoc, ReportListQueryDoc,
         ReportResultsQueryDoc, ResourceIdPathDoc,
     },
+    query::{parse_collection_query, parse_required_uuid_query_param, query_flag_is_true},
     results::{ResultListResponse, ResultResponse},
     router::bearer_token,
     targets::validate_uuid,
@@ -195,49 +196,13 @@ pub struct ReportListQuery {
 impl ReportListQuery {
     /// Parse query parameters from a raw query string.
     pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
-        let mut filter_string = None;
-        let mut filter_id = None;
-        let mut page = None;
-        let mut per_page = None;
-
-        for pair in query.split('&').filter(|entry| !entry.is_empty()) {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next().unwrap_or_default();
-            let value = parts.next().unwrap_or_default();
-            match key {
-                "filter" => filter_string = Some(value.to_string()),
-                "filterId" => {
-                    validate_uuid("filterId", value)?;
-                    filter_id = Some(value.to_string());
-                }
-                "page" => {
-                    page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("page must be a positive integer".to_string())
-                    })?);
-                }
-                "perPage" | "per_page" => {
-                    per_page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("perPage must be a positive integer".to_string())
-                    })?);
-                }
-                _ => {}
-            }
-        }
-
-        let page = page.unwrap_or(1);
-        if page == 0 {
-            return Err(GatewayError::InvalidInput(
-                "page must be greater than or equal to 1".to_string(),
-            ));
-        }
-
-        let per_page = per_page.unwrap_or(25).clamp(1, 1000);
+        let parsed = parse_collection_query(query)?;
 
         Ok(Self {
-            filter_string,
-            filter_id,
-            page,
-            per_page,
+            filter_string: parsed.filter_string,
+            filter_id: parsed.filter_id,
+            page: parsed.page,
+            per_page: parsed.per_page,
         })
     }
 }
@@ -252,18 +217,9 @@ pub struct GetReportQuery {
 impl GetReportQuery {
     /// Parse query parameters from a raw query string.
     pub fn try_from_query_string(query: &str) -> Self {
-        let mut ignore_pagination = false;
-
-        for pair in query.split('&').filter(|entry| !entry.is_empty()) {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next().unwrap_or_default();
-            let value = parts.next().unwrap_or_default();
-            if key == "ignorePagination" {
-                ignore_pagination = value == "true";
-            }
+        Self {
+            ignore_pagination: query_flag_is_true(query, "ignorePagination"),
         }
-
-        Self { ignore_pagination }
     }
 }
 
@@ -281,43 +237,12 @@ pub struct ReportResultsQuery {
 impl ReportResultsQuery {
     /// Parse query parameters from a raw query string.
     pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
-        let mut filter_string = None;
-        let mut page = None;
-        let mut per_page = None;
-
-        for pair in query.split('&').filter(|entry| !entry.is_empty()) {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next().unwrap_or_default();
-            let value = parts.next().unwrap_or_default();
-            match key {
-                "filter" => filter_string = Some(value.to_string()),
-                "page" => {
-                    page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("page must be a positive integer".to_string())
-                    })?);
-                }
-                "perPage" | "per_page" => {
-                    per_page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("perPage must be a positive integer".to_string())
-                    })?);
-                }
-                _ => {}
-            }
-        }
-
-        let page = page.unwrap_or(1);
-        if page == 0 {
-            return Err(GatewayError::InvalidInput(
-                "page must be greater than or equal to 1".to_string(),
-            ));
-        }
-
-        let per_page = per_page.unwrap_or(25).clamp(1, 1000);
+        let parsed = parse_collection_query(query)?;
 
         Ok(Self {
-            filter_string,
-            page,
-            per_page,
+            filter_string: parsed.filter_string,
+            page: parsed.page,
+            per_page: parsed.per_page,
         })
     }
 }
@@ -332,21 +257,9 @@ pub struct ReportExportQuery {
 impl ReportExportQuery {
     /// Parse query parameters from a raw query string.
     pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
-        for pair in query.split('&').filter(|entry| !entry.is_empty()) {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next().unwrap_or_default();
-            let value = parts.next().unwrap_or_default();
-            if key == "reportFormatId" {
-                validate_uuid("reportFormatId", value)?;
-                return Ok(Self {
-                    report_format_id: value.to_string(),
-                });
-            }
-        }
-
-        Err(GatewayError::InvalidInput(
-            "reportFormatId is required".to_string(),
-        ))
+        Ok(Self {
+            report_format_id: parse_required_uuid_query_param(query, "reportFormatId")?,
+        })
     }
 }
 
@@ -835,4 +748,35 @@ pub(crate) fn get_report_closed_cves_docs(op: TransformOperation<'_>) -> Transfo
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GetReportQuery, ReportExportQuery, ReportResultsQuery};
+
+    #[test]
+    fn report_queries_decode_boolean_uuid_and_filter_values() {
+        let report = GetReportQuery::try_from_query_string("ignorePagination=%74rue");
+        assert!(report.ignore_pagination);
+
+        let export = ReportExportQuery::try_from_query_string(
+            "reportFormatId=123e4567%2De89b%2D12d3%2Da456%2D426614174000",
+        )
+        .expect("encoded report format id should parse");
+        assert_eq!(
+            export.report_format_id,
+            "123e4567-e89b-12d3-a456-426614174000"
+        );
+
+        let results = ReportResultsQuery::try_from_query_string(
+            "filter=severity%3E5+and+location~%22host%26port%3D443%22&page=2&perPage=10",
+        )
+        .expect("encoded filter should parse");
+        assert_eq!(
+            results.filter_string.as_deref(),
+            Some("severity>5 and location~\"host&port=443\"")
+        );
+        assert_eq!(results.page, 2);
+        assert_eq!(results.per_page, 10);
+    }
 }

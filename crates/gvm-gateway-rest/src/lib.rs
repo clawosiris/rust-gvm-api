@@ -15,6 +15,7 @@ pub mod feeds;
 pub mod identity;
 pub mod openapi;
 pub mod port_lists;
+pub(crate) mod query;
 pub(crate) mod rate_limit;
 pub mod reports;
 pub mod results;

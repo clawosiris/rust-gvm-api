@@ -27,6 +27,7 @@ use crate::{
         ok_json, problem_response, CreateTargetDoc, ModifyTargetDoc, ResourceIdPathDoc,
         TargetListQueryDoc,
     },
+    query::parse_collection_query,
     router::bearer_token,
 };
 
@@ -159,49 +160,13 @@ pub struct TargetListQuery {
 impl TargetListQuery {
     /// Parse query parameters from a raw query string.
     pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
-        let mut filter_string = None;
-        let mut filter_id = None;
-        let mut page = None;
-        let mut per_page = None;
-
-        for pair in query.split('&').filter(|entry| !entry.is_empty()) {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next().unwrap_or_default();
-            let value = parts.next().unwrap_or_default();
-            match key {
-                "filter" => filter_string = Some(value.to_string()),
-                "filterId" => {
-                    validate_uuid("filterId", value)?;
-                    filter_id = Some(value.to_string());
-                }
-                "page" => {
-                    page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("page must be a positive integer".to_string())
-                    })?);
-                }
-                "perPage" | "per_page" => {
-                    per_page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("perPage must be a positive integer".to_string())
-                    })?);
-                }
-                _ => {}
-            }
-        }
-
-        let page = page.unwrap_or(1);
-        if page == 0 {
-            return Err(GatewayError::InvalidInput(
-                "page must be greater than or equal to 1".to_string(),
-            ));
-        }
-
-        let per_page = per_page.unwrap_or(25).clamp(1, 1000);
+        let parsed = parse_collection_query(query)?;
 
         Ok(Self {
-            filter_string,
-            filter_id,
-            page,
-            per_page,
+            filter_string: parsed.filter_string,
+            filter_id: parsed.filter_id,
+            page: parsed.page,
+            per_page: parsed.per_page,
         })
     }
 }
@@ -575,4 +540,28 @@ pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperati
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TargetListQuery;
+
+    #[test]
+    fn target_list_query_decodes_filter_and_encoded_filter_id() {
+        let parsed = TargetListQuery::try_from_query_string(
+            "filter=severity%3E5+and+name~%22foo%20bar%22&filterId=123e4567%2De89b%2D12d3%2Da456%2D426614174000&per_page=50",
+        )
+        .expect("target query should parse");
+
+        assert_eq!(
+            parsed.filter_string.as_deref(),
+            Some("severity>5 and name~\"foo bar\"")
+        );
+        assert_eq!(
+            parsed.filter_id.as_deref(),
+            Some("123e4567-e89b-12d3-a456-426614174000")
+        );
+        assert_eq!(parsed.page, 1);
+        assert_eq!(parsed.per_page, 50);
+    }
 }

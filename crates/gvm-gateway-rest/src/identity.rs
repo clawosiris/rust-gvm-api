@@ -29,6 +29,7 @@ use crate::{
     },
     error::RestError,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
+    query::{parse_collection_query, parse_filter_only_query},
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -420,47 +421,13 @@ struct IdentityListQuery {
 
 impl IdentityListQuery {
     fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
-        let mut filter_string = None;
-        let mut filter_id = None;
-        let mut page = None;
-        let mut per_page = None;
-
-        for pair in query.split('&').filter(|entry| !entry.is_empty()) {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next().unwrap_or_default();
-            let value = parts.next().unwrap_or_default();
-            match key {
-                "filter" => filter_string = Some(value.to_string()),
-                "filterId" => {
-                    validate_uuid("filterId", value)?;
-                    filter_id = Some(value.to_string());
-                }
-                "page" => {
-                    page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("page must be a positive integer".to_string())
-                    })?);
-                }
-                "perPage" | "per_page" => {
-                    per_page = Some(value.parse::<u32>().map_err(|_| {
-                        GatewayError::InvalidInput("perPage must be a positive integer".to_string())
-                    })?);
-                }
-                _ => {}
-            }
-        }
-
-        let page = page.unwrap_or(1);
-        if page == 0 {
-            return Err(GatewayError::InvalidInput(
-                "page must be greater than or equal to 1".to_string(),
-            ));
-        }
+        let parsed = parse_collection_query(query)?;
 
         Ok(Self {
-            filter_string,
-            filter_id,
-            page,
-            per_page: per_page.unwrap_or(25).clamp(1, 1000),
+            filter_string: parsed.filter_string,
+            filter_id: parsed.filter_id,
+            page: parsed.page,
+            per_page: parsed.per_page,
         })
     }
 
@@ -482,26 +449,11 @@ struct UserSettingsListQuery {
 
 impl UserSettingsListQuery {
     fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
-        let mut filter_string = None;
-        let mut filter_id = None;
-
-        for pair in query.split('&').filter(|entry| !entry.is_empty()) {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next().unwrap_or_default();
-            let value = parts.next().unwrap_or_default();
-            match key {
-                "filter" => filter_string = Some(value.to_string()),
-                "filterId" => {
-                    validate_uuid("filterId", value)?;
-                    filter_id = Some(value.to_string());
-                }
-                _ => {}
-            }
-        }
+        let parsed = parse_filter_only_query(query)?;
 
         Ok(Self {
-            filter_string,
-            filter_id,
+            filter_string: parsed.filter_string,
+            filter_id: parsed.filter_id,
         })
     }
 
@@ -1778,4 +1730,37 @@ pub(crate) fn update_user_setting_docs(op: TransformOperation<'_>) -> TransformO
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IdentityListQuery, UserSettingsListQuery};
+
+    #[test]
+    fn identity_queries_decode_filters_and_filter_ids() {
+        let identity = IdentityListQuery::try_from_query_string(
+            "filter=name~%22ops+team%22&filterId=123e4567%2De89b%2D12d3%2Da456%2D426614174000&page=3&perPage=5",
+        )
+        .expect("identity query should parse");
+        assert_eq!(identity.filter_string.as_deref(), Some("name~\"ops team\""));
+        assert_eq!(
+            identity.filter_id.as_deref(),
+            Some("123e4567-e89b-12d3-a456-426614174000")
+        );
+        assert_eq!(identity.page, 3);
+        assert_eq!(identity.per_page, 5);
+
+        let user_settings = UserSettingsListQuery::try_from_query_string(
+            "filter=name~%22foo%20bar%22&filterId=123e4567%2De89b%2D12d3%2Da456%2D426614174000",
+        )
+        .expect("user settings query should parse");
+        assert_eq!(
+            user_settings.filter_string.as_deref(),
+            Some("name~\"foo bar\"")
+        );
+        assert_eq!(
+            user_settings.filter_id.as_deref(),
+            Some("123e4567-e89b-12d3-a456-426614174000")
+        );
+    }
 }
