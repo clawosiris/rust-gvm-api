@@ -13,6 +13,7 @@ pub(crate) mod dto;
 pub mod error;
 pub mod feeds;
 pub mod identity;
+pub(crate) mod open_enum;
 pub mod openapi;
 pub mod port_lists;
 pub(crate) mod query;

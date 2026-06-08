@@ -19,6 +19,7 @@ use uuid::Uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse},
     error::RestError,
+    open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
     query::parse_collection_query,
     router::bearer_token,
@@ -29,19 +30,13 @@ use crate::{
 // Response DTOs
 // ============================================================================
 
-/// Scanner type.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-pub(crate) enum ScannerType {
-    #[serde(rename = "OpenVAS")]
-    OpenVas,
-    #[serde(rename = "CVE")]
-    Cve,
-    #[serde(rename = "OSP")]
-    Osp,
-}
-
-fn parse_scanner_type(s: &str) -> Option<ScannerType> {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
+open_string_enum! {
+    /// Scanner type.
+    pub(crate) enum ScannerType {
+        OpenVas => "OpenVAS",
+        Cve => "CVE",
+        Osp => "OSP",
+    }
 }
 
 /// JSON body returned for a single scanner.
@@ -68,7 +63,7 @@ impl From<gvm_gateway_domain::Scanner> for ScannerResponse {
             comment: s.comment,
             host: s.host,
             port: s.port,
-            scanner_type: s.scanner_type.as_deref().and_then(parse_scanner_type),
+            scanner_type: s.scanner_type.as_deref().map(ScannerType::parse),
         }
     }
 }
@@ -217,4 +212,27 @@ pub(crate) fn get_scanner_docs(op: TransformOperation<'_>) -> TransformOperation
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::ScannerResponse;
+    use gvm_gateway_domain::Scanner;
+
+    #[test]
+    fn scanner_response_preserves_unknown_type() {
+        let response = ScannerResponse::from(Scanner {
+            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+            name: "Custom".to_string(),
+            comment: None,
+            host: None,
+            port: None,
+            scanner_type: Some("Sensor".to_string()),
+        });
+
+        let value = serde_json::to_value(response).expect("scanner response should serialize");
+        assert_eq!(value["type"], json!("Sensor"));
+    }
 }
