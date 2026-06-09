@@ -122,12 +122,11 @@ use crate::conversions::{
     nvt_from_gmp, override_from_gmp, parse_alert_condition, parse_alert_event, parse_alert_method,
     parse_alive_test, parse_credential_type, parse_entity_id, parse_hosts_ordering,
     parse_permission_subject_type, parse_snmp_auth_algorithm, parse_snmp_privacy_algorithm,
-    parse_user_auth_type, permission_from_gmp, port_list_from_gmp, reject_unsupported_credentials,
-    report_format_from_gmp, report_from_gmp, result_from_gmp, result_from_report_closed_cve,
-    result_from_report_error, result_from_report_vulnerability, role_from_gmp,
-    scan_config_from_gmp, scanner_from_gmp, schedule_from_gmp, tag_from_gmp, target_from_gmp,
-    task_from_gmp, ticket_from_gmp, tls_certificate_from_report_tls_certificate, user_from_gmp,
-    user_setting_from_gmp,
+    parse_user_auth_type, permission_from_gmp, port_list_from_gmp, report_format_from_gmp,
+    report_from_gmp, result_from_gmp, result_from_report_closed_cve, result_from_report_error,
+    result_from_report_vulnerability, role_from_gmp, scan_config_from_gmp, scanner_from_gmp,
+    schedule_from_gmp, tag_from_gmp, target_from_gmp, task_from_gmp, ticket_from_gmp,
+    tls_certificate_from_report_tls_certificate, user_from_gmp, user_setting_from_gmp,
 };
 
 type SharedClient = Arc<AsyncMutex<GmpClient<UnixSocketConnection>>>;
@@ -1669,7 +1668,6 @@ impl TargetPort for GvmdAdapter {
         session_token: &str,
         input: CreateTargetInput,
     ) -> Result<String, GatewayError> {
-        reject_unsupported_credentials(&input)?;
         let response = self
             .call_with_session(
                 session_token,
@@ -1687,6 +1685,26 @@ impl TargetPort for GvmdAdapter {
                             .transpose()?,
                         port_list_id: input
                             .port_list_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
+                        ssh_credential_id: input
+                            .ssh_credential_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
+                        smb_credential_id: input
+                            .smb_credential_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
+                        esxi_credential_id: input
+                            .esxi_credential_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
+                        snmp_credential_id: input
+                            .snmp_credential_id
                             .as_deref()
                             .map(parse_entity_id)
                             .transpose()?,
@@ -1745,6 +1763,10 @@ impl TargetPort for GvmdAdapter {
                             .as_deref()
                             .map(parse_entity_id)
                             .transpose()?,
+                        ssh_credential_id: None,
+                        smb_credential_id: None,
+                        esxi_credential_id: None,
+                        snmp_credential_id: None,
                     },
                 ),
             )

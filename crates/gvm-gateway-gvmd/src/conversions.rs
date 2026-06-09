@@ -9,10 +9,10 @@
 use std::{collections::HashMap, str::FromStr};
 
 use gvm_gateway_domain::{
-    Alert, CreateTargetInput, Credential, Feed, Filter, GatewayError, Group, Host,
-    IdentityResourceMeta, Note, Nvt, NvtFamily, NvtRef, Override, Permission, PortList, Report,
-    ReportFormat, ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
-    SupportingResourceMeta, Tag, Target, Task, Ticket, TlsCertificate, User, UserSetting,
+    Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt,
+    NvtFamily, NvtRef, Override, Permission, PortList, Report, ReportFormat, ResourceRef,
+    ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
+    Target, Task, Ticket, TlsCertificate, User, UserSetting,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -503,21 +503,6 @@ pub(crate) fn nvt_family_from_gmp(nvt_family: gvm_gmp::responses::NvtFamily) -> 
 // Shared Parsing / Validation Helpers
 // ============================================================================
 
-pub(crate) fn reject_unsupported_credentials(
-    input: &CreateTargetInput,
-) -> Result<(), GatewayError> {
-    if input.ssh_credential_id.is_some()
-        || input.smb_credential_id.is_some()
-        || input.esxi_credential_id.is_some()
-        || input.snmp_credential_id.is_some()
-    {
-        return Err(GatewayError::InvalidInput(
-            "credential references are not supported by rust-gvm target commands yet".to_string(),
-        ));
-    }
-    Ok(())
-}
-
 pub(crate) fn parse_entity_id(value: &str) -> Result<EntityId, GatewayError> {
     EntityId::new(value).map_err(|_| GatewayError::InvalidInput(format!("invalid UUID: {value}")))
 }
@@ -737,69 +722,6 @@ mod tests {
     fn parse_alive_test_invalid() {
         let result = parse_alive_test("InvalidTest");
         assert!(matches!(result, Err(GatewayError::InvalidInput(_))));
-    }
-
-    #[test]
-    fn reject_unsupported_credentials_passes_empty() {
-        let input = CreateTargetInput {
-            name: "test".to_string(),
-            comment: None,
-            hosts: vec!["127.0.0.1".to_string()],
-            exclude_hosts: vec![],
-            alive_test: None,
-            port_list_id: None,
-            reverse_lookup_only: None,
-            reverse_lookup_unify: None,
-            ssh_credential_id: None,
-            smb_credential_id: None,
-            esxi_credential_id: None,
-            snmp_credential_id: None,
-        };
-        assert!(reject_unsupported_credentials(&input).is_ok());
-    }
-
-    #[test]
-    fn reject_unsupported_credentials_fails_ssh() {
-        let input = CreateTargetInput {
-            name: "test".to_string(),
-            comment: None,
-            hosts: vec!["127.0.0.1".to_string()],
-            exclude_hosts: vec![],
-            alive_test: None,
-            port_list_id: None,
-            reverse_lookup_only: None,
-            reverse_lookup_unify: None,
-            ssh_credential_id: Some("cred-id".to_string()),
-            smb_credential_id: None,
-            esxi_credential_id: None,
-            snmp_credential_id: None,
-        };
-        assert!(matches!(
-            reject_unsupported_credentials(&input),
-            Err(GatewayError::InvalidInput(_))
-        ));
-    }
-
-    #[test]
-    fn reject_unsupported_credentials_fails_smb() {
-        let input = CreateTargetInput {
-            name: "test".to_string(),
-            comment: None,
-            hosts: vec![],
-            exclude_hosts: vec![],
-            alive_test: None,
-            port_list_id: None,
-            reverse_lookup_only: None,
-            reverse_lookup_unify: None,
-            ssh_credential_id: None,
-            smb_credential_id: Some("cred-id".to_string()),
-            esxi_credential_id: None,
-            snmp_credential_id: None,
-        };
-        assert!(matches!(
-            reject_unsupported_credentials(&input),
-            Err(GatewayError::InvalidInput(_))
-        ));
     }
 
     #[test]

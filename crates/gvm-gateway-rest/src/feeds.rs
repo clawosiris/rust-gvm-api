@@ -30,8 +30,7 @@ pub(crate) struct FeedResponse {
     #[serde(rename = "type")]
     feed_type: String,
     name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    version: Option<String>,
+    version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     #[serde(rename = "currentlySyncing")]

@@ -80,6 +80,43 @@ async fn create_target() {
 }
 
 #[tokio::test]
+async fn create_target_accepts_documented_credential_ids() {
+    let harness = target_harness(|_| {}).await;
+    // Regression coverage for the published CreateTarget credential fields:
+    // the gateway must accept them and delegate command construction to rust-gvm.
+    let ssh_id = "11111111-1111-1111-1111-111111111111";
+    let smb_id = "22222222-2222-2222-2222-222222222222";
+    let esxi_id = "33333333-3333-3333-3333-333333333333";
+    let snmp_id = "44444444-4444-4444-4444-444444444444";
+
+    let response = harness
+        .create_target(serde_json::json!({
+            "name": "Credential Target",
+            "hosts": ["192.168.1.20"],
+            "sshCredentialId": ssh_id,
+            "smbCredentialId": smb_id,
+            "esxiCredentialId": esxi_id,
+            "snmpCredentialId": snmp_id
+        }))
+        .await;
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let create_record = harness
+        .server
+        .command_history()
+        .into_iter()
+        .find(|record| record.command_name() == "create_target")
+        .expect("create target command should be sent");
+    let request_xml = String::from_utf8(create_record.raw_xml().to_vec()).unwrap();
+    assert!(request_xml.contains(&format!(r#"<ssh_credential id="{ssh_id}"/>"#)));
+    assert!(request_xml.contains(&format!(r#"<smb_credential id="{smb_id}"/>"#)));
+    assert!(request_xml.contains(&format!(r#"<esxi_credential id="{esxi_id}"/>"#)));
+    assert!(request_xml.contains(&format!(r#"<snmp_credential id="{snmp_id}"/>"#)));
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
 async fn create_target_missing_name() {
     let harness = target_harness(|_| {}).await;
 

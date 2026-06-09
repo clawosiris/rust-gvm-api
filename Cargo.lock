@@ -590,7 +590,7 @@ dependencies = [
 [[package]]
 name = "gvm-client"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e77856aa3d213f6ebf835d1ab8092a114a0c7e17#e77856aa3d213f6ebf835d1ab8092a114a0c7e17"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=387cb986567bbdedcbef9860167bfbfc75d40922#387cb986567bbdedcbef9860167bfbfc75d40922"
 dependencies = [
  "async-trait",
  "gvm-connection",
@@ -603,7 +603,7 @@ dependencies = [
 [[package]]
 name = "gvm-connection"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e77856aa3d213f6ebf835d1ab8092a114a0c7e17#e77856aa3d213f6ebf835d1ab8092a114a0c7e17"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=387cb986567bbdedcbef9860167bfbfc75d40922#387cb986567bbdedcbef9860167bfbfc75d40922"
 dependencies = [
  "async-trait",
  "gvm-protocol",
@@ -734,7 +734,7 @@ dependencies = [
 [[package]]
 name = "gvm-gmp"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e77856aa3d213f6ebf835d1ab8092a114a0c7e17#e77856aa3d213f6ebf835d1ab8092a114a0c7e17"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=387cb986567bbdedcbef9860167bfbfc75d40922#387cb986567bbdedcbef9860167bfbfc75d40922"
 dependencies = [
  "base64",
  "gvm-protocol",
@@ -746,7 +746,7 @@ dependencies = [
 [[package]]
 name = "gvm-mock-server"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e77856aa3d213f6ebf835d1ab8092a114a0c7e17#e77856aa3d213f6ebf835d1ab8092a114a0c7e17"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=387cb986567bbdedcbef9860167bfbfc75d40922#387cb986567bbdedcbef9860167bfbfc75d40922"
 dependencies = [
  "clap",
  "getrandom 0.2.17",
@@ -762,7 +762,7 @@ dependencies = [
 [[package]]
 name = "gvm-protocol"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e77856aa3d213f6ebf835d1ab8092a114a0c7e17#e77856aa3d213f6ebf835d1ab8092a114a0c7e17"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=387cb986567bbdedcbef9860167bfbfc75d40922#387cb986567bbdedcbef9860167bfbfc75d40922"
 dependencies = [
  "quick-xml",
  "thiserror",
@@ -1864,7 +1864,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2155,7 +2155,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2821,7 +2821,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
