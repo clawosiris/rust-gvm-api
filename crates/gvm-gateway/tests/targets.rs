@@ -205,6 +205,49 @@ async fn update_target() {
 }
 
 #[tokio::test]
+async fn update_target_forwards_credential_ids() {
+    let harness = target_harness(|_| {}).await;
+
+    let create_response = harness
+        .create_target(serde_json::json!({
+            "name": "Credential Target",
+            "hosts": ["127.0.0.1"]
+        }))
+        .await;
+    let id = create_response.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    harness.server.clear_history();
+
+    let response = harness
+        .update_target(
+            &id,
+            serde_json::json!({
+                "sshCredentialId": "550e8400-e29b-41d4-a716-446655440001",
+                "smbCredentialId": "550e8400-e29b-41d4-a716-446655440002",
+                "esxiCredentialId": "550e8400-e29b-41d4-a716-446655440003",
+                "snmpCredentialId": "550e8400-e29b-41d4-a716-446655440004"
+            }),
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let history = harness.server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "modify_target")
+        .expect("modify_target command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<ssh_credential id=\"550e8400-e29b-41d4-a716-446655440001\"/>"));
+    assert!(xml.contains("<smb_credential id=\"550e8400-e29b-41d4-a716-446655440002\"/>"));
+    assert!(xml.contains("<esxi_credential id=\"550e8400-e29b-41d4-a716-446655440003\"/>"));
+    assert!(xml.contains("<snmp_credential id=\"550e8400-e29b-41d4-a716-446655440004\"/>"));
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
 async fn delete_target() {
     let harness = target_harness(|_| {}).await;
 

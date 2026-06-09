@@ -271,7 +271,7 @@ pub struct CreateTaskRequest {
     /// Optional schedule periods.
     #[serde(rename = "schedulePeriods")]
     pub schedule_periods: Option<u32>,
-    /// Optional key-value scan preferences.
+    /// Optional key-value scan preferences. Omitted or empty objects leave preferences unchanged.
     #[serde(default)]
     pub preferences: HashMap<String, String>,
 }
@@ -348,6 +348,9 @@ pub struct ModifyTaskRequest {
     /// Optional schedule periods.
     #[serde(rename = "schedulePeriods")]
     pub schedule_periods: Option<u32>,
+    /// Optional key-value scan preferences.
+    #[serde(default)]
+    pub preferences: HashMap<String, String>,
 }
 
 impl ModifyTaskRequest {
@@ -374,6 +377,7 @@ impl ModifyTaskRequest {
             hosts_ordering: self.hosts_ordering,
             observers: self.observers,
             schedule_periods: self.schedule_periods,
+            preferences: self.preferences.into_iter().collect(),
         })
     }
 }

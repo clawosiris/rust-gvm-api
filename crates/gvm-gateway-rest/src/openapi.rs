@@ -1016,6 +1016,22 @@ pub(crate) struct ModifyTargetDoc {
     alive_test: Option<AliveTestDoc>,
     #[serde(rename = "portListId")]
     port_list_id: Option<Uuid>,
+    /// SSH credential binding. Omitted or null leaves the binding unchanged;
+    /// clearing credential bindings is not supported by this request shape.
+    #[serde(rename = "sshCredentialId")]
+    ssh_credential_id: Option<Uuid>,
+    /// SMB credential binding. Omitted or null leaves the binding unchanged;
+    /// clearing credential bindings is not supported by this request shape.
+    #[serde(rename = "smbCredentialId")]
+    smb_credential_id: Option<Uuid>,
+    /// ESXi credential binding. Omitted or null leaves the binding unchanged;
+    /// clearing credential bindings is not supported by this request shape.
+    #[serde(rename = "esxiCredentialId")]
+    esxi_credential_id: Option<Uuid>,
+    /// SNMP credential binding. Omitted or null leaves the binding unchanged;
+    /// clearing credential bindings is not supported by this request shape.
+    #[serde(rename = "snmpCredentialId")]
+    snmp_credential_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -1098,6 +1114,9 @@ pub(crate) struct ModifyTaskDoc {
     observers: Option<Vec<String>>,
     #[serde(rename = "schedulePeriods")]
     schedule_periods: Option<u32>,
+    /// Key-value scan preferences. Omitted or empty objects leave preferences
+    /// unchanged; clearing preferences is not supported by this request shape.
+    preferences: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -1458,6 +1477,20 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert!(create_target_required.contains("name"));
         assert!(create_target_required.contains("hosts"));
+
+        let modify_target_props = &generated["components"]["schemas"]["ModifyTarget"]["properties"];
+        assert!(modify_target_props.get("sshCredentialId").is_some());
+        assert!(modify_target_props.get("smbCredentialId").is_some());
+        assert!(modify_target_props.get("esxiCredentialId").is_some());
+        assert!(modify_target_props.get("snmpCredentialId").is_some());
+
+        let modify_task_props = &generated["components"]["schemas"]["ModifyTask"]["properties"];
+        assert!(modify_task_props.get("preferences").is_some());
+        let preferences_description = modify_task_props["preferences"]["description"]
+            .as_str()
+            .expect("ModifyTask.preferences should document update semantics");
+        assert!(preferences_description.contains("Omitted or empty objects"));
+        assert!(preferences_description.contains("clearing preferences is not supported"));
     }
 
     #[test]

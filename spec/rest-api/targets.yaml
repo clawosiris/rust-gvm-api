@@ -217,6 +217,22 @@ components:
         portListId:
           type: string
           format: uuid
+        sshCredentialId:
+          type: string
+          format: uuid
+          description: SSH credential binding. Omitted or null leaves the binding unchanged; clearing credential bindings is not supported by this request shape.
+        smbCredentialId:
+          type: string
+          format: uuid
+          description: SMB credential binding. Omitted or null leaves the binding unchanged; clearing credential bindings is not supported by this request shape.
+        esxiCredentialId:
+          type: string
+          format: uuid
+          description: ESXi credential binding. Omitted or null leaves the binding unchanged; clearing credential bindings is not supported by this request shape.
+        snmpCredentialId:
+          type: string
+          format: uuid
+          description: SNMP credential binding. Omitted or null leaves the binding unchanged; clearing credential bindings is not supported by this request shape.
 
     TargetList:
       type: object

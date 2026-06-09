@@ -160,6 +160,8 @@ pub struct ModifyTaskInput {
     pub observers: Vec<String>,
     /// Optional schedule periods.
     pub schedule_periods: Option<u32>,
+    /// Optional key-value scan preferences.
+    pub preferences: Vec<(String, String)>,
 }
 
 /// Result from a start or resume task action containing the report identifier.

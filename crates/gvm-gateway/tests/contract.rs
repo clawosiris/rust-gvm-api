@@ -1,15 +1,26 @@
 mod common;
 
-use std::collections::BTreeSet;
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+};
 
+use async_trait::async_trait;
 use common::spawn_server;
+use gvm_gateway_app::GatewayService;
+use gvm_gateway_domain::{
+    CreateTaskInput, GatewayError, ModifyTaskInput, Pagination, SessionManager, Task, TaskAction,
+    TaskPage, TaskPort, TaskQuery,
+};
 use gvm_gateway_gvmd::StaticGvmdAdapter;
-use gvm_gateway_rest::targets::{
-    build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery,
+use gvm_gateway_rest::{
+    router::build_router,
+    targets::{build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery},
 };
 use http::StatusCode;
 use reqwest::Client;
 use serde_json::Value;
+use tokio::net::TcpListener;
 
 #[tokio::test]
 async fn generated_openapi_endpoint_exposes_implemented_contract() {
@@ -474,6 +485,164 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
 }
 
 #[tokio::test]
+async fn update_task_preserves_preferences_through_handler() {
+    let captured = Arc::new(Mutex::new(None));
+    let task_port = Arc::new(CapturingTaskPort {
+        captured: Arc::clone(&captured),
+    });
+    let (addr, token, handle) = spawn_task_server(task_port).await;
+
+    // Regression coverage for issue #228: task preferences must survive the
+    // full REST route path, not just direct request validation or gvmd emission.
+    let response = Client::new()
+        .put(format!(
+            "http://{addr}/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000"
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "preferences": {
+                "scanner.max_hosts": "64"
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let input = captured
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("modify_task input should be captured");
+    assert_eq!(
+        input.preferences,
+        vec![("scanner.max_hosts".to_string(), "64".to_string())]
+    );
+
+    handle.abort();
+}
+
+async fn spawn_task_server(
+    task_port: Arc<dyn TaskPort>,
+) -> (std::net::SocketAddr, String, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let sessions = Arc::new(SessionManager::default());
+    let token = sessions.create("admin").unwrap().token;
+    let adapter = Arc::new(StaticGvmdAdapter::ready("22.7"));
+    let service = GatewayService::new(
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        task_port,
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter,
+        sessions,
+    );
+    let app = build_router(service);
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (addr, token, handle)
+}
+
+struct CapturingTaskPort {
+    captured: Arc<Mutex<Option<ModifyTaskInput>>>,
+}
+
+#[async_trait]
+impl TaskPort for CapturingTaskPort {
+    async fn list_tasks(&self, _: &str, query: &TaskQuery) -> Result<TaskPage, GatewayError> {
+        Ok(TaskPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_task(&self, _: &str, _: CreateTaskInput) -> Result<String, GatewayError> {
+        Err(GatewayError::Internal(
+            "create_task is not used by this test port".to_string(),
+        ))
+    }
+
+    async fn get_task(&self, _: &str, id: &str) -> Result<Task, GatewayError> {
+        Ok(task_response(id, "Captured Task"))
+    }
+
+    async fn modify_task(
+        &self,
+        _: &str,
+        id: &str,
+        input: ModifyTaskInput,
+    ) -> Result<Task, GatewayError> {
+        *self.captured.lock().unwrap() = Some(input);
+        Ok(task_response(id, "Captured Task"))
+    }
+
+    async fn delete_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::Internal(
+            "delete_task is not used by this test port".to_string(),
+        ))
+    }
+
+    async fn start_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+        Err(GatewayError::Internal(
+            "start_task is not used by this test port".to_string(),
+        ))
+    }
+
+    async fn stop_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::Internal(
+            "stop_task is not used by this test port".to_string(),
+        ))
+    }
+
+    async fn resume_task(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+        Err(GatewayError::Internal(
+            "resume_task is not used by this test port".to_string(),
+        ))
+    }
+}
+
+fn task_response(id: &str, name: &str) -> Task {
+    Task {
+        id: id.to_string(),
+        name: name.to_string(),
+        comment: None,
+        status: "New".to_string(),
+        target: None,
+        scan_config: None,
+        scanner: None,
+        schedule: None,
+        alerts: vec![],
+        alterable: None,
+        hosts_ordering: None,
+        observers: vec![],
+        schedule_periods: None,
+        last_report: None,
+        current_report: None,
+        result_count: None,
+        in_use: false,
+        writable: true,
+    }
+}
+
+#[tokio::test]
 async fn trace_context_headers_propagated_without_baggage_echo() {
     let adapter = StaticGvmdAdapter::ready("22.7");
     let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
@@ -593,6 +762,8 @@ fn uuid_validation() {
     }
     .validate()
     .is_err());
+    // Modify-target credential IDs use the same UUID validation contract as
+    // create-target credential IDs, preserving symmetry between both paths.
     assert!(ModifyTargetRequest {
         name: None,
         comment: None,
@@ -600,9 +771,77 @@ fn uuid_validation() {
         exclude_hosts: None,
         alive_test: None,
         port_list_id: Some("still-not-a-uuid".to_string()),
+        ssh_credential_id: None,
+        smb_credential_id: None,
+        esxi_credential_id: None,
+        snmp_credential_id: None,
     }
     .validate()
     .is_err());
+    assert!(ModifyTargetRequest {
+        name: None,
+        comment: None,
+        hosts: None,
+        exclude_hosts: None,
+        alive_test: None,
+        port_list_id: None,
+        ssh_credential_id: Some("not-a-uuid".to_string()),
+        smb_credential_id: None,
+        esxi_credential_id: None,
+        snmp_credential_id: None,
+    }
+    .validate()
+    .is_err());
+}
+
+#[test]
+fn modify_requests_map_mutable_fields() {
+    let target_input = ModifyTargetRequest {
+        name: None,
+        comment: None,
+        hosts: None,
+        exclude_hosts: None,
+        alive_test: None,
+        port_list_id: None,
+        ssh_credential_id: Some("550e8400-e29b-41d4-a716-446655440001".to_string()),
+        smb_credential_id: Some("550e8400-e29b-41d4-a716-446655440002".to_string()),
+        esxi_credential_id: Some("550e8400-e29b-41d4-a716-446655440003".to_string()),
+        snmp_credential_id: Some("550e8400-e29b-41d4-a716-446655440004".to_string()),
+    }
+    .validate()
+    .expect("valid credential IDs should map into modify-target input");
+    assert_eq!(
+        target_input.ssh_credential_id.as_deref(),
+        Some("550e8400-e29b-41d4-a716-446655440001")
+    );
+    assert_eq!(
+        target_input.smb_credential_id.as_deref(),
+        Some("550e8400-e29b-41d4-a716-446655440002")
+    );
+    assert_eq!(
+        target_input.esxi_credential_id.as_deref(),
+        Some("550e8400-e29b-41d4-a716-446655440003")
+    );
+    assert_eq!(
+        target_input.snmp_credential_id.as_deref(),
+        Some("550e8400-e29b-41d4-a716-446655440004")
+    );
+
+    let task_input =
+        serde_json::from_value::<gvm_gateway_rest::tasks::ModifyTaskRequest>(serde_json::json!({
+            "preferences": {
+                "scanner.max_hosts": "64"
+            }
+        }))
+        .expect("modify-task preferences should deserialize");
+    let task_input = task_input
+        .validate()
+        .expect("preferences do not affect ID validation");
+
+    assert_eq!(
+        task_input.preferences,
+        vec![("scanner.max_hosts".to_string(), "64".to_string())]
+    );
 }
 
 #[derive(Clone, Copy)]

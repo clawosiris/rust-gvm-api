@@ -324,6 +324,11 @@ components:
             type: string
         schedulePeriods:
           type: integer
+        preferences:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value scan preferences. Omitted or empty objects leave preferences unchanged; clearing preferences is not supported by this request shape.
 
     TaskAction:
       type: object

@@ -184,16 +184,16 @@ pub struct CreateTargetRequest {
     /// Reverse lookup unify.
     #[serde(rename = "reverseLookupUnify")]
     pub reverse_lookup_unify: Option<bool>,
-    /// Optional SSH credential identifier.
+    /// Optional SSH credential identifier. Omitted or null leaves the binding unchanged.
     #[serde(rename = "sshCredentialId")]
     pub ssh_credential_id: Option<String>,
-    /// Optional SMB credential identifier.
+    /// Optional SMB credential identifier. Omitted or null leaves the binding unchanged.
     #[serde(rename = "smbCredentialId")]
     pub smb_credential_id: Option<String>,
-    /// Optional ESXi credential identifier.
+    /// Optional ESXi credential identifier. Omitted or null leaves the binding unchanged.
     #[serde(rename = "esxiCredentialId")]
     pub esxi_credential_id: Option<String>,
-    /// Optional SNMP credential identifier.
+    /// Optional SNMP credential identifier. Omitted or null leaves the binding unchanged.
     #[serde(rename = "snmpCredentialId")]
     pub snmp_credential_id: Option<String>,
 }
@@ -251,12 +251,28 @@ pub struct ModifyTargetRequest {
     /// Optional port list identifier.
     #[serde(rename = "portListId")]
     pub port_list_id: Option<String>,
+    /// Optional SSH credential identifier.
+    #[serde(rename = "sshCredentialId")]
+    pub ssh_credential_id: Option<String>,
+    /// Optional SMB credential identifier.
+    #[serde(rename = "smbCredentialId")]
+    pub smb_credential_id: Option<String>,
+    /// Optional ESXi credential identifier.
+    #[serde(rename = "esxiCredentialId")]
+    pub esxi_credential_id: Option<String>,
+    /// Optional SNMP credential identifier.
+    #[serde(rename = "snmpCredentialId")]
+    pub snmp_credential_id: Option<String>,
 }
 
 impl ModifyTargetRequest {
     /// Validate the request and convert it into the application command.
     pub fn validate(self) -> Result<ModifyTargetInput, GatewayError> {
         validate_optional_uuid("portListId", self.port_list_id.as_deref())?;
+        validate_optional_uuid("sshCredentialId", self.ssh_credential_id.as_deref())?;
+        validate_optional_uuid("smbCredentialId", self.smb_credential_id.as_deref())?;
+        validate_optional_uuid("esxiCredentialId", self.esxi_credential_id.as_deref())?;
+        validate_optional_uuid("snmpCredentialId", self.snmp_credential_id.as_deref())?;
 
         Ok(ModifyTargetInput {
             name: self.name,
@@ -265,6 +281,10 @@ impl ModifyTargetRequest {
             exclude_hosts: self.exclude_hosts,
             alive_test: self.alive_test,
             port_list_id: self.port_list_id,
+            ssh_credential_id: self.ssh_credential_id,
+            smb_credential_id: self.smb_credential_id,
+            esxi_credential_id: self.esxi_credential_id,
+            snmp_credential_id: self.snmp_credential_id,
         })
     }
 }

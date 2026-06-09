@@ -1763,10 +1763,26 @@ impl TargetPort for GvmdAdapter {
                             .as_deref()
                             .map(parse_entity_id)
                             .transpose()?,
-                        ssh_credential_id: None,
-                        smb_credential_id: None,
-                        esxi_credential_id: None,
-                        snmp_credential_id: None,
+                        ssh_credential_id: input
+                            .ssh_credential_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
+                        smb_credential_id: input
+                            .smb_credential_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
+                        esxi_credential_id: input
+                            .esxi_credential_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
+                        snmp_credential_id: input
+                            .snmp_credential_id
+                            .as_deref()
+                            .map(parse_entity_id)
+                            .transpose()?,
                     },
                 ),
             )
@@ -1962,7 +1978,7 @@ impl TaskPort for GvmdAdapter {
                         scanner_id,
                         alert_ids,
                         observers: input.observers,
-                        preferences: vec![],
+                        preferences: input.preferences,
                     },
                 ),
             )
@@ -3702,12 +3718,51 @@ mod tests {
                 exclude_hosts: None,
                 alive_test: None,
                 port_list_id: None,
+                ssh_credential_id: None,
+                smb_credential_id: None,
+                esxi_credential_id: None,
+                snmp_credential_id: None,
             };
             let result = adapter.modify_target(&token, &id, modify_input).await;
 
             assert!(result.is_ok());
             let target = result.unwrap();
             assert_eq!(target.name, "After Modify");
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_modify_task_forwards_preferences() {
+            let (adapter, server, token) = create_mock_adapter().await;
+            server.clear_history();
+
+            // Regression coverage for issue #228: task preferences supplied on
+            // modify must reach the typed rust-gvm command instead of being
+            // dropped by the gvmd adapter.
+            let result = adapter
+                .modify_task(
+                    &token,
+                    "550e8400-e29b-41d4-a716-446655440010",
+                    ModifyTaskInput {
+                        preferences: vec![("scanner.max_hosts".to_string(), "64".to_string())],
+                        ..Default::default()
+                    },
+                )
+                .await;
+
+            assert!(
+                result.is_err(),
+                "mock backend may reject the unknown task, but the command should still be emitted"
+            );
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "modify_task")
+                .expect("modify_task command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("<scanner_name>scanner.max_hosts</scanner_name>"));
+            assert!(xml.contains("<value>64</value>"));
 
             server.shutdown().await;
         }
