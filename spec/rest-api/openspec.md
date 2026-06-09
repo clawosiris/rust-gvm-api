@@ -107,6 +107,20 @@ What Level 2 means in this repo:
 This repo does **not** target Richardson Maturity Model Level 3 for the public REST surface.
 Hypermedia controls are optional and not required for API completeness or review acceptance.
 
+### Proxy Responsibility Boundary
+
+This proxy translates between REST/gRPC and GMP while providing an idiomatic interface for clients.
+
+That translation boundary is intentionally limited:
+
+- The proxy may normalize transport, authentication, status codes, problem shapes, pagination/query handling, and resource modeling.
+- The proxy must **not** reimplement GMP/GVMD commands that are unavailable or unsupported on the connected backend.
+- The proxy must **not** compensate for, extend, or fill functional gaps in GMP/GVMD by fabricating equivalent higher-level behavior locally.
+
+If a capability exists in the abstract API surface but the connected gvmd backend does not implement the required GMP command or semantic support, the proxy should return an explicit capability/implementation failure instead of emulating the missing backend behavior.
+
+Missing functionality should be addressed in GMP/GVMD or in reusable `rust-gvm` capability support, not recreated ad hoc inside the proxy layer.
+
 ### Action-Style Endpoint Rule
 
 Collection/item resource modeling is the default. Action-style routes are allowed only when the operation is a state transition or controller-style command with no stable child resource to expose cleanly.
