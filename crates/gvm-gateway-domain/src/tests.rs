@@ -235,6 +235,60 @@ fn report_query_default() {
 }
 
 // ------------------------------------------------------------------------
+// Task tests
+// ------------------------------------------------------------------------
+
+/// Task serializes progress and report-count semantics from gvmd task details.
+#[test]
+fn task_serializes_lifecycle_detail_fields() {
+    let task = Task {
+        id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+        name: "Discovery Scan".to_string(),
+        comment: None,
+        status: "Processing".to_string(),
+        progress: Some(42),
+        target: None,
+        scan_config: None,
+        scanner: None,
+        schedule: None,
+        alerts: vec![],
+        alterable: Some(true),
+        hosts_ordering: None,
+        observers: TaskObservers {
+            users: vec!["alice".to_string()],
+            groups: vec![ResourceRef {
+                id: "11111111-1111-1111-1111-111111111111".to_string(),
+                name: Some("Auditors".to_string()),
+            }],
+            roles: vec![ResourceRef {
+                id: "22222222-2222-2222-2222-222222222222".to_string(),
+                name: Some("Observers".to_string()),
+            }],
+        },
+        schedule_periods: Some(3),
+        last_report: None,
+        current_report: Some(ResourceRef {
+            id: "33333333-3333-3333-3333-333333333333".to_string(),
+            name: None,
+        }),
+        report_count: Some(7),
+        in_use: true,
+        writable: true,
+    };
+
+    let json = serde_json::to_string(&task).unwrap();
+
+    assert!(json.contains("\"progress\":42"));
+    assert!(json.contains("\"reportCount\":7"));
+    assert!(json.contains("\"currentReport\""));
+    assert!(json.contains("\"observers\""));
+    assert!(json.contains("\"groups\""));
+    assert!(json.contains("\"roles\""));
+    assert!(json.contains("\"schedulePeriods\":3"));
+    assert!(!json.contains("\"resultCount\""));
+}
+
+// ------------------------------------------------------------------------
 // Result tests
 // ------------------------------------------------------------------------
 

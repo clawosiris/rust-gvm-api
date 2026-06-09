@@ -12,7 +12,7 @@ use gvm_gateway_domain::{
     Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt,
     NvtFamily, NvtRef, Override, Permission, PortList, Report, ReportFormat, ResourceRef,
     ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
-    Target, Task, Ticket, TlsCertificate, User, UserSetting,
+    Target, Task, TaskObservers, Ticket, TlsCertificate, User, UserSetting,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -197,21 +197,40 @@ pub(crate) fn task_from_gmp(task: gvm_gmp::responses::Task) -> Task {
         name: task.meta.name,
         comment: task.meta.comment,
         status: task.status.unwrap_or_else(|| "New".to_string()),
+        progress: task.progress,
         target: task.target.map(&named_entity_to_ref),
         scan_config: task.config.map(&named_entity_to_ref),
         scanner: task.scanner.map(&named_entity_to_ref),
         schedule: task.schedule.map(&named_entity_to_ref),
         alerts: task.alerts.into_iter().map(&named_entity_to_ref).collect(),
-        alterable: None,
+        alterable: task.alterable,
         hosts_ordering: task.hosts_ordering,
-        observers: vec![],
-        schedule_periods: None,
+        observers: task
+            .observers
+            .map(|observers| TaskObservers {
+                users: observers.users,
+                groups: observers
+                    .groups
+                    .into_iter()
+                    .map(&named_entity_to_ref)
+                    .collect(),
+                roles: observers
+                    .roles
+                    .into_iter()
+                    .map(&named_entity_to_ref)
+                    .collect(),
+            })
+            .unwrap_or_default(),
+        schedule_periods: task.schedule_periods,
         last_report: task.last_report.map(|lr| ResourceRef {
             id: lr.id.to_string(),
             name: None,
         }),
-        current_report: None,
-        result_count: task.report_count,
+        current_report: task.current_report.map(|report| ResourceRef {
+            id: report.id.to_string(),
+            name: None,
+        }),
+        report_count: task.report_count,
         in_use: task.meta.in_use,
         writable: task.meta.writable,
     }
@@ -691,7 +710,7 @@ fn is_authentication_failure(message: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gvm_gmp::responses::GetTargetsResponse;
+    use gvm_gmp::responses::{GetTargetsResponse, GetTasksResponse};
     use gvm_protocol::Response as GmpResponse;
 
     #[test]
@@ -869,5 +888,76 @@ mod tests {
         assert!(target.reverse_lookup_only);
         assert!(!target.reverse_lookup_unify);
         assert_eq!(target.port_list.unwrap().name.as_deref(), Some("All TCP"));
+    }
+
+    #[test]
+    fn task_from_gmp_preserves_typed_detail_fields() {
+        // Detailed task reads must map typed rust-gvm fields instead of
+        // dropping gvmd lifecycle data at the gateway boundary.
+        let response = GmpResponse::from(
+            r#"<get_tasks_response status="200" status_text="OK">
+            <task id="550e8400-e29b-41d4-a716-446655440000">
+                <owner><name>admin</name></owner>
+                <name>Discovery Scan</name>
+                <comment>demo</comment>
+                <creation_time>2026-06-01T00:00:00Z</creation_time>
+                <modification_time>2026-06-02T00:00:00Z</modification_time>
+                <writable>1</writable>
+                <in_use>1</in_use>
+                <status>Processing</status>
+                <progress>42</progress>
+                <alterable>1</alterable>
+                <observers>
+                    <group id="11111111-1111-1111-1111-111111111111"><name>Auditors</name></group>
+                    <role id="22222222-2222-2222-2222-222222222222"><name>Observers</name></role>
+                </observers>
+                <current_report>
+                    <report id="33333333-3333-3333-3333-333333333333">
+                        <timestamp>2026-06-02T00:00:00Z</timestamp>
+                    </report>
+                </current_report>
+                <last_report>
+                    <report id="44444444-4444-4444-4444-444444444444">
+                        <timestamp>2026-06-01T00:00:00Z</timestamp>
+                    </report>
+                </last_report>
+                <report_count>7</report_count>
+                <schedule_periods>3</schedule_periods>
+            </task>
+            <task_count>1<filtered>1</filtered></task_count>
+        </get_tasks_response>"#,
+        );
+        let parsed = GetTasksResponse::from_response(&response).unwrap();
+
+        let task = task_from_gmp(parsed.items.into_iter().next().unwrap());
+
+        assert_eq!(task.status, "Processing");
+        assert_eq!(task.progress, Some(42));
+        assert_eq!(task.alterable, Some(true));
+        assert!(task.observers.users.is_empty());
+        assert_eq!(
+            task.observers.groups[0].id,
+            "11111111-1111-1111-1111-111111111111"
+        );
+        assert_eq!(task.observers.groups[0].name.as_deref(), Some("Auditors"));
+        assert_eq!(
+            task.observers.roles[0].id,
+            "22222222-2222-2222-2222-222222222222"
+        );
+        assert_eq!(task.observers.roles[0].name.as_deref(), Some("Observers"));
+        assert_eq!(
+            task.current_report
+                .as_ref()
+                .map(|report| report.id.as_str()),
+            Some("33333333-3333-3333-3333-333333333333")
+        );
+        assert_eq!(
+            task.last_report.as_ref().map(|report| report.id.as_str()),
+            Some("44444444-4444-4444-4444-444444444444")
+        );
+        assert_eq!(task.report_count, Some(7));
+        assert_eq!(task.schedule_periods, Some(3));
+        assert!(task.in_use);
+        assert!(task.writable);
     }
 }

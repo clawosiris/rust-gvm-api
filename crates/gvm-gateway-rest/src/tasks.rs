@@ -43,34 +43,68 @@ pub use gvm_gateway_domain::{
 // Response DTOs
 // ============================================================================
 
-/// Task lifecycle status.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-pub(crate) enum TaskStatus {
-    New,
-    Requested,
-    Running,
-    #[serde(rename = "Stop Requested")]
-    StopRequested,
-    Done,
-    Stopped,
-    #[serde(rename = "Delete Requested")]
-    DeleteRequested,
-    #[serde(rename = "Ultimate Delete Requested")]
-    UltimateDeleteRequested,
-    Container,
-    Interrupted,
-}
-
-fn parse_task_status(s: &str) -> TaskStatus {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).unwrap_or(TaskStatus::New)
-}
-
 open_string_enum! {
     /// Hosts ordering strategy.
     pub(crate) enum HostsOrdering {
         Sequential => "sequential",
         Random => "random",
         Reverse => "reverse",
+    }
+}
+
+open_string_enum! {
+    /// Task lifecycle status.
+    pub(crate) enum TaskStatus {
+        New => "New",
+        Requested => "Requested",
+        Queued => "Queued",
+        Running => "Running",
+        StopRequested => "Stop Requested",
+        Stopping => "Stopping",
+        Processing => "Processing",
+        Done => "Done",
+        Stopped => "Stopped",
+        Error => "Error",
+        DeleteRequested => "Delete Requested",
+        UltimateDeleteRequested => "Ultimate Delete Requested",
+        Container => "Container",
+        Interrupted => "Interrupted",
+    }
+}
+
+/// Observer principals returned for a task.
+#[derive(Clone, Debug, Default, Serialize, JsonSchema)]
+#[schemars(rename = "TaskObservers")]
+pub(crate) struct TaskObserversResponse {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    users: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    groups: Vec<ResourceRefResponse>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    roles: Vec<ResourceRefResponse>,
+}
+
+impl TaskObserversResponse {
+    fn is_empty(&self) -> bool {
+        self.users.is_empty() && self.groups.is_empty() && self.roles.is_empty()
+    }
+}
+
+impl From<gvm_gateway_domain::TaskObservers> for TaskObserversResponse {
+    fn from(observers: gvm_gateway_domain::TaskObservers) -> Self {
+        Self {
+            users: observers.users,
+            groups: observers
+                .groups
+                .into_iter()
+                .map(ResourceRefResponse::from)
+                .collect(),
+            roles: observers
+                .roles
+                .into_iter()
+                .map(ResourceRefResponse::from)
+                .collect(),
+        }
     }
 }
 
@@ -83,6 +117,8 @@ pub(crate) struct TaskResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     status: TaskStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    progress: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     target: Option<ResourceRefResponse>,
     #[serde(rename = "scanConfig", skip_serializing_if = "Option::is_none")]
@@ -97,16 +133,16 @@ pub(crate) struct TaskResponse {
     alterable: Option<bool>,
     #[serde(rename = "hostsOrdering", skip_serializing_if = "Option::is_none")]
     hosts_ordering: Option<HostsOrdering>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    observers: Vec<String>,
+    #[serde(skip_serializing_if = "TaskObserversResponse::is_empty")]
+    observers: TaskObserversResponse,
     #[serde(rename = "schedulePeriods", skip_serializing_if = "Option::is_none")]
     schedule_periods: Option<u32>,
     #[serde(rename = "lastReport", skip_serializing_if = "Option::is_none")]
     last_report: Option<ResourceRefResponse>,
     #[serde(rename = "currentReport", skip_serializing_if = "Option::is_none")]
     current_report: Option<ResourceRefResponse>,
-    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
-    result_count: Option<u32>,
+    #[serde(rename = "reportCount", skip_serializing_if = "Option::is_none")]
+    report_count: Option<u32>,
     #[serde(rename = "inUse")]
     in_use: bool,
     writable: bool,
@@ -118,7 +154,8 @@ impl From<gvm_gateway_domain::Task> for TaskResponse {
             id: parse_uuid(&t.id),
             name: t.name,
             comment: t.comment,
-            status: parse_task_status(&t.status),
+            status: TaskStatus::parse(&t.status),
+            progress: t.progress,
             target: t.target.map(ResourceRefResponse::from),
             scan_config: t.scan_config.map(ResourceRefResponse::from),
             scanner: t.scanner.map(ResourceRefResponse::from),
@@ -130,11 +167,11 @@ impl From<gvm_gateway_domain::Task> for TaskResponse {
                 .collect(),
             alterable: t.alterable,
             hosts_ordering: t.hosts_ordering.as_deref().map(HostsOrdering::parse),
-            observers: t.observers,
+            observers: TaskObserversResponse::from(t.observers),
             schedule_periods: t.schedule_periods,
             last_report: t.last_report.map(ResourceRefResponse::from),
             current_report: t.current_report.map(ResourceRefResponse::from),
-            result_count: t.result_count,
+            report_count: t.report_count,
             in_use: t.in_use,
             writable: t.writable,
         }
@@ -719,32 +756,105 @@ mod tests {
     use serde_json::json;
 
     use super::TaskResponse;
-    use gvm_gateway_domain::Task;
+    use gvm_gateway_domain::{ResourceRef, Task, TaskObservers};
 
-    #[test]
-    fn task_response_preserves_unknown_hosts_ordering() {
-        let response = TaskResponse::from(Task {
+    fn task_with_status(status: &str) -> Task {
+        Task {
             id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
             name: "Example".to_string(),
             comment: None,
-            status: "Running".to_string(),
+            status: status.to_string(),
+            progress: Some(42),
             target: None,
             scan_config: None,
             scanner: None,
             schedule: None,
             alerts: vec![],
             alterable: None,
-            hosts_ordering: Some("by-latency".to_string()),
-            observers: vec![],
+            hosts_ordering: None,
+            observers: TaskObservers::default(),
             schedule_periods: None,
             last_report: None,
             current_report: None,
-            result_count: None,
+            report_count: Some(3),
             in_use: false,
             writable: true,
+        }
+    }
+
+    #[test]
+    fn task_response_preserves_unknown_hosts_ordering() {
+        let response = TaskResponse::from(Task {
+            hosts_ordering: Some("by-latency".to_string()),
+            ..task_with_status("Running")
         });
 
         let value = serde_json::to_value(response).expect("task response should serialize");
         assert_eq!(value["hostsOrdering"], json!("by-latency"));
+    }
+
+    #[test]
+    fn task_response_preserves_live_gvmd_status_values() {
+        // Live task lifecycle values must remain visible to clients rather
+        // than being coerced to an older enum variant.
+        for status in [
+            "New",
+            "Requested",
+            "Queued",
+            "Running",
+            "Stop Requested",
+            "Stopping",
+            "Processing",
+            "Done",
+            "Stopped",
+            "Error",
+            "Delete Requested",
+            "Ultimate Delete Requested",
+            "Container",
+            "Interrupted",
+        ] {
+            let json = serde_json::to_value(TaskResponse::from(task_with_status(status))).unwrap();
+
+            assert_eq!(json["status"], status);
+        }
+    }
+
+    #[test]
+    fn task_response_preserves_unknown_status_and_report_count_semantics() {
+        // Unknown future gvmd statuses should still be round-tripped, and the
+        // count field must be named for the report-count source data.
+        let json =
+            serde_json::to_value(TaskResponse::from(task_with_status("Future State"))).unwrap();
+
+        assert_eq!(json["status"], "Future State");
+        assert_eq!(json["progress"], 42);
+        assert_eq!(json["reportCount"], 3);
+        assert!(json.get("resultCount").is_none());
+    }
+
+    #[test]
+    fn task_response_preserves_group_and_role_observers() {
+        // Task observers can be non-user principals; those must not disappear
+        // when gvmd reports a group-only or role-only observer shape.
+        let response = TaskResponse::from(Task {
+            observers: TaskObservers {
+                users: vec![],
+                groups: vec![ResourceRef {
+                    id: "11111111-1111-1111-1111-111111111111".to_string(),
+                    name: Some("Auditors".to_string()),
+                }],
+                roles: vec![ResourceRef {
+                    id: "22222222-2222-2222-2222-222222222222".to_string(),
+                    name: Some("Observers".to_string()),
+                }],
+            },
+            ..task_with_status("Running")
+        });
+
+        let json = serde_json::to_value(response).unwrap();
+
+        assert!(json["observers"].get("users").is_none());
+        assert_eq!(json["observers"]["groups"][0]["name"], "Auditors");
+        assert_eq!(json["observers"]["roles"][0]["name"], "Observers");
     }
 }

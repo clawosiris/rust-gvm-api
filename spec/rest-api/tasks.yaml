@@ -180,17 +180,26 @@ components:
           type: string
         status:
           type: string
+          description: |
+            Task lifecycle status as reported by gvmd. Unknown future gvmd
+            values are preserved even when they are not listed here.
           enum:
             - New
             - Requested
+            - Queued
             - Running
             - Stop Requested
+            - Stopping
+            - Processing
             - Done
             - Stopped
+            - Error
             - Delete Requested
             - Ultimate Delete Requested
             - Container
             - Interrupted
+        progress:
+          type: integer
         target:
           $ref: "./common.yaml#/components/schemas/ResourceRef"
         scanConfig:
@@ -208,16 +217,14 @@ components:
         hostsOrdering:
           $ref: "./common.yaml#/components/schemas/HostsOrdering"
         observers:
-          type: array
-          items:
-            type: string
+          $ref: "#/components/schemas/TaskObservers"
         schedulePeriods:
           type: integer
         lastReport:
           $ref: "./common.yaml#/components/schemas/ResourceRef"
         currentReport:
           $ref: "./common.yaml#/components/schemas/ResourceRef"
-        resultCount:
+        reportCount:
           type: integer
         inUse:
           type: boolean
@@ -268,6 +275,22 @@ components:
           additionalProperties:
             type: string
           description: Key-value scan preferences.
+
+    TaskObservers:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: string
+        groups:
+          type: array
+          items:
+            $ref: "./common.yaml#/components/schemas/ResourceRef"
+        roles:
+          type: array
+          items:
+            $ref: "./common.yaml#/components/schemas/ResourceRef"
 
     ModifyTask:
       type: object
