@@ -243,38 +243,41 @@ async fn service_report_operations_fail_with_expired_session() {
 /// Audit logs record auth failures without leaking credentials or raw session tokens.
 #[tokio::test]
 async fn audit_logs_redact_sensitive_fields_and_record_session_creation_failure() {
-    let _trace_lock = lock_tracing().await;
-    let logs = capture_tracing();
-    let service = GatewayService::new(
-        Arc::new(MockSystemPort {
-            ready: true,
-            gmp_version: "22.7".to_string(),
-        }),
-        Arc::new(MockAlertPort),
-        Arc::new(MockSchedulePort),
-        Arc::new(MockCredentialPort),
-        Arc::new(MockPortListPort),
-        Arc::new(MockFeedPort),
-        Arc::new(MockIdentityPort),
-        Arc::new(MockTargetPort::default()),
-        Arc::new(MockTaskPort),
-        Arc::new(MockAuthPort {
-            should_fail: true,
-            ..Default::default()
-        }),
-        Arc::new(MockReportPort),
-        Arc::new(MockResultPort),
-        Arc::new(MockScanConfigPort),
-        Arc::new(MockScannerPort),
-        Arc::new(MockSupportingResourcePort),
-        Arc::new(SessionManager::default()),
-    );
+    let capture = capture_tracing();
+    capture
+        .run(async {
+            let service = GatewayService::new(
+                Arc::new(MockSystemPort {
+                    ready: true,
+                    gmp_version: "22.7".to_string(),
+                }),
+                Arc::new(MockAlertPort),
+                Arc::new(MockSchedulePort),
+                Arc::new(MockCredentialPort),
+                Arc::new(MockPortListPort),
+                Arc::new(MockFeedPort),
+                Arc::new(MockIdentityPort),
+                Arc::new(MockTargetPort::default()),
+                Arc::new(MockTaskPort),
+                Arc::new(MockAuthPort {
+                    should_fail: true,
+                    ..Default::default()
+                }),
+                Arc::new(MockReportPort),
+                Arc::new(MockResultPort),
+                Arc::new(MockScanConfigPort),
+                Arc::new(MockScannerPort),
+                Arc::new(MockSupportingResourcePort),
+                Arc::new(SessionManager::default()),
+            );
 
-    let _ = service
-        .create_session("admin", "super-secret-password")
+            let _ = service
+                .create_session("admin", "super-secret-password")
+                .await;
+        })
         .await;
 
-    let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+    let output = capture.output();
     assert!(output.contains("audit_event=\"session.create\""));
     assert!(output.contains("audit_outcome=\"failure\""));
     assert!(output.contains("gvmd_username=admin"));
@@ -286,17 +289,20 @@ async fn audit_logs_redact_sensitive_fields_and_record_session_creation_failure(
 /// Audit logs tie command failures back to session expiry without exposing raw tokens.
 #[tokio::test]
 async fn audit_logs_command_execution_and_session_expiry_events() {
-    let _trace_lock = lock_tracing().await;
-    let logs = capture_tracing();
-    let service = create_test_service();
-    let session = service.create_session("admin", "secret").await.unwrap();
-    service.session_manager().expire(&session.token).unwrap();
+    let capture = capture_tracing();
+    capture
+        .run(async {
+            let service = create_test_service();
+            let session = service.create_session("admin", "secret").await.unwrap();
+            service.session_manager().expire(&session.token).unwrap();
 
-    let _ = service
-        .list_targets(&session.token, TargetQuery::default())
+            let _ = service
+                .list_targets(&session.token, TargetQuery::default())
+                .await;
+        })
         .await;
 
-    let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+    let output = capture.output();
     assert!(output.contains("audit_event=\"command.execution\""));
     assert!(output.contains("audit_outcome=\"start\""));
     assert!(output.contains("audit_event=\"session.expired\""));
@@ -306,102 +312,115 @@ async fn audit_logs_command_execution_and_session_expiry_events() {
 /// Mutating resource workflows emit audit events with safe session context only.
 #[tokio::test]
 async fn audit_logs_target_mutation_without_raw_session_token() {
-    let _trace_lock = lock_tracing().await;
-    let logs = capture_tracing();
-    let service = create_test_service();
-    let session = service
-        .create_session("admin", "super-secret-password")
-        .await
-        .unwrap();
+    let capture = capture_tracing();
+    let session_token = capture
+        .run(async {
+            let service = create_test_service();
+            let session = service
+                .create_session("admin", "super-secret-password")
+                .await
+                .unwrap();
 
-    let result = service
-        .create_target(
-            &session.token,
-            CreateTargetInput {
-                name: "target-a".to_string(),
-                comment: None,
-                hosts: vec!["192.0.2.10".to_string()],
-                exclude_hosts: vec![],
-                alive_test: None,
-                port_list_id: None,
-                reverse_lookup_only: None,
-                reverse_lookup_unify: None,
-                ssh_credential_id: None,
-                smb_credential_id: None,
-                esxi_credential_id: None,
-                snmp_credential_id: None,
-            },
-        )
+            let result = service
+                .create_target(
+                    &session.token,
+                    CreateTargetInput {
+                        name: "target-a".to_string(),
+                        comment: None,
+                        hosts: vec!["192.0.2.10".to_string()],
+                        exclude_hosts: vec![],
+                        alive_test: None,
+                        port_list_id: None,
+                        reverse_lookup_only: None,
+                        reverse_lookup_unify: None,
+                        ssh_credential_id: None,
+                        smb_credential_id: None,
+                        esxi_credential_id: None,
+                        snmp_credential_id: None,
+                    },
+                )
+                .await;
+            assert!(result.is_ok());
+
+            session.token
+        })
         .await;
-    assert!(result.is_ok());
 
-    let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+    let output = capture.output();
     assert!(output.contains("audit_event=\"command.execution\""));
     assert!(output.contains("audit_outcome=\"start\""));
     assert!(output.contains("audit_outcome=\"success\""));
     assert!(output.contains("resource=\"target\""));
     assert!(output.contains("action=\"create\""));
     assert!(output.contains("session_id=\"session:"));
-    assert!(!output.contains(&session.token));
+    assert!(!output.contains(&session_token));
     assert!(!output.contains("super-secret-password"));
 }
 
 /// Report export audit logs use a dedicated action separate from ordinary reads.
 #[tokio::test]
 async fn audit_logs_report_export_with_export_action() {
-    let _trace_lock = lock_tracing().await;
-    let logs = capture_tracing();
-    let service = create_test_service();
-    let session = service.create_session("admin", "secret").await.unwrap();
+    let capture = capture_tracing();
+    let session_token = capture
+        .run(async {
+            let service = create_test_service();
+            let session = service.create_session("admin", "secret").await.unwrap();
 
-    let _ = service
-        .export_report(
-            &session.token,
-            "550e8400-e29b-41d4-a716-446655440000",
-            "123e4567-e89b-12d3-a456-426614174000",
-        )
+            let _ = service
+                .export_report(
+                    &session.token,
+                    "550e8400-e29b-41d4-a716-446655440000",
+                    "123e4567-e89b-12d3-a456-426614174000",
+                )
+                .await;
+
+            session.token
+        })
         .await;
 
-    let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+    let output = capture.output();
     assert!(output.contains("audit_event=\"command.execution\""));
     assert!(output.contains("resource=\"report_export\""));
     assert!(output.contains("action=\"export\""));
     assert!(!output.contains("action=\"read\""));
-    assert!(!output.contains(&session.token));
+    assert!(!output.contains(&session_token));
 }
 
 /// Spans are emitted for both session lifecycle and resource command execution.
 #[tokio::test]
 async fn spans_are_emitted_for_session_and_command_lifecycle() {
-    let _trace_lock = lock_tracing().await;
-    let logs = capture_tracing();
-    let service = GatewayService::new(
-        Arc::new(MockSystemPort {
-            ready: true,
-            gmp_version: "22.7".to_string(),
-        }),
-        Arc::new(MockAlertPort),
-        Arc::new(MockSchedulePort),
-        Arc::new(MockCredentialPort),
-        Arc::new(MockPortListPort),
-        Arc::new(MockFeedPort),
-        Arc::new(MockIdentityPort),
-        Arc::new(MockTargetPort { should_fail: true }),
-        Arc::new(MockTaskPort),
-        Arc::new(MockAuthPort::default()),
-        Arc::new(MockReportPort),
-        Arc::new(MockResultPort),
-        Arc::new(MockScanConfigPort),
-        Arc::new(MockScannerPort),
-        Arc::new(MockSupportingResourcePort),
-        Arc::new(SessionManager::default()),
-    );
+    let capture = capture_tracing();
+    capture
+        .run(async {
+            let service = GatewayService::new(
+                Arc::new(MockSystemPort {
+                    ready: true,
+                    gmp_version: "22.7".to_string(),
+                }),
+                Arc::new(MockAlertPort),
+                Arc::new(MockSchedulePort),
+                Arc::new(MockCredentialPort),
+                Arc::new(MockPortListPort),
+                Arc::new(MockFeedPort),
+                Arc::new(MockIdentityPort),
+                Arc::new(MockTargetPort { should_fail: true }),
+                Arc::new(MockTaskPort),
+                Arc::new(MockAuthPort::default()),
+                Arc::new(MockReportPort),
+                Arc::new(MockResultPort),
+                Arc::new(MockScanConfigPort),
+                Arc::new(MockScannerPort),
+                Arc::new(MockSupportingResourcePort),
+                Arc::new(SessionManager::default()),
+            );
 
-    let session = service.create_session("admin", "secret").await.unwrap();
-    let _ = service.get_target(&session.token, "resource-123").await;
-    let _ = service.delete_session(&session.token).await;
+            let session = service.create_session("admin", "secret").await.unwrap();
+            let _ = service.get_target(&session.token, "resource-123").await;
+            let _ = service.delete_session(&session.token).await;
+        })
+        .await;
 
-    let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+    let output = capture.output();
     assert!(output.contains("session.create"));
     assert!(output.contains("command.execution"));
     assert!(output.contains("targets.get"));

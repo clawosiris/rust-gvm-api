@@ -4,5 +4,5 @@
 mod factory;
 mod mocks;
 
-pub(crate) use factory::{capture_tracing, create_test_service, lock_tracing};
+pub(crate) use factory::{capture_tracing, create_test_service};
 pub(crate) use mocks::*;

@@ -493,8 +493,8 @@ mod tests {
 
     #[tokio::test]
     async fn reaper_emits_audit_for_expiry_and_disconnect_failure() {
-        let _trace_lock = lock_tracing().await;
-        let logs = capture_tracing();
+        let capture = capture_tracing();
+        let _capture_guard = capture.enter();
         let auth = MockAuthPort {
             disconnect_should_fail: true,
             ..Default::default()
@@ -508,12 +508,13 @@ mod tests {
         let handle = reaper.spawn_with_interval(Duration::from_millis(10));
         tokio::time::sleep(Duration::from_millis(50)).await;
         handle.abort();
+        let session_token = session.token;
 
-        let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+        let output = capture.output();
         assert!(output.contains("audit_event=\"session.expired\""));
         assert!(output.contains("audit_event=\"session.disconnect\""));
         assert!(output.contains("error_category=\"backend_unavailable\""));
         assert!(output.contains("session_id=\"session:"));
-        assert!(!output.contains(&session.token));
+        assert!(!output.contains(&session_token));
     }
 }
