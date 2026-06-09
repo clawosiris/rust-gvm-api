@@ -346,6 +346,30 @@ async fn audit_logs_target_mutation_without_raw_session_token() {
     assert!(!output.contains("super-secret-password"));
 }
 
+/// Report export audit logs use a dedicated action separate from ordinary reads.
+#[tokio::test]
+async fn audit_logs_report_export_with_export_action() {
+    let _trace_lock = lock_tracing().await;
+    let logs = capture_tracing();
+    let service = create_test_service();
+    let session = service.create_session("admin", "secret").await.unwrap();
+
+    let _ = service
+        .export_report(
+            &session.token,
+            "550e8400-e29b-41d4-a716-446655440000",
+            "123e4567-e89b-12d3-a456-426614174000",
+        )
+        .await;
+
+    let output = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+    assert!(output.contains("audit_event=\"command.execution\""));
+    assert!(output.contains("resource=\"report_export\""));
+    assert!(output.contains("action=\"export\""));
+    assert!(!output.contains("action=\"read\""));
+    assert!(!output.contains(&session.token));
+}
+
 /// Spans are emitted for both session lifecycle and resource command execution.
 #[tokio::test]
 async fn spans_are_emitted_for_session_and_command_lifecycle() {

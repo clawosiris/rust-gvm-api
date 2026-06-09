@@ -210,16 +210,24 @@ impl ReportListQuery {
 /// Parsed query parameters for GET /reports/{id} endpoint.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GetReportQuery {
-    /// Whether to ignore pagination and return all results.
+    /// Whether to ignore embedded-result pagination and return all results.
     pub ignore_pagination: bool,
+    /// Embedded-result page number.
+    pub page: u32,
+    /// Embedded-result page size.
+    pub per_page: u32,
 }
 
 impl GetReportQuery {
     /// Parse query parameters from a raw query string.
-    pub fn try_from_query_string(query: &str) -> Self {
-        Self {
+    pub fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
+        let parsed = parse_collection_query(query)?;
+
+        Ok(Self {
             ignore_pagination: query_flag_is_true(query, "ignorePagination"),
-        }
+            page: parsed.page,
+            per_page: parsed.per_page,
+        })
     }
 }
 
@@ -314,7 +322,10 @@ pub async fn get_report(
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    let query = GetReportQuery::try_from_query_string(uri.query().unwrap_or(""));
+    let query = match GetReportQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
 
     match service
         .get_report(
@@ -322,6 +333,8 @@ pub async fn get_report(
             &id,
             GetReportOpts {
                 ignore_pagination: query.ignore_pagination,
+                page: query.page,
+                per_page: query.per_page,
             },
         )
         .await
@@ -622,11 +635,13 @@ pub(crate) fn get_report_docs(op: TransformOperation<'_>) -> TransformOperation<
         .id("getReport")
         .tag("Reports")
         .summary("Get a report")
-        .description("Returns the details for a single report with embedded results.")
+        .description(
+            "Returns the details for a single report with embedded results. Embedded results use `page` and `perPage` unless `ignorePagination=true` is supplied.",
+        )
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Query<GetReportQueryDoc>)>()
         .response_with::<200, Json<ReportResponse>, _>(ok_json(
-            "Report details with embedded results",
+            "Report details with embedded results from the requested embedded-result window",
         ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -759,8 +774,12 @@ mod tests {
 
     #[test]
     fn report_queries_decode_boolean_uuid_and_filter_values() {
-        let report = GetReportQuery::try_from_query_string("ignorePagination=%74rue");
+        let report =
+            GetReportQuery::try_from_query_string("ignorePagination=%74rue&page=2&perPage=30")
+                .expect("encoded report query should parse");
         assert!(report.ignore_pagination);
+        assert_eq!(report.page, 2);
+        assert_eq!(report.per_page, 30);
 
         let export = ReportExportQuery::try_from_query_string(
             "reportFormatId=123e4567%2De89b%2D12d3%2Da456%2D426614174000",

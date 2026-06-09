@@ -37,10 +37,12 @@ paths:
           schema:
             type: boolean
             default: false
-          description: If true, return all results without pagination.
+          description: If true, return all embedded results without pagination.
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
       responses:
         "200":
-          description: Report details with embedded results
+          description: Report details with embedded results from the requested embedded-result window
           content:
             application/json:
               schema:

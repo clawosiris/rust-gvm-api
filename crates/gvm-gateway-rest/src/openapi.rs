@@ -367,8 +367,20 @@ fn tighten_report_get_parameters(document: &mut Value) {
     if let Some(parameters) = document["paths"]["/reports/{id}"]["get"]["parameters"].as_array_mut()
     {
         for parameter in parameters {
-            if parameter["name"].as_str() == Some("ignorePagination") {
-                parameter["schema"]["default"] = json!(false);
+            match parameter["name"].as_str() {
+                Some("ignorePagination") => {
+                    parameter["schema"]["default"] = json!(false);
+                }
+                Some("page") => {
+                    parameter["schema"]["minimum"] = json!(1);
+                    parameter["schema"]["default"] = json!(1);
+                }
+                Some("perPage") => {
+                    parameter["schema"]["minimum"] = json!(1);
+                    parameter["schema"]["maximum"] = json!(1000);
+                    parameter["schema"]["default"] = json!(25);
+                }
+                _ => {}
             }
         }
     }
@@ -1114,6 +1126,9 @@ pub(crate) struct ReportListQueryDoc {
 pub(crate) struct GetReportQueryDoc {
     #[serde(rename = "ignorePagination")]
     ignore_pagination: Option<bool>,
+    page: Option<u32>,
+    #[serde(rename = "perPage")]
+    per_page: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]

@@ -2098,11 +2098,16 @@ impl ReportPort for GvmdAdapter {
             .map(report_from_gmp)
             .ok_or_else(|| GatewayError::NotFound(format!("report {id} not found")))?;
 
-        // Fetch results for this report
+        // Fetch the explicitly requested embedded-result window for this report.
         let filter = if opts.ignore_pagination {
             Some(format!("report_id={id}"))
         } else {
-            Some(format!("report_id={id} first=25 rows=25"))
+            paginated_filter(
+                Some(&format!("report_id={id}")),
+                None,
+                opts.page,
+                opts.per_page,
+            )
         };
 
         let results_response = client
@@ -4280,6 +4285,80 @@ mod tests {
             let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
             assert!(xml.contains("report_id=550e8400-e29b-41d4-a716-446655440000"));
             assert!(xml.contains("123e4567-e89b-12d3-a456-426614174000"));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_get_report_embeds_requested_result_window_larger_than_25() {
+            let report_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")
+                .expect("valid report id");
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_8)
+                .seed(move |store| {
+                    store.create(Resource::with_id(
+                        "report",
+                        "Large embedded report",
+                        report_id,
+                    ));
+
+                    // Regression coverage for issue #230: the single-report
+                    // path must honor the requested embedded-result window
+                    // instead of silently forcing the old 25-row window.
+                    for index in 0..30 {
+                        let result_id = uuid::Uuid::new_v5(&report_id, &[index]);
+                        let mut result = Resource::with_id(
+                            "result",
+                            &format!("Embedded result {index}"),
+                            result_id,
+                        );
+                        result.set_attr("report_id", &report_id.to_string());
+                        result.set_attr("first", "1");
+                        result.set_attr("rows", "30");
+                        result.set_attr("host", "192.0.2.10");
+                        result.set_attr("port", "443/tcp");
+                        result.set_attr("severity", "5.0");
+                        store.create(result);
+                    }
+                })
+                .unix_socket_auto()
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+            server.clear_history();
+
+            let report = adapter
+                .get_report(
+                    token,
+                    &report_id.to_string(),
+                    &GetReportOpts {
+                        ignore_pagination: false,
+                        page: 1,
+                        per_page: 30,
+                    },
+                )
+                .await
+                .expect("report with embedded result window");
+
+            assert_eq!(report.results.len(), 30);
+
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "get_results")
+                .expect("get_results command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("report_id=550e8400-e29b-41d4-a716-446655440000"));
+            assert!(xml.contains("first=1 rows=30"));
+            assert!(!xml.contains("first=25 rows=25"));
 
             server.shutdown().await;
         }
