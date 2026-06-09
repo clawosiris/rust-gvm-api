@@ -1477,6 +1477,60 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn report_detail_subresources_supported(
+        &self,
+        token: &str,
+        report_id: &str,
+    ) -> Result<bool> {
+        let response = self
+            .authed(
+                Method::GET,
+                &format!("/api/v1/reports/{report_id}/vulnerabilities?page=1&perPage=1"),
+                token,
+            )
+            .send()
+            .await
+            .context("probe report-detail subresource support")?;
+        let status = response.status();
+
+        if status == StatusCode::OK {
+            let _page: ResultList = response
+                .json()
+                .await
+                .context("parse report-detail support probe response body as JSON")?;
+            return Ok(true);
+        }
+
+        if status == StatusCode::NOT_IMPLEMENTED {
+            let problem = assert_problem_response(
+                response,
+                StatusCode::NOT_IMPLEMENTED,
+                "probe report-detail subresource support",
+            )
+            .await?;
+            if problem.code == "not_implemented" {
+                return Ok(false);
+            }
+            bail!(
+                "probe report-detail subresource support: expected code not_implemented but received {} ({})",
+                problem.code,
+                problem.title
+            );
+        }
+
+        let body = response
+            .text()
+            .await
+            .context("read report-detail support probe response body")?;
+        bail!(
+            "probe report-detail subresource support: expected HTTP {} or {} but received {} with body {}",
+            StatusCode::OK,
+            StatusCode::NOT_IMPLEMENTED,
+            status,
+            truncate(&body)
+        );
+    }
+
     pub async fn delete_session(&self, token: &str) -> Result<()> {
         self.send_empty(
             self.authed(Method::DELETE, "/api/v1/session", token),

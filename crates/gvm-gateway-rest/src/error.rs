@@ -161,6 +161,7 @@ impl IntoResponse for RestError {
 fn status_for_gateway_error(error: &GatewayError) -> StatusCode {
     match error {
         GatewayError::BackendUnavailable(_) => StatusCode::BAD_GATEWAY,
+        GatewayError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
         GatewayError::NotFound(_) => StatusCode::NOT_FOUND,
         GatewayError::InvalidInput(_) => StatusCode::BAD_REQUEST,
         GatewayError::Unauthorized(_)
@@ -177,6 +178,7 @@ fn status_for_gateway_error(error: &GatewayError) -> StatusCode {
 fn title_for_code(code: GatewayErrorCode) -> &'static str {
     match code {
         GatewayErrorCode::BackendUnavailable => "Bad Gateway",
+        GatewayErrorCode::NotImplemented => "Not Implemented",
         GatewayErrorCode::NotFound => "Not Found",
         GatewayErrorCode::BadRequest => "Bad Request",
         GatewayErrorCode::Unauthorized => "Unauthorized",
@@ -234,6 +236,23 @@ mod tests {
         assert_eq!(
             json["type"],
             serde_json::json!("https://gvm-gateway.greenbone.net/errors/service-unavailable")
+        );
+    }
+
+    #[test]
+    fn not_implemented_problem_uses_public_code() {
+        let error = RestError::from_gateway_error(
+            GatewayError::NotImplemented("backend does not support this command".to_string()),
+            "/api/v1/reports/123/vulnerabilities",
+        );
+
+        assert_eq!(error.status, StatusCode::NOT_IMPLEMENTED);
+        let json = serde_json::to_value(&error.problem).unwrap();
+        assert_eq!(json["code"], serde_json::json!("not_implemented"));
+        assert_eq!(json["title"], serde_json::json!("Not Implemented"));
+        assert_eq!(
+            json["type"],
+            serde_json::json!("https://gvm-gateway.greenbone.net/errors/not-implemented")
         );
     }
 }
