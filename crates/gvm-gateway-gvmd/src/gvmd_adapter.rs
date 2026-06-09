@@ -31,8 +31,7 @@ use gvm_gateway_domain::{
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
     SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificate, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery,
+    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -2163,7 +2162,11 @@ impl ReportPort for GvmdAdapter {
             .await
             .call(get_results(GetResultsOpts {
                 filter_string: filter,
-                filter_id: None,
+                filter_id: query
+                    .filter_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?,
                 details: Some(true),
             }))
             .await
@@ -2192,22 +2195,13 @@ impl ReportPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
         let opts = report_detail_query(query)?;
-        let parsed = match client
-            .lock()
-            .await
-            .get_report_vulns(&report_id, opts)
-            .await
-        {
+        let parsed = match client.lock().await.get_report_vulns(&report_id, opts).await {
             Ok(parsed) => parsed,
             Err(error) if typed_report_detail_unsupported(&error, "get_report_vulns") => {
-                return self
-                    .get_report_results(session_token, &report_id.to_string(), &unpaginated_result_query(query))
-                    .await
-                    .map(|page| {
-                        filter_result_page(page, query, |result| {
-                            result.nvt.is_some() || result.severity.is_some()
-                        })
-                    });
+                return Err(unsupported_typed_report_detail_error(
+                    "get_report_vulns",
+                    "report vulnerabilities",
+                ));
             }
             Err(error) => return Err(map_gvm_error(error)),
         };
@@ -2243,25 +2237,10 @@ impl ReportPort for GvmdAdapter {
             Err(error)
                 if typed_report_detail_unsupported(&error, "get_report_tls_certificates") =>
             {
-                let page = self
-                    .get_report_results(session_token, &report_id.to_string(), &unpaginated_result_query(query))
-                    .await?;
-                let certificates = page
-                    .data
-                    .into_iter()
-                    .filter(is_tls_certificate_result)
-                    .map(|result| TlsCertificate {
-                        id: Some(result.id),
-                        host: result.host,
-                        port: result.port,
-                        subject: result.name,
-                        issuer: None,
-                        not_before: None,
-                        not_after: None,
-                        fingerprint_sha256: None,
-                    })
-                    .collect::<Vec<_>>();
-                return Ok(paginate_tls_certificates(certificates, query));
+                return Err(unsupported_typed_report_detail_error(
+                    "get_report_tls_certificates",
+                    "report TLS certificates",
+                ));
             }
             Err(error) => return Err(map_gvm_error(error)),
         };
@@ -2299,10 +2278,10 @@ impl ReportPort for GvmdAdapter {
         {
             Ok(parsed) => parsed,
             Err(error) if typed_report_detail_unsupported(&error, "get_report_errors") => {
-                return self
-                    .get_report_results(session_token, &report_id.to_string(), &unpaginated_result_query(query))
-                    .await
-                    .map(|page| filter_result_page(page, query, is_error_result));
+                return Err(unsupported_typed_report_detail_error(
+                    "get_report_errors",
+                    "report errors",
+                ));
             }
             Err(error) => return Err(map_gvm_error(error)),
         };
@@ -2336,10 +2315,10 @@ impl ReportPort for GvmdAdapter {
         {
             Ok(parsed) => parsed,
             Err(error) if typed_report_detail_unsupported(&error, "get_report_closed_cves") => {
-                return self
-                    .get_report_results(session_token, &report_id.to_string(), &unpaginated_result_query(query))
-                    .await
-                    .map(|page| filter_result_page(page, query, is_closed_cve_result));
+                return Err(unsupported_typed_report_detail_error(
+                    "get_report_closed_cves",
+                    "report closed CVEs",
+                ));
             }
             Err(error) => return Err(map_gvm_error(error)),
         };
@@ -2383,93 +2362,10 @@ fn typed_report_detail_unsupported(error: &gvm_client::GvmError, command: &str) 
     )
 }
 
-fn unpaginated_result_query(query: &ResultQuery) -> ResultQuery {
-    ResultQuery {
-        filter_string: query.filter_string.clone(),
-        filter_id: query.filter_id.clone(),
-        page: 1,
-        per_page: u32::MAX,
-    }
-}
-
-fn filter_result_page(
-    page: ResultPage,
-    query: &ResultQuery,
-    predicate: impl Fn(&ScanResult) -> bool,
-) -> ResultPage {
-    let filtered = page.data.into_iter().filter(predicate).collect::<Vec<_>>();
-    paginate_results(filtered, query)
-}
-
-fn paginate_results(results: Vec<ScanResult>, query: &ResultQuery) -> ResultPage {
-    let total = results.len() as u32;
-    let total_pages = if total == 0 {
-        0
-    } else {
-        ((total - 1) / query.per_page) + 1
-    };
-    let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-
-    ResultPage {
-        data: results
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect(),
-        pagination: Pagination {
-            page: query.page,
-            per_page: query.per_page,
-            total,
-            total_pages,
-        },
-    }
-}
-
-fn paginate_tls_certificates(
-    certificates: Vec<TlsCertificate>,
-    query: &ResultQuery,
-) -> TlsCertificatePage {
-    let total = certificates.len() as u32;
-    let total_pages = if total == 0 {
-        0
-    } else {
-        ((total - 1) / query.per_page) + 1
-    };
-    let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
-
-    TlsCertificatePage {
-        data: certificates
-            .into_iter()
-            .skip(start)
-            .take(query.per_page as usize)
-            .collect(),
-        pagination: Pagination {
-            page: query.page,
-            per_page: query.per_page,
-            total,
-            total_pages,
-        },
-    }
-}
-
-fn is_error_result(result: &ScanResult) -> bool {
-    result.threat.as_deref() == Some("Alarm")
-}
-
-fn is_closed_cve_result(result: &ScanResult) -> bool {
-    result
-        .nvt
-        .as_ref()
-        .map(|nvt| {
-            !nvt.cves.is_empty()
-                && nvt.cves.iter().all(|cve| cve.starts_with("CVE-"))
-                && result.name.starts_with("CVE-")
-        })
-        .unwrap_or(false)
-}
-
-fn is_tls_certificate_result(result: &ScanResult) -> bool {
-    result.name.starts_with("CN=") && result.port.as_deref().is_some_and(|port| port.contains("tcp"))
+fn unsupported_typed_report_detail_error(command: &str, resource: &str) -> GatewayError {
+    GatewayError::NotImplemented(format!(
+        "{resource} are not available because gvmd does not implement `{command}` on this backend version; the proxy does not emulate unsupported GMP commands"
+    ))
 }
 
 #[async_trait]
@@ -4259,6 +4155,41 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn gvmd_adapter_get_report_vulnerabilities_returns_not_implemented_on_v22_7() {
+            let (adapter, server, token) = create_mock_adapter().await;
+            server.clear_history();
+
+            let error = adapter
+                .get_report_vulnerabilities(
+                    &token,
+                    "550e8400-e29b-41d4-a716-446655440000",
+                    &ResultQuery {
+                        filter_string: Some("severity>5".to_string()),
+                        filter_id: None,
+                        page: 1,
+                        per_page: 25,
+                    },
+                )
+                .await
+                .expect_err("v22.7 should return not implemented");
+
+            assert!(
+                matches!(error, GatewayError::NotImplemented(detail) if detail.contains("get_report_vulns"))
+            );
+
+            let history = server.command_history();
+            assert_eq!(
+                history
+                    .iter()
+                    .filter(|record| record.command_name() == "get_results")
+                    .count(),
+                0
+            );
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
         async fn gvmd_adapter_get_report_tls_certificates_uses_typed_command() {
             let (adapter, server, token) = create_mock_adapter_v22_8().await;
             server.clear_history();
@@ -4294,6 +4225,37 @@ mod tests {
             let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
             assert!(xml.contains("report_id=\"550e8400-e29b-41d4-a716-446655440000\""));
             assert!(xml.contains("filter=\"subject~example first=1 rows=25\""));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_get_report_results_forwards_filter_id() {
+            let (adapter, server, token) = create_mock_adapter_v22_8().await;
+            server.clear_history();
+
+            let _ = adapter
+                .get_report_results(
+                    &token,
+                    "550e8400-e29b-41d4-a716-446655440000",
+                    &ResultQuery {
+                        filter_string: Some("severity>5".to_string()),
+                        filter_id: Some("123e4567-e89b-12d3-a456-426614174000".to_string()),
+                        page: 1,
+                        per_page: 25,
+                    },
+                )
+                .await
+                .expect("results with filter id");
+
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "get_results")
+                .expect("get_results command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("report_id=550e8400-e29b-41d4-a716-446655440000"));
+            assert!(xml.contains("123e4567-e89b-12d3-a456-426614174000"));
 
             server.shutdown().await;
         }

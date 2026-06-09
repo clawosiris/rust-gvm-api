@@ -8,6 +8,8 @@
 pub enum GatewayErrorCode {
     /// Backend connection or dependency failure.
     BackendUnavailable,
+    /// Requested operation is not implemented by the current backend.
+    NotImplemented,
     /// Requested resource or route was not found.
     NotFound,
     /// Request input was invalid.
@@ -35,6 +37,7 @@ impl GatewayErrorCode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::BackendUnavailable => "backend_unavailable",
+            Self::NotImplemented => "not_implemented",
             Self::NotFound => "not_found",
             Self::BadRequest => "bad_request",
             Self::Unauthorized => "unauthorized",
@@ -52,6 +55,7 @@ impl GatewayErrorCode {
     pub fn problem_slug(self) -> &'static str {
         match self {
             Self::BackendUnavailable => "bad-gateway",
+            Self::NotImplemented => "not-implemented",
             Self::NotFound => "not-found",
             Self::BadRequest => "bad-request",
             Self::Unauthorized => "unauthorized",
@@ -71,6 +75,8 @@ impl GatewayErrorCode {
 pub enum GatewayError {
     /// Backend service is unavailable or unhealthy.
     BackendUnavailable(String),
+    /// Requested operation is not implemented by the current backend.
+    NotImplemented(String),
     /// Resource or route was not found.
     NotFound(String),
     /// Request input was invalid.
@@ -98,6 +104,7 @@ impl GatewayError {
     pub fn code(&self) -> GatewayErrorCode {
         match self {
             Self::BackendUnavailable(_) => GatewayErrorCode::BackendUnavailable,
+            Self::NotImplemented(_) => GatewayErrorCode::NotImplemented,
             Self::NotFound(_) => GatewayErrorCode::NotFound,
             Self::InvalidInput(_) => GatewayErrorCode::BadRequest,
             Self::Unauthorized(_) => GatewayErrorCode::Unauthorized,
@@ -120,6 +127,7 @@ impl GatewayError {
     pub fn detail(&self) -> &str {
         match self {
             Self::BackendUnavailable(detail)
+            | Self::NotImplemented(detail)
             | Self::NotFound(detail)
             | Self::InvalidInput(detail)
             | Self::Unauthorized(detail)
