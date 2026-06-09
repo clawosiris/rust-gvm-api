@@ -10,7 +10,7 @@ use common::spawn_server;
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
     CreateTaskInput, GatewayError, ModifyTaskInput, Pagination, SessionManager, Task, TaskAction,
-    TaskPage, TaskPort, TaskQuery,
+    TaskObservers, TaskPage, TaskPort, TaskQuery,
 };
 use gvm_gateway_gvmd::StaticGvmdAdapter;
 use gvm_gateway_rest::{
@@ -625,6 +625,7 @@ fn task_response(id: &str, name: &str) -> Task {
         name: name.to_string(),
         comment: None,
         status: "New".to_string(),
+        progress: None,
         target: None,
         scan_config: None,
         scanner: None,
@@ -632,11 +633,11 @@ fn task_response(id: &str, name: &str) -> Task {
         alerts: vec![],
         alterable: None,
         hosts_ordering: None,
-        observers: vec![],
+        observers: TaskObservers::default(),
         schedule_periods: None,
         last_report: None,
         current_report: None,
-        result_count: None,
+        report_count: None,
         in_use: false,
         writable: true,
     }
