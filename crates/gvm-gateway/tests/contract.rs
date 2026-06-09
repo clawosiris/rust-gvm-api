@@ -963,38 +963,27 @@ fn compare_schema_like(
                     continue;
                 }
 
+                let generated_value = generated
+                    .get(key)
+                    .unwrap_or_else(|| panic!("missing `{key}` in {context}"));
+
                 match key.as_str() {
-                    "enum" => {
-                        let generated_value = generated
-                            .get("enum")
-                            .or_else(|| open_enum_known_values(generated))
-                            .unwrap_or_else(|| panic!("missing `{key}` in {context}"));
-                        assert_enum_subset(
-                            generated_value,
-                            curated_value,
-                            &format!("{context} enum"),
-                        );
-                    }
                     "required" if curated_value.is_boolean() => assert_required_flag(
-                        Some(
-                            generated
-                                .get(key)
-                                .unwrap_or_else(|| panic!("missing `{key}` in {context}")),
-                        ),
+                        Some(generated_value),
                         Some(curated_value),
                         &format!("{context} required"),
                     ),
                     "required" => assert_required_items(
-                        generated
-                            .get(key)
-                            .unwrap_or_else(|| panic!("missing `{key}` in {context}")),
+                        generated_value,
                         curated_value,
                         &format!("{context} required"),
                     ),
+                    "enum" => assert_enum_subset(
+                        generated_value,
+                        curated_value,
+                        &format!("{context} enum"),
+                    ),
                     "minimum" | "exclusiveMinimum" | "minLength" | "minItems" | "minProperties" => {
-                        let generated_value = generated
-                            .get(key)
-                            .unwrap_or_else(|| panic!("missing `{key}` in {context}"));
                         assert_numeric_at_least(
                             generated_value,
                             curated_value,
@@ -1002,28 +991,20 @@ fn compare_schema_like(
                         )
                     }
                     "maximum" | "exclusiveMaximum" | "maxLength" | "maxItems" | "maxProperties" => {
-                        let generated_value = generated
-                            .get(key)
-                            .unwrap_or_else(|| panic!("missing `{key}` in {context}"));
                         assert_numeric_at_most(
                             generated_value,
                             curated_value,
                             &format!("{context} {key}"),
                         )
                     }
-                    _ => {
-                        let generated_value = generated
-                            .get(key)
-                            .unwrap_or_else(|| panic!("missing `{key}` in {context}"));
-                        compare_schema_like(
-                            docs,
-                            generated_doc,
-                            generated_value,
-                            curated_doc,
-                            curated_value,
-                            &format!("{context}.{key}"),
-                        )
-                    }
+                    _ => compare_schema_like(
+                        docs,
+                        generated_doc,
+                        generated_value,
+                        curated_doc,
+                        curated_value,
+                        &format!("{context}.{key}"),
+                    ),
                 }
             }
         }
@@ -1048,14 +1029,6 @@ fn compare_schema_like(
         }
         _ => assert_eq!(generated, curated, "value drift for {context}"),
     }
-}
-
-fn open_enum_known_values(schema: &serde_json::Map<String, Value>) -> Option<&Value> {
-    schema
-        .get("x-openEnum")
-        .and_then(Value::as_bool)
-        .filter(|is_open| *is_open)
-        .and_then(|_| schema.get("x-knownValues"))
 }
 
 fn assert_required_flag(generated: Option<&Value>, curated: Option<&Value>, context: &str) {

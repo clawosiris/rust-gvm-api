@@ -10,12 +10,12 @@ pub(crate) fn open_string_enum_schema(name: &str, known_values: &[&str]) -> sche
     let mut schema = json_schema!({
         "title": name,
         "type": "string",
-        "description": "Known values are listed in x-knownValues. Unknown future values are returned verbatim."
+        "enum": known_values,
+        "description": "Known values are listed here for client generation. Unknown future values may also be returned verbatim."
     });
 
     if let Some(object) = schema.as_object_mut() {
-        object.insert("x-knownValues".to_string(), json!(known_values));
-        object.insert("x-openEnum".to_string(), json!(true));
+        object.insert("enum".to_string(), json!(known_values));
     }
 
     schema
