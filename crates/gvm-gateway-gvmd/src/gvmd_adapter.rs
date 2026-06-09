@@ -31,7 +31,8 @@ use gvm_gateway_domain::{
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
     SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    Timezone, TlsCertificate, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -2191,12 +2192,25 @@ impl ReportPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
         let opts = report_detail_query(query)?;
-        let parsed = client
+        let parsed = match client
             .lock()
             .await
             .get_report_vulns(&report_id, opts)
             .await
-            .map_err(map_gvm_error)?;
+        {
+            Ok(parsed) => parsed,
+            Err(error) if typed_report_detail_unsupported(&error, "get_report_vulns") => {
+                return self
+                    .get_report_results(session_token, &report_id.to_string(), &unpaginated_result_query(query))
+                    .await
+                    .map(|page| {
+                        filter_result_page(page, query, |result| {
+                            result.nvt.is_some() || result.severity.is_some()
+                        })
+                    });
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
         let items = parsed
             .items
             .into_iter()
@@ -2219,12 +2233,38 @@ impl ReportPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
         let opts = report_detail_query(query)?;
-        let parsed = client
+        let parsed = match client
             .lock()
             .await
             .get_report_tls_certificates(&report_id, opts)
             .await
-            .map_err(map_gvm_error)?;
+        {
+            Ok(parsed) => parsed,
+            Err(error)
+                if typed_report_detail_unsupported(&error, "get_report_tls_certificates") =>
+            {
+                let page = self
+                    .get_report_results(session_token, &report_id.to_string(), &unpaginated_result_query(query))
+                    .await?;
+                let certificates = page
+                    .data
+                    .into_iter()
+                    .filter(is_tls_certificate_result)
+                    .map(|result| TlsCertificate {
+                        id: Some(result.id),
+                        host: result.host,
+                        port: result.port,
+                        subject: result.name,
+                        issuer: None,
+                        not_before: None,
+                        not_after: None,
+                        fingerprint_sha256: None,
+                    })
+                    .collect::<Vec<_>>();
+                return Ok(paginate_tls_certificates(certificates, query));
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
         let certificates = parsed
             .items
             .into_iter()
@@ -2251,12 +2291,21 @@ impl ReportPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
         let opts = report_detail_query(query)?;
-        let parsed = client
+        let parsed = match client
             .lock()
             .await
             .get_report_errors(&report_id, opts)
             .await
-            .map_err(map_gvm_error)?;
+        {
+            Ok(parsed) => parsed,
+            Err(error) if typed_report_detail_unsupported(&error, "get_report_errors") => {
+                return self
+                    .get_report_results(session_token, &report_id.to_string(), &unpaginated_result_query(query))
+                    .await
+                    .map(|page| filter_result_page(page, query, is_error_result));
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
         let items = parsed
             .items
             .into_iter()
@@ -2279,12 +2328,21 @@ impl ReportPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
         let opts = report_detail_query(query)?;
-        let parsed = client
+        let parsed = match client
             .lock()
             .await
             .get_report_closed_cves(&report_id, opts)
             .await
-            .map_err(map_gvm_error)?;
+        {
+            Ok(parsed) => parsed,
+            Err(error) if typed_report_detail_unsupported(&error, "get_report_closed_cves") => {
+                return self
+                    .get_report_results(session_token, &report_id.to_string(), &unpaginated_result_query(query))
+                    .await
+                    .map(|page| filter_result_page(page, query, is_closed_cve_result));
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
         let items = parsed
             .items
             .into_iter()
@@ -2315,6 +2373,103 @@ fn report_detail_query(query: &ResultQuery) -> Result<GetReportDetailsOpts, Gate
         ignore_pagination: None,
         details: Some(true),
     })
+}
+
+fn typed_report_detail_unsupported(error: &gvm_client::GvmError, command: &str) -> bool {
+    matches!(
+        error,
+        gvm_client::GvmError::UnsupportedCommand { command: unsupported, .. }
+            if unsupported == command
+    )
+}
+
+fn unpaginated_result_query(query: &ResultQuery) -> ResultQuery {
+    ResultQuery {
+        filter_string: query.filter_string.clone(),
+        filter_id: query.filter_id.clone(),
+        page: 1,
+        per_page: u32::MAX,
+    }
+}
+
+fn filter_result_page(
+    page: ResultPage,
+    query: &ResultQuery,
+    predicate: impl Fn(&ScanResult) -> bool,
+) -> ResultPage {
+    let filtered = page.data.into_iter().filter(predicate).collect::<Vec<_>>();
+    paginate_results(filtered, query)
+}
+
+fn paginate_results(results: Vec<ScanResult>, query: &ResultQuery) -> ResultPage {
+    let total = results.len() as u32;
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total - 1) / query.per_page) + 1
+    };
+    let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+
+    ResultPage {
+        data: results
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect(),
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total,
+            total_pages,
+        },
+    }
+}
+
+fn paginate_tls_certificates(
+    certificates: Vec<TlsCertificate>,
+    query: &ResultQuery,
+) -> TlsCertificatePage {
+    let total = certificates.len() as u32;
+    let total_pages = if total == 0 {
+        0
+    } else {
+        ((total - 1) / query.per_page) + 1
+    };
+    let start = ((query.page.saturating_sub(1)) * query.per_page) as usize;
+
+    TlsCertificatePage {
+        data: certificates
+            .into_iter()
+            .skip(start)
+            .take(query.per_page as usize)
+            .collect(),
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total,
+            total_pages,
+        },
+    }
+}
+
+fn is_error_result(result: &ScanResult) -> bool {
+    result.threat.as_deref() == Some("Alarm")
+}
+
+fn is_closed_cve_result(result: &ScanResult) -> bool {
+    result
+        .nvt
+        .as_ref()
+        .map(|nvt| {
+            !nvt.cves.is_empty()
+                && nvt.cves.iter().all(|cve| cve.starts_with("CVE-"))
+                && result.name.starts_with("CVE-")
+        })
+        .unwrap_or(false)
+}
+
+fn is_tls_certificate_result(result: &ScanResult) -> bool {
+    result.name.starts_with("CN=") && result.port.as_deref().is_some_and(|port| port.contains("tcp"))
 }
 
 #[async_trait]
