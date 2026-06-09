@@ -302,11 +302,6 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
         );
         assert_report_result_total_consistent("report results", &first_results_page, &report);
 
-        let vulnerabilities = harness
-            .get_report_vulnerabilities_page(&session.token, &action.report_id, 1, 25)
-            .await?;
-        assert_report_vulnerabilities_page_links_report(&vulnerabilities, &report, &created.task);
-
         let top_level_results = harness.list_results_page(&session.token, 1, 1).await?;
         assert_result_pagination_shape("top-level results", &top_level_results, Some(1));
 
@@ -335,32 +330,54 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
             eprintln!("result detail read skipped because the completed scan returned no results");
         }
 
-        let tls_certificates = harness
-            .get_report_tls_certificates_page(&session.token, &action.report_id, 1, 25)
-            .await?;
-        assert_tls_certificate_pagination_shape("report TLS certificates", &tls_certificates, 25);
+        if harness
+            .report_detail_subresources_supported(&session.token, &action.report_id)
+            .await?
+        {
+            let vulnerabilities = harness
+                .get_report_vulnerabilities_page(&session.token, &action.report_id, 1, 25)
+                .await?;
+            assert_report_vulnerabilities_page_links_report(
+                &vulnerabilities,
+                &report,
+                &created.task,
+            );
 
-        let report_errors = harness
-            .get_report_errors_page(&session.token, &action.report_id, 1, 25)
-            .await?;
-        assert_report_results_page_links_report(
-            "report errors",
-            &report_errors,
-            &report,
-            &created.task,
-            Some(25),
-        );
+            let tls_certificates = harness
+                .get_report_tls_certificates_page(&session.token, &action.report_id, 1, 25)
+                .await?;
+            assert_tls_certificate_pagination_shape(
+                "report TLS certificates",
+                &tls_certificates,
+                25,
+            );
 
-        let closed_cves = harness
-            .get_report_closed_cves_page(&session.token, &action.report_id, 1, 25)
-            .await?;
-        assert_report_results_page_links_report(
-            "report closed CVEs",
-            &closed_cves,
-            &report,
-            &created.task,
-            Some(25),
-        );
+            let report_errors = harness
+                .get_report_errors_page(&session.token, &action.report_id, 1, 25)
+                .await?;
+            assert_report_results_page_links_report(
+                "report errors",
+                &report_errors,
+                &report,
+                &created.task,
+                Some(25),
+            );
+
+            let closed_cves = harness
+                .get_report_closed_cves_page(&session.token, &action.report_id, 1, 25)
+                .await?;
+            assert_report_results_page_links_report(
+                "report closed CVEs",
+                &closed_cves,
+                &report,
+                &created.task,
+                Some(25),
+            );
+        } else {
+            eprintln!(
+                "skipping report-detail subresource assertions because the current stable gvmd container does not support get_report_vulns"
+            );
+        }
 
         Ok(())
     }
