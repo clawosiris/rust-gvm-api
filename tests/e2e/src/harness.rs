@@ -2223,12 +2223,24 @@ pub struct Task {
     #[serde(rename = "scanConfig")]
     pub scan_config: Option<ResourceRef>,
     pub scanner: Option<ResourceRef>,
+    pub progress: Option<i32>,
     #[serde(rename = "currentReport")]
     pub current_report: Option<ResourceRef>,
     #[serde(rename = "lastReport")]
     pub last_report: Option<ResourceRef>,
-    #[serde(rename = "resultCount")]
-    pub result_count: Option<u32>,
+    #[serde(rename = "reportCount")]
+    pub report_count: Option<u32>,
+    pub observers: Option<TaskObservers>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TaskObservers {
+    #[serde(default)]
+    pub users: Vec<String>,
+    #[serde(default)]
+    pub groups: Vec<ResourceRef>,
+    #[serde(default)]
+    pub roles: Vec<ResourceRef>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

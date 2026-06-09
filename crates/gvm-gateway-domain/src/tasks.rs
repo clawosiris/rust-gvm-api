@@ -7,6 +7,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Pagination, ResourceRef};
 
+/// Observer principals associated with a task.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TaskObservers {
+    /// Observer user names.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub users: Vec<String>,
+    /// Observer group references.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<ResourceRef>,
+    /// Observer role references.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roles: Vec<ResourceRef>,
+}
+
+impl TaskObservers {
+    /// Whether no observer principals are present.
+    pub fn is_empty(&self) -> bool {
+        self.users.is_empty() && self.groups.is_empty() && self.roles.is_empty()
+    }
+}
+
 /// Domain task representation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Task {
@@ -19,6 +40,9 @@ pub struct Task {
     pub comment: Option<String>,
     /// Task status.
     pub status: String,
+    /// Task progress percentage reported by gvmd.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<i32>,
     /// Target reference.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<ResourceRef>,
@@ -40,9 +64,9 @@ pub struct Task {
     /// Hosts ordering strategy.
     #[serde(rename = "hostsOrdering", skip_serializing_if = "Option::is_none")]
     pub hosts_ordering: Option<String>,
-    /// Observer user names.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub observers: Vec<String>,
+    /// Observer principals.
+    #[serde(default, skip_serializing_if = "TaskObservers::is_empty")]
+    pub observers: TaskObservers,
     /// Number of schedule periods.
     #[serde(rename = "schedulePeriods", skip_serializing_if = "Option::is_none")]
     pub schedule_periods: Option<u32>,
@@ -52,9 +76,9 @@ pub struct Task {
     /// Current (in-progress) report reference.
     #[serde(rename = "currentReport", skip_serializing_if = "Option::is_none")]
     pub current_report: Option<ResourceRef>,
-    /// Number of reports/results.
-    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
-    pub result_count: Option<u32>,
+    /// Number of reports associated with the task.
+    #[serde(rename = "reportCount", skip_serializing_if = "Option::is_none")]
+    pub report_count: Option<u32>,
     /// Whether the task is in use.
     #[serde(rename = "inUse")]
     pub in_use: bool,
