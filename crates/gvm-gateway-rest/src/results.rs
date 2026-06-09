@@ -13,12 +13,13 @@ use axum::{
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::GatewayError;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceRefResponse},
     error::RestError,
+    open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc, ResultListQueryDoc},
     query::parse_collection_query,
     router::bearer_token,
@@ -29,18 +30,15 @@ use crate::{
 // Response DTOs
 // ============================================================================
 
-/// Threat level for a scan result.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-pub(crate) enum Threat {
-    High,
-    Medium,
-    Low,
-    Log,
-    Alarm,
-}
-
-fn parse_threat(s: &str) -> Option<Threat> {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
+open_string_enum! {
+    /// Threat level for a scan result.
+    pub(crate) enum Threat {
+        High => "High",
+        Medium => "Medium",
+        Low => "Low",
+        Log => "Log",
+        Alarm => "Alarm",
+    }
 }
 
 /// NVT (Network Vulnerability Test) reference in a result.
@@ -106,7 +104,7 @@ impl From<gvm_gateway_domain::ScanResult> for ResultResponse {
             host: r.host,
             port: r.port,
             severity: r.severity,
-            threat: r.threat.as_deref().and_then(parse_threat),
+            threat: r.threat.as_deref().map(Threat::parse),
             nvt: r.nvt.map(NvtRefResponse::from),
             description: r.description,
             task: r.task.map(ResourceRefResponse::from),
@@ -245,4 +243,50 @@ pub(crate) fn get_result_docs(op: TransformOperation<'_>) -> TransformOperation<
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::ResultResponse;
+    use gvm_gateway_domain::ScanResult;
+
+    #[test]
+    fn result_response_preserves_critical_threat() {
+        let response = ResultResponse::from(ScanResult {
+            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+            name: "Critical finding".to_string(),
+            host: None,
+            port: None,
+            severity: Some(10.0),
+            threat: Some("Critical".to_string()),
+            nvt: None,
+            description: None,
+            task: None,
+            report: None,
+        });
+
+        let value = serde_json::to_value(response).expect("result response should serialize");
+        assert_eq!(value["threat"], json!("Critical"));
+    }
+
+    #[test]
+    fn result_response_preserves_unknown_threat() {
+        let response = ResultResponse::from(ScanResult {
+            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+            name: "Future finding".to_string(),
+            host: None,
+            port: None,
+            severity: Some(7.5),
+            threat: Some("FutureThreat".to_string()),
+            nvt: None,
+            description: None,
+            task: None,
+            report: None,
+        });
+
+        let value = serde_json::to_value(response).expect("result response should serialize");
+        assert_eq!(value["threat"], json!("FutureThreat"));
+    }
 }

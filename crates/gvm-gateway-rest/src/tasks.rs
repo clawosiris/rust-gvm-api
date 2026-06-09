@@ -25,6 +25,7 @@ use crate::{
         ResourceRefResponse,
     },
     error::RestError,
+    open_enum::open_string_enum,
     openapi::{
         ok_json, problem_response, CreateTaskDoc, ModifyTaskDoc, ResourceIdPathDoc,
         TaskListQueryDoc,
@@ -64,19 +65,13 @@ fn parse_task_status(s: &str) -> TaskStatus {
     serde_json::from_value(serde_json::Value::String(s.to_string())).unwrap_or(TaskStatus::New)
 }
 
-/// Hosts ordering strategy.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-pub(crate) enum HostsOrdering {
-    #[serde(rename = "sequential")]
-    Sequential,
-    #[serde(rename = "random")]
-    Random,
-    #[serde(rename = "reverse")]
-    Reverse,
-}
-
-fn parse_hosts_ordering(s: &str) -> Option<HostsOrdering> {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
+open_string_enum! {
+    /// Hosts ordering strategy.
+    pub(crate) enum HostsOrdering {
+        Sequential => "sequential",
+        Random => "random",
+        Reverse => "reverse",
+    }
 }
 
 /// JSON body returned for a single task.
@@ -134,7 +129,7 @@ impl From<gvm_gateway_domain::Task> for TaskResponse {
                 .map(ResourceRefResponse::from)
                 .collect(),
             alterable: t.alterable,
-            hosts_ordering: t.hosts_ordering.as_deref().and_then(parse_hosts_ordering),
+            hosts_ordering: t.hosts_ordering.as_deref().map(HostsOrdering::parse),
             observers: t.observers,
             schedule_periods: t.schedule_periods,
             last_report: t.last_report.map(ResourceRefResponse::from),
@@ -717,4 +712,39 @@ pub(crate) fn resume_task_docs(op: TransformOperation<'_>) -> TransformOperation
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<404>(op, "Resource not found");
     problem_response::<409>(op, "Resource state conflict")
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::TaskResponse;
+    use gvm_gateway_domain::Task;
+
+    #[test]
+    fn task_response_preserves_unknown_hosts_ordering() {
+        let response = TaskResponse::from(Task {
+            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+            name: "Example".to_string(),
+            comment: None,
+            status: "Running".to_string(),
+            target: None,
+            scan_config: None,
+            scanner: None,
+            schedule: None,
+            alerts: vec![],
+            alterable: None,
+            hosts_ordering: Some("by-latency".to_string()),
+            observers: vec![],
+            schedule_periods: None,
+            last_report: None,
+            current_report: None,
+            result_count: None,
+            in_use: false,
+            writable: true,
+        });
+
+        let value = serde_json::to_value(response).expect("task response should serialize");
+        assert_eq!(value["hostsOrdering"], json!("by-latency"));
+    }
 }

@@ -23,6 +23,7 @@ use crate::{
         ResourceRefResponse,
     },
     error::RestError,
+    open_enum::open_string_enum,
     openapi::{
         ok_json, problem_response, CreateTargetDoc, ModifyTargetDoc, ResourceIdPathDoc,
         TargetListQueryDoc,
@@ -40,33 +41,20 @@ pub use gvm_gateway_domain::{
 // Response DTOs
 // ============================================================================
 
-/// Alive-test strategy for a target.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-pub(crate) enum AliveTest {
-    #[serde(rename = "Scan Config Default")]
-    ScanConfigDefault,
-    #[serde(rename = "ICMP Ping")]
-    IcmpPing,
-    #[serde(rename = "TCP-ACK Service Ping")]
-    TcpAckServicePing,
-    #[serde(rename = "TCP-SYN Service Ping")]
-    TcpSynServicePing,
-    #[serde(rename = "ARP Ping")]
-    ArpPing,
-    #[serde(rename = "ICMP, TCP-ACK Service Ping")]
-    IcmpTcpAckServicePing,
-    #[serde(rename = "ICMP, ARP Ping")]
-    IcmpArpPing,
-    #[serde(rename = "TCP-ACK Service, ARP Ping")]
-    TcpAckServiceArpPing,
-    #[serde(rename = "ICMP, TCP-ACK Service, ARP Ping")]
-    IcmpTcpAckServiceArpPing,
-    #[serde(rename = "Consider Alive")]
-    ConsiderAlive,
-}
-
-fn parse_alive_test(s: &str) -> Option<AliveTest> {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
+open_string_enum! {
+    /// Alive-test strategy for a target.
+    pub(crate) enum AliveTest {
+        ScanConfigDefault => "Scan Config Default",
+        IcmpPing => "ICMP Ping",
+        TcpAckServicePing => "TCP-ACK Service Ping",
+        TcpSynServicePing => "TCP-SYN Service Ping",
+        ArpPing => "ARP Ping",
+        IcmpTcpAckServicePing => "ICMP, TCP-ACK Service Ping",
+        IcmpArpPing => "ICMP, ARP Ping",
+        TcpAckServiceArpPing => "TCP-ACK Service, ARP Ping",
+        IcmpTcpAckServiceArpPing => "ICMP, TCP-ACK Service, ARP Ping",
+        ConsiderAlive => "Consider Alive",
+    }
 }
 
 /// JSON body returned for a single target.
@@ -113,7 +101,7 @@ impl From<gvm_gateway_domain::Target> for TargetResponse {
             comment: t.comment,
             hosts: t.hosts,
             exclude_hosts: t.exclude_hosts,
-            alive_test: t.alive_test.as_deref().and_then(parse_alive_test),
+            alive_test: t.alive_test.as_deref().map(AliveTest::parse),
             port_list: t.port_list.map(ResourceRefResponse::from),
             reverse_lookup_only: t.reverse_lookup_only,
             reverse_lookup_unify: t.reverse_lookup_unify,
@@ -544,7 +532,10 @@ pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperati
 
 #[cfg(test)]
 mod tests {
-    use super::TargetListQuery;
+    use serde_json::json;
+
+    use super::{TargetListQuery, TargetResponse};
+    use gvm_gateway_domain::Target;
 
     #[test]
     fn target_list_query_decodes_filter_and_encoded_filter_id() {
@@ -563,5 +554,29 @@ mod tests {
         );
         assert_eq!(parsed.page, 1);
         assert_eq!(parsed.per_page, 50);
+    }
+
+    #[test]
+    fn target_response_preserves_unknown_alive_test() {
+        let response = TargetResponse::from(Target {
+            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+            name: "Example".to_string(),
+            comment: None,
+            hosts: vec!["192.0.2.1".to_string()],
+            exclude_hosts: vec![],
+            alive_test: Some("Passive DNS".to_string()),
+            port_list: None,
+            reverse_lookup_only: false,
+            reverse_lookup_unify: false,
+            ssh_credential: None,
+            smb_credential: None,
+            esxi_credential: None,
+            snmp_credential: None,
+            in_use: false,
+            writable: true,
+        });
+
+        let value = serde_json::to_value(response).expect("target response should serialize");
+        assert_eq!(value["aliveTest"], json!("Passive DNS"));
     }
 }
