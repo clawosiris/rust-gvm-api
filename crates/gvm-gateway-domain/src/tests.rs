@@ -234,6 +234,15 @@ fn report_query_default() {
     assert!(query.filter_string.is_none());
 }
 
+/// Single-report fetch defaults expose the documented embedded-result window.
+#[test]
+fn get_report_opts_default_embeds_first_result_page() {
+    let opts = GetReportOpts::default();
+    assert!(!opts.ignore_pagination);
+    assert_eq!(opts.page, 1);
+    assert_eq!(opts.per_page, 25);
+}
+
 // ------------------------------------------------------------------------
 // Task tests
 // ------------------------------------------------------------------------

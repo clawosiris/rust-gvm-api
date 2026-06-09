@@ -56,7 +56,7 @@ impl GatewayService {
         self.execute_with_resource(
             "reports.export",
             session_token,
-            "read",
+            "export",
             "report_export",
             Some(report_id),
             |session| async move {
