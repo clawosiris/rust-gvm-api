@@ -1050,7 +1050,7 @@ fn compare_schema_like(
     }
 }
 
-fn open_enum_known_values<'a>(schema: &'a serde_json::Map<String, Value>) -> Option<&'a Value> {
+fn open_enum_known_values(schema: &serde_json::Map<String, Value>) -> Option<&Value> {
     schema
         .get("x-openEnum")
         .and_then(Value::as_bool)
