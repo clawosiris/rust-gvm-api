@@ -2362,6 +2362,8 @@ fn typed_report_detail_unsupported(error: &gvm_client::GvmError, command: &str) 
     )
 }
 
+// The gateway translates between REST/gRPC and GMP, but it does not emulate
+// GMP functionality that the connected gvmd does not implement yet.
 fn unsupported_typed_report_detail_error(command: &str, resource: &str) -> GatewayError {
     GatewayError::NotImplemented(format!(
         "{resource} are not available because gvmd does not implement `{command}` on this backend version; the proxy does not emulate unsupported GMP commands"
