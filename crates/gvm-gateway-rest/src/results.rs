@@ -38,7 +38,6 @@ open_string_enum! {
         Low => "Low",
         Log => "Log",
         Alarm => "Alarm",
-        Critical => "Critical",
     }
 }
 
