@@ -4,7 +4,7 @@
 //! OpenAPI generation helpers for the REST adapter.
 
 use aide::{
-    openapi::{License, SecurityScheme, Server, Tag},
+    openapi::{License, SecurityScheme, Server},
     transform::{TransformOpenApi, TransformOperation, TransformResponse},
 };
 use axum::http::Method;
@@ -54,108 +54,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
             "basicAuth": []
         }
     ]);
-    document["tags"] = json!([
-        {
-            "name": "Sessions",
-            "description": "Session lifecycle"
-        },
-        {
-            "name": "Targets",
-            "description": "Scan target management"
-        },
-        {
-            "name": "Alerts",
-            "description": "Alert management"
-        },
-        {
-            "name": "Schedules",
-            "description": "Schedule management"
-        },
-        {
-            "name": "Credentials",
-            "description": "Credential management"
-        },
-        {
-            "name": "Port Lists",
-            "description": "Port list management"
-        },
-        {
-            "name": "Feeds",
-            "description": "Feed status"
-        },
-        {
-            "name": "Hosts",
-            "description": "Discovered host inventory"
-        },
-        {
-            "name": "Report Formats",
-            "description": "Report export format discovery"
-        },
-        {
-            "name": "Filters",
-            "description": "Saved filter discovery"
-        },
-        {
-            "name": "Tags",
-            "description": "Tag discovery"
-        },
-        {
-            "name": "Tickets",
-            "description": "Ticket discovery"
-        },
-        {
-            "name": "NVTs",
-            "description": "NVT catalog discovery"
-        },
-        {
-            "name": "NVT Families",
-            "description": "NVT family discovery"
-        },
-        {
-            "name": "Users",
-            "description": "User management"
-        },
-        {
-            "name": "Groups",
-            "description": "Group management"
-        },
-        {
-            "name": "Roles",
-            "description": "Role management"
-        },
-        {
-            "name": "Permissions",
-            "description": "Permission management"
-        },
-        {
-            "name": "User Settings",
-            "description": "Current-user settings"
-        },
-        {
-            "name": "Tasks",
-            "description": "Scan task management"
-        },
-        {
-            "name": "Reports",
-            "description": "Scan report management"
-        },
-        {
-            "name": "Results",
-            "description": "Scan result management"
-        },
-        {
-            "name": "Scan Configs",
-            "description": "Scan configuration management"
-        },
-        {
-            "name": "Scanners",
-            "description": "Scanner information"
-        },
-        {
-            "name": "System",
-            "description": "System and health endpoints"
-        }
-    ]);
+    document["tags"] = openapi_tags();
 
     let source_paths = document["paths"].as_object().cloned().unwrap_or_default();
     let mut normalized_paths = normalize_paths(&source_paths);
@@ -239,6 +138,119 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     ensure_basic_auth_scheme(&mut document);
     strip_nullable_types(&mut document);
     document
+}
+
+fn openapi_tags() -> Value {
+    json!([
+        {
+            "name": "Sessions",
+            "description": "Session lifecycle"
+        },
+        {
+            "name": "Targets",
+            "description": "Scan target management"
+        },
+        {
+            "name": "Alerts",
+            "description": "Alert management"
+        },
+        {
+            "name": "Schedules",
+            "description": "Schedule management"
+        },
+        {
+            "name": "Credentials",
+            "description": "Credential management"
+        },
+        {
+            "name": "Port Lists",
+            "description": "Port list management"
+        },
+        {
+            "name": "Feeds",
+            "description": "Feed status"
+        },
+        {
+            "name": "Hosts",
+            "description": "Discovered host inventory"
+        },
+        {
+            "name": "Report Formats",
+            "description": "Report export format discovery"
+        },
+        {
+            "name": "Filters",
+            "description": "Saved filter discovery"
+        },
+        {
+            "name": "Tags",
+            "description": "Tag discovery"
+        },
+        {
+            "name": "Tickets",
+            "description": "Ticket discovery"
+        },
+        {
+            "name": "Notes",
+            "description": "Note discovery"
+        },
+        {
+            "name": "Overrides",
+            "description": "Override discovery"
+        },
+        {
+            "name": "NVTs",
+            "description": "NVT catalog discovery"
+        },
+        {
+            "name": "NVT Families",
+            "description": "NVT family discovery"
+        },
+        {
+            "name": "Users",
+            "description": "User management"
+        },
+        {
+            "name": "Groups",
+            "description": "Group management"
+        },
+        {
+            "name": "Roles",
+            "description": "Role management"
+        },
+        {
+            "name": "Permissions",
+            "description": "Permission management"
+        },
+        {
+            "name": "User Settings",
+            "description": "Current-user settings"
+        },
+        {
+            "name": "Tasks",
+            "description": "Scan task management"
+        },
+        {
+            "name": "Reports",
+            "description": "Scan report management"
+        },
+        {
+            "name": "Results",
+            "description": "Scan result management"
+        },
+        {
+            "name": "Scan Configs",
+            "description": "Scan configuration management"
+        },
+        {
+            "name": "Scanners",
+            "description": "Scanner information"
+        },
+        {
+            "name": "System",
+            "description": "System and health endpoints"
+        }
+    ])
 }
 
 fn synchronize_report_export_responses(paths: &mut Map<String, Value>) {
@@ -885,48 +897,6 @@ pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
             variables: Default::default(),
             extensions: Default::default(),
         })
-        .tag(Tag {
-            name: "System".to_string(),
-            description: Some("System and health endpoints".to_string()),
-            external_docs: None,
-            extensions: Default::default(),
-        })
-        .tag(Tag {
-            name: "Sessions".to_string(),
-            description: Some("Session lifecycle".to_string()),
-            external_docs: None,
-            extensions: Default::default(),
-        })
-        .tag(Tag {
-            name: "Targets".to_string(),
-            description: Some("Scan target management".to_string()),
-            external_docs: None,
-            extensions: Default::default(),
-        })
-        .tag(Tag {
-            name: "Reports".to_string(),
-            description: Some("Scan report management".to_string()),
-            external_docs: None,
-            extensions: Default::default(),
-        })
-        .tag(Tag {
-            name: "Results".to_string(),
-            description: Some("Scan result management".to_string()),
-            external_docs: None,
-            extensions: Default::default(),
-        })
-        .tag(Tag {
-            name: "Scan Configs".to_string(),
-            description: Some("Scan configuration management".to_string()),
-            external_docs: None,
-            extensions: Default::default(),
-        })
-        .tag(Tag {
-            name: "Scanners".to_string(),
-            description: Some("Scanner information".to_string()),
-            external_docs: None,
-            extensions: Default::default(),
-        })
         .security_scheme(
             "bearerAuth",
             SecurityScheme::Http {
@@ -1473,6 +1443,44 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert!(create_target_required.contains("name"));
         assert!(create_target_required.contains("hosts"));
+    }
+
+    #[test]
+    fn generated_openapi_feed_version_matches_required_runtime_contract() {
+        let generated = build_openapi();
+        let required = generated["components"]["schemas"]["Feed"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<BTreeSet<_>>();
+
+        assert!(required.contains("type"));
+        assert!(required.contains("name"));
+        assert!(required.contains("version"));
+    }
+
+    #[test]
+    fn generated_openapi_declares_every_operation_tag() {
+        let generated = build_openapi();
+        let declared_tags = generated["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|tag| tag["name"].as_str())
+            .collect::<BTreeSet<_>>();
+
+        for (path, methods) in generated["paths"].as_object().unwrap() {
+            for (method, operation) in methods.as_object().unwrap() {
+                for tag in operation["tags"].as_array().into_iter().flatten() {
+                    let tag = tag.as_str().unwrap();
+                    assert!(
+                        declared_tags.contains(tag),
+                        "missing top-level tag declaration for {tag} used by {method} {path}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

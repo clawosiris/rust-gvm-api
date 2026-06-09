@@ -13,8 +13,8 @@ pub struct Feed {
     pub feed_type: String,
     /// Feed display name.
     pub name: String,
-    /// Optional version string.
-    pub version: Option<String>,
+    /// Feed version string.
+    pub version: String,
     /// Optional description.
     pub description: Option<String>,
     /// Whether a sync is currently running.
