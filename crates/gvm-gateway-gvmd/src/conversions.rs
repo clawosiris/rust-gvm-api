@@ -31,16 +31,13 @@ pub(crate) fn target_from_gmp(target: gvm_gmp::responses::Target) -> Target {
         hosts: target.hosts,
         exclude_hosts: target.exclude_hosts,
         alive_test: target.alive_tests,
-        port_list: target.port_list.map(|resource| ResourceRef {
-            id: resource.id.to_string(),
-            name: Some(resource.name),
-        }),
+        port_list: target.port_list.map(resource_ref_from_named_entity),
         reverse_lookup_only: target.reverse_lookup_only,
         reverse_lookup_unify: target.reverse_lookup_unify,
-        ssh_credential: None,
-        smb_credential: None,
-        esxi_credential: None,
-        snmp_credential: None,
+        ssh_credential: target.ssh_credential.map(resource_ref_from_named_entity),
+        smb_credential: target.smb_credential.map(resource_ref_from_named_entity),
+        esxi_credential: target.esxi_credential.map(resource_ref_from_named_entity),
+        snmp_credential: target.snmp_credential.map(resource_ref_from_named_entity),
         in_use: target.meta.in_use,
         writable: target.meta.writable,
     }
@@ -872,6 +869,10 @@ mod tests {
                 <reverse_lookup_only>1</reverse_lookup_only>
                 <reverse_lookup_unify>0</reverse_lookup_unify>
                 <port_list id="11111111-1111-1111-1111-111111111111"><name>All TCP</name></port_list>
+                <ssh_credential id="22222222-2222-2222-2222-222222222222"><name>SSH Login</name></ssh_credential>
+                <smb_credential id="33333333-3333-3333-3333-333333333333"><name>SMB Login</name></smb_credential>
+                <esxi_credential id="44444444-4444-4444-4444-444444444444"><name>ESXi Login</name></esxi_credential>
+                <snmp_credential id="55555555-5555-5555-5555-555555555555"><name>SNMP Login</name></snmp_credential>
             </target>
         </get_targets_response>"#,
         );
@@ -888,6 +889,34 @@ mod tests {
         assert!(target.reverse_lookup_only);
         assert!(!target.reverse_lookup_unify);
         assert_eq!(target.port_list.unwrap().name.as_deref(), Some("All TCP"));
+        assert_eq!(
+            target.ssh_credential.unwrap(),
+            ResourceRef {
+                id: "22222222-2222-2222-2222-222222222222".to_string(),
+                name: Some("SSH Login".to_string()),
+            }
+        );
+        assert_eq!(
+            target.smb_credential.unwrap(),
+            ResourceRef {
+                id: "33333333-3333-3333-3333-333333333333".to_string(),
+                name: Some("SMB Login".to_string()),
+            }
+        );
+        assert_eq!(
+            target.esxi_credential.unwrap(),
+            ResourceRef {
+                id: "44444444-4444-4444-4444-444444444444".to_string(),
+                name: Some("ESXi Login".to_string()),
+            }
+        );
+        assert_eq!(
+            target.snmp_credential.unwrap(),
+            ResourceRef {
+                id: "55555555-5555-5555-5555-555555555555".to_string(),
+                name: Some("SNMP Login".to_string()),
+            }
+        );
     }
 
     #[test]
