@@ -712,7 +712,11 @@ pub(crate) fn get_report_vulnerabilities_docs(
         ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<501>(
+        op,
+        "The connected gvmd backend does not implement this report-detail operation",
+    )
 }
 
 /// OpenAPI transform for `GET /api/v1/reports/{id}/tls-certificates`.
@@ -731,7 +735,11 @@ pub(crate) fn get_report_tls_certificates_docs(
         ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<501>(
+        op,
+        "The connected gvmd backend does not implement this report-detail operation",
+    )
 }
 
 /// OpenAPI transform for `GET /api/v1/reports/{id}/errors`.
@@ -748,7 +756,11 @@ pub(crate) fn get_report_errors_docs(op: TransformOperation<'_>) -> TransformOpe
         ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<501>(
+        op,
+        "The connected gvmd backend does not implement this report-detail operation",
+    )
 }
 
 /// OpenAPI transform for `GET /api/v1/reports/{id}/closed-cves`.
@@ -765,7 +777,11 @@ pub(crate) fn get_report_closed_cves_docs(op: TransformOperation<'_>) -> Transfo
         ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<404>(op, "Resource not found")
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<501>(
+        op,
+        "The connected gvmd backend does not implement this report-detail operation",
+    )
 }
 
 #[cfg(test)]

@@ -1477,6 +1477,33 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn get_report_vulnerabilities_problem(
+        &self,
+        token: &str,
+        report_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ProblemResponse> {
+        let response = self
+            .authed(
+                Method::GET,
+                &format!(
+                    "/api/v1/reports/{report_id}/vulnerabilities?page={page}&perPage={per_page}"
+                ),
+                token,
+            )
+            .send()
+            .await
+            .context("get report vulnerabilities problem")?;
+
+        assert_problem_response(
+            response,
+            StatusCode::NOT_IMPLEMENTED,
+            "get report vulnerabilities problem",
+        )
+        .await
+    }
+
     pub async fn report_detail_subresources_supported(
         &self,
         token: &str,

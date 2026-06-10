@@ -139,6 +139,16 @@ components:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
 
+    NotImplemented:
+      headers:
+        traceparent:
+          $ref: "#/components/headers/Traceparent"
+      description: Requested functionality is not implemented by the current backend
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
     Conflict:
       headers:
         traceparent:

@@ -590,6 +590,9 @@ pub(crate) fn parse_permission_subject_type(
 pub(crate) fn map_gvm_error(error: gvm_client::GvmError) -> GatewayError {
     match error {
         gvm_client::GvmError::Parse(error) => map_parse_error(error),
+        gvm_client::GvmError::UnsupportedCommand { .. } => {
+            GatewayError::NotImplemented(error.to_string())
+        }
         gvm_client::GvmError::Server {
             status: 400,
             message,
@@ -760,6 +763,21 @@ mod tests {
         };
         let mapped = map_gvm_error(error);
         assert!(matches!(mapped, GatewayError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn map_gvm_error_unsupported_command_to_not_implemented() {
+        let error = gvm_client::GvmError::UnsupportedCommand {
+            command: "get_report_vulns".to_string(),
+            version: gvm_gmp::types::GmpVersion(22, 7),
+            required: "22.8",
+        };
+
+        let mapped = map_gvm_error(error);
+
+        assert!(
+            matches!(mapped, GatewayError::NotImplemented(detail) if detail.contains("get_report_vulns"))
+        );
     }
 
     #[test]

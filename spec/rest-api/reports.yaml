@@ -173,6 +173,8 @@ paths:
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
+        "501":
+          $ref: "./common.yaml#/components/responses/NotImplemented"
 
   /reports/{id}/tls-certificates:
     parameters:
@@ -196,6 +198,8 @@ paths:
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
+        "501":
+          $ref: "./common.yaml#/components/responses/NotImplemented"
 
   /reports/{id}/errors:
     parameters:
@@ -219,6 +223,8 @@ paths:
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
+        "501":
+          $ref: "./common.yaml#/components/responses/NotImplemented"
 
   /reports/{id}/closed-cves:
     parameters:
@@ -242,6 +248,8 @@ paths:
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
+        "501":
+          $ref: "./common.yaml#/components/responses/NotImplemented"
 
 components:
   schemas:
