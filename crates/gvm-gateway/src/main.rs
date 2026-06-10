@@ -31,6 +31,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let gvmd_socket_path = config.gvmd_socket_path()?;
     let native_tls = config.transport_security.native_tls_files()?;
+    let mut rest_security = config.rest_security;
+    rest_security.native_tls_enabled = native_tls.is_some();
     let listener = TcpListener::bind(&config.bind).await?;
     let live_adapter = Arc::new(GvmdAdapter::unix_socket(&gvmd_socket_path));
     let sessions = Arc::new(SessionManager::default());
@@ -38,11 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let service = gateway_service(live_adapter, sessions);
     let _reaper_handle = reaper.spawn();
     let shutdown = Arc::new(ShutdownRuntime::new());
-    let app = build_router_with_runtime_and_security(
-        service,
-        Arc::clone(&shutdown),
-        config.rest_security,
-    );
+    let app = build_router_with_runtime_and_security(service, Arc::clone(&shutdown), rest_security);
 
     tokio::spawn({
         let shutdown = Arc::clone(&shutdown);

@@ -6,6 +6,7 @@ use std::time::Duration;
 use common::{spawn_server, static_gateway_service_for_reaper};
 use gvm_gateway_domain::SessionManager;
 use gvm_gateway_gvmd::StaticGvmdAdapter;
+use gvm_gateway_rest::peer_addr::ClientPeerAddr;
 use gvm_gateway_rest::router::build_router;
 use http::StatusCode;
 use reqwest::Client;
@@ -154,7 +155,12 @@ async fn session_reaper_cleans_up_expired_sessions() {
     let reaper = reaper.spawn_with_interval(Duration::from_millis(20));
     let app = build_router(service);
     let handle = tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<ClientPeerAddr>(),
+        )
+        .await
+        .unwrap();
     });
 
     let client = Client::new();

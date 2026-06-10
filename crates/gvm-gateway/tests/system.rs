@@ -12,7 +12,9 @@ use gvm_gateway::server;
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::SessionManager;
 use gvm_gateway_gvmd::StaticGvmdAdapter;
-use gvm_gateway_rest::router::build_router;
+use gvm_gateway_rest::router::{
+    build_router, build_router_with_runtime_and_security, RestSecurityConfig,
+};
 use gvm_gateway_rest::shutdown::ShutdownRuntime;
 use http::StatusCode;
 use rcgen::generate_simple_self_signed;
@@ -165,7 +167,7 @@ async fn version_returns_api_and_gmp_version() {
 }
 
 #[tokio::test]
-async fn https_health_returns_200_in_native_tls_mode() {
+async fn https_health_returns_200_and_hsts_in_native_tls_mode() {
     let cert_dir = TempDir::new().unwrap();
     let rcgen::CertifiedKey { cert, signing_key } =
         generate_simple_self_signed(["localhost".to_string()]).unwrap();
@@ -176,10 +178,15 @@ async fn https_health_returns_200_in_native_tls_mode() {
 
     let adapter = StaticGvmdAdapter::ready("22.7");
     let service = static_service(adapter.clone(), adapter);
-    let app = build_router(service);
+    let shutdown = Arc::new(ShutdownRuntime::new());
+    let security = RestSecurityConfig {
+        native_tls_enabled: true,
+        ..Default::default()
+    };
+    // Native TLS is the only mode where this process may assert HSTS directly.
+    let app = build_router_with_runtime_and_security(service, Arc::clone(&shutdown), security);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    let shutdown = Arc::new(ShutdownRuntime::new());
     let handle = tokio::spawn(server::serve(
         listener,
         app,
@@ -203,6 +210,10 @@ async fn https_health_returns_200_in_native_tls_mode() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("strict-transport-security").unwrap(),
+        "max-age=31536000; includeSubDomains"
+    );
     handle.abort();
 }
 

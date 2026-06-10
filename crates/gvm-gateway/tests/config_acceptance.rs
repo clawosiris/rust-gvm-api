@@ -108,6 +108,7 @@ fn config_override_precedence() {
                 global_per_window: Some(12),
                 subject_per_window: None,
             },
+            native_tls_enabled: false,
         }
     );
     assert_eq!(

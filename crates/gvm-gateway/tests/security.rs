@@ -145,6 +145,7 @@ async fn cors_preflight_allowed_origin() {
         RestSecurityConfig {
             cors_allowed_origins: vec!["https://ui.example".to_string()],
             rate_limit: RateLimitConfig::disabled(),
+            native_tls_enabled: false,
         },
     )
     .await;
@@ -176,6 +177,7 @@ async fn cors_preflight_denied_origin() {
         RestSecurityConfig {
             cors_allowed_origins: vec!["https://ui.example".to_string()],
             rate_limit: RateLimitConfig::disabled(),
+            native_tls_enabled: false,
         },
     )
     .await;
@@ -208,6 +210,28 @@ async fn security_headers_present() {
 }
 
 #[tokio::test]
+async fn native_tls_security_config_emits_hsts() {
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig::disabled(),
+            native_tls_enabled: true,
+        },
+    )
+    .await;
+
+    let response = harness.get_targets().await;
+
+    assert_security_headers(&response);
+    assert_eq!(
+        response.headers().get("strict-transport-security").unwrap(),
+        "max-age=31536000; includeSubDomains"
+    );
+    harness.shutdown().await;
+}
+
+#[tokio::test]
 async fn over_limit_returns_429() {
     let harness = target_harness_with_security(
         |_| {},
@@ -218,6 +242,7 @@ async fn over_limit_returns_429() {
                 global_per_window: Some(10),
                 subject_per_window: Some(1),
             },
+            native_tls_enabled: false,
         },
     )
     .await;
@@ -245,6 +270,7 @@ async fn retry_after_header_present() {
                 global_per_window: Some(1),
                 subject_per_window: Some(100),
             },
+            native_tls_enabled: false,
         },
     )
     .await;
@@ -273,6 +299,7 @@ async fn different_sessions_have_independent_subject_limits() {
                 global_per_window: Some(10),
                 subject_per_window: Some(1),
             },
+            native_tls_enabled: false,
         },
     )
     .await;
@@ -307,6 +334,7 @@ async fn global_limit_applies_across_sessions() {
                 global_per_window: Some(1),
                 subject_per_window: Some(100),
             },
+            native_tls_enabled: false,
         },
     )
     .await;
@@ -338,6 +366,7 @@ async fn session_creation_rate_limited_before_backend_work() {
                 global_per_window: Some(10),
                 subject_per_window: Some(1),
             },
+            native_tls_enabled: false,
         },
     )
     .await;
@@ -352,6 +381,55 @@ async fn session_creation_rate_limited_before_backend_work() {
         .count();
 
     let second = harness.create_session_with_basic("admin", "admin").await;
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        harness
+            .server
+            .command_history()
+            .iter()
+            .filter(|record| record.command_name() == "authenticate")
+            .count(),
+        auth_count_after_first
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn session_creation_rate_limit_is_source_aware_before_authentication() {
+    // A brute-force client can rotate Basic credentials on /session, so the
+    // unauthenticated throttle must key by source before backend auth work.
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(10),
+                subject_per_window: Some(1),
+            },
+            native_tls_enabled: false,
+        },
+    )
+    .await;
+
+    let first = harness.create_session_with_basic("admin", "admin").await;
+    assert_eq!(first.status(), StatusCode::CREATED);
+    let auth_count_after_first = harness
+        .server
+        .command_history()
+        .iter()
+        .filter(|record| record.command_name() == "authenticate")
+        .count();
+
+    let second = harness
+        .client
+        .post(harness.url("/api/v1/session"))
+        .basic_auth("admin", Some("different-password"))
+        .send()
+        .await
+        .unwrap();
+
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(
         harness

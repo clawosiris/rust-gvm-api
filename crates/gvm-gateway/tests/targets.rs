@@ -147,6 +147,25 @@ async fn list_targets_paginated() {
 }
 
 #[tokio::test]
+async fn list_targets_rejects_reserved_filter_pagination_terms() {
+    let harness = target_harness(|_| {}).await;
+
+    // Caller filters are composed with gateway-owned pagination terms in
+    // rust-gvm, so attempts to supply those terms must fail before gvmd work.
+    let response = harness.get_targets_with_query("filter=first%3D1").await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["status"], 400);
+    assert_eq!(json["code"], "bad_request");
+    assert!(json["detail"]
+        .as_str()
+        .is_some_and(|detail| detail.contains("reserved term 'first'")));
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
 async fn create_target() {
     let harness = target_harness(|_| {}).await;
 

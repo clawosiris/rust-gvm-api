@@ -15,6 +15,7 @@ pub mod feeds;
 pub mod identity;
 pub(crate) mod open_enum;
 pub mod openapi;
+pub mod peer_addr;
 pub mod port_lists;
 pub(crate) mod query;
 pub(crate) mod rate_limit;
