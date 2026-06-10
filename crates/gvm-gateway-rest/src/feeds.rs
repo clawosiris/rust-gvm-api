@@ -18,17 +18,28 @@ use serde::Serialize;
 
 use crate::{
     error::RestError,
+    open_enum::open_string_enum,
     openapi::{ok_json, problem_response},
     router::bearer_token,
 };
 
 pub use gvm_gateway_domain::Feed;
 
+open_string_enum! {
+    /// Feed catalog type.
+    pub(crate) enum FeedType {
+        Nvt => "NVT",
+        Cert => "CERT",
+        Scap => "SCAP",
+        GvmdData => "GVMD_DATA",
+    }
+}
+
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "Feed")]
 pub(crate) struct FeedResponse {
     #[serde(rename = "type")]
-    feed_type: String,
+    feed_type: FeedType,
     name: String,
     version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -40,7 +51,7 @@ pub(crate) struct FeedResponse {
 impl From<Feed> for FeedResponse {
     fn from(feed: Feed) -> Self {
         Self {
-            feed_type: feed.feed_type,
+            feed_type: FeedType::parse(&feed.feed_type),
             name: feed.name,
             version: feed.version,
             description: feed.description,
@@ -116,4 +127,48 @@ pub(crate) fn sync_feeds_docs(op: TransformOperation<'_>) -> TransformOperation<
         });
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<409>(op, "Feed synchronization already in progress")
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{FeedResponse, FeedType};
+    use gvm_gateway_domain::Feed;
+
+    fn feed_with_type(feed_type: &str) -> Feed {
+        Feed {
+            feed_type: feed_type.to_string(),
+            name: "Feed".to_string(),
+            version: "202606100000".to_string(),
+            description: None,
+            currently_syncing: false,
+        }
+    }
+
+    #[test]
+    fn feed_type_deserialization_preserves_unknown_values() {
+        // Feed catalogs can gain new families; clients should still receive the
+        // exact backend value through the open-enum wrapper.
+        let parsed: FeedType =
+            serde_json::from_value(json!("COMMUNITY_DATA")).expect("feed type should parse");
+
+        assert_eq!(
+            serde_json::to_value(parsed).unwrap(),
+            json!("COMMUNITY_DATA")
+        );
+    }
+
+    #[test]
+    fn feed_response_preserves_known_and_unknown_types() {
+        // Response mapping keeps the public `type` value verbatim for both the
+        // current rust-gvm enum set and backend-added feed families.
+        let known = serde_json::to_value(FeedResponse::from(feed_with_type("NVT")))
+            .expect("feed response should serialize");
+        let unknown = serde_json::to_value(FeedResponse::from(feed_with_type("COMMUNITY_DATA")))
+            .expect("feed response should serialize");
+
+        assert_eq!(known["type"], json!("NVT"));
+        assert_eq!(unknown["type"], json!("COMMUNITY_DATA"));
+    }
 }

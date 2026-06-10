@@ -28,6 +28,7 @@ use crate::{
         ResourceRefResponse,
     },
     error::RestError,
+    open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
     query::{parse_collection_query, parse_filter_only_query},
     router::bearer_token,
@@ -66,6 +67,15 @@ impl From<gvm_gateway_domain::IdentityResourceMeta> for IdentityMetaResponse {
     }
 }
 
+open_string_enum! {
+    /// User authentication backend type.
+    pub(crate) enum AuthenticationType {
+        File => "file",
+        LdapConnect => "ldap_connect",
+        RadiusConnect => "radius_connect",
+    }
+}
+
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "User")]
 struct UserResponse {
@@ -78,7 +88,7 @@ struct UserResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     hosts: Option<String>,
     #[serde(rename = "authenticationType", skip_serializing_if = "Option::is_none")]
-    authentication_type: Option<String>,
+    authentication_type: Option<AuthenticationType>,
 }
 
 impl From<User> for UserResponse {
@@ -97,7 +107,10 @@ impl From<User> for UserResponse {
                 .collect(),
             hosts_allow: user.hosts_allow,
             hosts: user.hosts,
-            authentication_type: user.authentication_type,
+            authentication_type: user
+                .authentication_type
+                .as_deref()
+                .map(AuthenticationType::parse),
         }
     }
 }
@@ -1734,7 +1747,10 @@ pub(crate) fn update_user_setting_docs(op: TransformOperation<'_>) -> TransformO
 
 #[cfg(test)]
 mod tests {
-    use super::{IdentityListQuery, UserSettingsListQuery};
+    use serde_json::json;
+
+    use super::{AuthenticationType, IdentityListQuery, UserResponse, UserSettingsListQuery};
+    use gvm_gateway_domain::{IdentityResourceMeta, User};
 
     #[test]
     fn identity_queries_decode_filters_and_filter_ids() {
@@ -1762,5 +1778,48 @@ mod tests {
             user_settings.filter_id.as_deref(),
             Some("123e4567-e89b-12d3-a456-426614174000")
         );
+    }
+
+    fn user_with_auth_type(authentication_type: &str) -> User {
+        User {
+            meta: IdentityResourceMeta {
+                id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+                name: "user".to_string(),
+                comment: None,
+                owner: None,
+                creation_time: None,
+                modification_time: None,
+                writable: true,
+                in_use: false,
+            },
+            roles: vec![],
+            groups: vec![],
+            hosts_allow: None,
+            hosts: None,
+            authentication_type: Some(authentication_type.to_string()),
+        }
+    }
+
+    #[test]
+    fn authentication_type_deserialization_preserves_unknown_values() {
+        // User authentication backends can grow in gvmd. The response wrapper
+        // must preserve that value even before request validation supports it.
+        let parsed: AuthenticationType =
+            serde_json::from_value(json!("oidc_connect")).expect("auth type should parse");
+
+        assert_eq!(serde_json::to_value(parsed).unwrap(), json!("oidc_connect"));
+    }
+
+    #[test]
+    fn user_response_preserves_known_and_unknown_authentication_types() {
+        // User response conversion should expose the exact backend
+        // authenticationType value without coercing unknown future backends.
+        let known = serde_json::to_value(UserResponse::from(user_with_auth_type("file")))
+            .expect("user response should serialize");
+        let unknown = serde_json::to_value(UserResponse::from(user_with_auth_type("oidc_connect")))
+            .expect("user response should serialize");
+
+        assert_eq!(known["authenticationType"], json!("file"));
+        assert_eq!(unknown["authenticationType"], json!("oidc_connect"));
     }
 }

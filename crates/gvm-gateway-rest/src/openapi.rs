@@ -16,8 +16,9 @@ use uuid::Uuid;
 
 // Runtime DTO imports are no longer needed centrally — OpenAPI transforms
 // now live alongside their handlers in each module.
-use crate::auth_policy::{
-    classify_runtime_route, runtime_path_from_openapi_path, RestRouteAuthPolicy,
+use crate::{
+    auth_policy::{classify_runtime_route, runtime_path_from_openapi_path, RestRouteAuthPolicy},
+    open_enum::document_open_enum_schema,
 };
 
 pub(crate) fn ok_json<T>(
@@ -472,9 +473,12 @@ fn tighten_alert_enums(document: &mut Value) {
     ]);
     for schema_name in ["Alert", "CreateAlert"] {
         if let Some(schema) = document["components"]["schemas"].get_mut(schema_name) {
-            schema["properties"]["event"]["enum"] = event_values.clone();
-            schema["properties"]["condition"]["enum"] = condition_values.clone();
-            schema["properties"]["method"]["enum"] = method_values.clone();
+            set_open_enum_values(&mut schema["properties"]["event"], event_values.clone());
+            set_open_enum_values(
+                &mut schema["properties"]["condition"],
+                condition_values.clone(),
+            );
+            set_open_enum_values(&mut schema["properties"]["method"], method_values.clone());
         }
     }
     if let Some(schema) = document["components"]["schemas"].get_mut("Alert") {
@@ -487,11 +491,11 @@ fn tighten_credential_enums(document: &mut Value) {
     let auth_algorithms = json!(["md5", "sha1"]);
     let privacy_algorithms = json!(["aes", "des"]);
     if let Some(schema) = document["components"]["schemas"].get_mut("Credential") {
-        schema["properties"]["type"]["enum"] = credential_types.clone();
+        set_open_enum_values(&mut schema["properties"]["type"], credential_types.clone());
         schema["required"] = json!(["id", "name", "type"]);
     }
     if let Some(schema) = document["components"]["schemas"].get_mut("CreateCredential") {
-        schema["properties"]["type"]["enum"] = credential_types;
+        set_open_enum_values(&mut schema["properties"]["type"], credential_types);
         schema["properties"]["authAlgorithm"]["enum"] = auth_algorithms.clone();
         schema["properties"]["privacyAlgorithm"]["enum"] = privacy_algorithms.clone();
     }
@@ -504,7 +508,10 @@ fn tighten_credential_enums(document: &mut Value) {
 fn tighten_feed_schema(document: &mut Value) {
     if let Some(schema) = document["components"]["schemas"].get_mut("Feed") {
         schema["required"] = json!(["type", "name", "version"]);
-        schema["properties"]["type"]["enum"] = json!(["NVT", "CERT", "SCAP", "GVMD_DATA"]);
+        set_open_enum_values(
+            &mut schema["properties"]["type"],
+            json!(["NVT", "CERT", "SCAP", "GVMD_DATA"]),
+        );
     }
 }
 
@@ -622,6 +629,7 @@ fn tighten_identity_schemas(document: &mut Value) {
             }
         ]
     });
+    document_open_enum_schema(&mut schemas["User"]["allOf"][1]["properties"]["authenticationType"]);
 
     schemas["Group"] = json!({
         "allOf": [
@@ -696,6 +704,11 @@ fn tighten_identity_schemas(document: &mut Value) {
     if let Some(schema) = schemas.get_mut("ModifyUser") {
         schema["properties"]["password"]["format"] = json!("password");
     }
+}
+
+fn set_open_enum_values(schema: &mut Value, values: Value) {
+    schema["enum"] = values;
+    document_open_enum_schema(schema);
 }
 
 fn ensure_problem_detail_schema(document: &mut Value) {
@@ -1509,6 +1522,166 @@ mod tests {
     }
 
     #[test]
+    fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
+        let generated = build_openapi();
+        let schemas = &generated["components"]["schemas"];
+
+        // Open enums deliberately keep OpenAPI enum lists for docs/codegen while
+        // their descriptions define the non-exhaustive runtime contract.
+        assert_open_enum_schema(
+            &schemas["CredentialType"],
+            json!(["cc", "pw", "snmp", "snmpv3", "up", "usk"]),
+            "CredentialType",
+        );
+        assert_open_enum_schema(
+            &schemas["FeedType"],
+            json!(["NVT", "CERT", "SCAP", "GVMD_DATA"]),
+            "FeedType",
+        );
+        assert_open_enum_schema(
+            &schemas["AlertEvent"],
+            json!(["task_run_status_changed", "updated_secinfo", "new_secinfo"]),
+            "AlertEvent",
+        );
+        assert_open_enum_schema(
+            &schemas["AlertCondition"],
+            json!([
+                "always",
+                "filter_count_at_least",
+                "filter_count_changed",
+                "severity_at_least",
+                "severity_changed"
+            ]),
+            "AlertCondition",
+        );
+        assert_open_enum_schema(
+            &schemas["AlertMethod"],
+            json!([
+                "email",
+                "http_get",
+                "scp",
+                "send_email",
+                "smb",
+                "snmp",
+                "sourcefire_connector",
+                "start_task",
+                "syslog",
+                "tippingpoint",
+                "verinice_ce",
+                "verinice_net",
+                "alemba"
+            ]),
+            "AlertMethod",
+        );
+        assert_open_enum_schema(
+            &schemas["AuthenticationType"],
+            json!(["file", "ldap_connect", "radius_connect"]),
+            "AuthenticationType",
+        );
+        assert_open_enum_schema(&schemas["ScanConfigType"], json!([0, 1]), "ScanConfigType");
+        assert_open_enum_schema(
+            &schemas["TicketStatus"],
+            json!(["Open", "Fixed", "Closed"]),
+            "TicketStatus",
+        );
+
+        let alert_props = &schemas["Alert"]["properties"];
+        assert_open_enum_schema(
+            &alert_props["event"],
+            json!(["task_run_status_changed", "updated_secinfo", "new_secinfo"]),
+            "Alert.event",
+        );
+        assert_open_enum_schema(
+            &alert_props["condition"],
+            json!([
+                "always",
+                "filter_count_at_least",
+                "filter_count_changed",
+                "severity_at_least",
+                "severity_changed"
+            ]),
+            "Alert.condition",
+        );
+        assert_open_enum_schema(
+            &alert_props["method"],
+            json!([
+                "email",
+                "http_get",
+                "scp",
+                "send_email",
+                "smb",
+                "snmp",
+                "sourcefire_connector",
+                "start_task",
+                "syslog",
+                "tippingpoint",
+                "verinice_ce",
+                "verinice_net",
+                "alemba"
+            ]),
+            "Alert.method",
+        );
+
+        let create_alert_props = &schemas["CreateAlert"]["properties"];
+        assert_open_enum_schema(
+            &create_alert_props["event"],
+            json!(["task_run_status_changed", "updated_secinfo", "new_secinfo"]),
+            "CreateAlert.event",
+        );
+        assert_open_enum_schema(
+            &create_alert_props["condition"],
+            json!([
+                "always",
+                "filter_count_at_least",
+                "filter_count_changed",
+                "severity_at_least",
+                "severity_changed"
+            ]),
+            "CreateAlert.condition",
+        );
+        assert_open_enum_schema(
+            &create_alert_props["method"],
+            json!([
+                "email",
+                "http_get",
+                "scp",
+                "send_email",
+                "smb",
+                "snmp",
+                "sourcefire_connector",
+                "start_task",
+                "syslog",
+                "tippingpoint",
+                "verinice_ce",
+                "verinice_net",
+                "alemba"
+            ]),
+            "CreateAlert.method",
+        );
+
+        assert_open_enum_schema(
+            &schemas["Credential"]["properties"]["type"],
+            json!(["cc", "pw", "snmp", "snmpv3", "up", "usk"]),
+            "Credential.type",
+        );
+        assert_open_enum_schema(
+            &schemas["CreateCredential"]["properties"]["type"],
+            json!(["cc", "pw", "snmp", "snmpv3", "up", "usk"]),
+            "CreateCredential.type",
+        );
+        assert_open_enum_schema(
+            &schemas["Feed"]["properties"]["type"],
+            json!(["NVT", "CERT", "SCAP", "GVMD_DATA"]),
+            "Feed.type",
+        );
+        assert_open_enum_schema(
+            &schemas["User"]["allOf"][1]["properties"]["authenticationType"],
+            json!(["file", "ldap_connect", "radius_connect"]),
+            "User.authenticationType",
+        );
+    }
+
+    #[test]
     fn generated_openapi_declares_every_operation_tag() {
         let generated = build_openapi();
         let declared_tags = generated["tags"]
@@ -1626,5 +1799,28 @@ mod tests {
             .keys()
             .map(String::as_str)
             .collect()
+    }
+
+    fn assert_open_enum_schema(schema: &Value, expected_values: Value, context: &str) {
+        assert_eq!(
+            schema["enum"], expected_values,
+            "{context} should list known values for OpenAPI docs and client generation"
+        );
+
+        let description = schema["description"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{context} should describe the open-enum contract"));
+        assert!(
+            description.contains("This list is not exhaustive"),
+            "{context} should document that known enum values are non-exhaustive"
+        );
+        assert!(
+            description.contains("unknown future values"),
+            "{context} should document future backend values"
+        );
+        assert!(
+            description.contains("clients must preserve them"),
+            "{context} should document client preservation of unknown values"
+        );
     }
 }

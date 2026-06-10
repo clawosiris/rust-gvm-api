@@ -19,6 +19,7 @@ use uuid::Uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceRefResponse},
     error::RestError,
+    open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
     query::parse_collection_query,
     results::NvtRefResponse,
@@ -347,13 +348,22 @@ impl From<gvm_gateway_domain::TagPage> for TagListResponse {
     }
 }
 
+open_string_enum! {
+    /// Ticket lifecycle status.
+    pub(crate) enum TicketStatus {
+        Open => "Open",
+        Fixed => "Fixed",
+        Closed => "Closed",
+    }
+}
+
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "Ticket")]
 pub(crate) struct TicketResponse {
     #[serde(flatten)]
     meta: SupportingResourceMetaResponse,
     #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<String>,
+    status: Option<TicketStatus>,
     #[serde(rename = "assignedTo", skip_serializing_if = "Option::is_none")]
     assigned_to: Option<ResourceRefResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -372,7 +382,7 @@ impl From<gvm_gateway_domain::Ticket> for TicketResponse {
     fn from(ticket: gvm_gateway_domain::Ticket) -> Self {
         Self {
             meta: SupportingResourceMetaResponse::from(ticket.meta),
-            status: ticket.status,
+            status: ticket.status.as_deref().map(TicketStatus::parse),
             assigned_to: ticket.assigned_to.map(ResourceRefResponse::from),
             result: ticket.result.map(ResourceRefResponse::from),
             task: ticket.task.map(ResourceRefResponse::from),
@@ -1244,7 +1254,10 @@ pub(crate) fn list_nvt_families_docs(op: TransformOperation<'_>) -> TransformOpe
 
 #[cfg(test)]
 mod tests {
-    use super::{PaginationOnlyQuery, SupportingListQuery};
+    use serde_json::json;
+
+    use super::{PaginationOnlyQuery, SupportingListQuery, TicketResponse, TicketStatus};
+    use gvm_gateway_domain::{SupportingResourceMeta, Ticket};
 
     #[test]
     fn supporting_query_decodes_percent_encoded_filter_values() {
@@ -1285,5 +1298,49 @@ mod tests {
             }
             other => panic!("unexpected error variant: {:?}", other),
         }
+    }
+
+    fn ticket_with_status(status: &str) -> Ticket {
+        Ticket {
+            meta: SupportingResourceMeta {
+                id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+                name: "Ticket".to_string(),
+                comment: None,
+                creation_time: None,
+                modification_time: None,
+                writable: true,
+                in_use: false,
+            },
+            status: Some(status.to_string()),
+            assigned_to: None,
+            result: None,
+            task: None,
+            open_note: None,
+            fixed_note: None,
+            closed_note: None,
+        }
+    }
+
+    #[test]
+    fn ticket_status_deserialization_preserves_unknown_values() {
+        // Ticket status responses should preserve backend-added states even
+        // when this gateway build only documents the current rust-gvm set.
+        let parsed: TicketStatus =
+            serde_json::from_value(json!("Deferred")).expect("ticket status should parse");
+
+        assert_eq!(serde_json::to_value(parsed).unwrap(), json!("Deferred"));
+    }
+
+    #[test]
+    fn ticket_response_preserves_known_and_unknown_statuses() {
+        // Current gvmd responses use display-case ticket statuses; future
+        // values should remain visible to clients without coercion.
+        let known = serde_json::to_value(TicketResponse::from(ticket_with_status("Open")))
+            .expect("ticket response should serialize");
+        let unknown = serde_json::to_value(TicketResponse::from(ticket_with_status("Deferred")))
+            .expect("ticket response should serialize");
+
+        assert_eq!(known["status"], json!("Open"));
+        assert_eq!(unknown["status"], json!("Deferred"));
     }
 }
