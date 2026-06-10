@@ -30,6 +30,9 @@ pub struct RestSecurityConfig {
     /// Rate-limit and backpressure settings.
     #[serde(default)]
     pub rate_limit: RateLimitConfig,
+    /// Whether this gateway process terminates HTTPS directly.
+    #[serde(default)]
+    pub native_tls_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -61,7 +64,11 @@ pub(crate) async fn security_middleware(
     if is_rate_limited_path(&path) {
         if let Some(retry_after) = security.limiter.check_request(&request) {
             let mut response = too_many_requests_response(&path, retry_after);
-            apply_security_headers(response.headers_mut(), &path);
+            apply_security_headers(
+                response.headers_mut(),
+                &path,
+                security.config.native_tls_enabled,
+            );
             apply_cors_headers(response.headers_mut(), &security.config, request.headers());
             tracing::warn!(
                 target: "gvm_gateway_rest::security",
@@ -76,7 +83,11 @@ pub(crate) async fn security_middleware(
 
     let request_headers = request.headers().clone();
     let mut response = next.run(request).await;
-    apply_security_headers(response.headers_mut(), &path);
+    apply_security_headers(
+        response.headers_mut(),
+        &path,
+        security.config.native_tls_enabled,
+    );
     apply_cors_headers(response.headers_mut(), &security.config, &request_headers);
     response
 }
@@ -145,7 +156,7 @@ fn cors_preflight_response(
             instance.to_string(),
         )
         .into_response();
-        apply_security_headers(response.headers_mut(), instance);
+        apply_security_headers(response.headers_mut(), instance, config.native_tls_enabled);
         return response;
     };
 
@@ -165,7 +176,7 @@ fn cors_preflight_response(
         header::ACCESS_CONTROL_MAX_AGE,
         HeaderValue::from_static("600"),
     );
-    apply_security_headers(headers, instance);
+    apply_security_headers(headers, instance, config.native_tls_enabled);
     response
 }
 
@@ -189,7 +200,11 @@ fn apply_cors_headers(headers: &mut HeaderMap, config: &RestSecurityConfig, requ
     }
 }
 
-pub(crate) fn apply_security_headers(headers: &mut HeaderMap, path: &str) {
+pub(crate) fn apply_security_headers(
+    headers: &mut HeaderMap,
+    path: &str,
+    native_tls_enabled: bool,
+) {
     headers.insert(
         HeaderName::from_static("x-content-type-options"),
         HeaderValue::from_static("nosniff"),
@@ -204,6 +219,12 @@ pub(crate) fn apply_security_headers(headers: &mut HeaderMap, path: &str) {
     );
     if path.starts_with("/api/") {
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    if native_tls_enabled {
+        headers.insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        );
     }
 }
 

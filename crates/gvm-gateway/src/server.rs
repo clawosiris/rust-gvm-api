@@ -3,12 +3,10 @@
 
 //! Server bootstrap helpers for graceful shutdown and bounded draining.
 
-use std::{
-    future::Future, future::IntoFuture, io, net::SocketAddr, pin::Pin, sync::Arc, time::Duration,
-};
+use std::{future::Future, future::IntoFuture, io, pin::Pin, sync::Arc, time::Duration};
 
-use axum::Router;
-use gvm_gateway_rest::shutdown::ShutdownRuntime;
+use axum::{serve::ListenerExt, Router};
+use gvm_gateway_rest::{peer_addr::ClientPeerAddr, shutdown::ShutdownRuntime};
 use tokio::{net::TcpListener, net::TcpStream, time::timeout};
 use tokio_rustls::{
     rustls::{
@@ -33,25 +31,31 @@ pub async fn serve(
         if let Some(native_tls) = native_tls {
             let tls_listener = TlsListener::new(listener, load_tls_config(&native_tls)?);
             Box::pin(
-                axum::serve(tls_listener, app)
-                    .with_graceful_shutdown({
-                        let shutdown = Arc::clone(&shutdown);
-                        async move {
-                            shutdown.wait_for_shutdown_start().await;
-                        }
-                    })
-                    .into_future(),
+                axum::serve(
+                    tls_listener.tap_io(|_| {}),
+                    app.into_make_service_with_connect_info::<ClientPeerAddr>(),
+                )
+                .with_graceful_shutdown({
+                    let shutdown = Arc::clone(&shutdown);
+                    async move {
+                        shutdown.wait_for_shutdown_start().await;
+                    }
+                })
+                .into_future(),
             )
         } else {
             Box::pin(
-                axum::serve(listener, app)
-                    .with_graceful_shutdown({
-                        let shutdown = Arc::clone(&shutdown);
-                        async move {
-                            shutdown.wait_for_shutdown_start().await;
-                        }
-                    })
-                    .into_future(),
+                axum::serve(
+                    listener,
+                    app.into_make_service_with_connect_info::<ClientPeerAddr>(),
+                )
+                .with_graceful_shutdown({
+                    let shutdown = Arc::clone(&shutdown);
+                    async move {
+                        shutdown.wait_for_shutdown_start().await;
+                    }
+                })
+                .into_future(),
             )
         };
 
@@ -156,7 +160,7 @@ impl TlsListener {
 
 impl axum::serve::Listener for TlsListener {
     type Io = TlsStream<TcpStream>;
-    type Addr = SocketAddr;
+    type Addr = ClientPeerAddr;
 
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
         loop {
@@ -173,7 +177,7 @@ impl axum::serve::Listener for TlsListener {
             }
 
             match self.acceptor.accept(stream).await {
-                Ok(tls_stream) => return (tls_stream, remote_addr),
+                Ok(tls_stream) => return (tls_stream, ClientPeerAddr(remote_addr)),
                 Err(error) => {
                     tracing::warn!(?error, %remote_addr, "native TLS handshake failed");
                 }
@@ -182,7 +186,7 @@ impl axum::serve::Listener for TlsListener {
     }
 
     fn local_addr(&self) -> io::Result<Self::Addr> {
-        self.listener.local_addr()
+        self.listener.local_addr().map(ClientPeerAddr)
     }
 }
 

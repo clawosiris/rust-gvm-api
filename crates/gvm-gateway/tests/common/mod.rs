@@ -12,6 +12,7 @@ use gvm_gateway_domain::{
     Target, TargetPage, TargetPort, TargetQuery,
 };
 use gvm_gateway_gvmd::{GvmdAdapter, StaticGvmdAdapter};
+use gvm_gateway_rest::peer_addr::ClientPeerAddr;
 use gvm_gateway_rest::router::{
     build_router, build_router_with_runtime_and_security, build_router_with_security,
     RestSecurityConfig,
@@ -107,7 +108,12 @@ pub async fn spawn_server(
     let service = static_gateway_service(system_adapter, target_adapter, sessions);
     let app = build_router(service);
     let handle = tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<ClientPeerAddr>(),
+        )
+        .await
+        .unwrap();
     });
 
     (addr, handle)
@@ -377,7 +383,12 @@ pub async fn target_harness_with_security(
     let addr = listener.local_addr().unwrap();
     let app = build_router_with_security(service, security);
     let handle = tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<ClientPeerAddr>(),
+        )
+        .await
+        .unwrap();
     });
 
     TargetHarness {

@@ -4,13 +4,13 @@
 //! REST rate-limiting configuration and runtime.
 
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
-    hash::{Hash, Hasher},
+    collections::HashMap,
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
+    extract::ConnectInfo,
     extract::Request,
     http::{header, HeaderValue},
     response::{IntoResponse, Response},
@@ -18,7 +18,7 @@ use axum::{
 use gvm_gateway_domain::GatewayError;
 use serde::Deserialize;
 
-use crate::error::RestError;
+use crate::{error::RestError, peer_addr::ClientPeerAddr};
 
 /// Fixed-window REST rate-limit settings.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -141,6 +141,10 @@ pub(crate) fn too_many_requests_response(instance: &str, retry_after_secs: u64) 
 
 fn rate_limit_subject(request: &Request) -> String {
     let path = request.uri().path();
+    if path == "/api/v1/session" {
+        return format!("session-create:{}", source_subject(request));
+    }
+
     let auth = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -153,16 +157,25 @@ fn rate_limit_subject(request: &Request) -> String {
     if let Some(credentials) = auth.strip_prefix("Basic ") {
         return format!("basic:{}", stable_hash(credentials));
     }
-    if path == "/api/v1/session" {
-        return "session-create:anonymous".to_string();
-    }
     "anonymous".to_string()
 }
 
-fn stable_hash(value: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
+fn source_subject(request: &Request) -> String {
+    request
+        .extensions()
+        .get::<ConnectInfo<ClientPeerAddr>>()
+        .map(|ConnectInfo(addr)| format!("ip:{}", addr.ip()))
+        .unwrap_or_else(|| "unknown-source".to_string())
+}
+
+fn stable_hash(value: &str) -> String {
+    let hash = value
+        .as_bytes()
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+        });
+    format!("{hash:016x}")
 }
 
 fn now_secs() -> u64 {
@@ -170,4 +183,88 @@ fn now_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    use axum::{
+        body::Body,
+        extract::ConnectInfo,
+        http::{header, Request},
+    };
+
+    use super::{rate_limit_subject, ClientPeerAddr};
+
+    fn request(path: &str) -> Request<Body> {
+        Request::builder().uri(path).body(Body::empty()).unwrap()
+    }
+
+    #[test]
+    fn bearer_subject_uses_intentional_stable_digest() {
+        // This locks the rate-limit bucket contract so Rust hasher changes or
+        // process restarts cannot reshuffle authenticated subjects.
+        let mut request = request("/api/v1/targets");
+        request.headers_mut().insert(
+            header::AUTHORIZATION,
+            "Bearer gvm_sess_secret".parse().unwrap(),
+        );
+
+        assert_eq!(rate_limit_subject(&request), "bearer:7731b204acf83e17");
+    }
+
+    #[test]
+    fn basic_subject_uses_intentional_stable_digest() {
+        // Request-scoped Basic auth remains separately bucketed without keeping
+        // the credential material in the bucket key.
+        let mut request = request("/api/v1/targets");
+        request.headers_mut().insert(
+            header::AUTHORIZATION,
+            "Basic YWRtaW46YWRtaW4=".parse().unwrap(),
+        );
+
+        assert_eq!(rate_limit_subject(&request), "basic:53cfaadc3e07c384");
+    }
+
+    #[test]
+    fn session_creation_uses_source_ip_even_when_basic_auth_is_present() {
+        // Session creation happens before the caller has an authenticated
+        // subject, so brute-force pressure is bucketed by source address.
+        let mut request = request("/api/v1/session");
+        request.headers_mut().insert(
+            header::AUTHORIZATION,
+            "Basic YWRtaW46YWRtaW4=".parse().unwrap(),
+        );
+        request
+            .extensions_mut()
+            .insert(ConnectInfo(ClientPeerAddr(SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10)),
+                51_234,
+            ))));
+
+        assert_eq!(rate_limit_subject(&request), "session-create:ip:192.0.2.10");
+    }
+
+    #[test]
+    fn session_creation_source_key_ignores_ephemeral_port() {
+        // Multiple TCP connections from the same client IP must share the same
+        // unauthenticated session-creation bucket.
+        let mut first = request("/api/v1/session");
+        first
+            .extensions_mut()
+            .insert(ConnectInfo(ClientPeerAddr(SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10)),
+                40_000,
+            ))));
+        let mut second = request("/api/v1/session");
+        second
+            .extensions_mut()
+            .insert(ConnectInfo(ClientPeerAddr(SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10)),
+                40_001,
+            ))));
+
+        assert_eq!(rate_limit_subject(&first), rate_limit_subject(&second));
+    }
 }
