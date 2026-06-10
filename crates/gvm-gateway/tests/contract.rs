@@ -17,7 +17,7 @@ use gvm_gateway_rest::{
     router::build_router,
     targets::{build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery},
 };
-use http::StatusCode;
+use http::{Method, StatusCode};
 use reqwest::Client;
 use serde_json::Value;
 use tokio::net::TcpListener;
@@ -102,383 +102,55 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
     assert_eq!(json["servers"], root_spec["servers"]);
     assert_eq!(json["security"], root_spec["security"]);
     assert_eq!(
-        path_names(&json),
-        BTreeSet::from([
-            "/health",
-            "/alerts",
-            "/alerts/{id}",
-            "/credential-stores",
-            "/credentials",
-            "/credentials/{id}",
-            "/feeds",
-            "/feeds/sync",
-            "/filters",
-            "/filters/{id}",
-            "/hosts",
-            "/hosts/{id}",
-            "/groups",
-            "/groups/{id}",
-            "/notes",
-            "/notes/{id}",
-            "/nvt-families",
-            "/nvts",
-            "/nvts/{id}",
-            "/openapi.json",
-            "/overrides",
-            "/overrides/{id}",
-            "/permissions",
-            "/permissions/{id}",
-            "/port-lists",
-            "/port-lists/{id}",
-            "/ready",
-            "/report-formats",
-            "/report-formats/{id}",
-            "/reports",
-            "/reports/{id}",
-            "/reports/{id}/closed-cves",
-            "/reports/{id}/errors",
-            "/reports/{id}/export",
-            "/reports/{id}/results",
-            "/reports/{id}/tls-certificates",
-            "/reports/{id}/vulnerabilities",
-            "/results",
-            "/results/{id}",
-            "/roles",
-            "/roles/{id}",
-            "/scan-configs",
-            "/scan-configs/{id}",
-            "/scanners",
-            "/scanners/{id}",
-            "/schedules",
-            "/schedules/{id}",
-            "/session",
-            "/tags",
-            "/tags/{id}",
-            "/tickets",
-            "/tickets/{id}",
-            "/targets",
-            "/targets/{id}",
-            "/tasks",
-            "/tasks/{id}",
-            "/tasks/{id}/start",
-            "/tasks/{id}/stop",
-            "/tasks/{id}/resume",
-            "/timezones",
-            "/user-settings",
-            "/user-settings/{id}",
-            "/users",
-            "/users/{id}",
-            "/version",
-        ])
+        generated_route_methods(&json),
+        expected_route_methods(),
+        "generated OpenAPI route/method set drifted from the documented route inventory"
     );
 
-    let checks = [
-        ("/health", "get", DocName::System, "/health"),
-        ("/ready", "get", DocName::System, "/ready"),
-        ("/version", "get", DocName::System, "/version"),
-        ("/openapi.json", "get", DocName::System, "/openapi.json"),
-        ("/session", "post", DocName::Sessions, "/session"),
-        ("/session", "get", DocName::Sessions, "/session"),
-        ("/session", "delete", DocName::Sessions, "/session"),
-        ("/targets", "get", DocName::Targets, "/targets"),
-        ("/targets", "post", DocName::Targets, "/targets"),
-        ("/targets/{id}", "get", DocName::Targets, "/targets/{id}"),
-        ("/targets/{id}", "put", DocName::Targets, "/targets/{id}"),
-        ("/targets/{id}", "delete", DocName::Targets, "/targets/{id}"),
-        ("/alerts", "get", DocName::Alerts, "/alerts"),
-        ("/alerts", "post", DocName::Alerts, "/alerts"),
-        ("/alerts/{id}", "get", DocName::Alerts, "/alerts/{id}"),
-        ("/alerts/{id}", "put", DocName::Alerts, "/alerts/{id}"),
-        ("/alerts/{id}", "delete", DocName::Alerts, "/alerts/{id}"),
-        ("/timezones", "get", DocName::Schedules, "/timezones"),
-        ("/schedules", "get", DocName::Schedules, "/schedules"),
-        ("/schedules", "post", DocName::Schedules, "/schedules"),
-        (
-            "/schedules/{id}",
-            "get",
-            DocName::Schedules,
-            "/schedules/{id}",
-        ),
-        (
-            "/schedules/{id}",
-            "put",
-            DocName::Schedules,
-            "/schedules/{id}",
-        ),
-        (
-            "/schedules/{id}",
-            "delete",
-            DocName::Schedules,
-            "/schedules/{id}",
-        ),
-        (
-            "/credential-stores",
-            "get",
-            DocName::Credentials,
-            "/credential-stores",
-        ),
-        ("/credentials", "get", DocName::Credentials, "/credentials"),
-        ("/credentials", "post", DocName::Credentials, "/credentials"),
-        (
-            "/credentials/{id}",
-            "get",
-            DocName::Credentials,
-            "/credentials/{id}",
-        ),
-        (
-            "/credentials/{id}",
-            "put",
-            DocName::Credentials,
-            "/credentials/{id}",
-        ),
-        (
-            "/credentials/{id}",
-            "delete",
-            DocName::Credentials,
-            "/credentials/{id}",
-        ),
-        ("/port-lists", "get", DocName::PortLists, "/port-lists"),
-        ("/port-lists", "post", DocName::PortLists, "/port-lists"),
-        (
-            "/port-lists/{id}",
-            "get",
-            DocName::PortLists,
-            "/port-lists/{id}",
-        ),
-        (
-            "/port-lists/{id}",
-            "put",
-            DocName::PortLists,
-            "/port-lists/{id}",
-        ),
-        (
-            "/port-lists/{id}",
-            "delete",
-            DocName::PortLists,
-            "/port-lists/{id}",
-        ),
-        ("/feeds", "get", DocName::Feeds, "/feeds"),
-        ("/feeds/sync", "post", DocName::Feeds, "/feeds/sync"),
-        ("/hosts", "get", DocName::SupportingResources, "/hosts"),
-        (
-            "/hosts/{id}",
-            "get",
-            DocName::SupportingResources,
-            "/hosts/{id}",
-        ),
-        (
-            "/report-formats",
-            "get",
-            DocName::SupportingResources,
-            "/report-formats",
-        ),
-        (
-            "/report-formats/{id}",
-            "get",
-            DocName::SupportingResources,
-            "/report-formats/{id}",
-        ),
-        ("/filters", "get", DocName::SupportingResources, "/filters"),
-        (
-            "/filters/{id}",
-            "get",
-            DocName::SupportingResources,
-            "/filters/{id}",
-        ),
-        ("/tags", "get", DocName::SupportingResources, "/tags"),
-        (
-            "/tags/{id}",
-            "get",
-            DocName::SupportingResources,
-            "/tags/{id}",
-        ),
-        ("/tickets", "get", DocName::SupportingResources, "/tickets"),
-        (
-            "/tickets/{id}",
-            "get",
-            DocName::SupportingResources,
-            "/tickets/{id}",
-        ),
-        ("/notes", "get", DocName::SupportingResources, "/notes"),
-        (
-            "/notes/{id}",
-            "get",
-            DocName::SupportingResources,
-            "/notes/{id}",
-        ),
-        (
-            "/overrides",
-            "get",
-            DocName::SupportingResources,
-            "/overrides",
-        ),
-        (
-            "/overrides/{id}",
-            "get",
-            DocName::SupportingResources,
-            "/overrides/{id}",
-        ),
-        ("/nvts", "get", DocName::SupportingResources, "/nvts"),
-        (
-            "/nvts/{id}",
-            "get",
-            DocName::SupportingResources,
-            "/nvts/{id}",
-        ),
-        (
-            "/nvt-families",
-            "get",
-            DocName::SupportingResources,
-            "/nvt-families",
-        ),
-        ("/users", "get", DocName::Identity, "/users"),
-        ("/users", "post", DocName::Identity, "/users"),
-        ("/users/{id}", "get", DocName::Identity, "/users/{id}"),
-        ("/users/{id}", "put", DocName::Identity, "/users/{id}"),
-        ("/users/{id}", "delete", DocName::Identity, "/users/{id}"),
-        ("/groups", "get", DocName::Identity, "/groups"),
-        ("/groups", "post", DocName::Identity, "/groups"),
-        ("/groups/{id}", "get", DocName::Identity, "/groups/{id}"),
-        ("/groups/{id}", "put", DocName::Identity, "/groups/{id}"),
-        ("/groups/{id}", "delete", DocName::Identity, "/groups/{id}"),
-        ("/roles", "get", DocName::Identity, "/roles"),
-        ("/roles", "post", DocName::Identity, "/roles"),
-        ("/roles/{id}", "get", DocName::Identity, "/roles/{id}"),
-        ("/roles/{id}", "put", DocName::Identity, "/roles/{id}"),
-        ("/roles/{id}", "delete", DocName::Identity, "/roles/{id}"),
-        ("/permissions", "get", DocName::Identity, "/permissions"),
-        ("/permissions", "post", DocName::Identity, "/permissions"),
-        (
-            "/permissions/{id}",
-            "get",
-            DocName::Identity,
-            "/permissions/{id}",
-        ),
-        (
-            "/permissions/{id}",
-            "put",
-            DocName::Identity,
-            "/permissions/{id}",
-        ),
-        (
-            "/permissions/{id}",
-            "delete",
-            DocName::Identity,
-            "/permissions/{id}",
-        ),
-        ("/user-settings", "get", DocName::Identity, "/user-settings"),
-        (
-            "/user-settings/{id}",
-            "get",
-            DocName::Identity,
-            "/user-settings/{id}",
-        ),
-        (
-            "/user-settings/{id}",
-            "put",
-            DocName::Identity,
-            "/user-settings/{id}",
-        ),
-        ("/tasks", "get", DocName::Tasks, "/tasks"),
-        ("/tasks", "post", DocName::Tasks, "/tasks"),
-        ("/tasks/{id}", "get", DocName::Tasks, "/tasks/{id}"),
-        ("/tasks/{id}", "put", DocName::Tasks, "/tasks/{id}"),
-        ("/tasks/{id}", "delete", DocName::Tasks, "/tasks/{id}"),
-        (
-            "/tasks/{id}/start",
-            "post",
-            DocName::Tasks,
-            "/tasks/{id}/start",
-        ),
-        (
-            "/tasks/{id}/stop",
-            "post",
-            DocName::Tasks,
-            "/tasks/{id}/stop",
-        ),
-        (
-            "/tasks/{id}/resume",
-            "post",
-            DocName::Tasks,
-            "/tasks/{id}/resume",
-        ),
-        ("/reports", "get", DocName::Reports, "/reports"),
-        ("/reports/{id}", "get", DocName::Reports, "/reports/{id}"),
-        ("/reports/{id}", "delete", DocName::Reports, "/reports/{id}"),
-        (
-            "/reports/{id}/export",
-            "get",
-            DocName::Reports,
-            "/reports/{id}/export",
-        ),
-        (
-            "/reports/{id}/results",
-            "get",
-            DocName::Reports,
-            "/reports/{id}/results",
-        ),
-        (
-            "/reports/{id}/vulnerabilities",
-            "get",
-            DocName::Reports,
-            "/reports/{id}/vulnerabilities",
-        ),
-        (
-            "/reports/{id}/tls-certificates",
-            "get",
-            DocName::Reports,
-            "/reports/{id}/tls-certificates",
-        ),
-        (
-            "/reports/{id}/errors",
-            "get",
-            DocName::Reports,
-            "/reports/{id}/errors",
-        ),
-        (
-            "/reports/{id}/closed-cves",
-            "get",
-            DocName::Reports,
-            "/reports/{id}/closed-cves",
-        ),
-        ("/results", "get", DocName::Results, "/results"),
-        ("/results/{id}", "get", DocName::Results, "/results/{id}"),
-        (
-            "/scan-configs",
-            "get",
-            DocName::ScanConfigs,
-            "/scan-configs",
-        ),
-        (
-            "/scan-configs",
-            "post",
-            DocName::ScanConfigs,
-            "/scan-configs",
-        ),
-        (
-            "/scan-configs/{id}",
-            "get",
-            DocName::ScanConfigs,
-            "/scan-configs/{id}",
-        ),
-        (
-            "/scan-configs/{id}",
-            "put",
-            DocName::ScanConfigs,
-            "/scan-configs/{id}",
-        ),
-        (
-            "/scan-configs/{id}",
-            "delete",
-            DocName::ScanConfigs,
-            "/scan-configs/{id}",
-        ),
-        ("/scanners", "get", DocName::Scanners, "/scanners"),
-        ("/scanners/{id}", "get", DocName::Scanners, "/scanners/{id}"),
-    ];
+    for route in route_contracts() {
+        for method in route.methods {
+            assert_operation_contract(
+                &docs,
+                route.spec_path,
+                method,
+                route.curated_doc,
+                route.curated_path,
+            );
+        }
+    }
 
-    for (generated_path, method, curated_doc, curated_path) in checks {
-        assert_operation_contract(&docs, generated_path, method, curated_doc, curated_path);
+    handle.abort();
+}
+
+#[tokio::test]
+async fn documented_route_inventory_matches_live_router_dispatch() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+    let client = Client::new();
+    let session_token = create_route_probe_session(&client, addr).await;
+
+    for route in route_contracts() {
+        for method in route.methods {
+            let response = build_route_probe_request(&client, addr, &route, method, &session_token)
+                .send()
+                .await
+                .unwrap();
+
+            assert_ne!(
+                response.status(),
+                StatusCode::NOT_FOUND,
+                "router did not expose {} {}",
+                method,
+                route.runtime_path()
+            );
+            assert_ne!(
+                response.status(),
+                StatusCode::METHOD_NOT_ALLOWED,
+                "router rejected documented method {} {}",
+                method,
+                route.runtime_path()
+            );
+        }
     }
 
     handle.abort();
@@ -884,6 +556,485 @@ struct SpecDocs<'a> {
     scan_configs: &'a Value,
     scanners: &'a Value,
     common: &'a Value,
+}
+
+struct RouteContract {
+    spec_path: &'static str,
+    methods: &'static [&'static str],
+    curated_doc: DocName,
+    curated_path: &'static str,
+}
+
+impl RouteContract {
+    fn runtime_path(&self) -> String {
+        let prefixed = match self.spec_path {
+            "/health" | "/ready" => self.spec_path.to_string(),
+            "/openapi.json" => "/api/v1/openapi.json".to_string(),
+            _ => format!("/api/v1{}", self.spec_path),
+        };
+
+        prefixed.replace("{id}", "not-a-uuid")
+    }
+}
+
+fn route_contracts() -> Vec<RouteContract> {
+    vec![
+        RouteContract {
+            spec_path: "/health",
+            methods: &["get"],
+            curated_doc: DocName::System,
+            curated_path: "/health",
+        },
+        RouteContract {
+            spec_path: "/ready",
+            methods: &["get"],
+            curated_doc: DocName::System,
+            curated_path: "/ready",
+        },
+        RouteContract {
+            spec_path: "/version",
+            methods: &["get"],
+            curated_doc: DocName::System,
+            curated_path: "/version",
+        },
+        RouteContract {
+            spec_path: "/openapi.json",
+            methods: &["get"],
+            curated_doc: DocName::System,
+            curated_path: "/openapi.json",
+        },
+        RouteContract {
+            spec_path: "/session",
+            methods: &["post", "get", "delete"],
+            curated_doc: DocName::Sessions,
+            curated_path: "/session",
+        },
+        RouteContract {
+            spec_path: "/targets",
+            methods: &["get", "post"],
+            curated_doc: DocName::Targets,
+            curated_path: "/targets",
+        },
+        RouteContract {
+            spec_path: "/targets/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::Targets,
+            curated_path: "/targets/{id}",
+        },
+        RouteContract {
+            spec_path: "/alerts",
+            methods: &["get", "post"],
+            curated_doc: DocName::Alerts,
+            curated_path: "/alerts",
+        },
+        RouteContract {
+            spec_path: "/alerts/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::Alerts,
+            curated_path: "/alerts/{id}",
+        },
+        RouteContract {
+            spec_path: "/timezones",
+            methods: &["get"],
+            curated_doc: DocName::Schedules,
+            curated_path: "/timezones",
+        },
+        RouteContract {
+            spec_path: "/schedules",
+            methods: &["get", "post"],
+            curated_doc: DocName::Schedules,
+            curated_path: "/schedules",
+        },
+        RouteContract {
+            spec_path: "/schedules/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::Schedules,
+            curated_path: "/schedules/{id}",
+        },
+        RouteContract {
+            spec_path: "/credential-stores",
+            methods: &["get"],
+            curated_doc: DocName::Credentials,
+            curated_path: "/credential-stores",
+        },
+        RouteContract {
+            spec_path: "/credentials",
+            methods: &["get", "post"],
+            curated_doc: DocName::Credentials,
+            curated_path: "/credentials",
+        },
+        RouteContract {
+            spec_path: "/credentials/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::Credentials,
+            curated_path: "/credentials/{id}",
+        },
+        RouteContract {
+            spec_path: "/port-lists",
+            methods: &["get", "post"],
+            curated_doc: DocName::PortLists,
+            curated_path: "/port-lists",
+        },
+        RouteContract {
+            spec_path: "/port-lists/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::PortLists,
+            curated_path: "/port-lists/{id}",
+        },
+        RouteContract {
+            spec_path: "/feeds",
+            methods: &["get"],
+            curated_doc: DocName::Feeds,
+            curated_path: "/feeds",
+        },
+        RouteContract {
+            spec_path: "/feeds/sync",
+            methods: &["post"],
+            curated_doc: DocName::Feeds,
+            curated_path: "/feeds/sync",
+        },
+        RouteContract {
+            spec_path: "/hosts",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/hosts",
+        },
+        RouteContract {
+            spec_path: "/hosts/{id}",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/hosts/{id}",
+        },
+        RouteContract {
+            spec_path: "/report-formats",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/report-formats",
+        },
+        RouteContract {
+            spec_path: "/report-formats/{id}",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/report-formats/{id}",
+        },
+        RouteContract {
+            spec_path: "/filters",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/filters",
+        },
+        RouteContract {
+            spec_path: "/filters/{id}",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/filters/{id}",
+        },
+        RouteContract {
+            spec_path: "/tags",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/tags",
+        },
+        RouteContract {
+            spec_path: "/tags/{id}",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/tags/{id}",
+        },
+        RouteContract {
+            spec_path: "/tickets",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/tickets",
+        },
+        RouteContract {
+            spec_path: "/tickets/{id}",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/tickets/{id}",
+        },
+        RouteContract {
+            spec_path: "/notes",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/notes",
+        },
+        RouteContract {
+            spec_path: "/notes/{id}",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/notes/{id}",
+        },
+        RouteContract {
+            spec_path: "/overrides",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/overrides",
+        },
+        RouteContract {
+            spec_path: "/overrides/{id}",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/overrides/{id}",
+        },
+        RouteContract {
+            spec_path: "/nvts",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/nvts",
+        },
+        RouteContract {
+            spec_path: "/nvts/{id}",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/nvts/{id}",
+        },
+        RouteContract {
+            spec_path: "/nvt-families",
+            methods: &["get"],
+            curated_doc: DocName::SupportingResources,
+            curated_path: "/nvt-families",
+        },
+        RouteContract {
+            spec_path: "/users",
+            methods: &["get", "post"],
+            curated_doc: DocName::Identity,
+            curated_path: "/users",
+        },
+        RouteContract {
+            spec_path: "/users/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::Identity,
+            curated_path: "/users/{id}",
+        },
+        RouteContract {
+            spec_path: "/groups",
+            methods: &["get", "post"],
+            curated_doc: DocName::Identity,
+            curated_path: "/groups",
+        },
+        RouteContract {
+            spec_path: "/groups/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::Identity,
+            curated_path: "/groups/{id}",
+        },
+        RouteContract {
+            spec_path: "/roles",
+            methods: &["get", "post"],
+            curated_doc: DocName::Identity,
+            curated_path: "/roles",
+        },
+        RouteContract {
+            spec_path: "/roles/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::Identity,
+            curated_path: "/roles/{id}",
+        },
+        RouteContract {
+            spec_path: "/permissions",
+            methods: &["get", "post"],
+            curated_doc: DocName::Identity,
+            curated_path: "/permissions",
+        },
+        RouteContract {
+            spec_path: "/permissions/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::Identity,
+            curated_path: "/permissions/{id}",
+        },
+        RouteContract {
+            spec_path: "/user-settings",
+            methods: &["get"],
+            curated_doc: DocName::Identity,
+            curated_path: "/user-settings",
+        },
+        RouteContract {
+            spec_path: "/user-settings/{id}",
+            methods: &["get", "put"],
+            curated_doc: DocName::Identity,
+            curated_path: "/user-settings/{id}",
+        },
+        RouteContract {
+            spec_path: "/tasks",
+            methods: &["get", "post"],
+            curated_doc: DocName::Tasks,
+            curated_path: "/tasks",
+        },
+        RouteContract {
+            spec_path: "/tasks/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::Tasks,
+            curated_path: "/tasks/{id}",
+        },
+        RouteContract {
+            spec_path: "/tasks/{id}/start",
+            methods: &["post"],
+            curated_doc: DocName::Tasks,
+            curated_path: "/tasks/{id}/start",
+        },
+        RouteContract {
+            spec_path: "/tasks/{id}/stop",
+            methods: &["post"],
+            curated_doc: DocName::Tasks,
+            curated_path: "/tasks/{id}/stop",
+        },
+        RouteContract {
+            spec_path: "/tasks/{id}/resume",
+            methods: &["post"],
+            curated_doc: DocName::Tasks,
+            curated_path: "/tasks/{id}/resume",
+        },
+        RouteContract {
+            spec_path: "/reports",
+            methods: &["get"],
+            curated_doc: DocName::Reports,
+            curated_path: "/reports",
+        },
+        RouteContract {
+            spec_path: "/reports/{id}",
+            methods: &["get", "delete"],
+            curated_doc: DocName::Reports,
+            curated_path: "/reports/{id}",
+        },
+        RouteContract {
+            spec_path: "/reports/{id}/export",
+            methods: &["get"],
+            curated_doc: DocName::Reports,
+            curated_path: "/reports/{id}/export",
+        },
+        RouteContract {
+            spec_path: "/reports/{id}/results",
+            methods: &["get"],
+            curated_doc: DocName::Reports,
+            curated_path: "/reports/{id}/results",
+        },
+        RouteContract {
+            spec_path: "/reports/{id}/vulnerabilities",
+            methods: &["get"],
+            curated_doc: DocName::Reports,
+            curated_path: "/reports/{id}/vulnerabilities",
+        },
+        RouteContract {
+            spec_path: "/reports/{id}/tls-certificates",
+            methods: &["get"],
+            curated_doc: DocName::Reports,
+            curated_path: "/reports/{id}/tls-certificates",
+        },
+        RouteContract {
+            spec_path: "/reports/{id}/errors",
+            methods: &["get"],
+            curated_doc: DocName::Reports,
+            curated_path: "/reports/{id}/errors",
+        },
+        RouteContract {
+            spec_path: "/reports/{id}/closed-cves",
+            methods: &["get"],
+            curated_doc: DocName::Reports,
+            curated_path: "/reports/{id}/closed-cves",
+        },
+        RouteContract {
+            spec_path: "/results",
+            methods: &["get"],
+            curated_doc: DocName::Results,
+            curated_path: "/results",
+        },
+        RouteContract {
+            spec_path: "/results/{id}",
+            methods: &["get"],
+            curated_doc: DocName::Results,
+            curated_path: "/results/{id}",
+        },
+        RouteContract {
+            spec_path: "/scan-configs",
+            methods: &["get", "post"],
+            curated_doc: DocName::ScanConfigs,
+            curated_path: "/scan-configs",
+        },
+        RouteContract {
+            spec_path: "/scan-configs/{id}",
+            methods: &["get", "put", "delete"],
+            curated_doc: DocName::ScanConfigs,
+            curated_path: "/scan-configs/{id}",
+        },
+        RouteContract {
+            spec_path: "/scanners",
+            methods: &["get"],
+            curated_doc: DocName::Scanners,
+            curated_path: "/scanners",
+        },
+        RouteContract {
+            spec_path: "/scanners/{id}",
+            methods: &["get"],
+            curated_doc: DocName::Scanners,
+            curated_path: "/scanners/{id}",
+        },
+    ]
+}
+
+fn expected_route_methods() -> BTreeSet<(String, String)> {
+    route_contracts()
+        .into_iter()
+        .flat_map(|route| {
+            route
+                .methods
+                .iter()
+                .map(move |method| (route.spec_path.to_string(), (*method).to_string()))
+        })
+        .collect()
+}
+
+fn generated_route_methods(doc: &Value) -> BTreeSet<(String, String)> {
+    doc["paths"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .flat_map(|(path, methods)| {
+            methods
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(move |method| (path.clone(), method.clone()))
+        })
+        .collect()
+}
+
+fn build_route_probe_request(
+    client: &Client,
+    addr: std::net::SocketAddr,
+    route: &RouteContract,
+    method: &str,
+    session_token: &str,
+) -> reqwest::RequestBuilder {
+    let runtime_path = route.runtime_path();
+    let wire_method = method.to_ascii_uppercase();
+    let request = client.request(
+        Method::from_bytes(wire_method.as_bytes()).expect("documented methods must be valid"),
+        format!("http://{addr}{runtime_path}"),
+    );
+
+    match runtime_path.as_str() {
+        "/health" | "/ready" | "/api/v1/version" | "/api/v1/openapi.json" => request,
+        "/api/v1/session" if method == "post" => {
+            request.header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        }
+        _ => request.bearer_auth(session_token),
+    }
+}
+
+async fn create_route_probe_session(client: &Client, addr: std::net::SocketAddr) -> String {
+    client
+        .post(format!("http://{addr}/api/v1/session"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["sessionToken"]
+        .as_str()
+        .unwrap()
+        .to_string()
 }
 
 fn assert_operation_contract(
@@ -1432,13 +1583,4 @@ fn doc<'a>(docs: &'a SpecDocs<'a>, name: DocName) -> &'a Value {
 
 fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {
     &doc["paths"][path][method]
-}
-
-fn path_names(doc: &Value) -> BTreeSet<&str> {
-    doc["paths"]
-        .as_object()
-        .unwrap()
-        .keys()
-        .map(String::as_str)
-        .collect()
 }
