@@ -53,12 +53,13 @@ use gvm_gmp::{
         },
         hosts::{get_host, get_hosts, GetHostsOpts},
         notes::{
-            create_note, delete_note, get_note, get_notes, modify_note, GetNotesOpts, NoteOpts,
+            create_note, delete_note, get_note_with_opts, get_notes, modify_note, GetNoteOpts,
+            GetNotesOpts, NoteOpts,
         },
         nvts::{get_nvt, get_nvt_families, get_nvts, GetNvtsOpts},
         overrides::{
-            create_override, delete_override, get_override, get_overrides, modify_override,
-            GetOverridesOpts, OverrideOpts,
+            create_override, delete_override, get_override_with_opts, get_overrides,
+            modify_override, GetOverrideOpts, GetOverridesOpts, OverrideOpts,
         },
         permissions::{
             create_permission, delete_permission, get_permission, get_permissions,
@@ -3147,10 +3148,17 @@ impl SupportingResourcePort for GvmdAdapter {
 
     async fn get_note(&self, session_token: &str, id: &str) -> Result<Note, GatewayError> {
         let client = self.session_client(session_token)?;
+        let note_id = parse_entity_id(id)?;
         let response = client
             .lock()
             .await
-            .call(get_note(&parse_entity_id(id)?))
+            .call(get_note_with_opts(
+                &note_id,
+                GetNoteOpts {
+                    result: Some(true),
+                    ..Default::default()
+                },
+            ))
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetNotesResponse::from_response(&response).map_err(map_parse_error)?;
@@ -3258,10 +3266,17 @@ impl SupportingResourcePort for GvmdAdapter {
 
     async fn get_override(&self, session_token: &str, id: &str) -> Result<Override, GatewayError> {
         let client = self.session_client(session_token)?;
+        let override_id = parse_entity_id(id)?;
         let response = client
             .lock()
             .await
-            .call(get_override(&parse_entity_id(id)?))
+            .call(get_override_with_opts(
+                &override_id,
+                GetOverrideOpts {
+                    result: Some(true),
+                    ..Default::default()
+                },
+            ))
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetOverridesResponse::from_response(&response).map_err(map_parse_error)?;

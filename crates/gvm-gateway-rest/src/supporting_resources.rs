@@ -603,7 +603,7 @@ pub(crate) struct ModifyOverrideRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 /// Query parameters shared by triage-resource delete endpoints.
-pub struct DeleteSupportingResourceQueryParams {
+pub(crate) struct DeleteSupportingResourceQueryParams {
     /// Whether gvmd should delete the resource permanently instead of trashing it.
     ultimate: Option<bool>,
 }
@@ -708,6 +708,20 @@ fn validate_optional_uuid(field: &str, value: Option<&str>) -> Result<(), Gatewa
         validate_uuid(field, value)?;
     }
     Ok(())
+}
+
+fn parse_delete_supporting_resource_query(query: &str) -> Result<bool, GatewayError> {
+    let mut ultimate = false;
+
+    for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+        if key == "ultimate" {
+            ultimate = value.parse::<bool>().map_err(|_| {
+                GatewayError::InvalidInput("ultimate must be true or false".to_string())
+            })?;
+        }
+    }
+
+    Ok(ultimate)
 }
 
 impl CreateNoteRequest {
@@ -1142,7 +1156,6 @@ pub async fn delete_note(
     State(service): State<GatewayService>,
     headers: HeaderMap,
     Path(id): Path<String>,
-    Query(query): Query<DeleteSupportingResourceQueryParams>,
     uri: OriginalUri,
 ) -> Response {
     let instance = uri.path().to_string();
@@ -1153,11 +1166,12 @@ pub async fn delete_note(
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
+    let ultimate = match parse_delete_supporting_resource_query(uri.query().unwrap_or("")) {
+        Ok(ultimate) => ultimate,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
 
-    match service
-        .delete_note(&session, &id, query.ultimate.unwrap_or(false))
-        .await
-    {
+    match service.delete_note(&session, &id, ultimate).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
@@ -1295,7 +1309,6 @@ pub async fn delete_override(
     State(service): State<GatewayService>,
     headers: HeaderMap,
     Path(id): Path<String>,
-    Query(query): Query<DeleteSupportingResourceQueryParams>,
     uri: OriginalUri,
 ) -> Response {
     let instance = uri.path().to_string();
@@ -1306,11 +1319,12 @@ pub async fn delete_override(
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
+    let ultimate = match parse_delete_supporting_resource_query(uri.query().unwrap_or("")) {
+        Ok(ultimate) => ultimate,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
 
-    match service
-        .delete_override(&session, &id, query.ultimate.unwrap_or(false))
-        .await
-    {
+    match service.delete_override(&session, &id, ultimate).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
@@ -1723,7 +1737,10 @@ pub(crate) fn list_nvt_families_docs(op: TransformOperation<'_>) -> TransformOpe
 mod tests {
     use serde_json::json;
 
-    use super::{PaginationOnlyQuery, SupportingListQuery, TicketResponse, TicketStatus};
+    use super::{
+        parse_delete_supporting_resource_query, PaginationOnlyQuery, SupportingListQuery,
+        TicketResponse, TicketStatus,
+    };
     use gvm_gateway_domain::{SupportingResourceMeta, Ticket};
 
     #[test]
@@ -1762,6 +1779,19 @@ mod tests {
         match error {
             gvm_gateway_domain::GatewayError::InvalidInput(detail) => {
                 assert_eq!(detail, "filter is not supported on this endpoint");
+            }
+            other => panic!("unexpected error variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn delete_supporting_resource_query_rejects_invalid_bool() {
+        let error = parse_delete_supporting_resource_query("ultimate=not-bool")
+            .expect_err("invalid ultimate bool should be rejected");
+
+        match error {
+            gvm_gateway_domain::GatewayError::InvalidInput(detail) => {
+                assert_eq!(detail, "ultimate must be true or false");
             }
             other => panic!("unexpected error variant: {:?}", other),
         }

@@ -251,6 +251,31 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+    post:
+      operationId: createNote
+      tags: [Notes]
+      summary: Create a note
+      description: Creates a note that annotates findings for the selected NVT and optional task/result/host/port/severity scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNote"
+      responses:
+        "201":
+          description: Note created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
 
   /notes/{id}:
     parameters:
@@ -267,6 +292,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Note"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyNote
+      tags: [Notes]
+      summary: Modify a note
+      description: Updates a note used for finding triage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNote"
+      responses:
+        "200":
+          description: Note updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteNote
+      tags: [Notes]
+      summary: Delete a note
+      description: Deletes a note. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.
+      parameters:
+        - $ref: "#/components/parameters/UltimateDelete"
+      responses:
+        "204":
+          description: Note deleted
         "400":
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
@@ -296,6 +361,31 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+    post:
+      operationId: createOverride
+      tags: [Overrides]
+      summary: Create an override
+      description: Creates an override that changes finding interpretation for the selected NVT and optional task/result/host/port/severity scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOverride"
+      responses:
+        "201":
+          description: Override created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
 
   /overrides/{id}:
     parameters:
@@ -312,6 +402,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Override"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyOverride
+      tags: [Overrides]
+      summary: Modify an override
+      description: Updates an override used for finding triage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOverride"
+      responses:
+        "200":
+          description: Override updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Override"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteOverride
+      tags: [Overrides]
+      summary: Delete an override
+      description: Deletes an override. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.
+      parameters:
+        - $ref: "#/components/parameters/UltimateDelete"
+      responses:
+        "204":
+          description: Override deleted
         "400":
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
@@ -391,6 +521,14 @@ paths:
           $ref: "./common.yaml#/components/responses/Unauthorized"
 
 components:
+  parameters:
+    UltimateDelete:
+      name: ultimate
+      in: query
+      required: false
+      description: Whether gvmd should delete the resource permanently instead of using the default non-ultimate delete.
+      schema:
+        type: boolean
   schemas:
     Host:
       type: object
@@ -708,6 +846,58 @@ components:
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
 
+    CreateNote:
+      type: object
+      required:
+        - nvtOid
+      properties:
+        nvtOid:
+          type: string
+        text:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+        port:
+          type: string
+        severity:
+          type: string
+        taskId:
+          type: string
+          format: uuid
+        resultId:
+          type: string
+          format: uuid
+        active:
+          type: boolean
+        orphan:
+          type: boolean
+
+    UpdateNote:
+      type: object
+      properties:
+        text:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+        port:
+          type: string
+        severity:
+          type: string
+        taskId:
+          type: string
+          format: uuid
+        resultId:
+          type: string
+          format: uuid
+        active:
+          type: boolean
+        orphan:
+          type: boolean
+
     Override:
       type: object
       required:
@@ -767,6 +957,58 @@ components:
             $ref: "#/components/schemas/Override"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
+
+    CreateOverride:
+      type: object
+      required:
+        - nvtOid
+      properties:
+        nvtOid:
+          type: string
+        text:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+        port:
+          type: string
+        severity:
+          type: string
+        newSeverity:
+          type: string
+        taskId:
+          type: string
+          format: uuid
+        resultId:
+          type: string
+          format: uuid
+        active:
+          type: boolean
+
+    UpdateOverride:
+      type: object
+      properties:
+        text:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+        port:
+          type: string
+        severity:
+          type: string
+        newSeverity:
+          type: string
+        taskId:
+          type: string
+          format: uuid
+        resultId:
+          type: string
+          format: uuid
+        active:
+          type: boolean
 
     Nvt:
       type: object
