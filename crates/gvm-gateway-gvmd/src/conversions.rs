@@ -236,10 +236,7 @@ pub(crate) fn report_from_gmp(report: gvm_gmp::responses::Report) -> Report {
 
     Report {
         id: report.meta.id.to_string(),
-        task: report.task.map(|t| ResourceRef {
-            id: t.id.to_string(),
-            name: Some(t.name),
-        }),
+        task: report.task.map(resource_ref_from_named_entity),
         scan_start: report.scan_start,
         scan_end: report.scan_end,
         severity,
@@ -936,6 +933,35 @@ mod tests {
                 id: "55555555-5555-5555-5555-555555555555".to_string(),
                 name: Some("SNMP Login".to_string()),
             }
+        );
+    }
+
+    #[test]
+    fn report_from_gmp_omits_missing_task_reference_name() {
+        // Report task refs follow the shared ResourceRef contract: empty typed
+        // names from gvmd refs should keep the id and omit the optional name.
+        let response = GmpResponse::from(
+            r#"<get_reports_response status="200" status_text="OK">
+            <report id="550e8400-e29b-41d4-a716-446655440000">
+                <name>Id-only Task Report</name>
+                <task id="11111111-1111-1111-1111-111111111111"><name></name></task>
+                <report id="550e8400-e29b-41d4-a716-446655440000">
+                    <result_count><full>1</full><filtered>1</filtered></result_count>
+                </report>
+            </report>
+        </get_reports_response>"#,
+        );
+        let parsed = GetReportsResponse::from_response(&response).unwrap();
+
+        let report = report_from_gmp(parsed.items.into_iter().next().unwrap());
+
+        assert_eq!(
+            report.task.as_ref().map(|task| task.id.as_str()),
+            Some("11111111-1111-1111-1111-111111111111")
+        );
+        assert_eq!(
+            report.task.as_ref().and_then(|task| task.name.as_ref()),
+            None
         );
     }
 
