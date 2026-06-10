@@ -52,6 +52,8 @@ pub(crate) struct ResultCountResponse {
     low: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     log: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    debug: Option<u32>,
     #[serde(rename = "falsePositive", skip_serializing_if = "Option::is_none")]
     false_positive: Option<u32>,
 }
@@ -64,6 +66,7 @@ impl From<gvm_gateway_domain::ResultCount> for ResultCountResponse {
             medium: rc.medium,
             low: rc.low,
             log: rc.log,
+            debug: rc.debug,
             false_positive: rc.false_positive,
         }
     }

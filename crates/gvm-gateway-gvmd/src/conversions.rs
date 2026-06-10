@@ -93,19 +93,13 @@ pub(crate) fn credential_from_gmp(credential: gvm_gmp::responses::Credential) ->
 }
 
 pub(crate) fn port_list_from_gmp(port_list: gvm_gmp::responses::PortList) -> PortList {
-    let (tcp_count, udp_count) = match (&port_list.port_range, port_list.port_count) {
-        (Some(range), Some(count)) if range.starts_with('T') => (Some(count), None),
-        (Some(range), Some(count)) if range.starts_with('U') => (None, Some(count)),
-        _ => (None, None),
-    };
-
     PortList {
         id: port_list.meta.id.to_string(),
         name: port_list.meta.name,
         comment: port_list.meta.comment,
         port_count: port_list.port_count,
-        tcp_count,
-        udp_count,
+        tcp_count: port_list.tcp_count,
+        udp_count: port_list.udp_count,
         port_range: port_list.port_range,
         in_use: port_list.meta.in_use,
         writable: port_list.meta.writable,
@@ -242,20 +236,18 @@ pub(crate) fn report_from_gmp(report: gvm_gmp::responses::Report) -> Report {
 
     Report {
         id: report.meta.id.to_string(),
-        task: report.task.map(|t| ResourceRef {
-            id: t.id.to_string(),
-            name: Some(t.name),
-        }),
+        task: report.task.map(resource_ref_from_named_entity),
         scan_start: report.scan_start,
         scan_end: report.scan_end,
         severity,
         result_count: report.result_count.map(|rc| ResultCount {
             total: rc.full,
-            high: None,
-            medium: None,
-            low: None,
-            log: None,
-            false_positive: None,
+            high: rc.high.and_then(|count| count.full),
+            medium: rc.medium.and_then(|count| count.full),
+            low: rc.low.and_then(|count| count.full),
+            log: rc.log.and_then(|count| count.full),
+            debug: rc.debug.and_then(|count| count.full),
+            false_positive: rc.false_positive.and_then(|count| count.full),
         }),
         results: vec![],
     }
@@ -271,8 +263,8 @@ pub(crate) fn result_from_gmp(result: gvm_gmp::responses::ScanResult) -> ScanRes
             name: n.name,
             family: n.family,
             cvss_base,
-            cves: vec![],
-            tags: None,
+            cves: n.cves,
+            tags: n.tags,
         }
     });
 
@@ -285,8 +277,8 @@ pub(crate) fn result_from_gmp(result: gvm_gmp::responses::ScanResult) -> ScanRes
         threat: result.threat,
         nvt,
         description: result.description,
-        task: None,
-        report: None,
+        task: result.task.map(resource_ref_from_named_entity),
+        report: result.report.map(resource_ref_from_named_entity),
     }
 }
 
@@ -650,7 +642,11 @@ fn supporting_meta_from_gmp(
 fn resource_ref_from_named_entity(entity: gvm_gmp::responses::NamedEntity) -> ResourceRef {
     ResourceRef {
         id: entity.id.to_string(),
-        name: Some(entity.name),
+        name: if entity.name.is_empty() {
+            None
+        } else {
+            Some(entity.name)
+        },
     }
 }
 
@@ -710,7 +706,10 @@ fn is_authentication_failure(message: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gvm_gmp::responses::{GetTargetsResponse, GetTasksResponse};
+    use gvm_gmp::responses::{
+        GetPortListsResponse, GetReportsResponse, GetResultsResponse, GetTargetsResponse,
+        GetTasksResponse,
+    };
     use gvm_protocol::Response as GmpResponse;
 
     #[test]
@@ -935,6 +934,197 @@ mod tests {
                 name: Some("SNMP Login".to_string()),
             }
         );
+    }
+
+    #[test]
+    fn report_from_gmp_omits_missing_task_reference_name() {
+        // Report task refs follow the shared ResourceRef contract: empty typed
+        // names from gvmd refs should keep the id and omit the optional name.
+        let response = GmpResponse::from(
+            r#"<get_reports_response status="200" status_text="OK">
+            <report id="550e8400-e29b-41d4-a716-446655440000">
+                <name>Id-only Task Report</name>
+                <task id="11111111-1111-1111-1111-111111111111"><name></name></task>
+                <report id="550e8400-e29b-41d4-a716-446655440000">
+                    <result_count><full>1</full><filtered>1</filtered></result_count>
+                </report>
+            </report>
+        </get_reports_response>"#,
+        );
+        let parsed = GetReportsResponse::from_response(&response).unwrap();
+
+        let report = report_from_gmp(parsed.items.into_iter().next().unwrap());
+
+        assert_eq!(
+            report.task.as_ref().map(|task| task.id.as_str()),
+            Some("11111111-1111-1111-1111-111111111111")
+        );
+        assert_eq!(
+            report.task.as_ref().and_then(|task| task.name.as_ref()),
+            None
+        );
+    }
+
+    #[test]
+    fn report_from_gmp_preserves_result_count_severity_buckets() {
+        // Report summary reads must preserve structured gvmd severity buckets
+        // instead of collapsing the typed response to total-only counts.
+        let response = GmpResponse::from(
+            r#"<get_reports_response status="200" status_text="OK">
+            <report id="550e8400-e29b-41d4-a716-446655440000">
+                <name>Bucketed Report</name>
+                <report id="550e8400-e29b-41d4-a716-446655440000">
+                    <result_count>
+                        <full>11</full>
+                        <hole><full>2</full><filtered>1</filtered></hole>
+                        <warning><full>3</full><filtered>2</filtered></warning>
+                        <info><full>4</full><filtered>3</filtered></info>
+                        <log><full>1</full><filtered>1</filtered></log>
+                        <debug><full>2</full><filtered>2</filtered></debug>
+                        <false_positive><full>1</full><filtered>1</filtered></false_positive>
+                    </result_count>
+                </report>
+            </report>
+        </get_reports_response>"#,
+        );
+        let parsed = GetReportsResponse::from_response(&response).unwrap();
+
+        let report = report_from_gmp(parsed.items.into_iter().next().unwrap());
+        let result_count = report.result_count.expect("result count should map");
+
+        assert_eq!(result_count.total, Some(11));
+        assert_eq!(result_count.high, Some(2));
+        assert_eq!(result_count.medium, Some(3));
+        assert_eq!(result_count.low, Some(4));
+        assert_eq!(result_count.log, Some(1));
+        assert_eq!(result_count.debug, Some(2));
+        assert_eq!(result_count.false_positive, Some(1));
+    }
+
+    #[test]
+    fn result_from_gmp_preserves_references_and_nvt_metadata() {
+        // Result reads must not fabricate empty NVT metadata or drop typed
+        // task/report references returned by rust-gvm.
+        let response = GmpResponse::from(
+            r#"<get_results_response status="200" status_text="OK">
+            <result id="550e8400-e29b-41d4-a716-446655440000">
+                <name>HTTP Server Detection</name>
+                <host>192.168.1.1</host>
+                <port>80/tcp</port>
+                <task id="11111111-1111-1111-1111-111111111111"><name>Discovery Scan</name></task>
+                <report id="22222222-2222-2222-2222-222222222222"><name>Daily Report</name></report>
+                <nvt oid="1.3.6.1.4.1.25623.1.0.100315">
+                    <name>HTTP Server Detection</name>
+                    <family>Service detection</family>
+                    <cvss_base>0.0</cvss_base>
+                    <cve>CVE-2026-0001</cve>
+                    <refs><ref type="cve" id="CVE-2026-0002"/></refs>
+                    <tags>summary=Detects HTTP server</tags>
+                </nvt>
+                <threat>Log</threat>
+                <severity>0.0</severity>
+                <description>An HTTP server was detected on the target.</description>
+            </result>
+            <result_count>1<filtered>1</filtered></result_count>
+        </get_results_response>"#,
+        );
+        let parsed = GetResultsResponse::from_response(&response).unwrap();
+
+        let result = result_from_gmp(parsed.items.into_iter().next().unwrap());
+        let nvt = result.nvt.expect("nvt should map");
+
+        assert_eq!(
+            result.task.as_ref().map(|task| task.id.as_str()),
+            Some("11111111-1111-1111-1111-111111111111")
+        );
+        assert_eq!(
+            result.task.as_ref().and_then(|task| task.name.as_deref()),
+            Some("Discovery Scan")
+        );
+        assert_eq!(
+            result.report.as_ref().map(|report| report.id.as_str()),
+            Some("22222222-2222-2222-2222-222222222222")
+        );
+        assert_eq!(
+            result
+                .report
+                .as_ref()
+                .and_then(|report| report.name.as_deref()),
+            Some("Daily Report")
+        );
+        assert_eq!(
+            nvt.cves,
+            vec!["CVE-2026-0001".to_string(), "CVE-2026-0002".to_string()]
+        );
+        assert_eq!(nvt.tags.as_deref(), Some("summary=Detects HTTP server"));
+    }
+
+    #[test]
+    fn result_from_gmp_omits_missing_reference_names() {
+        // Id-only task/report refs from gvmd arrive as empty typed names; the
+        // REST contract treats that as an absent optional name, not an empty one.
+        let response = GmpResponse::from(
+            r#"<get_results_response status="200" status_text="OK">
+            <result id="550e8400-e29b-41d4-a716-446655440000">
+                <name>HTTP Server Detection</name>
+                <task id="11111111-1111-1111-1111-111111111111"/>
+                <report id="22222222-2222-2222-2222-222222222222"/>
+                <threat>Log</threat>
+                <severity>0.0</severity>
+            </result>
+            <result_count>1<filtered>1</filtered></result_count>
+        </get_results_response>"#,
+        );
+        let parsed = GetResultsResponse::from_response(&response).unwrap();
+
+        let result = result_from_gmp(parsed.items.into_iter().next().unwrap());
+
+        assert_eq!(
+            result.task.as_ref().map(|task| task.id.as_str()),
+            Some("11111111-1111-1111-1111-111111111111")
+        );
+        assert_eq!(
+            result.task.as_ref().and_then(|task| task.name.as_ref()),
+            None
+        );
+        assert_eq!(
+            result.report.as_ref().map(|report| report.id.as_str()),
+            Some("22222222-2222-2222-2222-222222222222")
+        );
+        assert_eq!(
+            result
+                .report
+                .as_ref()
+                .and_then(|report| report.name.as_ref()),
+            None
+        );
+    }
+
+    #[test]
+    fn port_list_from_gmp_uses_structured_protocol_counts() {
+        // Mixed-protocol port lists need the typed TCP/UDP counts; inferring
+        // counts from the first port_range character loses UDP data.
+        let response = GmpResponse::from(
+            r#"<get_port_lists_response status="200" status_text="OK">
+            <port_list id="550e8400-e29b-41d4-a716-446655440000">
+                <name>Mixed TCP UDP</name>
+                <port_count>
+                    <all>3</all>
+                    <tcp>2</tcp>
+                    <udp>1</udp>
+                </port_count>
+                <port_range>T:22,80,U:53</port_range>
+            </port_list>
+            <port_list_count>1<filtered>1</filtered></port_list_count>
+        </get_port_lists_response>"#,
+        );
+        let parsed = GetPortListsResponse::from_response(&response).unwrap();
+
+        let port_list = port_list_from_gmp(parsed.items.into_iter().next().unwrap());
+
+        assert_eq!(port_list.port_count, Some(3));
+        assert_eq!(port_list.tcp_count, Some(2));
+        assert_eq!(port_list.udp_count, Some(1));
     }
 
     #[test]

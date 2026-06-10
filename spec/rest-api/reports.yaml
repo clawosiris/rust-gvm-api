@@ -294,6 +294,8 @@ components:
           type: integer
         log:
           type: integer
+        debug:
+          type: integer
         falsePositive:
           type: integer
 

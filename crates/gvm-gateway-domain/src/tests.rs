@@ -210,6 +210,7 @@ fn report_serializes_camel_case() {
             medium: Some(3),
             low: Some(1),
             log: Some(4),
+            debug: Some(6),
             false_positive: None,
         }),
         results: vec![],
@@ -218,6 +219,7 @@ fn report_serializes_camel_case() {
     assert!(json.contains("\"scanStart\""));
     assert!(!json.contains("\"scanEnd\""));
     assert!(json.contains("\"resultCount\""));
+    assert!(json.contains("\"debug\""));
     assert!(!json.contains("\"falsePositive\""));
     assert!(!json.contains("\"results\""));
 }
@@ -231,11 +233,13 @@ fn result_count_omits_none_fields() {
         medium: None,
         low: None,
         log: None,
+        debug: None,
         false_positive: None,
     };
     let json = serde_json::to_string(&rc).unwrap();
     assert!(json.contains("\"total\""));
     assert!(!json.contains("\"high\""));
+    assert!(!json.contains("\"debug\""));
 }
 
 /// ReportQuery defaults preserve the existing zero-value pagination behavior.
