@@ -123,7 +123,7 @@ jobs:
       - name: Store package assets
         uses: actions/upload-artifact@v7
         with:
-          name: gvm-gateway-${{ matrix.packager }}-release-assets
+          name: gvm-gateway-${{ matrix.packager }}-${{ matrix.package_arch }}-release-assets
           path: dist/packages/*
           if-no-files-found: error
 
