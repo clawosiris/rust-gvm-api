@@ -3,13 +3,14 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: package-build.sh --packager <deb|archlinux> --version <version> [--release <n>] [--output-dir <dir>]
+Usage: package-build.sh --packager <deb|archlinux> --version <version> [--release <n>] [--architecture <arch>] [--output-dir <dir>]
 EOF
 }
 
 PACKAGER=""
 VERSION=""
 RELEASE="1"
+ARCHITECTURE=""
 OUTPUT_DIR="dist/packages"
 
 while [[ $# -gt 0 ]]; do
@@ -24,6 +25,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --release)
       RELEASE="$2"
+      shift 2
+      ;;
+    --architecture)
+      ARCHITECTURE="$2"
       shift 2
       ;;
     --output-dir)
@@ -60,15 +65,32 @@ if [[ ! -x "${ROOT_DIR}/target/release/gvm-gateway" ]]; then
   exit 1
 fi
 
-case "${PACKAGER}" in
-  deb)
-    ARCHITECTURE="amd64"
-    ;;
-  archlinux)
-    ARCHITECTURE="x86_64"
+if [[ -z "${ARCHITECTURE}" ]]; then
+  HOST_ARCH="$(uname -m)"
+  case "${HOST_ARCH}" in
+    x86_64|amd64)
+      case "${PACKAGER}" in
+        deb) ARCHITECTURE="amd64" ;;
+        archlinux) ARCHITECTURE="x86_64" ;;
+      esac
+      ;;
+    aarch64|arm64)
+      case "${PACKAGER}" in
+        deb) ARCHITECTURE="arm64" ;;
+      esac
+      ;;
+    *)
+      echo "unsupported host architecture: ${HOST_ARCH}; pass --architecture explicitly" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+case "${PACKAGER}:${ARCHITECTURE}" in
+  deb:amd64|deb:arm64|archlinux:x86_64)
     ;;
   *)
-    echo "unsupported packager: ${PACKAGER}" >&2
+    echo "unsupported package architecture for ${PACKAGER}: ${ARCHITECTURE}" >&2
     exit 1
     ;;
 esac
@@ -90,6 +112,7 @@ install -m 0644 packaging/gvm-gateway.toml dist/package-root/etc/gvm-gateway/gvm
 cat > dist/package-root/usr/share/doc/gvm-gateway/BUILDINFO <<EOF
 package_name=gvm-gateway
 package_format=${PACKAGER}
+package_architecture=${ARCHITECTURE}
 package_version=${PACKAGE_VERSION}
 package_release=${PACKAGE_RELEASE}
 source_version=${VERSION}

@@ -88,13 +88,22 @@ jobs:
       - run: cargo test --workspace --all-features
 
   package:
-    name: Package (${{ matrix.packager }})
+    name: Package (${{ matrix.packager }}, ${{ matrix.package_arch }})
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        packager: [deb, archlinux]
+        include:
+          - packager: deb
+            package_arch: amd64
+            runner: ubuntu-latest
+          - packager: archlinux
+            package_arch: x86_64
+            runner: ubuntu-latest
+          - packager: deb
+            package_arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -108,7 +117,7 @@ jobs:
       - name: Install nfpm
         run: ./scripts/install-nfpm.sh
       - name: Build package
-        run: ./scripts/package-build.sh --packager "${{ matrix.packager }}" --version "${{ inputs.version }}" --output-dir dist/packages
+        run: ./scripts/package-build.sh --packager "${{ matrix.packager }}" --architecture "${{ matrix.package_arch }}" --version "${{ inputs.version }}" --output-dir dist/packages
       - name: Smoke test package install
         run: ./scripts/package-smoke.sh --packager "${{ matrix.packager }}" --package-dir dist/packages
       - name: Upload package assets to release
