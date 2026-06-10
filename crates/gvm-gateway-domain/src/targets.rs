@@ -123,4 +123,12 @@ pub struct ModifyTargetInput {
     pub alive_test: Option<String>,
     /// Optional port list identifier.
     pub port_list_id: Option<String>,
+    /// Optional SSH credential identifier.
+    pub ssh_credential_id: Option<String>,
+    /// Optional SMB credential identifier.
+    pub smb_credential_id: Option<String>,
+    /// Optional ESXi credential identifier.
+    pub esxi_credential_id: Option<String>,
+    /// Optional SNMP credential identifier.
+    pub snmp_credential_id: Option<String>,
 }

@@ -142,6 +142,19 @@ fn modify_target_input_default() {
     assert!(input.name.is_none());
     assert!(input.comment.is_none());
     assert!(input.hosts.is_none());
+    assert!(input.ssh_credential_id.is_none());
+    assert!(input.smb_credential_id.is_none());
+    assert!(input.esxi_credential_id.is_none());
+    assert!(input.snmp_credential_id.is_none());
+}
+
+/// ModifyTaskInput defaults keep preferences empty so omitted updates do not
+/// accidentally replace scanner-level settings.
+#[test]
+fn modify_task_input_default_keeps_preferences_empty() {
+    let input = ModifyTaskInput::default();
+
+    assert!(input.preferences.is_empty());
 }
 
 /// Target only emits `excludeHosts` when there are actual excluded hosts.

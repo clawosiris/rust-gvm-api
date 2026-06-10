@@ -2,16 +2,17 @@
 // Copyright (C) 2026 Greenbone AG
 
 use std::{
+    future::Future,
     io,
     sync::{Arc, Mutex, OnceLock},
 };
 
 use gvm_gateway_domain::SessionManager;
 use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
+use tracing::instrument::WithSubscriber;
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
     prelude::*,
-    EnvFilter,
 };
 
 use crate::{test_support::mocks::*, GatewayService};
@@ -72,34 +73,49 @@ impl io::Write for TestWriterGuard {
 }
 
 /// Captures tracing output so tests can assert on audit and span behavior.
-pub(crate) fn capture_tracing() -> Arc<Mutex<Vec<u8>>> {
-    static WRITER: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
-    static INIT: OnceLock<()> = OnceLock::new();
-
-    let buffer = WRITER
-        .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
-        .clone();
-    buffer.lock().unwrap().clear();
-
-    INIT.get_or_init(|| {
-        let writer = TestWriter {
-            buffer: buffer.clone(),
-        };
-        let subscriber = tracing_subscriber::registry()
-            .with(EnvFilter::new("info"))
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_writer(writer)
-                    .with_ansi(false)
-                    .with_span_events(FmtSpan::CLOSE),
-            );
-        let _ = tracing::subscriber::set_global_default(subscriber);
-    });
-
-    buffer
+pub(crate) struct TraceCapture {
+    buffer: Arc<Mutex<Vec<u8>>>,
+    subscriber: tracing::Dispatch,
 }
 
-/// Serializes tests that assert on the shared global tracing buffer.
+impl TraceCapture {
+    /// Runs a future with this capture's subscriber as the scoped default.
+    pub(crate) async fn run<F>(&self, future: F) -> F::Output
+    where
+        F: Future,
+    {
+        future.with_subscriber(self.subscriber.clone()).await
+    }
+
+    /// Returns captured trace output as UTF-8 text.
+    pub(crate) fn output(&self) -> String {
+        String::from_utf8(self.buffer.lock().unwrap().clone()).unwrap()
+    }
+}
+
+/// Creates an isolated tracing capture for one test.
+pub(crate) fn capture_tracing() -> TraceCapture {
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let writer = TestWriter {
+        buffer: buffer.clone(),
+    };
+    let subscriber = tracing_subscriber::registry().with(
+        tracing_subscriber::fmt::layer()
+            .with_writer(writer)
+            .with_ansi(false)
+            .with_span_events(FmtSpan::CLOSE),
+    );
+
+    TraceCapture {
+        buffer,
+        subscriber: tracing::Dispatch::new(subscriber),
+    }
+}
+
+/// Serializes tests that assert on tracing output.
+///
+/// `tracing` callsite interest is process-global enough that several scoped
+/// subscribers running in parallel can make target-specific assertions flaky.
 pub(crate) async fn lock_tracing() -> AsyncMutexGuard<'static, ()> {
     static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| AsyncMutex::new(())).lock().await

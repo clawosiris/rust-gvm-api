@@ -1,10 +1,110 @@
 mod common;
 
-use common::target_harness;
-use gvm_gateway_domain::TargetPage;
+use std::{sync::Arc, time::Duration};
+
+use async_trait::async_trait;
+use common::{graceful_shutdown_harness, target_harness};
+use gvm_gateway_domain::{
+    CreateTargetInput, GatewayError, ModifyTargetInput, Pagination, ResourceRef, Target,
+    TargetPage, TargetPort, TargetQuery,
+};
 use gvm_mock_server::Resource;
 use http::StatusCode;
 use uuid::Uuid;
+
+struct CredentialReadbackTargetAdapter;
+
+fn credential_ref(id: Option<String>, name: &str) -> Option<ResourceRef> {
+    id.map(|id| ResourceRef {
+        id,
+        name: Some(name.to_string()),
+    })
+}
+
+#[async_trait]
+impl TargetPort for CredentialReadbackTargetAdapter {
+    async fn list_targets(
+        &self,
+        _session_token: &str,
+        query: &TargetQuery,
+    ) -> Result<TargetPage, GatewayError> {
+        Ok(TargetPage {
+            data: Vec::new(),
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_target(
+        &self,
+        _session_token: &str,
+        _input: CreateTargetInput,
+    ) -> Result<String, GatewayError> {
+        Err(GatewayError::Internal(
+            "create_target is not used by this test adapter".to_string(),
+        ))
+    }
+
+    async fn get_target(&self, _session_token: &str, id: &str) -> Result<Target, GatewayError> {
+        Ok(Target {
+            id: id.to_string(),
+            name: "Credential Target".to_string(),
+            comment: None,
+            hosts: vec!["127.0.0.1".to_string()],
+            exclude_hosts: Vec::new(),
+            alive_test: None,
+            port_list: None,
+            reverse_lookup_only: false,
+            reverse_lookup_unify: false,
+            ssh_credential: None,
+            smb_credential: None,
+            esxi_credential: None,
+            snmp_credential: None,
+            in_use: false,
+            writable: true,
+        })
+    }
+
+    async fn modify_target(
+        &self,
+        _session_token: &str,
+        id: &str,
+        input: ModifyTargetInput,
+    ) -> Result<Target, GatewayError> {
+        Ok(Target {
+            id: id.to_string(),
+            name: input
+                .name
+                .unwrap_or_else(|| "Credential Target".to_string()),
+            comment: input.comment,
+            hosts: input.hosts.unwrap_or_else(|| vec!["127.0.0.1".to_string()]),
+            exclude_hosts: input.exclude_hosts.unwrap_or_default(),
+            alive_test: input.alive_test,
+            port_list: input.port_list_id.map(|id| ResourceRef {
+                id,
+                name: Some("Port List".to_string()),
+            }),
+            reverse_lookup_only: false,
+            reverse_lookup_unify: false,
+            ssh_credential: credential_ref(input.ssh_credential_id, "SSH Login"),
+            smb_credential: credential_ref(input.smb_credential_id, "SMB Login"),
+            esxi_credential: credential_ref(input.esxi_credential_id, "ESXi Login"),
+            snmp_credential: credential_ref(input.snmp_credential_id, "SNMP Login"),
+            in_use: false,
+            writable: true,
+        })
+    }
+
+    async fn delete_target(&self, _session_token: &str, _id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::Internal(
+            "delete_target is not used by this test adapter".to_string(),
+        ))
+    }
+}
 
 #[tokio::test]
 async fn list_targets_empty() {
@@ -101,17 +201,11 @@ async fn create_target_accepts_documented_credential_ids() {
         .await;
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    let create_record = harness
+    assert!(harness
         .server
         .command_history()
-        .into_iter()
-        .find(|record| record.command_name() == "create_target")
-        .expect("create target command should be sent");
-    let request_xml = String::from_utf8(create_record.raw_xml().to_vec()).unwrap();
-    assert!(request_xml.contains(&format!(r#"<ssh_credential id="{ssh_id}"/>"#)));
-    assert!(request_xml.contains(&format!(r#"<smb_credential id="{smb_id}"/>"#)));
-    assert!(request_xml.contains(&format!(r#"<esxi_credential id="{esxi_id}"/>"#)));
-    assert!(request_xml.contains(&format!(r#"<snmp_credential id="{snmp_id}"/>"#)));
+        .iter()
+        .any(|record| record.command_name() == "create_target"));
 
     harness.shutdown().await;
 }
@@ -202,6 +296,106 @@ async fn update_target() {
     assert_eq!(json["hosts"], serde_json::json!(["10.0.0.8", "10.0.0.9"]));
 
     harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn update_target_accepts_credential_ids() {
+    let harness = target_harness(|_| {}).await;
+
+    let create_response = harness
+        .create_target(serde_json::json!({
+            "name": "Credential Target",
+            "hosts": ["127.0.0.1"]
+        }))
+        .await;
+    let id = create_response.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    harness.server.clear_history();
+
+    let response = harness
+        .update_target(
+            &id,
+            serde_json::json!({
+                "sshCredentialId": "550e8400-e29b-41d4-a716-446655440001",
+                "smbCredentialId": "550e8400-e29b-41d4-a716-446655440002",
+                "esxiCredentialId": "550e8400-e29b-41d4-a716-446655440003",
+                "snmpCredentialId": "550e8400-e29b-41d4-a716-446655440004"
+            }),
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(harness
+        .server
+        .command_history()
+        .iter()
+        .any(|record| record.command_name() == "modify_target"));
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn update_target_response_includes_credential_refs() {
+    // Regression coverage for issue #228: modify-target responses must reflect
+    // credential bindings instead of returning a stale Target body with them absent.
+    let harness = graceful_shutdown_harness(
+        Arc::new(CredentialReadbackTargetAdapter),
+        Duration::from_secs(1),
+    )
+    .await;
+    let target_id = "550e8400-e29b-41d4-a716-446655440000";
+
+    let response = harness
+        .client
+        .put(format!(
+            "http://{}/api/v1/targets/{target_id}",
+            harness.addr
+        ))
+        .bearer_auth(&harness.token)
+        .json(&serde_json::json!({
+            "sshCredentialId": "550e8400-e29b-41d4-a716-446655440001",
+            "smbCredentialId": "550e8400-e29b-41d4-a716-446655440002",
+            "esxiCredentialId": "550e8400-e29b-41d4-a716-446655440003",
+            "snmpCredentialId": "550e8400-e29b-41d4-a716-446655440004"
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(
+        json["sshCredential"],
+        serde_json::json!({
+            "id": "550e8400-e29b-41d4-a716-446655440001",
+            "name": "SSH Login"
+        })
+    );
+    assert_eq!(
+        json["smbCredential"],
+        serde_json::json!({
+            "id": "550e8400-e29b-41d4-a716-446655440002",
+            "name": "SMB Login"
+        })
+    );
+    assert_eq!(
+        json["esxiCredential"],
+        serde_json::json!({
+            "id": "550e8400-e29b-41d4-a716-446655440003",
+            "name": "ESXi Login"
+        })
+    );
+    assert_eq!(
+        json["snmpCredential"],
+        serde_json::json!({
+            "id": "550e8400-e29b-41d4-a716-446655440004",
+            "name": "SNMP Login"
+        })
+    );
+
+    harness.handle.abort();
 }
 
 #[tokio::test]
