@@ -23,11 +23,11 @@ async-trait = "0.1.89"
 base64 = "0.22.1"
 axum = "0.8.9"
 clap = { version = "4.6.1", features = ["derive"] }
-gvm-client = { git = "https://github.com/clawosiris/rust-gvm", rev = "a718e0a3094708db50f56dc6bb9d9b5fa4f5462a" }
-gvm-connection = { git = "https://github.com/clawosiris/rust-gvm", rev = "a718e0a3094708db50f56dc6bb9d9b5fa4f5462a" }
-gvm-gmp = { git = "https://github.com/clawosiris/rust-gvm", rev = "a718e0a3094708db50f56dc6bb9d9b5fa4f5462a", features = ["serde"] }
-gvm-mock-server = { git = "https://github.com/clawosiris/rust-gvm", rev = "a718e0a3094708db50f56dc6bb9d9b5fa4f5462a" }
-gvm-protocol = { git = "https://github.com/clawosiris/rust-gvm", rev = "a718e0a3094708db50f56dc6bb9d9b5fa4f5462a" }
+gvm-client = { git = "https://github.com/clawosiris/rust-gvm", rev = "8cdef2a137cc58f19aed11f5d4c38a4e40cccdde" }
+gvm-connection = { git = "https://github.com/clawosiris/rust-gvm", rev = "8cdef2a137cc58f19aed11f5d4c38a4e40cccdde" }
+gvm-gmp = { git = "https://github.com/clawosiris/rust-gvm", rev = "8cdef2a137cc58f19aed11f5d4c38a4e40cccdde", features = ["serde"] }
+gvm-mock-server = { git = "https://github.com/clawosiris/rust-gvm", rev = "8cdef2a137cc58f19aed11f5d4c38a4e40cccdde" }
+gvm-protocol = { git = "https://github.com/clawosiris/rust-gvm", rev = "8cdef2a137cc58f19aed11f5d4c38a4e40cccdde" }
 http = "1.4.1"
 opentelemetry = { version = "0.32.0", features = ["trace"] }
 opentelemetry-otlp = { version = "0.32.0", features = ["grpc-tonic", "trace"] }

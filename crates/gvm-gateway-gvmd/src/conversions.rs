@@ -134,7 +134,7 @@ pub(crate) fn user_from_gmp(user: gvm_gmp::responses::User) -> User {
             .collect(),
         hosts_allow: user.hosts_allow.as_deref().and_then(parse_bool_flag),
         hosts: user.hosts,
-        authentication_type: None,
+        authentication_type: user.authentication_type,
     }
 }
 
@@ -382,7 +382,7 @@ pub(crate) fn scan_config_from_gmp(config: gvm_gmp::responses::ScanConfig) -> Sc
         comment: config.meta.comment,
         family_count: None,
         nvt_count: None,
-        config_type: None,
+        config_type: config.type_,
         in_use: config.meta.in_use,
         writable: config.meta.writable,
     }
@@ -707,8 +707,9 @@ fn is_authentication_failure(message: &str) -> bool {
 mod tests {
     use super::*;
     use gvm_gmp::responses::{
-        GetPortListsResponse, GetReportsResponse, GetResultsResponse, GetTargetsResponse,
-        GetTasksResponse,
+        GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetPortListsResponse,
+        GetReportsResponse, GetResultsResponse, GetScanConfigsResponse, GetTargetsResponse,
+        GetTasksResponse, GetTicketsResponse, GetUsersResponse,
     };
     use gvm_protocol::Response as GmpResponse;
 
@@ -1125,6 +1126,99 @@ mod tests {
         assert_eq!(port_list.port_count, Some(3));
         assert_eq!(port_list.tcp_count, Some(2));
         assert_eq!(port_list.udp_count, Some(1));
+    }
+
+    #[test]
+    fn remaining_open_enum_conversions_preserve_backend_values() {
+        // These fields are typed at the REST boundary, but gvmd conversion
+        // should still pass through the exact values provided by rust-gvm.
+        let credentials = GetCredentialsResponse::from_response(&GmpResponse::from(
+            r#"<get_credentials_response status="200" status_text="OK">
+                <credential id="123e4567-e89b-12d3-a456-426614174001">
+                    <name>Credential</name>
+                    <type>future_credential</type>
+                    <login>user</login>
+                </credential>
+            </get_credentials_response>"#,
+        ))
+        .expect("credentials parse");
+        let credential = credential_from_gmp(credentials.items.into_iter().next().unwrap());
+        assert_eq!(
+            credential.credential_type.as_deref(),
+            Some("future_credential")
+        );
+
+        let feeds = GetFeedsResponse::from_response(&GmpResponse::from(
+            r#"<get_feeds_response status="200" status_text="OK">
+                <feed>
+                    <type>COMMUNITY_DATA</type>
+                    <name>Community Feed</name>
+                    <version>202606100000</version>
+                </feed>
+            </get_feeds_response>"#,
+        ))
+        .expect("feeds parse");
+        let feed = feed_from_gmp(feeds.items.into_iter().next().unwrap());
+        assert_eq!(feed.feed_type, "COMMUNITY_DATA");
+
+        let alerts = GetAlertsResponse::from_response(&GmpResponse::from(
+            r#"<get_alerts_response status="200" status_text="OK">
+                <alert id="123e4567-e89b-12d3-a456-426614174002">
+                    <name>Alert</name>
+                    <event>future_event</event>
+                    <condition>future_condition</condition>
+                    <method>future_method</method>
+                </alert>
+            </get_alerts_response>"#,
+        ))
+        .expect("alerts parse");
+        let alert = alert_from_gmp(alerts.items.into_iter().next().unwrap());
+        assert_eq!(alert.event.as_deref(), Some("future_event"));
+        assert_eq!(alert.condition.as_deref(), Some("future_condition"));
+        assert_eq!(alert.method.as_deref(), Some("future_method"));
+
+        let tickets = GetTicketsResponse::from_response(&GmpResponse::from(
+            r#"<get_tickets_response status="200" status_text="OK">
+                <ticket id="123e4567-e89b-12d3-a456-426614174003">
+                    <name>Ticket</name>
+                    <status>Deferred</status>
+                </ticket>
+            </get_tickets_response>"#,
+        ))
+        .expect("tickets parse");
+        let ticket = ticket_from_gmp(tickets.items.into_iter().next().unwrap());
+        assert_eq!(ticket.status.as_deref(), Some("Deferred"));
+    }
+
+    #[test]
+    fn remaining_open_enum_conversions_use_typed_upstream_fields() {
+        // These fields are now parsed by rust-gvm. The gateway maps the typed
+        // values directly and still preserves future backend values verbatim.
+        let configs = GetScanConfigsResponse::from_response(&GmpResponse::from(
+            r#"<get_configs_response status="200" status_text="OK">
+                <config id="123e4567-e89b-12d3-a456-426614174004">
+                    <name>Config</name>
+                    <usage_type>scan</usage_type>
+                    <type>42</type>
+                </config>
+            </get_configs_response>"#,
+        ))
+        .expect("scan configs parse");
+        let config = scan_config_from_gmp(configs.items.into_iter().next().unwrap());
+        assert_eq!(config.config_type, Some(42));
+
+        let users = GetUsersResponse::from_response(&GmpResponse::from(
+            r#"<get_users_response status="200" status_text="OK">
+                <user id="123e4567-e89b-12d3-a456-426614174005">
+                    <name>User</name>
+                    <hosts_allow>1</hosts_allow>
+                    <sources><source>oidc_connect</source></sources>
+                </user>
+            </get_users_response>"#,
+        ))
+        .expect("users parse");
+        let user = user_from_gmp(users.items.into_iter().next().unwrap());
+        assert_eq!(user.authentication_type.as_deref(), Some("oidc_connect"));
     }
 
     #[test]

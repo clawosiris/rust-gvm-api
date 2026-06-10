@@ -22,6 +22,7 @@ use uuid::Uuid;
 use crate::{
     dto::{created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse},
     error::RestError,
+    open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
     router::bearer_token,
     targets::{validate_uuid, TargetListQuery},
@@ -32,6 +33,18 @@ pub use gvm_gateway_domain::{
     ModifyCredentialInput,
 };
 
+open_string_enum! {
+    /// Credential type code.
+    pub(crate) enum CredentialType {
+        ClientCertificate => "cc",
+        PasswordOnly => "pw",
+        SnmpV1Or2c => "snmp",
+        SnmpV3 => "snmpv3",
+        UsernamePassword => "up",
+        UsernameSshKey => "usk",
+    }
+}
+
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "Credential")]
 pub(crate) struct CredentialResponse {
@@ -40,7 +53,7 @@ pub(crate) struct CredentialResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    credential_type: Option<String>,
+    credential_type: Option<CredentialType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     login: Option<String>,
     #[serde(rename = "inUse")]
@@ -54,7 +67,10 @@ impl From<Credential> for CredentialResponse {
             id: parse_uuid(&credential.id),
             name: credential.name,
             comment: credential.comment,
-            credential_type: credential.credential_type,
+            credential_type: credential
+                .credential_type
+                .as_deref()
+                .map(CredentialType::parse),
             login: credential.login,
             in_use: credential.in_use,
             writable: credential.writable,
@@ -451,4 +467,52 @@ pub(crate) fn delete_credential_docs(op: TransformOperation<'_>) -> TransformOpe
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{CredentialResponse, CredentialType};
+    use gvm_gateway_domain::Credential;
+
+    fn credential_with_type(credential_type: &str) -> Credential {
+        Credential {
+            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+            name: "Credential".to_string(),
+            comment: None,
+            credential_type: Some(credential_type.to_string()),
+            login: Some("user".to_string()),
+            in_use: false,
+            writable: true,
+        }
+    }
+
+    #[test]
+    fn credential_type_deserialization_preserves_unknown_values() {
+        // Backend-added credential types must survive deserialization instead
+        // of being rejected by the open-enum wrapper.
+        let parsed: CredentialType =
+            serde_json::from_value(json!("future_credential")).expect("type should parse");
+
+        assert_eq!(
+            serde_json::to_value(parsed).unwrap(),
+            json!("future_credential")
+        );
+    }
+
+    #[test]
+    fn credential_response_preserves_known_and_unknown_types() {
+        // Response conversion should expose both known rust-gvm type values and
+        // future backend values without collapsing the public `type` field.
+        let known = serde_json::to_value(CredentialResponse::from(credential_with_type("up")))
+            .expect("credential response should serialize");
+        let unknown = serde_json::to_value(CredentialResponse::from(credential_with_type(
+            "future_credential",
+        )))
+        .expect("credential response should serialize");
+
+        assert_eq!(known["type"], json!("up"));
+        assert_eq!(unknown["type"], json!("future_credential"));
+    }
 }

@@ -6,12 +6,14 @@
 use schemars::json_schema;
 use serde_json::json;
 
+pub(crate) const OPEN_ENUM_DESCRIPTION: &str = "Known values are listed for documentation and client generation. This list is not exhaustive; unknown future values may also be returned verbatim, and clients must preserve them.";
+
 pub(crate) fn open_string_enum_schema(name: &str, known_values: &[&str]) -> schemars::Schema {
     let mut schema = json_schema!({
         "title": name,
         "type": "string",
         "enum": known_values,
-        "description": "Known values are listed here for client generation. Unknown future values may also be returned verbatim."
+        "description": OPEN_ENUM_DESCRIPTION
     });
 
     if let Some(object) = schema.as_object_mut() {
@@ -19,6 +21,45 @@ pub(crate) fn open_string_enum_schema(name: &str, known_values: &[&str]) -> sche
     }
 
     schema
+}
+
+pub(crate) fn open_u32_enum_schema(name: &str, known_values: &[u32]) -> schemars::Schema {
+    let mut schema = json_schema!({
+        "title": name,
+        "type": "integer",
+        "format": "uint32",
+        "enum": known_values,
+        "description": OPEN_ENUM_DESCRIPTION
+    });
+
+    if let Some(object) = schema.as_object_mut() {
+        object.insert("enum".to_string(), json!(known_values));
+    }
+
+    schema
+}
+
+pub(crate) fn document_open_enum_schema(schema: &mut serde_json::Value) {
+    let Some(object) = schema.as_object_mut() else {
+        return;
+    };
+
+    let description = match object
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .filter(|description| !description.trim().is_empty())
+    {
+        Some(description) if description.contains("This list is not exhaustive") => {
+            description.to_string()
+        }
+        Some(description) => format!("{description} {OPEN_ENUM_DESCRIPTION}"),
+        None => OPEN_ENUM_DESCRIPTION.to_string(),
+    };
+
+    object.insert(
+        "description".to_string(),
+        serde_json::Value::String(description),
+    );
 }
 
 macro_rules! open_string_enum {
@@ -91,4 +132,75 @@ macro_rules! open_string_enum {
     };
 }
 
+macro_rules! open_u32_enum {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident {
+            $($variant:ident => $value:literal),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        $vis enum $name {
+            $($variant,)+
+            Unknown(u32),
+        }
+
+        impl $name {
+            fn parse(value: u32) -> Self {
+                match value {
+                    $($value => Self::$variant,)+
+                    _ => Self::Unknown(value),
+                }
+            }
+
+            fn as_u32(&self) -> u32 {
+                match self {
+                    $(Self::$variant => $value,)+
+                    Self::Unknown(value) => *value,
+                }
+            }
+
+            fn known_values() -> &'static [u32] {
+                &[$($value),+]
+            }
+        }
+
+        impl serde::Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_u32(self.as_u32())
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let value = <u32 as serde::Deserialize<'de>>::deserialize(deserializer)?;
+                Ok(Self::parse(value))
+            }
+        }
+
+        impl schemars::JsonSchema for $name {
+            fn schema_name() -> std::borrow::Cow<'static, str> {
+                std::borrow::Cow::Borrowed(stringify!($name))
+            }
+
+            fn json_schema(
+                _generator: &mut schemars::SchemaGenerator,
+            ) -> schemars::Schema {
+                crate::open_enum::open_u32_enum_schema(
+                    stringify!($name),
+                    Self::known_values(),
+                )
+            }
+        }
+    };
+}
+
 pub(crate) use open_string_enum;
+pub(crate) use open_u32_enum;

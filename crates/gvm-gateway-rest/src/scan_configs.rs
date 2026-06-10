@@ -22,6 +22,7 @@ use uuid::Uuid;
 use crate::{
     dto::{created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse},
     error::RestError,
+    open_enum::open_u32_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc, ScanConfigListQueryDoc},
     query::parse_collection_query,
     router::bearer_token,
@@ -31,6 +32,14 @@ use crate::{
 // ============================================================================
 // Response DTOs
 // ============================================================================
+
+open_u32_enum! {
+    /// Scan config type.
+    pub(crate) enum ScanConfigType {
+        OpenVas => 0,
+        Osp => 1,
+    }
+}
 
 /// JSON body returned for a single scan config.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
@@ -45,7 +54,7 @@ pub(crate) struct ScanConfigResponse {
     #[serde(rename = "nvtCount", skip_serializing_if = "Option::is_none")]
     nvt_count: Option<u32>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    config_type: Option<u32>,
+    config_type: Option<ScanConfigType>,
     #[serde(rename = "inUse")]
     in_use: bool,
     writable: bool,
@@ -59,7 +68,7 @@ impl From<gvm_gateway_domain::ScanConfig> for ScanConfigResponse {
             comment: sc.comment,
             family_count: sc.family_count,
             nvt_count: sc.nvt_count,
-            config_type: sc.config_type,
+            config_type: sc.config_type.map(ScanConfigType::parse),
             in_use: sc.in_use,
             writable: sc.writable,
         }
@@ -411,4 +420,48 @@ pub(crate) fn delete_scan_config_docs(op: TransformOperation<'_>) -> TransformOp
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{ScanConfigResponse, ScanConfigType};
+    use gvm_gateway_domain::ScanConfig;
+
+    fn scan_config_with_type(config_type: u32) -> ScanConfig {
+        ScanConfig {
+            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+            name: "Scan config".to_string(),
+            comment: None,
+            family_count: Some(2),
+            nvt_count: Some(12),
+            config_type: Some(config_type),
+            in_use: false,
+            writable: true,
+        }
+    }
+
+    #[test]
+    fn scan_config_type_deserialization_preserves_unknown_values() {
+        // The public REST contract uses numeric scan-config type values; new
+        // backend values should round-trip as numbers, not be rejected.
+        let parsed: ScanConfigType =
+            serde_json::from_value(json!(42)).expect("scan config type should parse");
+
+        assert_eq!(serde_json::to_value(parsed).unwrap(), json!(42));
+    }
+
+    #[test]
+    fn scan_config_response_preserves_known_and_unknown_types() {
+        // Response conversion should preserve both documented numeric values
+        // and future backend numeric values verbatim.
+        let known = serde_json::to_value(ScanConfigResponse::from(scan_config_with_type(0)))
+            .expect("scan config response should serialize");
+        let unknown = serde_json::to_value(ScanConfigResponse::from(scan_config_with_type(42)))
+            .expect("scan config response should serialize");
+
+        assert_eq!(known["type"], json!(0));
+        assert_eq!(unknown["type"], json!(42));
+    }
 }
