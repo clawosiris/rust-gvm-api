@@ -2295,6 +2295,7 @@ pub struct ResultCount {
     pub medium: Option<u32>,
     pub low: Option<u32>,
     pub log: Option<u32>,
+    pub debug: Option<u32>,
     #[serde(rename = "falsePositive")]
     pub false_positive: Option<u32>,
 }

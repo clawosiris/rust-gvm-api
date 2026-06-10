@@ -249,6 +249,7 @@ pub(crate) fn report_from_gmp(report: gvm_gmp::responses::Report) -> Report {
             medium: rc.medium.and_then(|count| count.full),
             low: rc.low.and_then(|count| count.full),
             log: rc.log.and_then(|count| count.full),
+            debug: rc.debug.and_then(|count| count.full),
             false_positive: rc.false_positive.and_then(|count| count.full),
         }),
         results: vec![],
@@ -644,7 +645,11 @@ fn supporting_meta_from_gmp(
 fn resource_ref_from_named_entity(entity: gvm_gmp::responses::NamedEntity) -> ResourceRef {
     ResourceRef {
         id: entity.id.to_string(),
-        name: Some(entity.name),
+        name: if entity.name.is_empty() {
+            None
+        } else {
+            Some(entity.name)
+        },
     }
 }
 
@@ -949,6 +954,7 @@ mod tests {
                         <warning><full>3</full><filtered>2</filtered></warning>
                         <info><full>4</full><filtered>3</filtered></info>
                         <log><full>1</full><filtered>1</filtered></log>
+                        <debug><full>2</full><filtered>2</filtered></debug>
                         <false_positive><full>1</full><filtered>1</filtered></false_positive>
                     </result_count>
                 </report>
@@ -965,6 +971,7 @@ mod tests {
         assert_eq!(result_count.medium, Some(3));
         assert_eq!(result_count.low, Some(4));
         assert_eq!(result_count.log, Some(1));
+        assert_eq!(result_count.debug, Some(2));
         assert_eq!(result_count.false_positive, Some(1));
     }
 
@@ -1024,6 +1031,47 @@ mod tests {
             vec!["CVE-2026-0001".to_string(), "CVE-2026-0002".to_string()]
         );
         assert_eq!(nvt.tags.as_deref(), Some("summary=Detects HTTP server"));
+    }
+
+    #[test]
+    fn result_from_gmp_omits_missing_reference_names() {
+        // Id-only task/report refs from gvmd arrive as empty typed names; the
+        // REST contract treats that as an absent optional name, not an empty one.
+        let response = GmpResponse::from(
+            r#"<get_results_response status="200" status_text="OK">
+            <result id="550e8400-e29b-41d4-a716-446655440000">
+                <name>HTTP Server Detection</name>
+                <task id="11111111-1111-1111-1111-111111111111"/>
+                <report id="22222222-2222-2222-2222-222222222222"/>
+                <threat>Log</threat>
+                <severity>0.0</severity>
+            </result>
+            <result_count>1<filtered>1</filtered></result_count>
+        </get_results_response>"#,
+        );
+        let parsed = GetResultsResponse::from_response(&response).unwrap();
+
+        let result = result_from_gmp(parsed.items.into_iter().next().unwrap());
+
+        assert_eq!(
+            result.task.as_ref().map(|task| task.id.as_str()),
+            Some("11111111-1111-1111-1111-111111111111")
+        );
+        assert_eq!(
+            result.task.as_ref().and_then(|task| task.name.as_ref()),
+            None
+        );
+        assert_eq!(
+            result.report.as_ref().map(|report| report.id.as_str()),
+            Some("22222222-2222-2222-2222-222222222222")
+        );
+        assert_eq!(
+            result
+                .report
+                .as_ref()
+                .and_then(|report| report.name.as_ref()),
+            None
+        );
     }
 
     #[test]

@@ -50,6 +50,9 @@ pub struct ResultCount {
     /// Number of log-level results.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log: Option<u32>,
+    /// Number of debug-level results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debug: Option<u32>,
     /// Number of false-positive results.
     #[serde(rename = "falsePositive", skip_serializing_if = "Option::is_none")]
     pub false_positive: Option<u32>,
