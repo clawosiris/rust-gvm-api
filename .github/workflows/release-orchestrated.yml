@@ -120,10 +120,12 @@ jobs:
         run: ./scripts/package-build.sh --packager "${{ matrix.packager }}" --architecture "${{ matrix.package_arch }}" --version "${{ inputs.version }}" --output-dir dist/packages
       - name: Smoke test package install
         run: ./scripts/package-smoke.sh --packager "${{ matrix.packager }}" --package-dir dist/packages
-      - name: Upload package assets to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "v${{ inputs.version }}" dist/packages/* --clobber
+      - name: Store package assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: gvm-gateway-${{ matrix.packager }}-${{ matrix.package_arch }}-release-assets
+          path: dist/packages/*
+          if-no-files-found: error
 
   oci:
     name: OCI Image
@@ -158,14 +160,62 @@ jobs:
             -f Containerfile \
             .
           sha256sum "dist/oci/gvm-gateway-${{ inputs.version }}.oci.tar" > "dist/oci/gvm-gateway-${{ inputs.version }}.oci.tar.sha256"
-      - name: Upload OCI assets to release
+      - name: Store OCI assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: gvm-gateway-oci-release-assets
+          path: dist/oci/*
+          if-no-files-found: error
+
+  release-assets:
+    name: Publish release assets
+    needs: [package, oci]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download generated release assets
+        uses: actions/download-artifact@v7
+        with:
+          pattern: gvm-gateway-*-release-assets
+          path: dist/release-assets
+          merge-multiple: true
+      - name: Verify OS packages and OCI archive
+        run: |
+          shopt -s nullglob
+          deb_packages=(dist/release-assets/*.deb)
+          arch_packages=(dist/release-assets/*.pkg.tar.zst)
+          os_packages=("${deb_packages[@]}" "${arch_packages[@]}")
+          oci_archives=(dist/release-assets/*.oci.tar)
+
+          if (( ${#deb_packages[@]} == 0 )); then
+            echo "No Debian package artifact was generated for the release" >&2
+            exit 1
+          fi
+
+          if (( ${#arch_packages[@]} == 0 )); then
+            echo "No Arch Linux package artifact was generated for the release" >&2
+            exit 1
+          fi
+
+          if (( ${#oci_archives[@]} == 0 )); then
+            echo "No OCI image archive was generated for the release" >&2
+            exit 1
+          fi
+
+          for asset in "${os_packages[@]}" "${oci_archives[@]}"; do
+            if [[ ! -f "${asset}.sha256" ]]; then
+              echo "Missing checksum for ${asset}" >&2
+              exit 1
+            fi
+          done
+      - name: Upload generated assets to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "v${{ inputs.version }}" dist/oci/* --clobber
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "v${{ inputs.version }}" dist/release-assets/* --clobber
 
   sbom:
     name: Generate SBOM
-    needs: [test, package, oci]
+    needs: [test, release-assets]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -190,7 +240,7 @@ jobs:
 
   collect:
     name: Release complete
-    needs: [package, oci, sbom]
+    needs: [release-assets, sbom]
     runs-on: ubuntu-latest
     steps:
       - run: echo "✅ All release artifacts published for v${{ inputs.version }}"
