@@ -2194,6 +2194,7 @@ pub struct NoteResource {
     pub name: String,
     pub text: Option<String>,
     pub nvt: Option<NvtRef>,
+    #[serde(default)]
     pub hosts: Vec<String>,
     pub port: Option<String>,
     pub severity: Option<String>,
@@ -2210,6 +2211,7 @@ pub struct OverrideResource {
     pub name: String,
     pub text: Option<String>,
     pub nvt: Option<NvtRef>,
+    #[serde(default)]
     pub hosts: Vec<String>,
     pub port: Option<String>,
     pub severity: Option<String>,

@@ -210,10 +210,10 @@ async fn rest_supporting_triage_resource_lifecycle_mutates_notes_and_overrides()
             Some(result.id.as_str()),
             "created override did not preserve result linkage"
         );
-        assert_eq!(
+        assert_severity_value_matches(
             created_override_resource.new_severity.as_deref(),
-            Some("0.0"),
-            "created override did not preserve replacement severity"
+            "0.0",
+            "created override did not preserve replacement severity",
         );
 
         let updated_override = harness
@@ -230,10 +230,10 @@ async fn rest_supporting_triage_resource_lifecycle_mutates_notes_and_overrides()
             Some("updated by compose-backed override triage coverage"),
             "updated override did not return changed text"
         );
-        assert_eq!(
+        assert_severity_value_matches(
             updated_override.new_severity.as_deref(),
-            Some("1.0"),
-            "updated override did not return changed replacement severity"
+            "1.0",
+            "updated override did not return changed replacement severity",
         );
         assert!(
             !updated_override.active,
@@ -1059,6 +1059,21 @@ fn assert_credential_matches_created(
         Some("nightly-user"),
         "created credential did not preserve login"
     );
+}
+
+fn assert_severity_value_matches(actual: Option<&str>, expected: &str, message: &str) {
+    // gvmd canonicalizes severity strings such as "0.0" to "0"; this assertion
+    // covers value preservation without depending on backend decimal formatting.
+    let Some(actual) = actual else {
+        panic!("{message}: missing severity value");
+    };
+    match (actual.parse::<f64>(), expected.parse::<f64>()) {
+        (Ok(actual), Ok(expected)) => assert!(
+            (actual - expected).abs() < f64::EPSILON,
+            "{message}: expected {expected}, got {actual}"
+        ),
+        _ => assert_eq!(actual, expected, "{message}"),
+    }
 }
 
 async fn assert_scan_config_not_listed(
