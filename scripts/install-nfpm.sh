@@ -4,7 +4,21 @@ set -euo pipefail
 VERSION="${1:-2.43.2}"
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 BIN_DIR="${ROOT_DIR}/.bin"
-ARCHIVE="nfpm_${VERSION}_Linux_x86_64.tar.gz"
+
+case "$(uname -m)" in
+  x86_64|amd64)
+    NFPM_ARCH="x86_64"
+    ;;
+  aarch64|arm64)
+    NFPM_ARCH="arm64"
+    ;;
+  *)
+    echo "unsupported host architecture for nfpm install: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+ARCHIVE="nfpm_${VERSION}_Linux_${NFPM_ARCH}.tar.gz"
 URL="https://github.com/goreleaser/nfpm/releases/download/v${VERSION}/${ARCHIVE}"
 
 mkdir -p "${BIN_DIR}"
