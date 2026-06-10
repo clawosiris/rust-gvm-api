@@ -3151,7 +3151,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_notes(GetNotesOpts {
-                filter_string: paginated_filter(Some(&uuid_filter), None, 1, 1),
+                filter_string: paginated_filter(Some(&uuid_filter), None, 1, 1)?,
                 filter_id: None,
                 trash: None,
                 details: Some(true),
@@ -3270,7 +3270,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .lock()
             .await
             .call(get_overrides(GetOverridesOpts {
-                filter_string: paginated_filter(Some(&uuid_filter), None, 1, 1),
+                filter_string: paginated_filter(Some(&uuid_filter), None, 1, 1)?,
                 filter_id: None,
                 trash: None,
                 details: Some(true),
