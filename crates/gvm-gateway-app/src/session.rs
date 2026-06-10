@@ -210,52 +210,63 @@ impl SessionReaper {
     pub fn spawn_with_interval(&self, interval: Duration) -> JoinHandle<()> {
         let sessions = Arc::clone(&self.sessions);
         let auth = Arc::clone(&self.auth);
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(interval);
-            loop {
-                tick.tick().await;
-                let tokens = match sessions.drain_expired() {
-                    Ok(t) => t,
-                    Err(err) => {
-                        tracing::warn!(?err, "session reaper: drain_expired failed");
-                        continue;
-                    }
-                };
-                for token in &tokens {
-                    emit_audit_event(
-                        "session.expired",
-                        "cleanup",
-                        "unknown",
-                        Some(token),
-                        None,
-                        Some("expire"),
-                        None,
-                    );
-                    if let Err(err) = auth.disconnect_session(token).await {
-                        emit_audit_event(
-                            "session.disconnect",
-                            "failure",
-                            "unknown",
-                            Some(token),
-                            None,
-                            Some("disconnect"),
-                            Some(&err),
-                        );
-                        tracing::warn!(
-                            session_id = %safe_session_id(token),
-                            ?err,
-                            "session reaper: disconnect_session failed"
-                        );
-                    }
-                }
-                if !tokens.is_empty() {
-                    tracing::info!(
-                        count = tokens.len(),
-                        "session reaper: cleaned up expired sessions"
-                    );
-                }
+        tokio::spawn(Self::run(sessions, auth, interval))
+    }
+
+    async fn run(sessions: Arc<SessionManager>, auth: Arc<dyn AuthPort>, interval: Duration) {
+        let mut tick = tokio::time::interval(interval);
+        loop {
+            tick.tick().await;
+            Self::sweep_once(Arc::clone(&sessions), Arc::clone(&auth)).await;
+        }
+    }
+
+    async fn sweep_once(sessions: Arc<SessionManager>, auth: Arc<dyn AuthPort>) {
+        let tokens = match sessions.drain_expired() {
+            Ok(t) => t,
+            Err(err) => {
+                tracing::warn!(?err, "session reaper: drain_expired failed");
+                return;
             }
-        })
+        };
+        for token in &tokens {
+            emit_audit_event(
+                "session.expired",
+                "cleanup",
+                "unknown",
+                Some(token),
+                None,
+                Some("expire"),
+                None,
+            );
+            if let Err(err) = auth.disconnect_session(token).await {
+                emit_audit_event(
+                    "session.disconnect",
+                    "failure",
+                    "unknown",
+                    Some(token),
+                    None,
+                    Some("disconnect"),
+                    Some(&err),
+                );
+                tracing::warn!(
+                    session_id = %safe_session_id(token),
+                    ?err,
+                    "session reaper: disconnect_session failed"
+                );
+            }
+        }
+        if !tokens.is_empty() {
+            tracing::info!(
+                count = tokens.len(),
+                "session reaper: cleaned up expired sessions"
+            );
+        }
+    }
+
+    #[cfg(test)]
+    async fn sweep_once_for_test(&self) {
+        Self::sweep_once(Arc::clone(&self.sessions), Arc::clone(&self.auth)).await;
     }
 }
 
@@ -493,8 +504,8 @@ mod tests {
 
     #[tokio::test]
     async fn reaper_emits_audit_for_expiry_and_disconnect_failure() {
+        let _trace_lock = lock_tracing().await;
         let capture = capture_tracing();
-        let _capture_guard = capture.enter();
         let auth = MockAuthPort {
             disconnect_should_fail: true,
             ..Default::default()
@@ -505,13 +516,17 @@ mod tests {
         let session = sessions.create("admin").unwrap();
         sessions.expire(&session.token).unwrap();
 
-        let handle = reaper.spawn_with_interval(Duration::from_millis(10));
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        handle.abort();
+        // This audit assertion runs one deterministic sweep under the capture
+        // subscriber. The separate reaper tests cover spawned background
+        // behavior; this test covers the audit contract without a sleep race.
+        capture.run(reaper.sweep_once_for_test()).await;
         let session_token = session.token;
 
         let output = capture.output();
-        assert!(output.contains("audit_event=\"session.expired\""));
+        assert!(
+            output.contains("audit_event=\"session.expired\""),
+            "captured tracing output did not include session.expired audit event: {output}"
+        );
         assert!(output.contains("audit_event=\"session.disconnect\""));
         assert!(output.contains("error_category=\"backend_unavailable\""));
         assert!(output.contains("session_id=\"session:"));

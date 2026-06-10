@@ -4,15 +4,15 @@
 use std::{
     future::Future,
     io,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use gvm_gateway_domain::SessionManager;
+use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use tracing::instrument::WithSubscriber;
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
     prelude::*,
-    EnvFilter,
 };
 
 use crate::{test_support::mocks::*, GatewayService};
@@ -87,11 +87,6 @@ impl TraceCapture {
         future.with_subscriber(self.subscriber.clone()).await
     }
 
-    /// Enters this capture as the thread-local subscriber for spawned-task tests.
-    pub(crate) fn enter(&self) -> tracing::dispatcher::DefaultGuard {
-        tracing::dispatcher::set_default(&self.subscriber)
-    }
-
     /// Returns captured trace output as UTF-8 text.
     pub(crate) fn output(&self) -> String {
         String::from_utf8(self.buffer.lock().unwrap().clone()).unwrap()
@@ -104,17 +99,24 @@ pub(crate) fn capture_tracing() -> TraceCapture {
     let writer = TestWriter {
         buffer: buffer.clone(),
     };
-    let subscriber = tracing_subscriber::registry()
-        .with(EnvFilter::new("info"))
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_writer(writer)
-                .with_ansi(false)
-                .with_span_events(FmtSpan::CLOSE),
-        );
+    let subscriber = tracing_subscriber::registry().with(
+        tracing_subscriber::fmt::layer()
+            .with_writer(writer)
+            .with_ansi(false)
+            .with_span_events(FmtSpan::CLOSE),
+    );
 
     TraceCapture {
         buffer,
         subscriber: tracing::Dispatch::new(subscriber),
     }
+}
+
+/// Serializes tests that assert on tracing output.
+///
+/// `tracing` callsite interest is process-global enough that several scoped
+/// subscribers running in parallel can make target-specific assertions flaky.
+pub(crate) async fn lock_tracing() -> AsyncMutexGuard<'static, ()> {
+    static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| AsyncMutex::new(())).lock().await
 }
