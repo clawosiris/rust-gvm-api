@@ -134,9 +134,7 @@ pub(crate) fn user_from_gmp(user: gvm_gmp::responses::User) -> User {
             .collect(),
         hosts_allow: user.hosts_allow.as_deref().and_then(parse_bool_flag),
         hosts: user.hosts,
-        // The pinned rust-gvm User response does not expose authentication
-        // type yet. Do not parse raw GMP or infer it locally.
-        authentication_type: None,
+        authentication_type: user.authentication_type,
     }
 }
 
@@ -384,9 +382,7 @@ pub(crate) fn scan_config_from_gmp(config: gvm_gmp::responses::ScanConfig) -> Sc
         comment: config.meta.comment,
         family_count: None,
         nvt_count: None,
-        // rust-gvm exposes `usage_type`, which is not the public REST numeric
-        // config `type`. Leave the field unset instead of fabricating a mapping.
-        config_type: None,
+        config_type: config.type_,
         in_use: config.meta.in_use,
         writable: config.meta.writable,
     }
@@ -1195,33 +1191,34 @@ mod tests {
     }
 
     #[test]
-    fn deferred_open_enum_conversions_do_not_fabricate_missing_fields() {
-        // rust-gvm currently exposes scan-config `usage_type`, not the REST
-        // numeric `type`, and user responses do not expose authentication type.
-        // The gateway must not infer either value from unrelated GMP fields.
+    fn remaining_open_enum_conversions_use_typed_upstream_fields() {
+        // These fields are now parsed by rust-gvm. The gateway maps the typed
+        // values directly and still preserves future backend values verbatim.
         let configs = GetScanConfigsResponse::from_response(&GmpResponse::from(
             r#"<get_configs_response status="200" status_text="OK">
                 <config id="123e4567-e89b-12d3-a456-426614174004">
                     <name>Config</name>
                     <usage_type>scan</usage_type>
+                    <type>42</type>
                 </config>
             </get_configs_response>"#,
         ))
         .expect("scan configs parse");
         let config = scan_config_from_gmp(configs.items.into_iter().next().unwrap());
-        assert_eq!(config.config_type, None);
+        assert_eq!(config.config_type, Some(42));
 
         let users = GetUsersResponse::from_response(&GmpResponse::from(
             r#"<get_users_response status="200" status_text="OK">
                 <user id="123e4567-e89b-12d3-a456-426614174005">
                     <name>User</name>
                     <hosts_allow>1</hosts_allow>
+                    <sources><source>oidc_connect</source></sources>
                 </user>
             </get_users_response>"#,
         ))
         .expect("users parse");
         let user = user_from_gmp(users.items.into_iter().next().unwrap());
-        assert_eq!(user.authentication_type, None);
+        assert_eq!(user.authentication_type.as_deref(), Some("oidc_connect"));
     }
 
     #[test]
