@@ -3,11 +3,18 @@
 
 //! Minimal config loading for the gateway composition root.
 
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use clap::Parser;
 use gvm_gateway_rest::router::RestSecurityConfig;
 use serde::Deserialize;
+
+/// Packaged config path used when no explicit `--config` path is provided.
+pub const DEFAULT_CONFIG_PATH: &str = "/etc/gvm-gateway/gvm-gateway.toml";
 
 /// CLI arguments for gateway startup.
 #[derive(Debug, Default, Parser)]
@@ -211,10 +218,22 @@ pub fn load_config(
     cli: &CliArgs,
     env: &BTreeMap<String, String>,
 ) -> Result<GatewayConfig, ConfigError> {
+    load_config_with_default_path(cli, env, Path::new(DEFAULT_CONFIG_PATH))
+}
+
+/// Loads config using an explicit fallback path for the packaged default file.
+///
+/// The fallback path is used only when `--config` is omitted. A missing fallback
+/// file is ignored so local development without installed package files still
+/// uses built-in defaults.
+pub fn load_config_with_default_path(
+    cli: &CliArgs,
+    env: &BTreeMap<String, String>,
+    default_config_path: &Path,
+) -> Result<GatewayConfig, ConfigError> {
     let mut config = GatewayConfig::default();
 
-    if let Some(path) = cli.config.as_ref() {
-        let content = fs::read_to_string(path).map_err(ConfigError::Io)?;
+    if let Some(content) = load_file_config(cli.config.as_deref(), default_config_path)? {
         let file: FileConfig = toml::from_str(&content).map_err(ConfigError::ParseToml)?;
         if let Some(bind) = file.bind.as_ref() {
             config.bind = bind.clone();
@@ -295,6 +314,21 @@ pub fn load_config(
 
     config.transport_security.validate()?;
     Ok(config)
+}
+
+fn load_file_config(
+    explicit_path: Option<&Path>,
+    default_config_path: &Path,
+) -> Result<Option<String>, ConfigError> {
+    if let Some(path) = explicit_path {
+        return fs::read_to_string(path).map(Some).map_err(ConfigError::Io);
+    }
+
+    match fs::read_to_string(default_config_path) {
+        Ok(content) => Ok(Some(content)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(ConfigError::Io(error)),
+    }
 }
 
 /// Parse a configured gvmd endpoint into a Unix socket path.

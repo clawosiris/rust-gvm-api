@@ -1,15 +1,21 @@
 use std::{collections::BTreeMap, io::Write};
 
 use gvm_gateway::config::{
-    load_config, parse_gvmd_endpoint, CliArgs, GatewayConfig, TransportSecurityConfig,
-    TransportSecurityMode,
+    load_config, load_config_with_default_path, parse_gvmd_endpoint, CliArgs, GatewayConfig,
+    TransportSecurityConfig, TransportSecurityMode,
 };
 use gvm_gateway_rest::router::{RateLimitConfig, RestSecurityConfig};
-use tempfile::NamedTempFile;
+use tempfile::{tempdir, NamedTempFile};
 
 #[test]
 fn default_config_valid() {
-    let config = load_config(&CliArgs::default(), &BTreeMap::new()).unwrap();
+    // Covers the no-file path: without an explicit or packaged config file,
+    // built-in defaults should still form a valid startup configuration.
+    let dir = tempdir().unwrap();
+    let missing_default_path = dir.path().join("missing-gvm-gateway.toml");
+    let config =
+        load_config_with_default_path(&CliArgs::default(), &BTreeMap::new(), &missing_default_path)
+            .unwrap();
     assert_eq!(
         config,
         GatewayConfig {
@@ -119,6 +125,64 @@ fn config_override_precedence() {
             tls_private_key_path: None,
         }
     );
+}
+
+#[test]
+fn packaged_default_config_used_when_cli_config_omitted() {
+    // Covers issue #256: installed packages ship a config file, so startup
+    // without --config should still honor that packaged default.
+    let dir = tempdir().unwrap();
+    let default_path = dir.path().join("gvm-gateway.toml");
+    std::fs::write(
+        &default_path,
+        "bind = \"127.0.0.1:8181\"\ngvmd_endpoint = \"unix:///tmp/packaged-gvmd.sock\"",
+    )
+    .unwrap();
+
+    let config =
+        load_config_with_default_path(&CliArgs::default(), &BTreeMap::new(), &default_path)
+            .unwrap();
+
+    assert_eq!(config.bind, "127.0.0.1:8181");
+    assert_eq!(config.gvmd_endpoint, "unix:///tmp/packaged-gvmd.sock");
+}
+
+#[test]
+fn missing_packaged_default_config_keeps_builtin_defaults() {
+    // Documents the local-development edge case: the fallback path is optional
+    // so an unpackaged checkout can still start from built-in defaults.
+    let dir = tempdir().unwrap();
+    let missing_default_path = dir.path().join("missing-gvm-gateway.toml");
+
+    let config =
+        load_config_with_default_path(&CliArgs::default(), &BTreeMap::new(), &missing_default_path)
+            .unwrap();
+
+    assert_eq!(config, GatewayConfig::default());
+}
+
+#[test]
+fn explicit_cli_config_takes_priority_over_packaged_default_config() {
+    // Protects the existing contract that --config selects the file layer
+    // explicitly and is not blended with the packaged fallback file.
+    let dir = tempdir().unwrap();
+    let default_path = dir.path().join("gvm-gateway.toml");
+    std::fs::write(&default_path, "bind = \"127.0.0.1:8181\"").unwrap();
+
+    let mut explicit_file = NamedTempFile::new().unwrap();
+    writeln!(explicit_file, "bind = \"127.0.0.1:8282\"").unwrap();
+
+    let config = load_config_with_default_path(
+        &CliArgs {
+            config: Some(explicit_file.path().to_path_buf()),
+            bind: None,
+        },
+        &BTreeMap::new(),
+        &default_path,
+    )
+    .unwrap();
+
+    assert_eq!(config.bind, "127.0.0.1:8282");
 }
 
 #[test]
