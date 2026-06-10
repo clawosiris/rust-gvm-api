@@ -179,8 +179,10 @@ async fn https_health_returns_200_and_hsts_in_native_tls_mode() {
     let adapter = StaticGvmdAdapter::ready("22.7");
     let service = static_service(adapter.clone(), adapter);
     let shutdown = Arc::new(ShutdownRuntime::new());
-    let mut security = RestSecurityConfig::default();
-    security.native_tls_enabled = true;
+    let security = RestSecurityConfig {
+        native_tls_enabled: true,
+        ..Default::default()
+    };
     // Native TLS is the only mode where this process may assert HSTS directly.
     let app = build_router_with_runtime_and_security(service, Arc::clone(&shutdown), security);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
