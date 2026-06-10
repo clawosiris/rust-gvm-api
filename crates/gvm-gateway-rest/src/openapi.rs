@@ -93,6 +93,8 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         "/port-lists",
         "/tasks",
         "/scan-configs",
+        "/notes",
+        "/overrides",
     ] {
         add_location_header_to_created_response(&mut normalized_paths, path);
     }
@@ -119,6 +121,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     tighten_task_query_parameters(&mut document);
     tighten_task_payload_schemas(&mut document);
     tighten_scan_config_payload_schemas(&mut document);
+    tighten_triage_payload_schemas(&mut document);
     tighten_list_query_parameters(&mut document, "/users");
     tighten_list_query_parameters(&mut document, "/groups");
     tighten_list_query_parameters(&mut document, "/roles");
@@ -539,6 +542,16 @@ fn tighten_scan_config_payload_schemas(document: &mut Value) {
     // so schemars omits it from `required`. Inject it here to keep the contract intact.
     if let Some(schema) = document["components"]["schemas"].get_mut("CreateScanConfig") {
         schema["required"] = json!(["name"]);
+    }
+}
+
+fn tighten_triage_payload_schemas(document: &mut Value) {
+    // Create request DTOs keep `nvtOid` optional at runtime so validation can
+    // return RFC 9457 problem details. The public schema requires it.
+    for schema_name in ["CreateNote", "CreateOverride"] {
+        if let Some(schema) = document["components"]["schemas"].get_mut(schema_name) {
+            schema["required"] = json!(["nvtOid"]);
+        }
     }
 }
 

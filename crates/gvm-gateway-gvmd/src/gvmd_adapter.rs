@@ -16,12 +16,13 @@ use gvm_client::{GetReportDetailsOpts, GmpClient};
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
-    CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
-    CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
-    CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host,
-    HostPage, IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
-    ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    CreateGroupInput, CreateNoteInput, CreateOverrideInput, CreatePermissionInput,
+    CreatePortListInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
+    CreateTargetInput, CreateTaskInput, CreateUserInput, Credential, CredentialPage,
+    CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage,
+    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
+    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
+    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
     ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
     OverridePage, Pagination, Permission, PermissionPage, PortList, PortListPage, PortListPort,
@@ -51,9 +52,12 @@ use gvm_gmp::{
             GroupOpts,
         },
         hosts::{get_host, get_hosts, GetHostsOpts},
-        notes::{get_note, get_notes, GetNotesOpts},
+        notes::{create_note, delete_note, get_notes, modify_note, GetNotesOpts, NoteOpts},
         nvts::{get_nvt, get_nvt_families, get_nvts, GetNvtsOpts},
-        overrides::{get_override, get_overrides, GetOverridesOpts},
+        overrides::{
+            create_override, delete_override, get_overrides, modify_override, GetOverridesOpts,
+            OverrideOpts,
+        },
         permissions::{
             create_permission, delete_permission, get_permission, get_permissions,
             modify_permission, GetPermissionsOpts, PermissionOpts,
@@ -99,16 +103,17 @@ use gvm_gmp::{
     },
     responses::{
         ActionResponse, AuthenticateResponse, CreateAlertResponse, CreateCredentialResponse,
-        CreateGroupResponse, CreatePermissionResponse, CreatePortListResponse, CreateRoleResponse,
-        CreateScanConfigResponse, CreateScheduleResponse, CreateTargetResponse, CreateTaskResponse,
-        CreateUserResponse, GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse,
-        GetFiltersResponse, GetGroupsResponse, GetHostsResponse, GetNotesResponse,
-        GetNvtFamiliesResponse, GetNvtsResponse, GetOverridesResponse, GetPermissionsResponse,
-        GetPortListsResponse, GetReportFormatsResponse, GetReportsResponse, GetResultsResponse,
-        GetRolesResponse, GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse,
-        GetTagsResponse, GetTargetsResponse, GetTasksResponse, GetTicketsResponse,
-        GetUserSettingsResponse, GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse,
-        ResumeTaskResponse, StartTaskResponse,
+        CreateGroupResponse, CreateNoteResponse, CreateOverrideResponse, CreatePermissionResponse,
+        CreatePortListResponse, CreateRoleResponse, CreateScanConfigResponse,
+        CreateScheduleResponse, CreateTargetResponse, CreateTaskResponse, CreateUserResponse,
+        GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetFiltersResponse,
+        GetGroupsResponse, GetHostsResponse, GetNotesResponse, GetNvtFamiliesResponse,
+        GetNvtsResponse, GetOverridesResponse, GetPermissionsResponse, GetPortListsResponse,
+        GetReportFormatsResponse, GetReportsResponse, GetResultsResponse, GetRolesResponse,
+        GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse, GetTagsResponse,
+        GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetUserSettingsResponse,
+        GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse, ResumeTaskResponse,
+        StartTaskResponse,
     },
     EntityId, FilterFragment, FilterFragmentError, PaginatedFilter, Pagination as GmpPagination,
 };
@@ -407,6 +412,78 @@ fn map_filter_fragment_error(error: FilterFragmentError) -> GatewayError {
             GatewayError::InvalidInput(format!("filter contains reserved term '{term}'"))
         }
     }
+}
+
+fn note_opts_from_create_input(input: CreateNoteInput) -> Result<NoteOpts, GatewayError> {
+    Ok(NoteOpts {
+        text: input.text,
+        hosts: input.hosts,
+        port: input.port,
+        severity: input.severity,
+        task_id: input.task_id.as_deref().map(parse_entity_id).transpose()?,
+        result_id: input
+            .result_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?,
+        active: input.active,
+        orphan: input.orphan,
+    })
+}
+
+fn note_opts_from_modify_input(input: ModifyNoteInput) -> Result<NoteOpts, GatewayError> {
+    Ok(NoteOpts {
+        text: input.text,
+        hosts: input.hosts.unwrap_or_default(),
+        port: input.port,
+        severity: input.severity,
+        task_id: input.task_id.as_deref().map(parse_entity_id).transpose()?,
+        result_id: input
+            .result_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?,
+        active: input.active,
+        orphan: input.orphan,
+    })
+}
+
+fn override_opts_from_create_input(
+    input: CreateOverrideInput,
+) -> Result<OverrideOpts, GatewayError> {
+    Ok(OverrideOpts {
+        text: input.text,
+        hosts: input.hosts,
+        port: input.port,
+        severity: input.severity,
+        new_severity: input.new_severity,
+        task_id: input.task_id.as_deref().map(parse_entity_id).transpose()?,
+        result_id: input
+            .result_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?,
+        active: input.active,
+    })
+}
+
+fn override_opts_from_modify_input(
+    input: ModifyOverrideInput,
+) -> Result<OverrideOpts, GatewayError> {
+    Ok(OverrideOpts {
+        text: input.text,
+        hosts: input.hosts.unwrap_or_default(),
+        port: input.port,
+        severity: input.severity,
+        new_severity: input.new_severity,
+        task_id: input.task_id.as_deref().map(parse_entity_id).transpose()?,
+        result_id: input
+            .result_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?,
+        active: input.active,
+    })
 }
 
 #[async_trait]
@@ -3068,19 +3145,80 @@ impl SupportingResourcePort for GvmdAdapter {
 
     async fn get_note(&self, session_token: &str, id: &str) -> Result<Note, GatewayError> {
         let client = self.session_client(session_token)?;
+        let note_id = parse_entity_id(id)?;
+        let uuid_filter = format!("uuid={}", note_id.as_str());
         let response = client
             .lock()
             .await
-            .call(get_note(&parse_entity_id(id)?))
+            .call(get_notes(GetNotesOpts {
+                filter_string: paginated_filter(Some(&uuid_filter), None, 1, 1)?,
+                filter_id: None,
+                trash: None,
+                details: Some(true),
+                result: Some(true),
+            }))
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetNotesResponse::from_response(&response).map_err(map_parse_error)?;
         parsed
             .items
             .into_iter()
-            .next()
+            .find(|note| note.meta.id.as_str() == note_id.as_str())
             .map(note_from_gmp)
             .ok_or_else(|| GatewayError::NotFound(format!("note {id} not found")))
+    }
+
+    async fn create_note(
+        &self,
+        session_token: &str,
+        input: CreateNoteInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let nvt_oid = input.nvt_oid.clone();
+        let opts = note_opts_from_create_input(input)?;
+        let response = client
+            .lock()
+            .await
+            .call(create_note(&nvt_oid, opts))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateNoteResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn modify_note(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyNoteInput,
+    ) -> Result<Note, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let note_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_note(&note_id, note_opts_from_modify_input(input)?))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_note(session_token, id).await
+    }
+
+    async fn delete_note(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_note(&parse_entity_id(id)?, ultimate))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
     }
 
     async fn list_overrides(
@@ -3126,19 +3264,83 @@ impl SupportingResourcePort for GvmdAdapter {
 
     async fn get_override(&self, session_token: &str, id: &str) -> Result<Override, GatewayError> {
         let client = self.session_client(session_token)?;
+        let override_id = parse_entity_id(id)?;
+        let uuid_filter = format!("uuid={}", override_id.as_str());
         let response = client
             .lock()
             .await
-            .call(get_override(&parse_entity_id(id)?))
+            .call(get_overrides(GetOverridesOpts {
+                filter_string: paginated_filter(Some(&uuid_filter), None, 1, 1)?,
+                filter_id: None,
+                trash: None,
+                details: Some(true),
+                result: Some(true),
+            }))
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetOverridesResponse::from_response(&response).map_err(map_parse_error)?;
         parsed
             .items
             .into_iter()
-            .next()
+            .find(|override_| override_.meta.id.as_str() == override_id.as_str())
             .map(override_from_gmp)
             .ok_or_else(|| GatewayError::NotFound(format!("override {id} not found")))
+    }
+
+    async fn create_override(
+        &self,
+        session_token: &str,
+        input: CreateOverrideInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let nvt_oid = input.nvt_oid.clone();
+        let opts = override_opts_from_create_input(input)?;
+        let response = client
+            .lock()
+            .await
+            .call(create_override(&nvt_oid, opts))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateOverrideResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn modify_override(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyOverrideInput,
+    ) -> Result<Override, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let override_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await
+            .call(modify_override(
+                &override_id,
+                override_opts_from_modify_input(input)?,
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_override(session_token, id).await
+    }
+
+    async fn delete_override(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await
+            .call(delete_override(&parse_entity_id(id)?, ultimate))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
     }
 
     async fn list_nvts(

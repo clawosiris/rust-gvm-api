@@ -4,9 +4,10 @@
 //! Supporting-resource use cases.
 
 use gvm_gateway_domain::{
-    Filter, FilterPage, GatewayError, Host, HostPage, Note, NotePage, Nvt, NvtFamilyPage, NvtPage,
-    Override, OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage,
-    Ticket, TicketPage,
+    CreateNoteInput, CreateOverrideInput, Filter, FilterPage, GatewayError, Host, HostPage,
+    ModifyNoteInput, ModifyOverrideInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
+    OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket,
+    TicketPage,
 };
 
 use crate::GatewayService;
@@ -232,6 +233,71 @@ impl GatewayService {
         .await
     }
 
+    /// Creates a note for an authenticated session.
+    pub async fn create_note(
+        &self,
+        session_token: &str,
+        input: CreateNoteInput,
+    ) -> Result<String, GatewayError> {
+        self.execute_with_resource(
+            "notes.create",
+            session_token,
+            "create",
+            "note",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .create_note(&session.token, input)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Modifies a note for an authenticated session.
+    pub async fn modify_note(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyNoteInput,
+    ) -> Result<Note, GatewayError> {
+        self.execute_with_resource(
+            "notes.modify",
+            session_token,
+            "modify",
+            "note",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .modify_note(&session.token, id, input)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Deletes a note for an authenticated session.
+    pub async fn delete_note(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "notes.delete",
+            session_token,
+            "delete",
+            "note",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .delete_note(&session.token, id, ultimate)
+                    .await
+            },
+        )
+        .await
+    }
+
     /// Lists overrides for an authenticated session.
     pub async fn list_overrides(
         &self,
@@ -268,6 +334,71 @@ impl GatewayService {
             |session| async move {
                 self.supporting_resources
                     .get_override(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Creates an override for an authenticated session.
+    pub async fn create_override(
+        &self,
+        session_token: &str,
+        input: CreateOverrideInput,
+    ) -> Result<String, GatewayError> {
+        self.execute_with_resource(
+            "overrides.create",
+            session_token,
+            "create",
+            "override",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .create_override(&session.token, input)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Modifies an override for an authenticated session.
+    pub async fn modify_override(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyOverrideInput,
+    ) -> Result<Override, GatewayError> {
+        self.execute_with_resource(
+            "overrides.modify",
+            session_token,
+            "modify",
+            "override",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .modify_override(&session.token, id, input)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Deletes an override for an authenticated session.
+    pub async fn delete_override(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "overrides.delete",
+            session_token,
+            "delete",
+            "override",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .delete_override(&session.token, id, ultimate)
                     .await
             },
         )

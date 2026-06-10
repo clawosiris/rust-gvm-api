@@ -21,6 +21,94 @@ pub struct SupportingResourceQuery {
     pub per_page: u32,
 }
 
+/// Note create command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CreateNoteInput {
+    /// Required NVT OID selector.
+    pub nvt_oid: String,
+    /// Optional note text body.
+    pub text: Option<String>,
+    /// Optional host selectors.
+    pub hosts: Vec<String>,
+    /// Optional port selector.
+    pub port: Option<String>,
+    /// Optional severity selector.
+    pub severity: Option<String>,
+    /// Optional related task identifier.
+    pub task_id: Option<String>,
+    /// Optional related result identifier.
+    pub result_id: Option<String>,
+    /// Optional active flag.
+    pub active: Option<bool>,
+    /// Optional orphan flag.
+    pub orphan: Option<bool>,
+}
+
+/// Note update command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ModifyNoteInput {
+    /// Optional note text body.
+    pub text: Option<String>,
+    /// Optional host selectors.
+    pub hosts: Option<Vec<String>>,
+    /// Optional port selector.
+    pub port: Option<String>,
+    /// Optional severity selector.
+    pub severity: Option<String>,
+    /// Optional related task identifier.
+    pub task_id: Option<String>,
+    /// Optional related result identifier.
+    pub result_id: Option<String>,
+    /// Optional active flag.
+    pub active: Option<bool>,
+    /// Optional orphan flag.
+    pub orphan: Option<bool>,
+}
+
+/// Override create command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CreateOverrideInput {
+    /// Required NVT OID selector.
+    pub nvt_oid: String,
+    /// Optional override text body.
+    pub text: Option<String>,
+    /// Optional host selectors.
+    pub hosts: Vec<String>,
+    /// Optional port selector.
+    pub port: Option<String>,
+    /// Optional matching severity selector.
+    pub severity: Option<String>,
+    /// Optional replacement severity selector.
+    pub new_severity: Option<String>,
+    /// Optional related task identifier.
+    pub task_id: Option<String>,
+    /// Optional related result identifier.
+    pub result_id: Option<String>,
+    /// Optional active flag.
+    pub active: Option<bool>,
+}
+
+/// Override update command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ModifyOverrideInput {
+    /// Optional override text body.
+    pub text: Option<String>,
+    /// Optional host selectors.
+    pub hosts: Option<Vec<String>>,
+    /// Optional port selector.
+    pub port: Option<String>,
+    /// Optional matching severity selector.
+    pub severity: Option<String>,
+    /// Optional replacement severity selector.
+    pub new_severity: Option<String>,
+    /// Optional related task identifier.
+    pub task_id: Option<String>,
+    /// Optional related result identifier.
+    pub result_id: Option<String>,
+    /// Optional active flag.
+    pub active: Option<bool>,
+}
+
 /// Common metadata shared by supporting resources.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SupportingResourceMeta {

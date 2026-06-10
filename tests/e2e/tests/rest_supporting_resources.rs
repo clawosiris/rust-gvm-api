@@ -4,7 +4,7 @@
 use anyhow::{Context, Result};
 use gvm_gateway_e2e::harness::{
     CreatedResource, Credential, E2eHarness, ListResponse, NoteResource, NvtCatalogEntry,
-    OverrideResource, PortList, ScanConfig, Scanner, SessionResponse, Target, Task,
+    OverrideResource, PortList, ScanConfig, ScanResult, Scanner, SessionResponse, Target, Task,
 };
 
 // Covers stable list/read contracts for supporting catalogs used by setup and discovery flows.
@@ -102,6 +102,171 @@ async fn rest_supporting_triage_resources_filter_on_completed_scan_context() -> 
     }
     .await;
 
+    best_effort_delete_task(&harness, &session.token, task_id.as_deref()).await;
+    best_effort_delete_target(&harness, &session.token, target_id.as_deref()).await;
+    finish_session(&harness, &session, run).await
+}
+
+// Covers the note/override write workflow against a real completed scan result
+// so external clients can perform REST-side triage without helper-specific flows.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires a compose-backed gvmd environment"]
+async fn rest_supporting_triage_resource_lifecycle_mutates_notes_and_overrides() -> Result<()> {
+    let (harness, session) = ready_session().await?;
+    let mut task_id = None;
+    let mut target_id = None;
+    let mut note_id = None;
+    let mut override_id = None;
+
+    let run = async {
+        let resources = select_discovery_resources(&harness, &session.token).await?;
+        let created = create_discovery_task(&harness, &session.token, &resources).await?;
+        task_id = Some(created.task.id.clone());
+        target_id = Some(created.target.id.clone());
+
+        let action = harness.start_task(&session.token, &created.task.id).await?;
+        let completed = harness
+            .wait_for_task_completion(&session.token, &created.task.id)
+            .await?;
+        assert!(
+            matches!(completed.status.as_str(), "Done" | "Stopped"),
+            "completed discovery task ended in unexpected status {}",
+            completed.status
+        );
+
+        let result = select_triage_result(&harness, &session.token, &action.report_id).await?;
+        let nvt_oid = result
+            .nvt
+            .as_ref()
+            .and_then(|nvt| nvt.oid.as_deref())
+            .with_context(|| format!("scan result {} did not expose an NVT oid", result.id))?;
+
+        let created_note = harness
+            .create_note(
+                &session.token,
+                nvt_oid,
+                &created.task.id,
+                &result.id,
+                "created by compose-backed note triage coverage",
+            )
+            .await?;
+        assert_created_location(&created_note, "/api/v1/notes");
+        note_id = Some(created_note.id.clone());
+
+        let created_note_resource = harness.get_note(&session.token, &created_note.id).await?;
+        assert_eq!(
+            created_note_resource
+                .result
+                .as_ref()
+                .map(|reference| reference.id.as_str()),
+            Some(result.id.as_str()),
+            "created note did not preserve result linkage"
+        );
+        assert_eq!(
+            created_note_resource.text.as_deref(),
+            Some("created by compose-backed note triage coverage"),
+            "created note did not preserve text"
+        );
+
+        let updated_note = harness
+            .update_note(
+                &session.token,
+                &created_note.id,
+                "updated by compose-backed note triage coverage",
+                false,
+            )
+            .await?;
+        assert_eq!(
+            updated_note.text.as_deref(),
+            Some("updated by compose-backed note triage coverage"),
+            "updated note did not return changed text"
+        );
+        assert!(
+            !updated_note.active,
+            "updated note did not return changed active flag"
+        );
+
+        let created_override = harness
+            .create_override(
+                &session.token,
+                nvt_oid,
+                &created.task.id,
+                &result.id,
+                "created by compose-backed override triage coverage",
+                "0.0",
+            )
+            .await?;
+        assert_created_location(&created_override, "/api/v1/overrides");
+        override_id = Some(created_override.id.clone());
+
+        let created_override_resource = harness
+            .get_override(&session.token, &created_override.id)
+            .await?;
+        assert_eq!(
+            created_override_resource
+                .result
+                .as_ref()
+                .map(|reference| reference.id.as_str()),
+            Some(result.id.as_str()),
+            "created override did not preserve result linkage"
+        );
+        assert_severity_value_matches(
+            created_override_resource.new_severity.as_deref(),
+            "0.0",
+            "created override did not preserve replacement severity",
+        );
+
+        let updated_override = harness
+            .update_override(
+                &session.token,
+                &created_override.id,
+                "updated by compose-backed override triage coverage",
+                "1.0",
+                false,
+            )
+            .await?;
+        assert_eq!(
+            updated_override.text.as_deref(),
+            Some("updated by compose-backed override triage coverage"),
+            "updated override did not return changed text"
+        );
+        assert_severity_value_matches(
+            updated_override.new_severity.as_deref(),
+            "1.0",
+            "updated override did not return changed replacement severity",
+        );
+        assert!(
+            !updated_override.active,
+            "updated override did not return changed active flag"
+        );
+
+        harness
+            .delete_note(&session.token, &created_note.id, true)
+            .await?;
+        note_id = None;
+        assert_note_not_listed(&harness, &session.token, &created.task.id, &created_note.id)
+            .await?;
+
+        harness
+            .delete_override(&session.token, &created_override.id, true)
+            .await?;
+        override_id = None;
+        assert_override_not_listed(
+            &harness,
+            &session.token,
+            &created.task.id,
+            &created_override.id,
+        )
+        .await?;
+
+        Ok(())
+    }
+    .await;
+
+    if run.is_err() {
+        best_effort_delete_note(&harness, &session.token, note_id.as_deref()).await;
+        best_effort_delete_override(&harness, &session.token, override_id.as_deref()).await;
+    }
     best_effort_delete_task(&harness, &session.token, task_id.as_deref()).await;
     best_effort_delete_target(&harness, &session.token, target_id.as_deref()).await;
     finish_session(&harness, &session, run).await
@@ -817,6 +982,25 @@ async fn create_discovery_task(
     Ok(CreatedDiscoveryTask { target, task })
 }
 
+async fn select_triage_result(
+    harness: &E2eHarness,
+    token: &str,
+    report_id: &str,
+) -> Result<ScanResult> {
+    let results = harness.get_report_results(token, report_id).await?;
+    results
+        .data
+        .into_iter()
+        .find(|result| {
+            result
+                .nvt
+                .as_ref()
+                .and_then(|nvt| nvt.oid.as_ref())
+                .is_some()
+        })
+        .with_context(|| format!("report {report_id} did not expose a triageable result"))
+}
+
 async fn best_effort_delete_task(harness: &E2eHarness, token: &str, task_id: Option<&str>) {
     if let Some(task_id) = task_id {
         if let Err(error) = harness.delete_task(token, task_id).await {
@@ -877,6 +1061,21 @@ fn assert_credential_matches_created(
     );
 }
 
+fn assert_severity_value_matches(actual: Option<&str>, expected: &str, message: &str) {
+    // gvmd canonicalizes severity strings such as "0.0" to "0"; this assertion
+    // covers value preservation without depending on backend decimal formatting.
+    let Some(actual) = actual else {
+        panic!("{message}: missing severity value");
+    };
+    match (actual.parse::<f64>(), expected.parse::<f64>()) {
+        (Ok(actual), Ok(expected)) => assert!(
+            (actual - expected).abs() < f64::EPSILON,
+            "{message}: expected {expected}, got {actual}"
+        ),
+        _ => assert_eq!(actual, expected, "{message}"),
+    }
+}
+
 async fn assert_scan_config_not_listed(
     harness: &E2eHarness,
     token: &str,
@@ -932,6 +1131,43 @@ async fn assert_credential_not_listed(
     Ok(())
 }
 
+async fn assert_note_not_listed(
+    harness: &E2eHarness,
+    token: &str,
+    task_id: &str,
+    note_id: &str,
+) -> Result<()> {
+    let notes = harness
+        .list_notes_filtered(token, &format!("task_id={task_id}"))
+        .await
+        .context("list notes after deleting note")?;
+    assert!(
+        notes.data.iter().all(|note| note.id != note_id),
+        "deleted note {note_id} was still returned by task-scoped note list"
+    );
+    Ok(())
+}
+
+async fn assert_override_not_listed(
+    harness: &E2eHarness,
+    token: &str,
+    task_id: &str,
+    override_id: &str,
+) -> Result<()> {
+    let overrides = harness
+        .list_overrides_filtered(token, &format!("task_id={task_id}"))
+        .await
+        .context("list overrides after deleting override")?;
+    assert!(
+        overrides
+            .data
+            .iter()
+            .all(|override_| override_.id != override_id),
+        "deleted override {override_id} was still returned by task-scoped override list"
+    );
+    Ok(())
+}
+
 async fn best_effort_delete_scan_config(
     harness: &E2eHarness,
     token: &str,
@@ -964,6 +1200,22 @@ async fn best_effort_delete_credential(
     if let Some(credential_id) = credential_id {
         if let Err(error) = harness.delete_credential(token, credential_id).await {
             eprintln!("best-effort credential cleanup failed for {credential_id}: {error:#}");
+        }
+    }
+}
+
+async fn best_effort_delete_note(harness: &E2eHarness, token: &str, note_id: Option<&str>) {
+    if let Some(note_id) = note_id {
+        if let Err(error) = harness.delete_note(token, note_id, true).await {
+            eprintln!("best-effort note cleanup failed for {note_id}: {error:#}");
+        }
+    }
+}
+
+async fn best_effort_delete_override(harness: &E2eHarness, token: &str, override_id: Option<&str>) {
+    if let Some(override_id) = override_id {
+        if let Err(error) = harness.delete_override(token, override_id, true).await {
+            eprintln!("best-effort override cleanup failed for {override_id}: {error:#}");
         }
     }
 }
