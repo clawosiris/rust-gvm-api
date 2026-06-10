@@ -62,29 +62,29 @@ async fn rest_negative_contract_returns_problem_responses() -> Result<()> {
         )
         .await?;
 
-        let notes_post = harness
-            .request(Method::POST, "/api/v1/notes")
+        let notes_patch = harness
+            .request(Method::PATCH, "/api/v1/notes")
             .bearer_auth(&session.token)
             .send()
             .await
-            .context("send notes POST request")?;
+            .context("send notes PATCH request")?;
         assert_problem_response(
-            notes_post,
+            notes_patch,
             StatusCode::METHOD_NOT_ALLOWED,
-            "unsupported note mutation",
+            "unsupported note partial mutation",
         )
         .await?;
 
-        let overrides_post = harness
-            .request(Method::POST, "/api/v1/overrides")
+        let overrides_patch = harness
+            .request(Method::PATCH, "/api/v1/overrides")
             .bearer_auth(&session.token)
             .send()
             .await
-            .context("send overrides POST request")?;
+            .context("send overrides PATCH request")?;
         assert_problem_response(
-            overrides_post,
+            overrides_patch,
             StatusCode::METHOD_NOT_ALLOWED,
-            "unsupported override mutation",
+            "unsupported override partial mutation",
         )
         .await?;
 

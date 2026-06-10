@@ -17,7 +17,7 @@ use axum::{
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, patch, post},
+    routing::{get, patch, post, put},
     Router,
 };
 use gvm_gateway_app::GatewayService;
@@ -86,13 +86,15 @@ use crate::{
     },
     shutdown::ShutdownRuntime,
     supporting_resources::{
-        get_filter, get_filter_docs, get_host, get_host_docs, get_note, get_note_docs, get_nvt,
-        get_nvt_docs, get_override, get_override_docs, get_report_format, get_report_format_docs,
-        get_tag, get_tag_docs, get_ticket, get_ticket_docs, list_filters, list_filters_docs,
-        list_hosts, list_hosts_docs, list_notes, list_notes_docs, list_nvt_families,
-        list_nvt_families_docs, list_nvts, list_nvts_docs, list_overrides, list_overrides_docs,
-        list_report_formats, list_report_formats_docs, list_tags, list_tags_docs, list_tickets,
-        list_tickets_docs,
+        create_note, create_note_docs, create_override, create_override_docs, delete_note,
+        delete_note_docs, delete_override, delete_override_docs, get_filter, get_filter_docs,
+        get_host, get_host_docs, get_note, get_note_docs, get_nvt, get_nvt_docs, get_override,
+        get_override_docs, get_report_format, get_report_format_docs, get_tag, get_tag_docs,
+        get_ticket, get_ticket_docs, list_filters, list_filters_docs, list_hosts, list_hosts_docs,
+        list_notes, list_notes_docs, list_nvt_families, list_nvt_families_docs, list_nvts,
+        list_nvts_docs, list_overrides, list_overrides_docs, list_report_formats,
+        list_report_formats_docs, list_tags, list_tags_docs, list_tickets, list_tickets_docs,
+        update_note, update_note_docs, update_override, update_override_docs,
     },
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
@@ -392,29 +394,37 @@ fn documented_router() -> ApiRouter<GatewayService> {
                 .patch(method_not_allowed_item),
         )
         .api_route("/api/v1/notes", get_with(list_notes, list_notes_docs))
+        .api_route("/api/v1/notes", post_with(create_note, create_note_docs))
         .route(
             "/api/v1/notes",
-            post(method_not_allowed_collection)
-                .put(method_not_allowed_collection)
+            put(method_not_allowed_collection)
                 .delete(method_not_allowed_collection)
                 .patch(method_not_allowed_collection),
         )
         .api_route("/api/v1/notes/{id}", get_with(get_note, get_note_docs))
+        .api_route(
+            "/api/v1/notes/{id}",
+            put_with(update_note, update_note_docs),
+        )
+        .api_route(
+            "/api/v1/notes/{id}",
+            delete_with(delete_note, delete_note_docs),
+        )
         .route(
             "/api/v1/notes/{id}",
-            post(method_not_allowed_item)
-                .put(method_not_allowed_item)
-                .delete(method_not_allowed_item)
-                .patch(method_not_allowed_item),
+            post(method_not_allowed_item).patch(method_not_allowed_item),
         )
         .api_route(
             "/api/v1/overrides",
             get_with(list_overrides, list_overrides_docs),
         )
+        .api_route(
+            "/api/v1/overrides",
+            post_with(create_override, create_override_docs),
+        )
         .route(
             "/api/v1/overrides",
-            post(method_not_allowed_collection)
-                .put(method_not_allowed_collection)
+            put(method_not_allowed_collection)
                 .delete(method_not_allowed_collection)
                 .patch(method_not_allowed_collection),
         )
@@ -422,12 +432,17 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/overrides/{id}",
             get_with(get_override, get_override_docs),
         )
+        .api_route(
+            "/api/v1/overrides/{id}",
+            put_with(update_override, update_override_docs),
+        )
+        .api_route(
+            "/api/v1/overrides/{id}",
+            delete_with(delete_override, delete_override_docs),
+        )
         .route(
             "/api/v1/overrides/{id}",
-            post(method_not_allowed_item)
-                .put(method_not_allowed_item)
-                .delete(method_not_allowed_item)
-                .patch(method_not_allowed_item),
+            post(method_not_allowed_item).patch(method_not_allowed_item),
         )
         .api_route("/api/v1/nvts", get_with(list_nvts, list_nvts_docs))
         .route(

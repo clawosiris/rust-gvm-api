@@ -7,12 +7,13 @@
 use async_trait::async_trait;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
-    CreateGroupInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
-    CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
-    CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host,
-    HostPage, IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
-    ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    CreateGroupInput, CreateNoteInput, CreateOverrideInput, CreatePermissionInput,
+    CreatePortListInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
+    CreateTargetInput, CreateTaskInput, CreateUserInput, Credential, CredentialPage,
+    CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage,
+    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
+    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
+    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
     ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
     OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
@@ -698,6 +699,23 @@ impl SupportingResourcePort for StaticGvmdAdapter {
         unsupported!("static adapter does not support notes")
     }
 
+    async fn create_note(&self, _: &str, _: CreateNoteInput) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support note mutations")
+    }
+
+    async fn modify_note(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyNoteInput,
+    ) -> Result<Note, GatewayError> {
+        unsupported!("static adapter does not support note mutations")
+    }
+
+    async fn delete_note(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support note mutations")
+    }
+
     async fn list_overrides(
         &self,
         _: &str,
@@ -708,6 +726,27 @@ impl SupportingResourcePort for StaticGvmdAdapter {
 
     async fn get_override(&self, _: &str, _: &str) -> Result<Override, GatewayError> {
         unsupported!("static adapter does not support overrides")
+    }
+
+    async fn create_override(
+        &self,
+        _: &str,
+        _: CreateOverrideInput,
+    ) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support override mutations")
+    }
+
+    async fn modify_override(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyOverrideInput,
+    ) -> Result<Override, GatewayError> {
+        unsupported!("static adapter does not support override mutations")
+    }
+
+    async fn delete_override(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support override mutations")
     }
 
     async fn list_nvts(

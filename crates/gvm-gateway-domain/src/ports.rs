@@ -7,20 +7,21 @@ use async_trait::async_trait;
 
 use crate::{
     Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreateGroupInput,
-    CreatePermissionInput, CreatePortListInput, CreateRoleInput, CreateScanConfigInput,
-    CreateScheduleInput, CreateTargetInput, CreateTaskInput, CreateUserInput, Credential,
-    CredentialPage, CredentialQuery, CredentialStore, Feed, Filter, FilterPage, GatewayError,
-    GetReportOpts, Group, GroupPage, Host, HostPage, IdentityQuery, ModifyAlertInput,
-    ModifyCredentialInput, ModifyGroupInput, ModifyPermissionInput, ModifyPortListInput,
-    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput,
-    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage,
-    NvtPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
-    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
-    ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
-    ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User,
-    UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    CreateNoteInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
+    CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
+    CreateTaskInput, CreateUserInput, Credential, CredentialPage, CredentialQuery, CredentialStore,
+    Feed, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage,
+    IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
+    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
+    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
+    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
+    ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage, ReportPage, ReportQuery,
+    ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery,
+    ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage, ScheduleQuery,
+    SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task, TaskAction,
+    TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage,
+    UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Port for system information needed by the gateway.
@@ -542,6 +543,29 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
     /// Fetch a note by identifier.
     async fn get_note(&self, session_token: &str, id: &str) -> Result<Note, GatewayError>;
 
+    /// Create a note.
+    async fn create_note(
+        &self,
+        session_token: &str,
+        input: CreateNoteInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Modify a note by identifier.
+    async fn modify_note(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyNoteInput,
+    ) -> Result<Note, GatewayError>;
+
+    /// Delete a note by identifier.
+    async fn delete_note(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
+
     /// List overrides for the session.
     async fn list_overrides(
         &self,
@@ -551,6 +575,29 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
 
     /// Fetch an override by identifier.
     async fn get_override(&self, session_token: &str, id: &str) -> Result<Override, GatewayError>;
+
+    /// Create an override.
+    async fn create_override(
+        &self,
+        session_token: &str,
+        input: CreateOverrideInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Modify an override by identifier.
+    async fn modify_override(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyOverrideInput,
+    ) -> Result<Override, GatewayError>;
+
+    /// Delete an override by identifier.
+    async fn delete_override(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 
     /// List NVTs for the session.
     async fn list_nvts(

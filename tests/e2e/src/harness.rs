@@ -596,6 +596,63 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn create_note(
+        &self,
+        token: &str,
+        nvt_oid: &str,
+        task_id: &str,
+        result_id: &str,
+        text: &str,
+    ) -> Result<CreatedResource> {
+        let body = json!({
+            "nvtOid": nvt_oid,
+            "taskId": task_id,
+            "resultId": result_id,
+            "text": text,
+            "active": true,
+            "orphan": false,
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/notes", token)
+                .json(&body),
+            "create note",
+        )
+        .await
+    }
+
+    pub async fn update_note(
+        &self,
+        token: &str,
+        note_id: &str,
+        text: &str,
+        active: bool,
+    ) -> Result<NoteResource> {
+        let body = json!({
+            "text": text,
+            "active": active,
+        });
+        self.send_json(
+            self.authed(Method::PUT, &format!("/api/v1/notes/{note_id}"), token)
+                .json(&body),
+            StatusCode::OK,
+            "update note",
+        )
+        .await
+    }
+
+    pub async fn delete_note(&self, token: &str, note_id: &str, ultimate: bool) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/notes/{note_id}?ultimate={ultimate}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete note",
+        )
+        .await
+    }
+
     pub async fn list_overrides(&self, token: &str) -> Result<ListResponse<OverrideResource>> {
         self.send_json(
             self.authed(Method::GET, "/api/v1/overrides?perPage=1000", token),
@@ -631,6 +688,75 @@ impl E2eHarness {
             ),
             StatusCode::OK,
             "get override",
+        )
+        .await
+    }
+
+    pub async fn create_override(
+        &self,
+        token: &str,
+        nvt_oid: &str,
+        task_id: &str,
+        result_id: &str,
+        text: &str,
+        new_severity: &str,
+    ) -> Result<CreatedResource> {
+        let body = json!({
+            "nvtOid": nvt_oid,
+            "taskId": task_id,
+            "resultId": result_id,
+            "text": text,
+            "newSeverity": new_severity,
+            "active": true,
+        });
+        self.send_created_json(
+            self.authed(Method::POST, "/api/v1/overrides", token)
+                .json(&body),
+            "create override",
+        )
+        .await
+    }
+
+    pub async fn update_override(
+        &self,
+        token: &str,
+        override_id: &str,
+        text: &str,
+        new_severity: &str,
+        active: bool,
+    ) -> Result<OverrideResource> {
+        let body = json!({
+            "text": text,
+            "newSeverity": new_severity,
+            "active": active,
+        });
+        self.send_json(
+            self.authed(
+                Method::PUT,
+                &format!("/api/v1/overrides/{override_id}"),
+                token,
+            )
+            .json(&body),
+            StatusCode::OK,
+            "update override",
+        )
+        .await
+    }
+
+    pub async fn delete_override(
+        &self,
+        token: &str,
+        override_id: &str,
+        ultimate: bool,
+    ) -> Result<()> {
+        self.send_empty(
+            self.authed(
+                Method::DELETE,
+                &format!("/api/v1/overrides/{override_id}?ultimate={ultimate}"),
+                token,
+            ),
+            StatusCode::NO_CONTENT,
+            "delete override",
         )
         .await
     }

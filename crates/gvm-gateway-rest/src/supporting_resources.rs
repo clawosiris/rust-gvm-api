@@ -5,19 +5,26 @@
 
 use aide::transform::TransformOperation;
 use axum::{
+    body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{GatewayError, SupportingResourceQuery};
+use gvm_gateway_domain::{
+    CreateNoteInput, CreateOverrideInput, GatewayError, ModifyNoteInput, ModifyOverrideInput,
+    SupportingResourceQuery,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{parse_uuid, PaginationResponse, ResourceRefResponse},
+    dto::{
+        created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse,
+        ResourceRefResponse,
+    },
     error::RestError,
     open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
@@ -526,6 +533,81 @@ impl From<gvm_gateway_domain::OverridePage> for OverrideListResponse {
     }
 }
 
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "CreateNote")]
+pub(crate) struct CreateNoteRequest {
+    #[serde(rename = "nvtOid")]
+    nvt_oid: Option<String>,
+    text: Option<String>,
+    #[serde(default)]
+    hosts: Vec<String>,
+    port: Option<String>,
+    severity: Option<String>,
+    #[serde(rename = "taskId")]
+    task_id: Option<String>,
+    #[serde(rename = "resultId")]
+    result_id: Option<String>,
+    active: Option<bool>,
+    orphan: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "UpdateNote")]
+pub(crate) struct ModifyNoteRequest {
+    text: Option<String>,
+    hosts: Option<Vec<String>>,
+    port: Option<String>,
+    severity: Option<String>,
+    #[serde(rename = "taskId")]
+    task_id: Option<String>,
+    #[serde(rename = "resultId")]
+    result_id: Option<String>,
+    active: Option<bool>,
+    orphan: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "CreateOverride")]
+pub(crate) struct CreateOverrideRequest {
+    #[serde(rename = "nvtOid")]
+    nvt_oid: Option<String>,
+    text: Option<String>,
+    #[serde(default)]
+    hosts: Vec<String>,
+    port: Option<String>,
+    severity: Option<String>,
+    #[serde(rename = "newSeverity")]
+    new_severity: Option<String>,
+    #[serde(rename = "taskId")]
+    task_id: Option<String>,
+    #[serde(rename = "resultId")]
+    result_id: Option<String>,
+    active: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "UpdateOverride")]
+pub(crate) struct ModifyOverrideRequest {
+    text: Option<String>,
+    hosts: Option<Vec<String>>,
+    port: Option<String>,
+    severity: Option<String>,
+    #[serde(rename = "newSeverity")]
+    new_severity: Option<String>,
+    #[serde(rename = "taskId")]
+    task_id: Option<String>,
+    #[serde(rename = "resultId")]
+    result_id: Option<String>,
+    active: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+/// Query parameters shared by triage-resource delete endpoints.
+pub struct DeleteSupportingResourceQueryParams {
+    /// Whether gvmd should delete the resource permanently instead of trashing it.
+    ultimate: Option<bool>,
+}
+
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "Nvt")]
 pub(crate) struct NvtResponse {
@@ -612,6 +694,93 @@ fn supporting_query(query: SupportingListQuery) -> SupportingResourceQuery {
         filter_id: query.filter_id,
         page: query.page,
         per_page: query.per_page,
+    }
+}
+
+fn require_nvt_oid(value: Option<String>) -> Result<String, GatewayError> {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| GatewayError::InvalidInput("nvtOid is required".to_string()))
+}
+
+fn validate_optional_uuid(field: &str, value: Option<&str>) -> Result<(), GatewayError> {
+    if let Some(value) = value {
+        validate_uuid(field, value)?;
+    }
+    Ok(())
+}
+
+impl CreateNoteRequest {
+    fn validate(self) -> Result<CreateNoteInput, GatewayError> {
+        validate_optional_uuid("taskId", self.task_id.as_deref())?;
+        validate_optional_uuid("resultId", self.result_id.as_deref())?;
+
+        Ok(CreateNoteInput {
+            nvt_oid: require_nvt_oid(self.nvt_oid)?,
+            text: self.text,
+            hosts: self.hosts,
+            port: self.port,
+            severity: self.severity,
+            task_id: self.task_id,
+            result_id: self.result_id,
+            active: self.active,
+            orphan: self.orphan,
+        })
+    }
+}
+
+impl ModifyNoteRequest {
+    fn validate(self) -> Result<ModifyNoteInput, GatewayError> {
+        validate_optional_uuid("taskId", self.task_id.as_deref())?;
+        validate_optional_uuid("resultId", self.result_id.as_deref())?;
+
+        Ok(ModifyNoteInput {
+            text: self.text,
+            hosts: self.hosts,
+            port: self.port,
+            severity: self.severity,
+            task_id: self.task_id,
+            result_id: self.result_id,
+            active: self.active,
+            orphan: self.orphan,
+        })
+    }
+}
+
+impl CreateOverrideRequest {
+    fn validate(self) -> Result<CreateOverrideInput, GatewayError> {
+        validate_optional_uuid("taskId", self.task_id.as_deref())?;
+        validate_optional_uuid("resultId", self.result_id.as_deref())?;
+
+        Ok(CreateOverrideInput {
+            nvt_oid: require_nvt_oid(self.nvt_oid)?,
+            text: self.text,
+            hosts: self.hosts,
+            port: self.port,
+            severity: self.severity,
+            new_severity: self.new_severity,
+            task_id: self.task_id,
+            result_id: self.result_id,
+            active: self.active,
+        })
+    }
+}
+
+impl ModifyOverrideRequest {
+    fn validate(self) -> Result<ModifyOverrideInput, GatewayError> {
+        validate_optional_uuid("taskId", self.task_id.as_deref())?;
+        validate_optional_uuid("resultId", self.result_id.as_deref())?;
+
+        Ok(ModifyOverrideInput {
+            text: self.text,
+            hosts: self.hosts,
+            port: self.port,
+            severity: self.severity,
+            new_severity: self.new_severity,
+            task_id: self.task_id,
+            result_id: self.result_id,
+            active: self.active,
+        })
     }
 }
 
@@ -888,6 +1057,112 @@ pub async fn get_note(
     }
 }
 
+/// Creates a note for result triage.
+pub async fn create_note(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let request = match serde_json::from_slice::<CreateNoteRequest>(&body) {
+        Ok(request) => request,
+        Err(error) => {
+            return RestError::from_gateway_error(
+                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
+                instance,
+            )
+            .into_response();
+        }
+    };
+    let input = match request.validate() {
+        Ok(input) => input,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.create_note(&session, input).await {
+        Ok(id) => {
+            let location = created_resource_location(&instance, &id);
+            (
+                StatusCode::CREATED,
+                [(header::LOCATION, location)],
+                Json(ResourceCreatedResponse {
+                    id: parse_uuid(&id),
+                }),
+            )
+                .into_response()
+        }
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Updates a note used for result triage.
+pub async fn update_note(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let request = match serde_json::from_slice::<ModifyNoteRequest>(&body) {
+        Ok(request) => request,
+        Err(error) => {
+            return RestError::from_gateway_error(
+                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
+                instance,
+            )
+            .into_response();
+        }
+    };
+    let input = match request.validate() {
+        Ok(input) => input,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.modify_note(&session, &id, input).await {
+        Ok(item) => (StatusCode::OK, Json(NoteResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Deletes a note. Set `ultimate=true` to request permanent backend deletion.
+pub async fn delete_note(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(query): Query<DeleteSupportingResourceQueryParams>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .delete_note(&session, &id, query.ultimate.unwrap_or(false))
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
 /// Lists overrides visible to the authenticated session.
 pub async fn list_overrides(
     State(service): State<GatewayService>,
@@ -931,6 +1206,112 @@ pub async fn get_override(
 
     match service.get_override(&session, &id).await {
         Ok(item) => (StatusCode::OK, Json(OverrideResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Creates an override for result triage.
+pub async fn create_override(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let request = match serde_json::from_slice::<CreateOverrideRequest>(&body) {
+        Ok(request) => request,
+        Err(error) => {
+            return RestError::from_gateway_error(
+                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
+                instance,
+            )
+            .into_response();
+        }
+    };
+    let input = match request.validate() {
+        Ok(input) => input,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.create_override(&session, input).await {
+        Ok(id) => {
+            let location = created_resource_location(&instance, &id);
+            (
+                StatusCode::CREATED,
+                [(header::LOCATION, location)],
+                Json(ResourceCreatedResponse {
+                    id: parse_uuid(&id),
+                }),
+            )
+                .into_response()
+        }
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Updates an override used for result triage.
+pub async fn update_override(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let request = match serde_json::from_slice::<ModifyOverrideRequest>(&body) {
+        Ok(request) => request,
+        Err(error) => {
+            return RestError::from_gateway_error(
+                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
+                instance,
+            )
+            .into_response();
+        }
+    };
+    let input = match request.validate() {
+        Ok(input) => input,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.modify_override(&session, &id, input).await {
+        Ok(item) => (StatusCode::OK, Json(OverrideResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Deletes an override. Set `ultimate=true` to request permanent backend deletion.
+pub async fn delete_override(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(query): Query<DeleteSupportingResourceQueryParams>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .delete_override(&session, &id, query.ultimate.unwrap_or(false))
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -1173,6 +1554,49 @@ pub(crate) fn get_note_docs(op: TransformOperation<'_>) -> TransformOperation<'_
     problem_response::<404>(op, "Resource not found")
 }
 
+pub(crate) fn create_note_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createNote")
+        .tag("Notes")
+        .summary("Create a note")
+        .description(
+            "Creates a note that annotates findings selected by NVT, optional task/result scope, and optional host/port/severity selectors.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateNoteRequest>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Note created"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn update_note_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyNote")
+        .tag("Notes")
+        .summary("Modify a note")
+        .description("Updates a note used for finding triage.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyNoteRequest>)>()
+        .response_with::<200, Json<NoteResponse>, _>(ok_json("Note updated"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn delete_note_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteNote")
+        .tag("Notes")
+        .summary("Delete a note")
+        .description("Deletes a note. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<DeleteSupportingResourceQueryParams>)>()
+        .response_with::<204, (), _>(|response| response.description("Note deleted"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
 pub(crate) fn list_overrides_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     let op = op
         .id("getOverrides")
@@ -1201,6 +1625,49 @@ pub(crate) fn get_override_docs(op: TransformOperation<'_>) -> TransformOperatio
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
         .response_with::<200, Json<OverrideResponse>, _>(ok_json("Override details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn create_override_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createOverride")
+        .tag("Overrides")
+        .summary("Create an override")
+        .description(
+            "Creates an override that changes finding interpretation for the selected NVT and optional task/result/host/port/severity scope.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateOverrideRequest>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Override created"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn update_override_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyOverride")
+        .tag("Overrides")
+        .summary("Modify an override")
+        .description("Updates an override used for finding triage.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyOverrideRequest>)>()
+        .response_with::<200, Json<OverrideResponse>, _>(ok_json("Override updated"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn delete_override_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteOverride")
+        .tag("Overrides")
+        .summary("Delete an override")
+        .description("Deletes an override. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<DeleteSupportingResourceQueryParams>)>()
+        .response_with::<204, (), _>(|response| response.description("Override deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
