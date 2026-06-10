@@ -110,7 +110,7 @@ use gvm_gmp::{
         GetUserSettingsResponse, GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse,
         ResumeTaskResponse, StartTaskResponse,
     },
-    EntityId, PaginatedFilter, Pagination as GmpPagination,
+    EntityId, FilterFragment, FilterFragmentError, PaginatedFilter, Pagination as GmpPagination,
 };
 use gvm_protocol::{Request, Response};
 use tokio::sync::Mutex as AsyncMutex;
@@ -365,15 +365,48 @@ fn paginated_filter(
     filter_string: Option<&str>,
     page: u32,
     per_page: u32,
-) -> Option<String> {
+) -> Result<Option<String>, GatewayError> {
+    paginated_filter_with_reserved_terms(prefix, filter_string, page, per_page, &[])
+}
+
+fn paginated_filter_with_reserved_terms(
+    prefix: Option<&str>,
+    filter_string: Option<&str>,
+    page: u32,
+    per_page: u32,
+    reserved_terms: &[&str],
+) -> Result<Option<String>, GatewayError> {
     let mut filter = PaginatedFilter::new();
     if let Some(prefix) = prefix {
         filter = filter.with_clause(prefix);
     }
-    filter = filter.with_filter_string(filter_string);
-    filter
+    filter = filter
+        .try_with_filter_string(filter_string, reserved_terms)
+        .map_err(map_filter_fragment_error)?;
+    Ok(filter
         .with_pagination(GmpPagination::new(page as usize, per_page as usize))
-        .build()
+        .build())
+}
+
+fn validated_filter_string(
+    filter_string: Option<&str>,
+    reserved_terms: &[&str],
+) -> Result<Option<String>, GatewayError> {
+    filter_string
+        .map(|filter_string| {
+            FilterFragment::new(filter_string, reserved_terms)
+                .map(FilterFragment::into_inner)
+                .map_err(map_filter_fragment_error)
+        })
+        .transpose()
+}
+
+fn map_filter_fragment_error(error: FilterFragmentError) -> GatewayError {
+    match error {
+        FilterFragmentError::ReservedTerm { term } => {
+            GatewayError::InvalidInput(format!("filter contains reserved term '{term}'"))
+        }
+    }
 }
 
 #[async_trait]
@@ -401,7 +434,7 @@ impl AlertPort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -582,7 +615,7 @@ impl SchedulePort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -712,7 +745,7 @@ impl CredentialPort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -883,7 +916,7 @@ impl PortListPort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -1020,7 +1053,7 @@ impl IdentityPort for GvmdAdapter {
                         query.filter_string.as_deref(),
                         query.page,
                         query.per_page,
-                    ),
+                    )?,
                     filter_id,
                     trash: None,
                     details: Some(true),
@@ -1158,7 +1191,7 @@ impl IdentityPort for GvmdAdapter {
                         query.filter_string.as_deref(),
                         query.page,
                         query.per_page,
-                    ),
+                    )?,
                     filter_id,
                     trash: None,
                     details: Some(true),
@@ -1273,7 +1306,7 @@ impl IdentityPort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -1388,7 +1421,7 @@ impl IdentityPort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -1526,7 +1559,7 @@ impl IdentityPort for GvmdAdapter {
             .lock()
             .await
             .call(get_user_settings(GetUserSettingsOpts {
-                filter: query.filter_string.clone(),
+                filter: validated_filter_string(query.filter_string.as_deref(), &[])?,
                 filter_id: query
                     .filter_id
                     .as_deref()
@@ -1613,7 +1646,7 @@ impl TargetPort for GvmdAdapter {
                         query.filter_string.as_deref(),
                         query.page,
                         query.per_page,
-                    ),
+                    )?,
                     filter_id: filter_id.clone(),
                     trash: None,
                     details: Some(true),
@@ -1636,7 +1669,10 @@ impl TargetPort for GvmdAdapter {
                     session_token,
                     "targets.list",
                     get_targets(GetTargetsOpts {
-                        filter_string: query.filter_string.clone(),
+                        filter_string: validated_filter_string(
+                            query.filter_string.as_deref(),
+                            &[],
+                        )?,
                         filter_id,
                         trash: None,
                         details: Some(true),
@@ -1829,7 +1865,7 @@ impl TaskPort for GvmdAdapter {
                         query.filter_string.as_deref(),
                         query.page,
                         query.per_page,
-                    ),
+                    )?,
                     filter_id,
                     trash: None,
                     details: Some(true),
@@ -2067,7 +2103,7 @@ impl ReportPort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 details: Some(true),
                 ignore_pagination: None,
@@ -2123,7 +2159,7 @@ impl ReportPort for GvmdAdapter {
                 None,
                 opts.page,
                 opts.per_page,
-            )
+            )?
         };
 
         let results_response = client
@@ -2193,12 +2229,13 @@ impl ReportPort for GvmdAdapter {
         // Validate that the report_id is a valid UUID
         let _ = parse_entity_id(report_id)?;
 
-        let filter = paginated_filter(
+        let filter = paginated_filter_with_reserved_terms(
             Some(&format!("report_id={report_id}")),
             query.filter_string.as_deref(),
             query.page,
             query.per_page,
-        );
+            &["report_id"],
+        )?;
 
         let response = client
             .lock()
@@ -2381,12 +2418,13 @@ impl ReportPort for GvmdAdapter {
 
 fn report_detail_query(query: &ResultQuery) -> Result<GetReportDetailsOpts, GatewayError> {
     Ok(GetReportDetailsOpts {
-        filter_string: paginated_filter(
+        filter_string: paginated_filter_with_reserved_terms(
             None,
             query.filter_string.as_deref(),
             query.page,
             query.per_page,
-        ),
+            &["report_id"],
+        )?,
         filter_id: query
             .filter_id
             .as_deref()
@@ -2438,7 +2476,7 @@ impl ResultPort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 details: Some(true),
             }))
@@ -2502,7 +2540,7 @@ impl ScanConfigPort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2635,7 +2673,7 @@ impl ScannerPort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2699,7 +2737,7 @@ impl SupportingResourcePort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2766,7 +2804,7 @@ impl SupportingResourcePort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2830,7 +2868,7 @@ impl SupportingResourcePort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2890,7 +2928,7 @@ impl SupportingResourcePort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -2950,7 +2988,7 @@ impl SupportingResourcePort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -3010,7 +3048,7 @@ impl SupportingResourcePort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -3068,7 +3106,7 @@ impl SupportingResourcePort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id,
                 trash: None,
                 details: Some(true),
@@ -3126,7 +3164,7 @@ impl SupportingResourcePort for GvmdAdapter {
                     query.filter_string.as_deref(),
                     query.page,
                     query.per_page,
-                ),
+                )?,
                 filter_id: filter_id.clone(),
                 details: Some(true),
             }))
@@ -3153,7 +3191,10 @@ impl SupportingResourcePort for GvmdAdapter {
                     session_token,
                     "nvts.list",
                     get_nvts(GetNvtsOpts {
-                        filter_string: query.filter_string.clone(),
+                        filter_string: validated_filter_string(
+                            query.filter_string.as_deref(),
+                            &[],
+                        )?,
                         filter_id,
                         details: Some(true),
                     }),
@@ -3338,12 +3379,46 @@ mod tests {
         // GMP filter paging is one-based: page 3 with 25 rows starts at item 51.
         assert_eq!(
             paginated_filter(Some("report_id=abc"), Some("severity>5"), 3, 25),
-            Some("report_id=abc severity>5 first=51 rows=25".to_string())
+            Ok(Some(
+                "report_id=abc severity>5 first=51 rows=25".to_string()
+            ))
         );
         assert_eq!(
             paginated_filter(None, Some("   "), 1, 10),
-            Some("first=1 rows=10".to_string())
+            Ok(Some("first=1 rows=10".to_string()))
         );
+    }
+
+    #[test]
+    fn paginated_filter_rejects_caller_pagination_terms() {
+        // User filter fragments must not override backend pagination terms that
+        // the gateway appends after validation.
+        let result = paginated_filter(None, Some("severity>5 first=1"), 3, 25);
+
+        assert!(matches!(
+            result,
+            Err(GatewayError::InvalidInput(detail))
+                if detail == "filter contains reserved term 'first'"
+        ));
+    }
+
+    #[test]
+    fn paginated_filter_rejects_endpoint_owned_scope_terms() {
+        // Report-scoped endpoints add report_id themselves, so a caller filter
+        // may not inject another report_id clause.
+        let result = paginated_filter_with_reserved_terms(
+            Some("report_id=abc"),
+            Some("report_id=def severity>5"),
+            1,
+            25,
+            &["report_id"],
+        );
+
+        assert!(matches!(
+            result,
+            Err(GatewayError::InvalidInput(detail))
+                if detail == "filter contains reserved term 'report_id'"
+        ));
     }
 
     #[tokio::test]
