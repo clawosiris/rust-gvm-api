@@ -374,6 +374,15 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
                 Some(25),
             );
         } else {
+            let unsupported = harness
+                .get_report_vulnerabilities_problem(&session.token, &action.report_id, 1, 25)
+                .await?;
+            assert_eq!(unsupported.code, "not_implemented");
+            assert!(
+                unsupported.detail.contains("get_report_vulns"),
+                "expected unsupported detail to mention get_report_vulns, got {}",
+                unsupported.detail
+            );
             eprintln!(
                 "skipping report-detail subresource assertions because the current stable gvmd container does not support get_report_vulns"
             );
