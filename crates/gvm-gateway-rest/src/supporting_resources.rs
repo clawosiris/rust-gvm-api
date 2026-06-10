@@ -544,8 +544,10 @@ pub(crate) struct CreateNoteRequest {
     port: Option<String>,
     severity: Option<String>,
     #[serde(rename = "taskId")]
+    #[schemars(with = "Option<Uuid>")]
     task_id: Option<String>,
     #[serde(rename = "resultId")]
+    #[schemars(with = "Option<Uuid>")]
     result_id: Option<String>,
     active: Option<bool>,
     orphan: Option<bool>,
@@ -559,8 +561,10 @@ pub(crate) struct ModifyNoteRequest {
     port: Option<String>,
     severity: Option<String>,
     #[serde(rename = "taskId")]
+    #[schemars(with = "Option<Uuid>")]
     task_id: Option<String>,
     #[serde(rename = "resultId")]
+    #[schemars(with = "Option<Uuid>")]
     result_id: Option<String>,
     active: Option<bool>,
     orphan: Option<bool>,
@@ -579,8 +583,10 @@ pub(crate) struct CreateOverrideRequest {
     #[serde(rename = "newSeverity")]
     new_severity: Option<String>,
     #[serde(rename = "taskId")]
+    #[schemars(with = "Option<Uuid>")]
     task_id: Option<String>,
     #[serde(rename = "resultId")]
+    #[schemars(with = "Option<Uuid>")]
     result_id: Option<String>,
     active: Option<bool>,
 }
@@ -595,8 +601,10 @@ pub(crate) struct ModifyOverrideRequest {
     #[serde(rename = "newSeverity")]
     new_severity: Option<String>,
     #[serde(rename = "taskId")]
+    #[schemars(with = "Option<Uuid>")]
     task_id: Option<String>,
     #[serde(rename = "resultId")]
+    #[schemars(with = "Option<Uuid>")]
     result_id: Option<String>,
     active: Option<bool>,
 }
