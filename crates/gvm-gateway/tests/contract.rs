@@ -73,6 +73,9 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
 
 #[tokio::test]
 async fn documented_route_inventory_matches_live_router_dispatch() {
+    // This test guards the effective runtime URLs documented by OpenAPI, not
+    // just the path keys. A root or path-level `servers` change must therefore
+    // still map to an implemented router path.
     let adapter = StaticGvmdAdapter::ready("22.7");
     let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
     let client = Client::new();
@@ -93,14 +96,14 @@ async fn documented_route_inventory_matches_live_router_dispatch() {
                 StatusCode::NOT_FOUND,
                 "router did not expose {} {}",
                 method,
-                route.runtime_path()
+                route.probe_path()
             );
             assert_ne!(
                 response.status(),
                 StatusCode::METHOD_NOT_ALLOWED,
                 "router rejected documented method {} {}",
                 method,
-                route.runtime_path()
+                route.probe_path()
             );
         }
     }
@@ -516,20 +519,15 @@ impl<'a> SpecDocs<'a> {
 
 struct RouteContract {
     spec_path: String,
+    runtime_path: String,
     methods: Vec<String>,
     curated_doc: SpecDocRef,
     curated_path: String,
 }
 
 impl RouteContract {
-    fn runtime_path(&self) -> String {
-        let prefixed = match self.spec_path.as_str() {
-            "/health" | "/ready" => self.spec_path.clone(),
-            "/openapi.json" => "/api/v1/openapi.json".to_string(),
-            _ => format!("/api/v1{}", self.spec_path),
-        };
-
-        prefixed.replace("{id}", "not-a-uuid")
+    fn probe_path(&self) -> String {
+        self.runtime_path.replace("{id}", "not-a-uuid")
     }
 }
 
@@ -550,9 +548,11 @@ fn route_contracts(docs: &SpecDocs<'_>) -> Vec<RouteContract> {
                 .pointer(&pointer)
                 .unwrap_or_else(|| panic!("missing path item ref target `{reference}`"))
                 .clone();
+            let runtime_path = effective_runtime_path(docs.root_spec(), &path_item, spec_path);
 
             RouteContract {
                 spec_path: spec_path.clone(),
+                runtime_path,
                 methods: operation_methods(&path_item),
                 curated_doc,
                 curated_path,
@@ -584,6 +584,30 @@ fn generated_route_methods(doc: &Value) -> BTreeSet<(String, String)> {
                 .map(move |method| (path.clone(), method.clone()))
         })
         .collect()
+}
+
+fn effective_runtime_path(root_spec: &Value, path_item: &Value, spec_path: &str) -> String {
+    let server_url = path_item
+        .get("servers")
+        .unwrap_or(&root_spec["servers"])
+        .as_array()
+        .and_then(|servers| servers.first())
+        .and_then(|server| server["url"].as_str())
+        .unwrap_or_else(|| panic!("missing OpenAPI server URL for path `{spec_path}`"));
+
+    join_openapi_server_path(server_url, spec_path)
+}
+
+fn join_openapi_server_path(server_url: &str, spec_path: &str) -> String {
+    let server = server_url.trim_end_matches('/');
+    let path = spec_path.trim_start_matches('/');
+
+    match (server.is_empty(), path.is_empty()) {
+        (true, true) => "/".to_string(),
+        (true, false) => format!("/{path}"),
+        (false, true) => server.to_string(),
+        (false, false) => format!("{server}/{path}"),
+    }
 }
 
 fn assert_route_methods_match(
@@ -692,7 +716,7 @@ fn build_route_probe_request(
     method: &str,
     session_token: &str,
 ) -> reqwest::RequestBuilder {
-    let runtime_path = route.runtime_path();
+    let runtime_path = route.probe_path();
     let wire_method = method.to_ascii_uppercase();
     let request = client.request(
         Method::from_bytes(wire_method.as_bytes()).expect("documented methods must be valid"),
