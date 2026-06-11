@@ -36,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
       - name: Configure git credentials for private deps
         run: git config --global url."https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/".insteadOf "https://github.com/"
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
@@ -153,9 +155,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Build release binary
-        run: cargo build --release -p gvm-gateway
-      - name: Install nfpm
-        run: ./scripts/install-nfpm.sh
+        run: cargo build --locked --release -p gvm-gateway
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Build package
         run: ./scripts/package-build.sh --packager "${{ matrix.packager }}" --architecture "${{ matrix.package_arch }}" --version "$(./scripts/workspace-version.sh)" --output-dir dist/packages
       - name: Smoke test package install

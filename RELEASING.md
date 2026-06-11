@@ -34,13 +34,15 @@ This repository uses orchestrated releases via [clawosiris/release-orchestrator]
 
 For local testing without releasing:
 ```bash
-cargo build --release
+cargo build --locked --release -p gvm-gateway
 cargo test
-./scripts/install-nfpm.sh
 ./scripts/package-build.sh --packager deb --version "$(./scripts/workspace-version.sh)"
 ./scripts/package-build.sh --packager archlinux --version "$(./scripts/workspace-version.sh)"
 ./scripts/oci-build.sh --tag local/gvm-gateway:dev
 ```
+
+Local package builds require Docker and `cosign`. `package-build.sh` verifies the
+signed `ghcr.io/goreleaser/nfpm` image before running it.
 
 Package smoke tests use Docker in CI:
 

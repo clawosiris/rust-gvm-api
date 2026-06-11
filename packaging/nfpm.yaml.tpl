@@ -17,11 +17,11 @@ contents:
   - src: ./dist/package-root/etc/gvm-gateway/gvm-gateway.toml
     dst: /etc/gvm-gateway/gvm-gateway.toml
     type: config|noreplace
-  - src: ./README.md
+  - src: ./dist/package-root/usr/share/doc/gvm-gateway/README.md
     dst: /usr/share/doc/gvm-gateway/README.md
   - src: ./dist/package-root/usr/share/doc/gvm-gateway/BUILDINFO
     dst: /usr/share/doc/gvm-gateway/BUILDINFO
-  - src: ./LICENSE
+  - src: ./dist/package-root/usr/share/licenses/gvm-gateway/LICENSE
     dst: /usr/share/licenses/gvm-gateway/LICENSE
 overrides:
   deb:
