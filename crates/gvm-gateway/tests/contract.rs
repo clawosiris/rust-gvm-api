@@ -933,9 +933,10 @@ fn compare_responses(
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
 
-    assert!(
-        generated_statuses.is_subset(&curated_statuses),
-        "response status drift for {context}: generated={generated_statuses:?}, curated={curated_statuses:?}"
+    assert_string_sets_match(
+        &generated_statuses,
+        &curated_statuses,
+        &format!("response status drift for {context}"),
     );
 
     for status in generated_statuses {
@@ -963,9 +964,10 @@ fn compare_responses(
             .keys()
             .map(String::as_str)
             .collect::<BTreeSet<_>>();
-        assert!(
-            generated_media_types.is_subset(&curated_media_types),
-            "response content type drift for {context} {status}"
+        assert_string_sets_match(
+            &generated_media_types,
+            &curated_media_types,
+            &format!("response content type drift for {context} {status}"),
         );
         compare_headers(
             docs,
@@ -987,6 +989,16 @@ fn compare_responses(
             );
         }
     }
+}
+
+fn assert_string_sets_match(generated: &BTreeSet<&str>, curated: &BTreeSet<&str>, context: &str) {
+    let generated_only = generated.difference(curated).collect::<Vec<_>>();
+    let curated_only = curated.difference(generated).collect::<Vec<_>>();
+
+    assert!(
+        generated_only.is_empty() && curated_only.is_empty(),
+        "{context}: generated_only={generated_only:?}, curated_only={curated_only:?}"
+    );
 }
 
 fn compare_headers(

@@ -99,6 +99,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     ] {
         add_location_header_to_created_response(&mut normalized_paths, path);
     }
+    add_retry_after_header_to_too_many_requests_response(&mut normalized_paths, "/session");
 
     synchronize_report_export_responses(&mut normalized_paths);
     document_backend_unavailable_responses(&mut normalized_paths);
@@ -985,6 +986,25 @@ fn add_location_header_to_created_response(normalized_paths: &mut Map<String, Va
     }
 }
 
+fn add_retry_after_header_to_too_many_requests_response(
+    normalized_paths: &mut Map<String, Value>,
+    path: &str,
+) {
+    if let Some(response) = normalized_paths
+        .get_mut(path)
+        .and_then(|path_item| path_item.get_mut("post"))
+        .and_then(|operation| operation.get_mut("responses"))
+        .and_then(|responses| responses.get_mut("429"))
+    {
+        response["headers"]["Retry-After"] = json!({
+            "description": "Seconds to wait before retrying",
+            "schema": {
+                "type": "integer"
+            }
+        });
+    }
+}
+
 /// Configure the top-level generated OpenAPI document.
 pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
     api.title("GVM REST API")
@@ -1330,9 +1350,10 @@ mod tests {
 
             let generated_statuses = response_statuses(generated_op);
             let curated_statuses = response_statuses(curated_op);
-            assert!(
-                generated_statuses.is_subset(&curated_statuses),
-                "generated response status drift for {method} {generated_path}: generated={generated_statuses:?}, curated={curated_statuses:?}"
+            assert_string_sets_match(
+                &generated_statuses,
+                &curated_statuses,
+                &format!("generated response status drift for {method} {generated_path}"),
             );
         }
     }
@@ -1709,6 +1730,20 @@ mod tests {
     fn assert_route_methods_match(
         generated: &BTreeSet<(String, String)>,
         curated: &BTreeSet<(String, String)>,
+        context: &str,
+    ) {
+        let generated_only = generated.difference(curated).collect::<Vec<_>>();
+        let curated_only = curated.difference(generated).collect::<Vec<_>>();
+
+        assert!(
+            generated_only.is_empty() && curated_only.is_empty(),
+            "{context}: generated_only={generated_only:?}, curated_only={curated_only:?}"
+        );
+    }
+
+    fn assert_string_sets_match(
+        generated: &BTreeSet<&str>,
+        curated: &BTreeSet<&str>,
         context: &str,
     ) {
         let generated_only = generated.difference(curated).collect::<Vec<_>>();

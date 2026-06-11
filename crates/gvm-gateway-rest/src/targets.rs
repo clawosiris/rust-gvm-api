@@ -547,6 +547,7 @@ pub(crate) fn delete_target_docs(op: TransformOperation<'_>) -> TransformOperati
 
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<403>(op, "Forbidden");
     problem_response::<404>(op, "Resource not found")
 }
 

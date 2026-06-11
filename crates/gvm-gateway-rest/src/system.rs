@@ -132,18 +132,22 @@ pub(crate) async fn version(State(service): State<GatewayService>) -> Response {
 
 /// OpenAPI transform for `GET /health`.
 pub(crate) fn health_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("getHealth")
+    let op = op
+        .id("getHealth")
         .tag("System")
         .summary("Liveness probe")
         .description("Returns basic process liveness information.")
         .response_with::<200, Json<HealthStatusResponse>, _>(|response| {
             response.description("Service is alive")
-        })
+        });
+
+    problem_response::<400>(op, "Invalid request")
 }
 
 /// OpenAPI transform for `GET /ready`.
 pub(crate) fn ready_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("getReadiness")
+    let op = op
+        .id("getReadiness")
         .tag("System")
         .summary("Readiness probe")
         .description(
@@ -154,7 +158,9 @@ pub(crate) fn ready_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
         })
         .response_with::<503, Json<ReadinessStatusResponse>, _>(|response| {
             response.description("Service is not ready")
-        })
+        });
+
+    problem_response::<400>(op, "Invalid request")
 }
 
 /// OpenAPI transform for `GET /api/v1/version`.
@@ -169,6 +175,8 @@ pub(crate) fn version_docs(op: TransformOperation<'_>) -> TransformOperation<'_>
         .response_with::<200, Json<VersionInfoResponse>, _>(|response| {
             response.description("Proxied gvmd version information")
         });
+
+    let op = problem_response::<400>(op, "Invalid request");
 
     problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
