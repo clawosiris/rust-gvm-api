@@ -41,13 +41,15 @@ pub struct RestError {
 impl RestError {
     /// Builds a REST error from a domain error.
     pub fn from_gateway_error(error: GatewayError, instance: impl Into<String>) -> Self {
+        let instance = instance.into();
         let status = status_for_gateway_error(&error);
+        let code = error.code();
         Self::from_parts(
-            error.code(),
-            title_for_code(error.code()),
+            code,
+            title_for_code(code),
             status,
-            Some(error.detail().to_string()),
-            Some(instance.into()),
+            Some(public_detail_for_gateway_error(&error, status, &instance)),
+            Some(instance),
         )
     }
 
@@ -175,6 +177,39 @@ fn status_for_gateway_error(error: &GatewayError) -> StatusCode {
     }
 }
 
+fn public_detail_for_gateway_error(
+    error: &GatewayError,
+    status: StatusCode,
+    instance: &str,
+) -> String {
+    match error {
+        GatewayError::BackendUnavailable(detail) => {
+            log_private_gateway_error(error.code(), status, instance, detail);
+            "The backend service is unavailable.".to_string()
+        }
+        GatewayError::Internal(detail) => {
+            log_private_gateway_error(error.code(), status, instance, detail);
+            "An internal server error occurred.".to_string()
+        }
+        _ => error.detail().to_string(),
+    }
+}
+
+fn log_private_gateway_error(
+    code: GatewayErrorCode,
+    status: StatusCode,
+    instance: &str,
+    detail: &str,
+) {
+    tracing::error!(
+        error_code = code.as_str(),
+        http_status = status.as_u16(),
+        instance,
+        error_detail = %detail,
+        "gateway error detail hidden from client response"
+    );
+}
+
 fn title_for_code(code: GatewayErrorCode) -> &'static str {
     match code {
         GatewayErrorCode::BackendUnavailable => "Bad Gateway",
@@ -211,6 +246,56 @@ mod tests {
         );
         assert_eq!(json["code"], serde_json::json!("session_expired"));
         assert_eq!(json["title"], serde_json::json!("Session Expired"));
+    }
+
+    /// Internal failures must not echo implementation details into RFC 9457 bodies.
+    #[test]
+    fn internal_error_problem_hides_private_detail() {
+        let private_detail = "database password leaked in stack trace";
+        let error = RestError::from_gateway_error(
+            GatewayError::Internal(private_detail.to_string()),
+            "/ready",
+        );
+
+        assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        let json = serde_json::to_value(&error.problem).unwrap();
+        assert_eq!(
+            json["detail"],
+            serde_json::json!("An internal server error occurred.")
+        );
+        assert_ne!(json["detail"], serde_json::json!(private_detail));
+    }
+
+    /// Backend transport failures can contain socket paths or backend diagnostics.
+    #[test]
+    fn backend_unavailable_problem_hides_private_detail() {
+        let private_detail = "failed to connect to /run/gvmd/gvmd.sock as admin";
+        let error = RestError::from_gateway_error(
+            GatewayError::BackendUnavailable(private_detail.to_string()),
+            "/api/v1/tasks",
+        );
+
+        assert_eq!(error.status, StatusCode::BAD_GATEWAY);
+        let json = serde_json::to_value(&error.problem).unwrap();
+        assert_eq!(
+            json["detail"],
+            serde_json::json!("The backend service is unavailable.")
+        );
+        assert_ne!(json["detail"], serde_json::json!(private_detail));
+    }
+
+    /// Client-actionable validation details stay public so callers can fix requests.
+    #[test]
+    fn invalid_input_problem_keeps_client_actionable_detail() {
+        let public_detail = "field 'name' is required";
+        let error = RestError::from_gateway_error(
+            GatewayError::InvalidInput(public_detail.to_string()),
+            "/api/v1/targets",
+        );
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        let json = serde_json::to_value(&error.problem).unwrap();
+        assert_eq!(json["detail"], serde_json::json!(public_detail));
     }
 
     #[test]
