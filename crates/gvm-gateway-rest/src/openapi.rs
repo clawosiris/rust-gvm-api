@@ -44,7 +44,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     document["servers"] = json!([
         {
             "url": "/api/v1",
-            "description": "Base path for all API endpoints"
+            "description": "Base path for versioned API endpoints"
         }
     ]);
     document["security"] = json!([
@@ -59,6 +59,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
 
     let source_paths = document["paths"].as_object().cloned().unwrap_or_default();
     let mut normalized_paths = normalize_paths(&source_paths);
+    add_probe_server_overrides(&mut normalized_paths);
     normalized_paths.insert(
         "/openapi.json".to_string(),
         json!({
@@ -769,7 +770,10 @@ fn normalize_problem_response_content_types(document: &mut Value) {
         let Some(methods) = methods.as_object_mut() else {
             continue;
         };
-        for operation in methods.values_mut() {
+        for (method_name, operation) in methods {
+            if openapi_method(method_name).is_none() {
+                continue;
+            }
             let Some(responses) = operation["responses"].as_object_mut() else {
                 continue;
             };
@@ -899,6 +903,24 @@ fn normalize_paths(source_paths: &Map<String, Value>) -> Map<String, Value> {
             (normalized_path, path_item.clone())
         })
         .collect()
+}
+
+fn add_probe_server_overrides(normalized_paths: &mut Map<String, Value>) {
+    let servers = json!([
+        {
+            "url": "/",
+            "description": "Root path for unversioned liveness and readiness probes"
+        }
+    ]);
+
+    for path in ["/health", "/ready"] {
+        if let Some(path_item) = normalized_paths
+            .get_mut(path)
+            .and_then(Value::as_object_mut)
+        {
+            path_item.insert("servers".to_string(), servers.clone());
+        }
+    }
 }
 
 fn add_location_header_to_created_response(normalized_paths: &mut Map<String, Value>, path: &str) {
@@ -1246,15 +1268,23 @@ mod tests {
         );
 
         for (generated_path, method) in curated_routes {
+            let generated_path_item = &generated["paths"][&generated_path];
+            let curated_path_item = resolve_curated_path_item(&curated["paths"][&generated_path]);
+            assert_eq!(
+                generated_path_item.get("servers"),
+                curated_path_item.get("servers"),
+                "path-level servers drift for {generated_path}"
+            );
+
             let generated_op = op(&generated, &generated_path, &method);
-            let curated_op = curated_operation(&curated, &generated_path, &method);
+            let curated_op = &curated_path_item[&method];
             assert_eq!(
                 generated_op["operationId"], curated_op["operationId"],
                 "operationId drift for {method} {generated_path}"
             );
 
             let generated_statuses = response_statuses(generated_op);
-            let curated_statuses = response_statuses(&curated_op);
+            let curated_statuses = response_statuses(curated_op);
             assert!(
                 generated_statuses.is_subset(&curated_statuses),
                 "generated response status drift for {method} {generated_path}: generated={generated_statuses:?}, curated={curated_statuses:?}"
@@ -1487,6 +1517,9 @@ mod tests {
 
         for (path, methods) in generated["paths"].as_object().unwrap() {
             for (method, operation) in methods.as_object().unwrap() {
+                if openapi_method(method).is_none() {
+                    continue;
+                }
                 for tag in operation["tags"].as_array().into_iter().flatten() {
                     let tag = tag.as_str().unwrap();
                     assert!(
@@ -1650,10 +1683,6 @@ mod tests {
             .filter(|method| openapi_method(method).is_some())
             .cloned()
             .collect()
-    }
-
-    fn curated_operation(root_spec: &Value, path: &str, method: &str) -> Value {
-        resolve_curated_path_item(&root_spec["paths"][path])[method].clone()
     }
 
     fn resolve_curated_path_item(path_item_ref: &Value) -> Value {

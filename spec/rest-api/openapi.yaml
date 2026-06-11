@@ -46,7 +46,7 @@ info:
 
 servers:
   - url: /api/v1
-    description: Base path for all API endpoints
+    description: Base path for versioned API endpoints
 
 security:
   - bearerAuth: []

@@ -56,8 +56,10 @@ pub(crate) struct ReadinessStatusResponse {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "VersionInfo")]
 pub(crate) struct VersionInfoResponse {
+    /// REST API contract version, not the proxy binary version.
     #[serde(rename = "apiVersion")]
     api_version: String,
+    /// GMP protocol version reported by the proxied gvmd.
     #[serde(rename = "gmpVersion")]
     gmp_version: String,
 }
@@ -160,10 +162,12 @@ pub(crate) fn version_docs(op: TransformOperation<'_>) -> TransformOperation<'_>
     let op = op
         .id("getVersion")
         .tag("System")
-        .summary("Get API and GMP version information")
-        .description("Returns the gateway API version together with the connected GMP version.")
+        .summary("Get proxied gvmd version information")
+        .description(
+            "Returns the GMP protocol version reported by the proxied gvmd. The `apiVersion` field identifies the REST API contract version, not the proxy binary version.",
+        )
         .response_with::<200, Json<VersionInfoResponse>, _>(|response| {
-            response.description("Version information")
+            response.description("Proxied gvmd version information")
         });
 
     problem_response::<502>(op, "Backend service unreachable or connection failed")
