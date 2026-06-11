@@ -87,6 +87,8 @@ tags:
     description: Current-user preference management
   - name: Feeds
     description: Feed status
+  - name: Hosts
+    description: Discovered host inventory
   - name: Report Formats
     description: Report export format discovery
   - name: Filters
@@ -95,6 +97,14 @@ tags:
     description: Tag discovery
   - name: Tickets
     description: Ticket discovery
+  - name: Notes
+    description: Note discovery
+  - name: Overrides
+    description: Override discovery
+  - name: NVTs
+    description: NVT catalog discovery
+  - name: NVT Families
+    description: NVT family discovery
   - name: System
     description: System and health endpoints
 
@@ -187,6 +197,10 @@ paths:
     $ref: './feeds.yaml#/paths/~1feeds'
   /feeds/sync:
     $ref: './feeds.yaml#/paths/~1feeds~1sync'
+  /hosts:
+    $ref: './supporting-resources.yaml#/paths/~1hosts'
+  /hosts/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1hosts~1{id}'
   /report-formats:
     $ref: './supporting-resources.yaml#/paths/~1report-formats'
   /report-formats/{id}:
@@ -211,6 +225,12 @@ paths:
     $ref: './supporting-resources.yaml#/paths/~1overrides'
   /overrides/{id}:
     $ref: './supporting-resources.yaml#/paths/~1overrides~1{id}'
+  /nvts:
+    $ref: './supporting-resources.yaml#/paths/~1nvts'
+  /nvts/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1nvts~1{id}'
+  /nvt-families:
+    $ref: './supporting-resources.yaml#/paths/~1nvt-families'
   /health:
     $ref: './system.yaml#/paths/~1health'
   /ready:
