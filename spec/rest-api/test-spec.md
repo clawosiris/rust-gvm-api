@@ -112,7 +112,7 @@ async fn test_server() -> TestServer {
 | `health_returns_200` | `GET /health` | 200, `{"status": "ok"}` |
 | `ready_healthy` | `GET /ready` (GMP connected) | 200 |
 | `ready_unhealthy` | `GET /ready` (GMP disconnected) | 503 |
-| `version_returns_info` | `GET /api/v1/version` | 200, includes API + GMP versions |
+| `version_returns_info` | `GET /api/v1/version` | 200, includes proxied gvmd GMP version and REST API contract version |
 
 ### 3.3 Targets CRUD
 

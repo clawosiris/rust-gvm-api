@@ -56,8 +56,10 @@ pub(crate) struct ReadinessStatusResponse {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "VersionInfo")]
 pub(crate) struct VersionInfoResponse {
+    /// REST API contract version, not the proxy binary version.
     #[serde(rename = "apiVersion")]
     api_version: String,
+    /// GMP protocol version reported by the proxied gvmd.
     #[serde(rename = "gmpVersion")]
     gmp_version: String,
 }
@@ -130,18 +132,22 @@ pub(crate) async fn version(State(service): State<GatewayService>) -> Response {
 
 /// OpenAPI transform for `GET /health`.
 pub(crate) fn health_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("getHealth")
+    let op = op
+        .id("getHealth")
         .tag("System")
         .summary("Liveness probe")
         .description("Returns basic process liveness information.")
         .response_with::<200, Json<HealthStatusResponse>, _>(|response| {
             response.description("Service is alive")
-        })
+        });
+
+    problem_response::<400>(op, "Invalid request")
 }
 
 /// OpenAPI transform for `GET /ready`.
 pub(crate) fn ready_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("getReadiness")
+    let op = op
+        .id("getReadiness")
         .tag("System")
         .summary("Readiness probe")
         .description(
@@ -152,7 +158,9 @@ pub(crate) fn ready_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
         })
         .response_with::<503, Json<ReadinessStatusResponse>, _>(|response| {
             response.description("Service is not ready")
-        })
+        });
+
+    problem_response::<400>(op, "Invalid request")
 }
 
 /// OpenAPI transform for `GET /api/v1/version`.
@@ -160,11 +168,15 @@ pub(crate) fn version_docs(op: TransformOperation<'_>) -> TransformOperation<'_>
     let op = op
         .id("getVersion")
         .tag("System")
-        .summary("Get API and GMP version information")
-        .description("Returns the gateway API version together with the connected GMP version.")
+        .summary("Get proxied gvmd version information")
+        .description(
+            "Returns the GMP protocol version reported by the proxied gvmd. The `apiVersion` field identifies the REST API contract version, not the proxy binary version.",
+        )
         .response_with::<200, Json<VersionInfoResponse>, _>(|response| {
-            response.description("Version information")
+            response.description("Proxied gvmd version information")
         });
+
+    let op = problem_response::<400>(op, "Invalid request");
 
     problem_response::<502>(op, "Backend service unreachable or connection failed")
 }

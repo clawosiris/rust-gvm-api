@@ -300,7 +300,7 @@ Protected routes accept either an existing Bearer session token or request-scope
 |--------|------|-------------|
 | `GET` | `/health` | Liveness probe |
 | `GET` | `/ready` | Readiness probe (checks gvmd connectivity) |
-| `GET` | `/api/v1/version` | API + GMP version info |
+| `GET` | `/api/v1/version` | GMP protocol version reported by the proxied gvmd; `apiVersion` is the REST API contract version, not the proxy binary version |
 | `GET` | `/api/v1/openapi.json` | OpenAPI 3.1 spec |
 
 Swagger/ReDoc endpoints are not part of the current published contract.

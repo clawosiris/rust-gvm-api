@@ -18,6 +18,8 @@ paths:
                 $ref: "#/components/schemas/FeedList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /feeds/sync:
     post:
@@ -33,6 +35,8 @@ paths:
           description: Feed synchronization accepted
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "409":
           $ref: "./common.yaml#/components/responses/Conflict"
 

@@ -25,6 +25,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
     post:
       operationId: createPortList
       tags: [Port Lists]
@@ -49,6 +51,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /port-lists/{id}:
     parameters:
@@ -68,6 +72,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     put:
@@ -91,6 +97,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     delete:
@@ -104,6 +112,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 

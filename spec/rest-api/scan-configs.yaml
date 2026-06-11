@@ -23,6 +23,8 @@ paths:
                 $ref: "#/components/schemas/ScanConfigList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
     post:
       operationId: createScanConfig
       tags: [Scan Configs]
@@ -47,6 +49,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /scan-configs/{id}:
     parameters:
@@ -64,6 +68,8 @@ paths:
                 $ref: "#/components/schemas/ScanConfig"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     put:
@@ -87,6 +93,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     delete:
@@ -98,6 +106,8 @@ paths:
           description: Scan config deleted
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 

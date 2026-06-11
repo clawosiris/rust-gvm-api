@@ -44,7 +44,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     document["servers"] = json!([
         {
             "url": "/api/v1",
-            "description": "Base path for all API endpoints"
+            "description": "Base path for versioned API endpoints"
         }
     ]);
     document["security"] = json!([
@@ -59,6 +59,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
 
     let source_paths = document["paths"].as_object().cloned().unwrap_or_default();
     let mut normalized_paths = normalize_paths(&source_paths);
+    add_probe_server_overrides(&mut normalized_paths);
     normalized_paths.insert(
         "/openapi.json".to_string(),
         json!({
@@ -98,8 +99,10 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     ] {
         add_location_header_to_created_response(&mut normalized_paths, path);
     }
+    add_retry_after_header_to_too_many_requests_response(&mut normalized_paths, "/session");
 
     synchronize_report_export_responses(&mut normalized_paths);
+    document_backend_unavailable_responses(&mut normalized_paths);
 
     document["paths"] = Value::Object(normalized_paths);
 
@@ -760,6 +763,50 @@ fn ensure_problem_detail_schema(document: &mut Value) {
     );
 }
 
+fn document_backend_unavailable_responses(paths: &mut Map<String, Value>) {
+    for (path, methods) in paths {
+        let Some(methods) = methods.as_object_mut() else {
+            continue;
+        };
+        for (method_name, operation) in methods {
+            if openapi_method(method_name).is_none() {
+                continue;
+            }
+            if !operation_can_proxy_to_backend(path, method_name, operation) {
+                continue;
+            }
+            let Some(responses) = operation["responses"].as_object_mut() else {
+                continue;
+            };
+            responses
+                .entry("502".to_string())
+                .or_insert_with(bad_gateway_response);
+        }
+    }
+}
+
+fn operation_can_proxy_to_backend(path: &str, method_name: &str, operation: &Value) -> bool {
+    if matches!((path, method_name), ("/session", "get" | "delete")) {
+        return false;
+    }
+
+    path == "/ready" || operation["responses"].get("401").is_some()
+}
+
+fn bad_gateway_response() -> Value {
+    json!({
+        "description": "Backend service unreachable or connection failed",
+        "content": {
+            "application/problem+json": {
+                "schema": {
+                    "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": ProblemDetailDoc::example()
+            }
+        }
+    })
+}
+
 fn normalize_problem_response_content_types(document: &mut Value) {
     let Some(paths) = document["paths"].as_object_mut() else {
         return;
@@ -769,7 +816,10 @@ fn normalize_problem_response_content_types(document: &mut Value) {
         let Some(methods) = methods.as_object_mut() else {
             continue;
         };
-        for operation in methods.values_mut() {
+        for (method_name, operation) in methods {
+            if openapi_method(method_name).is_none() {
+                continue;
+            }
             let Some(responses) = operation["responses"].as_object_mut() else {
                 continue;
             };
@@ -901,6 +951,24 @@ fn normalize_paths(source_paths: &Map<String, Value>) -> Map<String, Value> {
         .collect()
 }
 
+fn add_probe_server_overrides(normalized_paths: &mut Map<String, Value>) {
+    let servers = json!([
+        {
+            "url": "/",
+            "description": "Root path for unversioned liveness and readiness probes"
+        }
+    ]);
+
+    for path in ["/health", "/ready"] {
+        if let Some(path_item) = normalized_paths
+            .get_mut(path)
+            .and_then(Value::as_object_mut)
+        {
+            path_item.insert("servers".to_string(), servers.clone());
+        }
+    }
+}
+
 fn add_location_header_to_created_response(normalized_paths: &mut Map<String, Value>, path: &str) {
     if let Some(response) = normalized_paths
         .get_mut(path)
@@ -913,6 +981,25 @@ fn add_location_header_to_created_response(normalized_paths: &mut Map<String, Va
             "schema": {
                 "type": "string",
                 "format": "uri-reference"
+            }
+        });
+    }
+}
+
+fn add_retry_after_header_to_too_many_requests_response(
+    normalized_paths: &mut Map<String, Value>,
+    path: &str,
+) {
+    if let Some(response) = normalized_paths
+        .get_mut(path)
+        .and_then(|path_item| path_item.get_mut("post"))
+        .and_then(|operation| operation.get_mut("responses"))
+        .and_then(|responses| responses.get_mut("429"))
+    {
+        response["headers"]["Retry-After"] = json!({
+            "description": "Seconds to wait before retrying",
+            "schema": {
+                "type": "integer"
             }
         });
     }
@@ -1218,266 +1305,56 @@ pub(crate) struct ScanConfigListQueryDoc {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::{
+        collections::BTreeSet,
+        fs,
+        path::{Path, PathBuf},
+    };
 
     use serde_json::{json, Map, Value};
 
-    use super::normalize_paths;
+    use super::{normalize_paths, openapi_method};
+    use crate::auth_policy::{
+        classify_runtime_route, runtime_path_from_openapi_path, RestRouteAuthPolicy,
+    };
     use crate::router::build_openapi;
 
     #[test]
     fn generated_openapi_matches_curated_spec() {
         let generated = build_openapi();
-        let system_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
-        let targets_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
-        let sessions_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
-        let tasks_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/tasks.yaml")).unwrap();
-        let reports_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/reports.yaml")).unwrap();
-        let results_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/results.yaml")).unwrap();
-        let scan_configs_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/scan-configs.yaml")).unwrap();
-        let scanners_spec: Value =
-            serde_yaml::from_str(include_str!("../../../spec/rest-api/scanners.yaml")).unwrap();
+        let curated = root_spec();
+        let generated_routes = route_methods(&generated);
+        let curated_routes = curated_route_methods(&curated);
 
-        let checks = [
-            ("/health", "get", &system_spec, "/health", &["200"] as &[_]),
-            ("/ready", "get", &system_spec, "/ready", &["200", "503"]),
-            ("/version", "get", &system_spec, "/version", &["200", "502"]),
-            (
-                "/openapi.json",
-                "get",
-                &system_spec,
-                "/openapi.json",
-                &["200"],
-            ),
-            (
-                "/session",
-                "post",
-                &sessions_spec,
-                "/session",
-                &["201", "401", "502"],
-            ),
-            (
-                "/session",
-                "get",
-                &sessions_spec,
-                "/session",
-                &["200", "404"],
-            ),
-            (
-                "/session",
-                "delete",
-                &sessions_spec,
-                "/session",
-                &["204", "404"],
-            ),
-            (
-                "/targets",
-                "get",
-                &targets_spec,
-                "/targets",
-                &["200", "401"],
-            ),
-            (
-                "/targets",
-                "post",
-                &targets_spec,
-                "/targets",
-                &["201", "400", "401"],
-            ),
-            (
-                "/targets/{id}",
-                "get",
-                &targets_spec,
-                "/targets/{id}",
-                &["200", "401", "404"],
-            ),
-            (
-                "/targets/{id}",
-                "put",
-                &targets_spec,
-                "/targets/{id}",
-                &["200", "400", "401", "404"],
-            ),
-            (
-                "/targets/{id}",
-                "delete",
-                &targets_spec,
-                "/targets/{id}",
-                &["204", "401", "404"],
-            ),
-            ("/tasks", "get", &tasks_spec, "/tasks", &["200", "401"]),
-            (
-                "/tasks",
-                "post",
-                &tasks_spec,
-                "/tasks",
-                &["201", "400", "401"],
-            ),
-            (
-                "/tasks/{id}",
-                "get",
-                &tasks_spec,
-                "/tasks/{id}",
-                &["200", "401", "404"],
-            ),
-            (
-                "/tasks/{id}",
-                "put",
-                &tasks_spec,
-                "/tasks/{id}",
-                &["200", "400", "401", "404"],
-            ),
-            (
-                "/tasks/{id}",
-                "delete",
-                &tasks_spec,
-                "/tasks/{id}",
-                &["204", "401", "404"],
-            ),
-            (
-                "/tasks/{id}/start",
-                "post",
-                &tasks_spec,
-                "/tasks/{id}/start",
-                &["200", "401", "404", "409", "504"],
-            ),
-            (
-                "/tasks/{id}/stop",
-                "post",
-                &tasks_spec,
-                "/tasks/{id}/stop",
-                &["200", "401", "404", "409"],
-            ),
-            (
-                "/tasks/{id}/resume",
-                "post",
-                &tasks_spec,
-                "/tasks/{id}/resume",
-                &["200", "401", "404", "409"],
-            ),
-            (
-                "/reports",
-                "get",
-                &reports_spec,
-                "/reports",
-                &["200", "401"],
-            ),
-            (
-                "/reports/{id}",
-                "get",
-                &reports_spec,
-                "/reports/{id}",
-                &["200", "401", "404"],
-            ),
-            (
-                "/reports/{id}",
-                "delete",
-                &reports_spec,
-                "/reports/{id}",
-                &["204", "401", "404"],
-            ),
-            (
-                "/reports/{id}/export",
-                "get",
-                &reports_spec,
-                "/reports/{id}/export",
-                &["200", "400", "401", "404"],
-            ),
-            (
-                "/reports/{id}/results",
-                "get",
-                &reports_spec,
-                "/reports/{id}/results",
-                &["200", "401", "404"],
-            ),
-            (
-                "/results",
-                "get",
-                &results_spec,
-                "/results",
-                &["200", "401"],
-            ),
-            (
-                "/results/{id}",
-                "get",
-                &results_spec,
-                "/results/{id}",
-                &["200", "401", "404"],
-            ),
-            (
-                "/scan-configs",
-                "get",
-                &scan_configs_spec,
-                "/scan-configs",
-                &["200", "401"],
-            ),
-            (
-                "/scan-configs",
-                "post",
-                &scan_configs_spec,
-                "/scan-configs",
-                &["201", "400", "401"],
-            ),
-            (
-                "/scan-configs/{id}",
-                "get",
-                &scan_configs_spec,
-                "/scan-configs/{id}",
-                &["200", "401", "404"],
-            ),
-            (
-                "/scan-configs/{id}",
-                "put",
-                &scan_configs_spec,
-                "/scan-configs/{id}",
-                &["200", "400", "401", "404"],
-            ),
-            (
-                "/scan-configs/{id}",
-                "delete",
-                &scan_configs_spec,
-                "/scan-configs/{id}",
-                &["204", "401", "404"],
-            ),
-            (
-                "/scanners",
-                "get",
-                &scanners_spec,
-                "/scanners",
-                &["200", "401"],
-            ),
-            (
-                "/scanners/{id}",
-                "get",
-                &scanners_spec,
-                "/scanners/{id}",
-                &["200", "401", "404"],
-            ),
-        ];
+        assert_route_methods_match(
+            &generated_routes,
+            &curated_routes,
+            "generated OpenAPI route/method set must match the complete curated spec",
+        );
 
-        for (generated_path, method, curated_doc, curated_path, statuses) in checks {
-            let generated_op = op(&generated, generated_path, method);
-            let curated_op = op(curated_doc, curated_path, method);
+        for (generated_path, method) in curated_routes {
+            let generated_path_item = &generated["paths"][&generated_path];
+            let curated_path_item = resolve_curated_path_item(&curated["paths"][&generated_path]);
+            assert_eq!(
+                generated_path_item.get("servers"),
+                curated_path_item.get("servers"),
+                "path-level servers drift for {generated_path}"
+            );
 
+            let generated_op = op(&generated, &generated_path, &method);
+            let curated_op = &curated_path_item[&method];
             assert_eq!(
                 generated_op["operationId"], curated_op["operationId"],
                 "operationId drift for {method} {generated_path}"
             );
 
             let generated_statuses = response_statuses(generated_op);
-            for status in statuses {
-                assert!(
-                    generated_statuses.contains(status),
-                    "missing generated status {status} for {method} {generated_path}"
-                );
-            }
+            let curated_statuses = response_statuses(curated_op);
+            assert_string_sets_match(
+                &generated_statuses,
+                &curated_statuses,
+                &format!("generated response status drift for {method} {generated_path}"),
+            );
         }
     }
 
@@ -1706,6 +1583,9 @@ mod tests {
 
         for (path, methods) in generated["paths"].as_object().unwrap() {
             for (method, operation) in methods.as_object().unwrap() {
+                if openapi_method(method).is_none() {
+                    continue;
+                }
                 for tag in operation["tags"].as_array().into_iter().flatten() {
                     let tag = tag.as_str().unwrap();
                     assert!(
@@ -1757,27 +1637,43 @@ mod tests {
     fn generated_openapi_applies_route_auth_policy_consistently() {
         let generated = build_openapi();
 
-        assert_eq!(op(&generated, "/health", "get")["security"], json!([]));
-        assert_eq!(
-            op(&generated, "/session", "post")["security"],
-            json!([{"basicAuth": []}])
-        );
-        assert_eq!(
-            op(&generated, "/session", "get")["security"],
-            json!([{"bearerAuth": []}])
-        );
+        for (path, method_name) in route_methods(&generated) {
+            let method =
+                openapi_method(&method_name).expect("route_methods returns valid HTTP methods");
+            let runtime_path = runtime_path_from_openapi_path(&path);
+            let operation = op(&generated, &path, &method_name);
+            let policy = classify_runtime_route(&method, &runtime_path)
+                .unwrap_or_else(|| panic!("missing auth policy for {method_name} {path}"));
 
-        for (path, method) in [
-            ("/alerts", "get"),
-            ("/credentials/stores", "get"),
-            ("/feeds", "get"),
-            ("/report-formats", "get"),
-            ("/users", "get"),
-        ] {
-            assert!(
-                op(&generated, path, method).get("security").is_none(),
-                "{method} {path} should inherit dual protected-route auth"
-            );
+            match policy {
+                RestRouteAuthPolicy::Public => {
+                    assert_eq!(
+                        operation["security"],
+                        json!([]),
+                        "{method_name} {path} should explicitly disable auth"
+                    );
+                }
+                RestRouteAuthPolicy::SessionCreate => {
+                    assert_eq!(
+                        operation["security"],
+                        json!([{"basicAuth": []}]),
+                        "{method_name} {path} should require Basic auth"
+                    );
+                }
+                RestRouteAuthPolicy::SessionCurrent => {
+                    assert_eq!(
+                        operation["security"],
+                        json!([{"bearerAuth": []}]),
+                        "{method_name} {path} should require Bearer auth"
+                    );
+                }
+                RestRouteAuthPolicy::Protected => {
+                    assert!(
+                        operation.get("security").is_none(),
+                        "{method_name} {path} should inherit dual protected-route auth"
+                    );
+                }
+            }
         }
     }
 
@@ -1799,6 +1695,112 @@ mod tests {
         assert!(normalized.contains_key("/reports/{id}/export"));
         assert!(!normalized.contains_key("/api/v1/version"));
         assert!(!normalized.contains_key("/api/v1/reports/{id}/export"));
+    }
+
+    fn root_spec() -> Value {
+        read_yaml(&root_spec_path())
+    }
+
+    fn curated_route_methods(root_spec: &Value) -> BTreeSet<(String, String)> {
+        root_spec["paths"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .flat_map(|(path, path_item_ref)| {
+                operation_methods(&resolve_curated_path_item(path_item_ref))
+                    .into_iter()
+                    .map(move |method| (path.clone(), method))
+            })
+            .collect()
+    }
+
+    fn route_methods(doc: &Value) -> BTreeSet<(String, String)> {
+        doc["paths"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .flat_map(|(path, path_item)| {
+                operation_methods(path_item)
+                    .into_iter()
+                    .map(move |method| (path.clone(), method))
+            })
+            .collect()
+    }
+
+    fn assert_route_methods_match(
+        generated: &BTreeSet<(String, String)>,
+        curated: &BTreeSet<(String, String)>,
+        context: &str,
+    ) {
+        let generated_only = generated.difference(curated).collect::<Vec<_>>();
+        let curated_only = curated.difference(generated).collect::<Vec<_>>();
+
+        assert!(
+            generated_only.is_empty() && curated_only.is_empty(),
+            "{context}: generated_only={generated_only:?}, curated_only={curated_only:?}"
+        );
+    }
+
+    fn assert_string_sets_match(
+        generated: &BTreeSet<&str>,
+        curated: &BTreeSet<&str>,
+        context: &str,
+    ) {
+        let generated_only = generated.difference(curated).collect::<Vec<_>>();
+        let curated_only = curated.difference(generated).collect::<Vec<_>>();
+
+        assert!(
+            generated_only.is_empty() && curated_only.is_empty(),
+            "{context}: generated_only={generated_only:?}, curated_only={curated_only:?}"
+        );
+    }
+
+    fn operation_methods(path_item: &Value) -> Vec<String> {
+        path_item
+            .as_object()
+            .unwrap()
+            .keys()
+            .filter(|method| openapi_method(method).is_some())
+            .cloned()
+            .collect()
+    }
+
+    fn resolve_curated_path_item(path_item_ref: &Value) -> Value {
+        let reference = path_item_ref["$ref"]
+            .as_str()
+            .expect("root spec path items should use file refs");
+
+        resolve_spec_ref(&root_spec_path(), reference)
+    }
+
+    fn resolve_spec_ref(current_doc_path: &Path, reference: &str) -> Value {
+        let (doc_ref, pointer) = reference
+            .split_once('#')
+            .unwrap_or_else(|| panic!("path item ref `{reference}` should include a JSON pointer"));
+        let doc_path = if doc_ref.is_empty() {
+            current_doc_path.to_path_buf()
+        } else {
+            current_doc_path
+                .parent()
+                .expect("spec document should have a parent directory")
+                .join(doc_ref)
+        };
+
+        read_yaml(&doc_path)
+            .pointer(pointer)
+            .unwrap_or_else(|| panic!("missing path item ref target `{reference}`"))
+            .clone()
+    }
+
+    fn root_spec_path() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/rest-api/openapi.yaml")
+    }
+
+    fn read_yaml(path: &Path) -> Value {
+        let source = fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("failed to read `{}`: {error}", path.display()));
+        serde_yaml::from_str(&source)
+            .unwrap_or_else(|error| panic!("failed to parse `{}`: {error}", path.display()))
     }
 
     fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {

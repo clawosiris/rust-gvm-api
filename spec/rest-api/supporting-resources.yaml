@@ -26,6 +26,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /hosts/{id}:
     parameters:
@@ -46,6 +48,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -71,6 +75,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /report-formats/{id}:
     parameters:
@@ -91,6 +97,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -116,6 +124,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /filters/{id}:
     parameters:
@@ -136,6 +146,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -161,6 +173,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /tags/{id}:
     parameters:
@@ -181,6 +195,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -206,6 +222,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /tickets/{id}:
     parameters:
@@ -226,6 +244,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -251,6 +271,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
     post:
       operationId: createNote
       tags: [Notes]
@@ -276,6 +298,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /notes/{id}:
     parameters:
@@ -296,6 +320,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     put:
@@ -320,6 +346,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     delete:
@@ -336,6 +364,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -361,6 +391,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
     post:
       operationId: createOverride
       tags: [Overrides]
@@ -386,6 +418,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /overrides/{id}:
     parameters:
@@ -406,6 +440,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     put:
@@ -430,6 +466,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     delete:
@@ -446,6 +484,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -471,6 +511,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /nvts/{id}:
     parameters:
@@ -496,6 +538,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -519,6 +563,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
 components:
   parameters:

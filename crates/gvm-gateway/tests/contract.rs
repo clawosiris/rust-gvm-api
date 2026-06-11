@@ -1,7 +1,9 @@
 mod common;
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -42,79 +44,26 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
     );
 
     let json = response.json::<Value>().await.unwrap();
-    let root_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/openapi.yaml")).unwrap();
-    let system_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/system.yaml")).unwrap();
-    let sessions_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/sessions.yaml")).unwrap();
-    let targets_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/targets.yaml")).unwrap();
-    let tasks_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/tasks.yaml")).unwrap();
-    let reports_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/reports.yaml")).unwrap();
-    let results_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/results.yaml")).unwrap();
-    let alerts_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/alerts.yaml")).unwrap();
-    let schedules_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/schedules.yaml")).unwrap();
-    let credentials_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/credentials.yaml")).unwrap();
-    let port_lists_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/port-lists.yaml")).unwrap();
-    let feeds_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/feeds.yaml")).unwrap();
-    let supporting_resources_spec: Value = serde_yaml::from_str(include_str!(
-        "../../../spec/rest-api/supporting-resources.yaml"
-    ))
-    .unwrap();
-    let identity_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/identity.yaml")).unwrap();
-    let scan_configs_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/scan-configs.yaml")).unwrap();
-    let scanners_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/scanners.yaml")).unwrap();
-    let common_spec: Value =
-        serde_yaml::from_str(include_str!("../../../spec/rest-api/common.yaml")).unwrap();
-
-    let docs = SpecDocs {
-        generated: &json,
-        system: &system_spec,
-        sessions: &sessions_spec,
-        targets: &targets_spec,
-        tasks: &tasks_spec,
-        reports: &reports_spec,
-        results: &results_spec,
-        alerts: &alerts_spec,
-        schedules: &schedules_spec,
-        credentials: &credentials_spec,
-        port_lists: &port_lists_spec,
-        feeds: &feeds_spec,
-        supporting_resources: &supporting_resources_spec,
-        identity: &identity_spec,
-        scan_configs: &scan_configs_spec,
-        scanners: &scanners_spec,
-        common: &common_spec,
-    };
+    let docs = SpecDocs::load(&json);
+    let root_spec = docs.root_spec();
 
     assert_eq!(json["servers"], root_spec["servers"]);
     assert_eq!(json["security"], root_spec["security"]);
-    assert_eq!(
-        generated_route_methods(&json),
-        expected_route_methods(),
-        "generated OpenAPI route/method set drifted from the documented route inventory"
+    let routes = route_contracts(&docs);
+    assert_route_methods_match(
+        &generated_route_methods(&json),
+        &expected_route_methods(&routes),
+        "generated OpenAPI route/method set drifted from the root spec path refs",
     );
 
-    for route in route_contracts() {
-        for method in route.methods {
+    for route in &routes {
+        for method in &route.methods {
             assert_operation_contract(
                 &docs,
-                route.spec_path,
+                &route.spec_path,
                 method,
-                route.curated_doc,
-                route.curated_path,
+                &route.curated_doc,
+                &route.curated_path,
             );
         }
     }
@@ -124,14 +73,20 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
 
 #[tokio::test]
 async fn documented_route_inventory_matches_live_router_dispatch() {
+    // This test guards the effective runtime URLs documented by OpenAPI, not
+    // just the path keys. A root or path-level `servers` change must therefore
+    // still map to an implemented router path.
     let adapter = StaticGvmdAdapter::ready("22.7");
     let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
     let client = Client::new();
-    let session_token = create_route_probe_session(&client, addr).await;
+    let unused_generated = Value::Null;
+    let docs = SpecDocs::load(&unused_generated);
+    let routes = route_contracts(&docs);
 
-    for route in route_contracts() {
-        for method in route.methods {
-            let response = build_route_probe_request(&client, addr, &route, method, &session_token)
+    for route in &routes {
+        for method in &route.methods {
+            let session_token = create_route_probe_session(&client, addr).await;
+            let response = build_route_probe_request(&client, addr, route, method, &session_token)
                 .send()
                 .await
                 .unwrap();
@@ -141,14 +96,14 @@ async fn documented_route_inventory_matches_live_router_dispatch() {
                 StatusCode::NOT_FOUND,
                 "router did not expose {} {}",
                 method,
-                route.runtime_path()
+                route.probe_path()
             );
             assert_ne!(
                 response.status(),
                 StatusCode::METHOD_NOT_ALLOWED,
                 "router rejected documented method {} {}",
                 method,
-                route.runtime_path()
+                route.probe_path()
             );
         }
     }
@@ -517,469 +472,103 @@ fn modify_requests_map_mutable_fields() {
     );
 }
 
-#[derive(Clone, Copy)]
-enum DocName {
+const ROOT_SPEC_FILE: &str = "openapi.yaml";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SpecDocRef {
     Generated,
-    System,
-    Sessions,
-    Targets,
-    Alerts,
-    Schedules,
-    Credentials,
-    PortLists,
-    Feeds,
-    SupportingResources,
-    Identity,
-    Tasks,
-    ScanConfigs,
-    Scanners,
-    Reports,
-    Results,
-    Common,
+    File(PathBuf),
 }
 
 struct SpecDocs<'a> {
     generated: &'a Value,
-    system: &'a Value,
-    sessions: &'a Value,
-    targets: &'a Value,
-    tasks: &'a Value,
-    reports: &'a Value,
-    results: &'a Value,
-    alerts: &'a Value,
-    schedules: &'a Value,
-    credentials: &'a Value,
-    port_lists: &'a Value,
-    feeds: &'a Value,
-    supporting_resources: &'a Value,
-    identity: &'a Value,
-    scan_configs: &'a Value,
-    scanners: &'a Value,
-    common: &'a Value,
+    spec_files: BTreeMap<PathBuf, Value>,
 }
 
-struct RouteContract {
-    spec_path: &'static str,
-    methods: &'static [&'static str],
-    curated_doc: DocName,
-    curated_path: &'static str,
-}
+impl<'a> SpecDocs<'a> {
+    fn load(generated: &'a Value) -> Self {
+        let spec_files = read_spec_files(&rest_spec_dir());
+        assert!(
+            spec_files.contains_key(Path::new(ROOT_SPEC_FILE)),
+            "REST spec directory should contain {ROOT_SPEC_FILE}"
+        );
 
-impl RouteContract {
-    fn runtime_path(&self) -> String {
-        let prefixed = match self.spec_path {
-            "/health" | "/ready" => self.spec_path.to_string(),
-            "/openapi.json" => "/api/v1/openapi.json".to_string(),
-            _ => format!("/api/v1{}", self.spec_path),
-        };
+        Self {
+            generated,
+            spec_files,
+        }
+    }
 
-        prefixed.replace("{id}", "not-a-uuid")
+    fn root_spec(&self) -> &Value {
+        self.spec_file(Path::new(ROOT_SPEC_FILE))
+    }
+
+    fn doc(&self, name: &SpecDocRef) -> &Value {
+        match name {
+            SpecDocRef::Generated => self.generated,
+            SpecDocRef::File(name) => self.spec_file(name),
+        }
+    }
+
+    fn spec_file(&self, name: &Path) -> &Value {
+        self.spec_files
+            .get(name)
+            .unwrap_or_else(|| panic!("missing REST spec document `{}`", name.display()))
     }
 }
 
-fn route_contracts() -> Vec<RouteContract> {
-    vec![
-        RouteContract {
-            spec_path: "/health",
-            methods: &["get"],
-            curated_doc: DocName::System,
-            curated_path: "/health",
-        },
-        RouteContract {
-            spec_path: "/ready",
-            methods: &["get"],
-            curated_doc: DocName::System,
-            curated_path: "/ready",
-        },
-        RouteContract {
-            spec_path: "/version",
-            methods: &["get"],
-            curated_doc: DocName::System,
-            curated_path: "/version",
-        },
-        RouteContract {
-            spec_path: "/openapi.json",
-            methods: &["get"],
-            curated_doc: DocName::System,
-            curated_path: "/openapi.json",
-        },
-        RouteContract {
-            spec_path: "/session",
-            methods: &["post", "get", "delete"],
-            curated_doc: DocName::Sessions,
-            curated_path: "/session",
-        },
-        RouteContract {
-            spec_path: "/targets",
-            methods: &["get", "post"],
-            curated_doc: DocName::Targets,
-            curated_path: "/targets",
-        },
-        RouteContract {
-            spec_path: "/targets/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::Targets,
-            curated_path: "/targets/{id}",
-        },
-        RouteContract {
-            spec_path: "/alerts",
-            methods: &["get", "post"],
-            curated_doc: DocName::Alerts,
-            curated_path: "/alerts",
-        },
-        RouteContract {
-            spec_path: "/alerts/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::Alerts,
-            curated_path: "/alerts/{id}",
-        },
-        RouteContract {
-            spec_path: "/timezones",
-            methods: &["get"],
-            curated_doc: DocName::Schedules,
-            curated_path: "/timezones",
-        },
-        RouteContract {
-            spec_path: "/schedules",
-            methods: &["get", "post"],
-            curated_doc: DocName::Schedules,
-            curated_path: "/schedules",
-        },
-        RouteContract {
-            spec_path: "/schedules/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::Schedules,
-            curated_path: "/schedules/{id}",
-        },
-        RouteContract {
-            spec_path: "/credential-stores",
-            methods: &["get"],
-            curated_doc: DocName::Credentials,
-            curated_path: "/credential-stores",
-        },
-        RouteContract {
-            spec_path: "/credentials",
-            methods: &["get", "post"],
-            curated_doc: DocName::Credentials,
-            curated_path: "/credentials",
-        },
-        RouteContract {
-            spec_path: "/credentials/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::Credentials,
-            curated_path: "/credentials/{id}",
-        },
-        RouteContract {
-            spec_path: "/port-lists",
-            methods: &["get", "post"],
-            curated_doc: DocName::PortLists,
-            curated_path: "/port-lists",
-        },
-        RouteContract {
-            spec_path: "/port-lists/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::PortLists,
-            curated_path: "/port-lists/{id}",
-        },
-        RouteContract {
-            spec_path: "/feeds",
-            methods: &["get"],
-            curated_doc: DocName::Feeds,
-            curated_path: "/feeds",
-        },
-        RouteContract {
-            spec_path: "/feeds/sync",
-            methods: &["post"],
-            curated_doc: DocName::Feeds,
-            curated_path: "/feeds/sync",
-        },
-        RouteContract {
-            spec_path: "/hosts",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/hosts",
-        },
-        RouteContract {
-            spec_path: "/hosts/{id}",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/hosts/{id}",
-        },
-        RouteContract {
-            spec_path: "/report-formats",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/report-formats",
-        },
-        RouteContract {
-            spec_path: "/report-formats/{id}",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/report-formats/{id}",
-        },
-        RouteContract {
-            spec_path: "/filters",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/filters",
-        },
-        RouteContract {
-            spec_path: "/filters/{id}",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/filters/{id}",
-        },
-        RouteContract {
-            spec_path: "/tags",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/tags",
-        },
-        RouteContract {
-            spec_path: "/tags/{id}",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/tags/{id}",
-        },
-        RouteContract {
-            spec_path: "/tickets",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/tickets",
-        },
-        RouteContract {
-            spec_path: "/tickets/{id}",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/tickets/{id}",
-        },
-        RouteContract {
-            spec_path: "/notes",
-            methods: &["get", "post"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/notes",
-        },
-        RouteContract {
-            spec_path: "/notes/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/notes/{id}",
-        },
-        RouteContract {
-            spec_path: "/overrides",
-            methods: &["get", "post"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/overrides",
-        },
-        RouteContract {
-            spec_path: "/overrides/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/overrides/{id}",
-        },
-        RouteContract {
-            spec_path: "/nvts",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/nvts",
-        },
-        RouteContract {
-            spec_path: "/nvts/{id}",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/nvts/{id}",
-        },
-        RouteContract {
-            spec_path: "/nvt-families",
-            methods: &["get"],
-            curated_doc: DocName::SupportingResources,
-            curated_path: "/nvt-families",
-        },
-        RouteContract {
-            spec_path: "/users",
-            methods: &["get", "post"],
-            curated_doc: DocName::Identity,
-            curated_path: "/users",
-        },
-        RouteContract {
-            spec_path: "/users/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::Identity,
-            curated_path: "/users/{id}",
-        },
-        RouteContract {
-            spec_path: "/groups",
-            methods: &["get", "post"],
-            curated_doc: DocName::Identity,
-            curated_path: "/groups",
-        },
-        RouteContract {
-            spec_path: "/groups/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::Identity,
-            curated_path: "/groups/{id}",
-        },
-        RouteContract {
-            spec_path: "/roles",
-            methods: &["get", "post"],
-            curated_doc: DocName::Identity,
-            curated_path: "/roles",
-        },
-        RouteContract {
-            spec_path: "/roles/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::Identity,
-            curated_path: "/roles/{id}",
-        },
-        RouteContract {
-            spec_path: "/permissions",
-            methods: &["get", "post"],
-            curated_doc: DocName::Identity,
-            curated_path: "/permissions",
-        },
-        RouteContract {
-            spec_path: "/permissions/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::Identity,
-            curated_path: "/permissions/{id}",
-        },
-        RouteContract {
-            spec_path: "/user-settings",
-            methods: &["get"],
-            curated_doc: DocName::Identity,
-            curated_path: "/user-settings",
-        },
-        RouteContract {
-            spec_path: "/user-settings/{id}",
-            methods: &["get", "put"],
-            curated_doc: DocName::Identity,
-            curated_path: "/user-settings/{id}",
-        },
-        RouteContract {
-            spec_path: "/tasks",
-            methods: &["get", "post"],
-            curated_doc: DocName::Tasks,
-            curated_path: "/tasks",
-        },
-        RouteContract {
-            spec_path: "/tasks/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::Tasks,
-            curated_path: "/tasks/{id}",
-        },
-        RouteContract {
-            spec_path: "/tasks/{id}/start",
-            methods: &["post"],
-            curated_doc: DocName::Tasks,
-            curated_path: "/tasks/{id}/start",
-        },
-        RouteContract {
-            spec_path: "/tasks/{id}/stop",
-            methods: &["post"],
-            curated_doc: DocName::Tasks,
-            curated_path: "/tasks/{id}/stop",
-        },
-        RouteContract {
-            spec_path: "/tasks/{id}/resume",
-            methods: &["post"],
-            curated_doc: DocName::Tasks,
-            curated_path: "/tasks/{id}/resume",
-        },
-        RouteContract {
-            spec_path: "/reports",
-            methods: &["get"],
-            curated_doc: DocName::Reports,
-            curated_path: "/reports",
-        },
-        RouteContract {
-            spec_path: "/reports/{id}",
-            methods: &["get", "delete"],
-            curated_doc: DocName::Reports,
-            curated_path: "/reports/{id}",
-        },
-        RouteContract {
-            spec_path: "/reports/{id}/export",
-            methods: &["get"],
-            curated_doc: DocName::Reports,
-            curated_path: "/reports/{id}/export",
-        },
-        RouteContract {
-            spec_path: "/reports/{id}/results",
-            methods: &["get"],
-            curated_doc: DocName::Reports,
-            curated_path: "/reports/{id}/results",
-        },
-        RouteContract {
-            spec_path: "/reports/{id}/vulnerabilities",
-            methods: &["get"],
-            curated_doc: DocName::Reports,
-            curated_path: "/reports/{id}/vulnerabilities",
-        },
-        RouteContract {
-            spec_path: "/reports/{id}/tls-certificates",
-            methods: &["get"],
-            curated_doc: DocName::Reports,
-            curated_path: "/reports/{id}/tls-certificates",
-        },
-        RouteContract {
-            spec_path: "/reports/{id}/errors",
-            methods: &["get"],
-            curated_doc: DocName::Reports,
-            curated_path: "/reports/{id}/errors",
-        },
-        RouteContract {
-            spec_path: "/reports/{id}/closed-cves",
-            methods: &["get"],
-            curated_doc: DocName::Reports,
-            curated_path: "/reports/{id}/closed-cves",
-        },
-        RouteContract {
-            spec_path: "/results",
-            methods: &["get"],
-            curated_doc: DocName::Results,
-            curated_path: "/results",
-        },
-        RouteContract {
-            spec_path: "/results/{id}",
-            methods: &["get"],
-            curated_doc: DocName::Results,
-            curated_path: "/results/{id}",
-        },
-        RouteContract {
-            spec_path: "/scan-configs",
-            methods: &["get", "post"],
-            curated_doc: DocName::ScanConfigs,
-            curated_path: "/scan-configs",
-        },
-        RouteContract {
-            spec_path: "/scan-configs/{id}",
-            methods: &["get", "put", "delete"],
-            curated_doc: DocName::ScanConfigs,
-            curated_path: "/scan-configs/{id}",
-        },
-        RouteContract {
-            spec_path: "/scanners",
-            methods: &["get"],
-            curated_doc: DocName::Scanners,
-            curated_path: "/scanners",
-        },
-        RouteContract {
-            spec_path: "/scanners/{id}",
-            methods: &["get"],
-            curated_doc: DocName::Scanners,
-            curated_path: "/scanners/{id}",
-        },
-    ]
+struct RouteContract {
+    spec_path: String,
+    runtime_path: String,
+    methods: Vec<String>,
+    curated_doc: SpecDocRef,
+    curated_path: String,
 }
 
-fn expected_route_methods() -> BTreeSet<(String, String)> {
-    route_contracts()
-        .into_iter()
+impl RouteContract {
+    fn probe_path(&self) -> String {
+        self.runtime_path.replace("{id}", "not-a-uuid")
+    }
+}
+
+fn route_contracts(docs: &SpecDocs<'_>) -> Vec<RouteContract> {
+    docs.root_spec()["paths"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(spec_path, path_item_ref)| {
+            let reference = path_item_ref["$ref"]
+                .as_str()
+                .expect("root spec path items should use file refs");
+            let (curated_doc, pointer) =
+                parse_ref(&SpecDocRef::File(PathBuf::from(ROOT_SPEC_FILE)), reference);
+            let curated_path = path_from_ref_pointer(&pointer);
+            let path_item = docs
+                .doc(&curated_doc)
+                .pointer(&pointer)
+                .unwrap_or_else(|| panic!("missing path item ref target `{reference}`"))
+                .clone();
+            let runtime_path = effective_runtime_path(docs.root_spec(), &path_item, spec_path);
+
+            RouteContract {
+                spec_path: spec_path.clone(),
+                runtime_path,
+                methods: operation_methods(&path_item),
+                curated_doc,
+                curated_path,
+            }
+        })
+        .collect()
+}
+
+fn expected_route_methods(routes: &[RouteContract]) -> BTreeSet<(String, String)> {
+    routes
+        .iter()
         .flat_map(|route| {
             route
                 .methods
                 .iter()
-                .map(move |method| (route.spec_path.to_string(), (*method).to_string()))
+                .map(move |method| (route.spec_path.clone(), method.clone()))
         })
         .collect()
 }
@@ -990,13 +579,134 @@ fn generated_route_methods(doc: &Value) -> BTreeSet<(String, String)> {
         .unwrap()
         .iter()
         .flat_map(|(path, methods)| {
-            methods
-                .as_object()
-                .unwrap()
-                .keys()
+            operation_methods(methods)
+                .into_iter()
                 .map(move |method| (path.clone(), method.clone()))
         })
         .collect()
+}
+
+fn effective_runtime_path(root_spec: &Value, path_item: &Value, spec_path: &str) -> String {
+    let server_url = path_item
+        .get("servers")
+        .unwrap_or(&root_spec["servers"])
+        .as_array()
+        .and_then(|servers| servers.first())
+        .and_then(|server| server["url"].as_str())
+        .unwrap_or_else(|| panic!("missing OpenAPI server URL for path `{spec_path}`"));
+
+    join_openapi_server_path(server_url, spec_path)
+}
+
+fn join_openapi_server_path(server_url: &str, spec_path: &str) -> String {
+    let server = server_url.trim_end_matches('/');
+    let path = spec_path.trim_start_matches('/');
+
+    match (server.is_empty(), path.is_empty()) {
+        (true, true) => "/".to_string(),
+        (true, false) => format!("/{path}"),
+        (false, true) => server.to_string(),
+        (false, false) => format!("{server}/{path}"),
+    }
+}
+
+fn assert_route_methods_match(
+    generated: &BTreeSet<(String, String)>,
+    curated: &BTreeSet<(String, String)>,
+    context: &str,
+) {
+    let generated_only = generated.difference(curated).collect::<Vec<_>>();
+    let curated_only = curated.difference(generated).collect::<Vec<_>>();
+
+    assert!(
+        generated_only.is_empty() && curated_only.is_empty(),
+        "{context}: generated_only={generated_only:?}, curated_only={curated_only:?}"
+    );
+}
+
+fn operation_methods(path_item: &Value) -> Vec<String> {
+    path_item
+        .as_object()
+        .unwrap()
+        .keys()
+        .filter(|method| is_openapi_operation_method(method))
+        .cloned()
+        .collect()
+}
+
+fn is_openapi_operation_method(method: &str) -> bool {
+    matches!(
+        method,
+        "get" | "post" | "put" | "delete" | "patch" | "options" | "head"
+    )
+}
+
+fn path_from_ref_pointer(pointer: &str) -> String {
+    decode_json_pointer_token(
+        pointer
+            .rsplit('/')
+            .next()
+            .unwrap_or_else(|| panic!("invalid path item JSON pointer `{pointer}`")),
+    )
+}
+
+fn decode_json_pointer_token(token: &str) -> String {
+    token.replace("~1", "/").replace("~0", "~")
+}
+
+fn read_spec_files(spec_dir: &Path) -> BTreeMap<PathBuf, Value> {
+    let mut files = BTreeMap::new();
+    read_spec_files_in_dir(spec_dir, spec_dir, &mut files);
+    files
+}
+
+fn read_spec_files_in_dir(spec_root: &Path, dir: &Path, files: &mut BTreeMap<PathBuf, Value>) {
+    for entry in fs::read_dir(dir)
+        .unwrap_or_else(|error| panic!("failed to read `{}`: {error}", dir.display()))
+    {
+        let path = entry
+            .unwrap_or_else(|error| panic!("failed to read entry in `{}`: {error}", dir.display()))
+            .path();
+
+        if path.is_dir() {
+            read_spec_files_in_dir(spec_root, &path, files);
+            continue;
+        }
+
+        if !is_yaml_file(&path) {
+            continue;
+        }
+
+        let relative_path = path
+            .strip_prefix(spec_root)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "failed to strip spec root `{}` from `{}`: {error}",
+                    spec_root.display(),
+                    path.display()
+                )
+            })
+            .to_path_buf();
+        files.insert(relative_path, read_yaml(&path));
+    }
+}
+
+fn is_yaml_file(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("yaml" | "yml")
+    )
+}
+
+fn rest_spec_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/rest-api")
+}
+
+fn read_yaml(path: &Path) -> Value {
+    let source = fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("failed to read `{}`: {error}", path.display()));
+    serde_yaml::from_str(&source)
+        .unwrap_or_else(|error| panic!("failed to parse `{}`: {error}", path.display()))
 }
 
 fn build_route_probe_request(
@@ -1006,7 +716,7 @@ fn build_route_probe_request(
     method: &str,
     session_token: &str,
 ) -> reqwest::RequestBuilder {
-    let runtime_path = route.runtime_path();
+    let runtime_path = route.probe_path();
     let wire_method = method.to_ascii_uppercase();
     let request = client.request(
         Method::from_bytes(wire_method.as_bytes()).expect("documented methods must be valid"),
@@ -1041,11 +751,12 @@ fn assert_operation_contract(
     docs: &SpecDocs<'_>,
     generated_path: &str,
     method: &str,
-    curated_doc: DocName,
+    curated_doc: &SpecDocRef,
     curated_path: &str,
 ) {
-    let generated_op = effective_operation(docs.generated, generated_path, method);
-    let curated_op = effective_operation(doc(docs, curated_doc), curated_path, method);
+    let generated_doc = SpecDocRef::Generated;
+    let generated_op = effective_operation(docs.doc(&generated_doc), generated_path, method);
+    let curated_op = effective_operation(docs.doc(curated_doc), curated_path, method);
     let context = format!("{method} {generated_path}");
 
     assert_eq!(
@@ -1063,7 +774,7 @@ fn assert_operation_contract(
 
     compare_parameters(
         docs,
-        DocName::Generated,
+        &generated_doc,
         &generated_op,
         curated_doc,
         &curated_op,
@@ -1071,7 +782,7 @@ fn assert_operation_contract(
     );
     compare_request_body(
         docs,
-        DocName::Generated,
+        &generated_doc,
         &generated_op,
         curated_doc,
         &curated_op,
@@ -1079,7 +790,7 @@ fn assert_operation_contract(
     );
     compare_responses(
         docs,
-        DocName::Generated,
+        &generated_doc,
         &generated_op,
         curated_doc,
         &curated_op,
@@ -1089,9 +800,9 @@ fn assert_operation_contract(
 
 fn compare_parameters(
     docs: &SpecDocs<'_>,
-    generated_doc: DocName,
+    generated_doc: &SpecDocRef,
     generated_op: &Value,
-    curated_doc: DocName,
+    curated_doc: &SpecDocRef,
     curated_op: &Value,
     context: &str,
 ) {
@@ -1141,9 +852,9 @@ fn compare_parameters(
 
         compare_schema_like(
             docs,
-            generated_parameter_doc,
+            &generated_parameter_doc,
             generated_parameter.get("schema").unwrap_or(&Value::Null),
-            curated_parameter_doc,
+            &curated_parameter_doc,
             curated_parameter.get("schema").unwrap_or(&Value::Null),
             &format!("{context} parameter {key} schema"),
         );
@@ -1152,9 +863,9 @@ fn compare_parameters(
 
 fn compare_request_body(
     docs: &SpecDocs<'_>,
-    generated_doc: DocName,
+    generated_doc: &SpecDocRef,
     generated_op: &Value,
-    curated_doc: DocName,
+    curated_doc: &SpecDocRef,
     curated_op: &Value,
     context: &str,
 ) {
@@ -1192,9 +903,9 @@ fn compare_request_body(
             for media_type in generated_content.keys() {
                 compare_schema_like(
                     docs,
-                    generated_body_doc,
+                    &generated_body_doc,
                     &generated_content[media_type]["schema"],
-                    curated_body_doc,
+                    &curated_body_doc,
                     &curated_content[media_type]["schema"],
                     &format!("{context} requestBody {media_type} schema"),
                 );
@@ -1205,9 +916,9 @@ fn compare_request_body(
 
 fn compare_responses(
     docs: &SpecDocs<'_>,
-    generated_doc: DocName,
+    generated_doc: &SpecDocRef,
     generated_op: &Value,
-    curated_doc: DocName,
+    curated_doc: &SpecDocRef,
     curated_op: &Value,
     context: &str,
 ) {
@@ -1222,9 +933,10 @@ fn compare_responses(
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
 
-    assert!(
-        generated_statuses.is_subset(&curated_statuses),
-        "response status drift for {context}: generated={generated_statuses:?}, curated={curated_statuses:?}"
+    assert_string_sets_match(
+        &generated_statuses,
+        &curated_statuses,
+        &format!("response status drift for {context}"),
     );
 
     for status in generated_statuses {
@@ -1252,15 +964,16 @@ fn compare_responses(
             .keys()
             .map(String::as_str)
             .collect::<BTreeSet<_>>();
-        assert!(
-            generated_media_types.is_subset(&curated_media_types),
-            "response content type drift for {context} {status}"
+        assert_string_sets_match(
+            &generated_media_types,
+            &curated_media_types,
+            &format!("response content type drift for {context} {status}"),
         );
         compare_headers(
             docs,
-            generated_response_doc,
+            &generated_response_doc,
             generated_response.get("headers"),
-            curated_response_doc,
+            &curated_response_doc,
             curated_response.get("headers"),
             &format!("{context} response {status} headers"),
         );
@@ -1268,9 +981,9 @@ fn compare_responses(
         for media_type in generated_media_types {
             compare_schema_like(
                 docs,
-                generated_response_doc,
+                &generated_response_doc,
                 &generated_content[media_type]["schema"],
-                curated_response_doc,
+                &curated_response_doc,
                 &curated_content[media_type]["schema"],
                 &format!("{context} response {status} {media_type} schema"),
             );
@@ -1278,11 +991,21 @@ fn compare_responses(
     }
 }
 
+fn assert_string_sets_match(generated: &BTreeSet<&str>, curated: &BTreeSet<&str>, context: &str) {
+    let generated_only = generated.difference(curated).collect::<Vec<_>>();
+    let curated_only = curated.difference(generated).collect::<Vec<_>>();
+
+    assert!(
+        generated_only.is_empty() && curated_only.is_empty(),
+        "{context}: generated_only={generated_only:?}, curated_only={curated_only:?}"
+    );
+}
+
 fn compare_headers(
     docs: &SpecDocs<'_>,
-    generated_doc: DocName,
+    generated_doc: &SpecDocRef,
     generated_headers: Option<&Value>,
-    curated_doc: DocName,
+    curated_doc: &SpecDocRef,
     curated_headers: Option<&Value>,
     context: &str,
 ) {
@@ -1322,9 +1045,9 @@ fn compare_headers(
         );
         compare_schema_like(
             docs,
-            generated_header_doc,
+            &generated_header_doc,
             generated_header.get("schema").unwrap_or(&Value::Null),
-            curated_header_doc,
+            &curated_header_doc,
             curated_header.get("schema").unwrap_or(&Value::Null),
             &format!("{context} {key} schema"),
         );
@@ -1333,9 +1056,9 @@ fn compare_headers(
 
 fn compare_schema_like(
     docs: &SpecDocs<'_>,
-    generated_doc: DocName,
+    generated_doc: &SpecDocRef,
     generated: &Value,
-    curated_doc: DocName,
+    curated_doc: &SpecDocRef,
     curated: &Value,
     context: &str,
 ) {
@@ -1390,9 +1113,9 @@ fn compare_schema_like(
                     }
                     _ => compare_schema_like(
                         docs,
-                        generated_doc,
+                        &generated_doc,
                         generated_value,
-                        curated_doc,
+                        &curated_doc,
                         curated_value,
                         &format!("{context}.{key}"),
                     ),
@@ -1410,9 +1133,9 @@ fn compare_schema_like(
             {
                 compare_schema_like(
                     docs,
-                    generated_doc,
+                    &generated_doc,
                     generated_value,
-                    curated_doc,
+                    &curated_doc,
                     curated_value,
                     &format!("{context}[{index}]"),
                 );
@@ -1486,7 +1209,7 @@ fn assert_numeric_at_most(generated: &Value, curated: &Value, context: &str) {
     assert!(generated <= curated, "numeric drift for {context}");
 }
 
-fn parameter_key(docs: &SpecDocs<'_>, current_doc: DocName, parameter: &Value) -> String {
+fn parameter_key(docs: &SpecDocs<'_>, current_doc: &SpecDocRef, parameter: &Value) -> String {
     let (_, parameter) = resolve_ref(docs, current_doc, parameter);
     format!(
         "{}:{}",
@@ -1513,14 +1236,16 @@ fn effective_operation(doc: &Value, path: &str, method: &str) -> Value {
 }
 
 fn resolve_ref<'a>(
-    docs: &'a SpecDocs<'a>,
-    mut current_doc: DocName,
+    docs: &'a SpecDocs<'_>,
+    current_doc: &SpecDocRef,
     mut value: &'a Value,
-) -> (DocName, &'a Value) {
+) -> (SpecDocRef, &'a Value) {
+    let mut current_doc = current_doc.clone();
     while let Some(reference) = value.get("$ref").and_then(Value::as_str) {
-        let (next_doc, pointer) = parse_ref(current_doc, reference);
+        let (next_doc, pointer) = parse_ref(&current_doc, reference);
         current_doc = next_doc;
-        value = doc(docs, current_doc)
+        value = docs
+            .doc(&current_doc)
             .pointer(&pointer)
             .unwrap_or_else(|| panic!("missing ref target `{reference}`"));
     }
@@ -1528,57 +1253,54 @@ fn resolve_ref<'a>(
     (current_doc, value)
 }
 
-fn parse_ref(current_doc: DocName, reference: &str) -> (DocName, String) {
+fn parse_ref(current_doc: &SpecDocRef, reference: &str) -> (SpecDocRef, String) {
     let (doc_name, pointer) = reference.split_once('#').unwrap_or((reference, ""));
-    let doc = match doc_name {
-        "" => current_doc,
-        "./common.yaml" => DocName::Common,
-        "./system.yaml" => DocName::System,
-        "./sessions.yaml" => DocName::Sessions,
-        "./targets.yaml" => DocName::Targets,
-        "./alerts.yaml" => DocName::Alerts,
-        "./schedules.yaml" => DocName::Schedules,
-        "./credentials.yaml" => DocName::Credentials,
-        "./port-lists.yaml" => DocName::PortLists,
-        "./feeds.yaml" => DocName::Feeds,
-        "./identity.yaml" => DocName::Identity,
-        "./tasks.yaml" => DocName::Tasks,
-        "./reports.yaml" => DocName::Reports,
-        "./results.yaml" => DocName::Results,
-        "./scan-configs.yaml" => DocName::ScanConfigs,
-        "./scanners.yaml" => DocName::Scanners,
-        other => panic!("unsupported ref document `{other}`"),
-    };
-
-    let pointer = if pointer.is_empty() {
-        String::new()
+    let doc = if doc_name.is_empty() {
+        current_doc.clone()
     } else {
-        pointer.replace("~1", "/").replace("~0", "~")
+        let current_file = match current_doc {
+            SpecDocRef::File(path) => path,
+            SpecDocRef::Generated => {
+                panic!("generated OpenAPI refs must not target external spec document `{doc_name}`")
+            }
+        };
+        SpecDocRef::File(resolve_relative_ref_doc(current_file, doc_name))
     };
 
-    (doc, pointer)
+    (doc, pointer.to_string())
 }
 
-fn doc<'a>(docs: &'a SpecDocs<'a>, name: DocName) -> &'a Value {
-    match name {
-        DocName::Generated => docs.generated,
-        DocName::System => docs.system,
-        DocName::Sessions => docs.sessions,
-        DocName::Targets => docs.targets,
-        DocName::Alerts => docs.alerts,
-        DocName::Schedules => docs.schedules,
-        DocName::Credentials => docs.credentials,
-        DocName::PortLists => docs.port_lists,
-        DocName::Feeds => docs.feeds,
-        DocName::SupportingResources => docs.supporting_resources,
-        DocName::Identity => docs.identity,
-        DocName::Tasks => docs.tasks,
-        DocName::Reports => docs.reports,
-        DocName::Results => docs.results,
-        DocName::ScanConfigs => docs.scan_configs,
-        DocName::Scanners => docs.scanners,
-        DocName::Common => docs.common,
+fn resolve_relative_ref_doc(current_file: &Path, doc_name: &str) -> PathBuf {
+    normalize_relative_path(
+        current_file
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(doc_name),
+    )
+}
+
+fn normalize_relative_path(path: PathBuf) -> PathBuf {
+    let mut normalized = PathBuf::new();
+
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                assert!(
+                    normalized.pop(),
+                    "spec ref path `{}` escapes the spec root",
+                    path.display()
+                );
+            }
+            std::path::Component::Normal(component) => normalized.push(component),
+            other => panic!(
+                "unsupported spec ref path component `{other:?}` in `{}`",
+                path.display()
+            ),
+        }
     }
+
+    normalized
 }
 
 fn op<'a>(doc: &'a Value, path: &str, method: &str) -> &'a Value {

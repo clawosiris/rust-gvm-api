@@ -23,6 +23,8 @@ paths:
                 $ref: "#/components/schemas/ScannerList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /scanners/{id}:
     parameters:
@@ -40,6 +42,8 @@ paths:
                 $ref: "#/components/schemas/Scanner"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 

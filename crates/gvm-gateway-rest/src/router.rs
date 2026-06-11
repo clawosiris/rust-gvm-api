@@ -17,7 +17,7 @@ use axum::{
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, patch, post, put},
+    routing::get,
     Router,
 };
 use gvm_gateway_app::GatewayService;
@@ -136,10 +136,13 @@ pub fn build_router_with_runtime_and_security(
         Arc::new(serde_json::to_string_pretty(&openapi).expect("generated OpenAPI must serialize"));
     let request_scoped_auth_state = state.clone();
     let security_state = Arc::new(SecurityRuntime::new(security));
-
-    documented_router()
+    let router: Router<GatewayService> = documented_router()
         .route("/api/v1/openapi.json", get(serve_openapi))
         .fallback(not_found)
+        .into();
+
+    router
+        .method_not_allowed_fallback(method_not_allowed)
         .layer(middleware::from_fn_with_state(
             request_scoped_auth_state,
             request_scoped_basic_auth_middleware,
@@ -156,7 +159,6 @@ pub fn build_router_with_runtime_and_security(
         .with_state(state)
         .layer(Extension(shutdown))
         .layer(Extension(openapi_json))
-        .into()
 }
 
 /// Builds the generated OpenAPI document for the currently implemented routes.
@@ -191,7 +193,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/targets",
             post_with(create_target, create_target_docs),
         )
-        .route("/api/v1/targets", patch(method_not_allowed_collection))
         .api_route(
             "/api/v1/targets/{id}",
             get_with(get_target, get_target_docs),
@@ -204,11 +205,9 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/targets/{id}",
             delete_with(delete_target, delete_target_docs),
         )
-        .route("/api/v1/targets/{id}", patch(method_not_allowed_item))
         // Alerts
         .api_route("/api/v1/alerts", get_with(list_alerts, list_alerts_docs))
         .api_route("/api/v1/alerts", post_with(create_alert, create_alert_docs))
-        .route("/api/v1/alerts", patch(method_not_allowed_collection))
         .api_route("/api/v1/alerts/{id}", get_with(get_alert, get_alert_docs))
         .api_route(
             "/api/v1/alerts/{id}",
@@ -218,7 +217,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/alerts/{id}",
             delete_with(delete_alert, delete_alert_docs),
         )
-        .route("/api/v1/alerts/{id}", patch(method_not_allowed_item))
         // Schedules
         .api_route(
             "/api/v1/timezones",
@@ -232,7 +230,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/schedules",
             post_with(create_schedule, create_schedule_docs),
         )
-        .route("/api/v1/schedules", patch(method_not_allowed_collection))
         .api_route(
             "/api/v1/schedules/{id}",
             get_with(get_schedule, get_schedule_docs),
@@ -245,7 +242,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/schedules/{id}",
             delete_with(delete_schedule, delete_schedule_docs),
         )
-        .route("/api/v1/schedules/{id}", patch(method_not_allowed_item))
         // Credentials
         .api_route(
             "/api/v1/credential-stores",
@@ -259,7 +255,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/credentials",
             post_with(create_credential, create_credential_docs),
         )
-        .route("/api/v1/credentials", patch(method_not_allowed_collection))
         .api_route(
             "/api/v1/credentials/{id}",
             get_with(get_credential, get_credential_docs),
@@ -272,7 +267,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/credentials/{id}",
             delete_with(delete_credential, delete_credential_docs),
         )
-        .route("/api/v1/credentials/{id}", patch(method_not_allowed_item))
         // Port Lists
         .api_route(
             "/api/v1/port-lists",
@@ -282,7 +276,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/port-lists",
             post_with(create_port_list, create_port_list_docs),
         )
-        .route("/api/v1/port-lists", patch(method_not_allowed_collection))
         .api_route(
             "/api/v1/port-lists/{id}",
             get_with(get_port_list, get_port_list_docs),
@@ -295,112 +288,34 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/port-lists/{id}",
             delete_with(delete_port_list, delete_port_list_docs),
         )
-        .route("/api/v1/port-lists/{id}", patch(method_not_allowed_item))
         // Feeds
         .api_route("/api/v1/feeds", get_with(list_feeds, list_feeds_docs))
-        .route("/api/v1/feeds", patch(method_not_allowed_collection))
         .api_route("/api/v1/feeds/sync", post_with(sync_feeds, sync_feeds_docs))
         // Supporting resources
         .api_route("/api/v1/hosts", get_with(list_hosts, list_hosts_docs))
-        .route(
-            "/api/v1/hosts",
-            post(method_not_allowed_collection)
-                .put(method_not_allowed_collection)
-                .delete(method_not_allowed_collection)
-                .patch(method_not_allowed_collection),
-        )
         .api_route("/api/v1/hosts/{id}", get_with(get_host, get_host_docs))
-        .route(
-            "/api/v1/hosts/{id}",
-            post(method_not_allowed_item)
-                .put(method_not_allowed_item)
-                .delete(method_not_allowed_item)
-                .patch(method_not_allowed_item),
-        )
         .api_route(
             "/api/v1/report-formats",
             get_with(list_report_formats, list_report_formats_docs),
-        )
-        .route(
-            "/api/v1/report-formats",
-            post(method_not_allowed_collection)
-                .put(method_not_allowed_collection)
-                .delete(method_not_allowed_collection)
-                .patch(method_not_allowed_collection),
         )
         .api_route(
             "/api/v1/report-formats/{id}",
             get_with(get_report_format, get_report_format_docs),
         )
-        .route(
-            "/api/v1/report-formats/{id}",
-            post(method_not_allowed_item)
-                .put(method_not_allowed_item)
-                .delete(method_not_allowed_item)
-                .patch(method_not_allowed_item),
-        )
         .api_route("/api/v1/filters", get_with(list_filters, list_filters_docs))
-        .route(
-            "/api/v1/filters",
-            post(method_not_allowed_collection)
-                .put(method_not_allowed_collection)
-                .delete(method_not_allowed_collection)
-                .patch(method_not_allowed_collection),
-        )
         .api_route(
             "/api/v1/filters/{id}",
             get_with(get_filter, get_filter_docs),
         )
-        .route(
-            "/api/v1/filters/{id}",
-            post(method_not_allowed_item)
-                .put(method_not_allowed_item)
-                .delete(method_not_allowed_item)
-                .patch(method_not_allowed_item),
-        )
         .api_route("/api/v1/tags", get_with(list_tags, list_tags_docs))
-        .route(
-            "/api/v1/tags",
-            post(method_not_allowed_collection)
-                .put(method_not_allowed_collection)
-                .delete(method_not_allowed_collection)
-                .patch(method_not_allowed_collection),
-        )
         .api_route("/api/v1/tags/{id}", get_with(get_tag, get_tag_docs))
-        .route(
-            "/api/v1/tags/{id}",
-            post(method_not_allowed_item)
-                .put(method_not_allowed_item)
-                .delete(method_not_allowed_item)
-                .patch(method_not_allowed_item),
-        )
         .api_route("/api/v1/tickets", get_with(list_tickets, list_tickets_docs))
-        .route(
-            "/api/v1/tickets",
-            post(method_not_allowed_collection)
-                .put(method_not_allowed_collection)
-                .delete(method_not_allowed_collection)
-                .patch(method_not_allowed_collection),
-        )
         .api_route(
             "/api/v1/tickets/{id}",
             get_with(get_ticket, get_ticket_docs),
         )
-        .route(
-            "/api/v1/tickets/{id}",
-            post(method_not_allowed_item)
-                .put(method_not_allowed_item)
-                .delete(method_not_allowed_item)
-                .patch(method_not_allowed_item),
-        )
         .api_route("/api/v1/notes", get_with(list_notes, list_notes_docs))
         .api_route("/api/v1/notes", post_with(create_note, create_note_docs))
-        .route(
-            "/api/v1/notes",
-            put(method_not_allowed_collection)
-                .delete(method_not_allowed_collection)
-                .patch(method_not_allowed_collection),
-        )
         .api_route("/api/v1/notes/{id}", get_with(get_note, get_note_docs))
         .api_route(
             "/api/v1/notes/{id}",
@@ -410,10 +325,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/notes/{id}",
             delete_with(delete_note, delete_note_docs),
         )
-        .route(
-            "/api/v1/notes/{id}",
-            post(method_not_allowed_item).patch(method_not_allowed_item),
-        )
         .api_route(
             "/api/v1/overrides",
             get_with(list_overrides, list_overrides_docs),
@@ -421,12 +332,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/overrides",
             post_with(create_override, create_override_docs),
-        )
-        .route(
-            "/api/v1/overrides",
-            put(method_not_allowed_collection)
-                .delete(method_not_allowed_collection)
-                .patch(method_not_allowed_collection),
         )
         .api_route(
             "/api/v1/overrides/{id}",
@@ -440,41 +345,15 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/overrides/{id}",
             delete_with(delete_override, delete_override_docs),
         )
-        .route(
-            "/api/v1/overrides/{id}",
-            post(method_not_allowed_item).patch(method_not_allowed_item),
-        )
         .api_route("/api/v1/nvts", get_with(list_nvts, list_nvts_docs))
-        .route(
-            "/api/v1/nvts",
-            post(method_not_allowed_collection)
-                .put(method_not_allowed_collection)
-                .delete(method_not_allowed_collection)
-                .patch(method_not_allowed_collection),
-        )
         .api_route("/api/v1/nvts/{id}", get_with(get_nvt, get_nvt_docs))
-        .route(
-            "/api/v1/nvts/{id}",
-            post(method_not_allowed_item)
-                .put(method_not_allowed_item)
-                .delete(method_not_allowed_item)
-                .patch(method_not_allowed_item),
-        )
         .api_route(
             "/api/v1/nvt-families",
             get_with(list_nvt_families, list_nvt_families_docs),
         )
-        .route(
-            "/api/v1/nvt-families",
-            post(method_not_allowed_collection)
-                .put(method_not_allowed_collection)
-                .delete(method_not_allowed_collection)
-                .patch(method_not_allowed_collection),
-        )
         // Identity and access control
         .api_route("/api/v1/users", get_with(list_users, list_users_docs))
         .api_route("/api/v1/users", post_with(create_user, create_user_docs))
-        .route("/api/v1/users", patch(method_not_allowed_collection))
         .api_route("/api/v1/users/{id}", get_with(get_user, get_user_docs))
         .api_route(
             "/api/v1/users/{id}",
@@ -484,10 +363,8 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/users/{id}",
             delete_with(delete_user, delete_user_docs),
         )
-        .route("/api/v1/users/{id}", patch(method_not_allowed_item))
         .api_route("/api/v1/groups", get_with(list_groups, list_groups_docs))
         .api_route("/api/v1/groups", post_with(create_group, create_group_docs))
-        .route("/api/v1/groups", patch(method_not_allowed_collection))
         .api_route("/api/v1/groups/{id}", get_with(get_group, get_group_docs))
         .api_route(
             "/api/v1/groups/{id}",
@@ -497,10 +374,8 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/groups/{id}",
             delete_with(delete_group, delete_group_docs),
         )
-        .route("/api/v1/groups/{id}", patch(method_not_allowed_item))
         .api_route("/api/v1/roles", get_with(list_roles, list_roles_docs))
         .api_route("/api/v1/roles", post_with(create_role, create_role_docs))
-        .route("/api/v1/roles", patch(method_not_allowed_collection))
         .api_route("/api/v1/roles/{id}", get_with(get_role, get_role_docs))
         .api_route(
             "/api/v1/roles/{id}",
@@ -510,7 +385,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/roles/{id}",
             delete_with(delete_role, delete_role_docs),
         )
-        .route("/api/v1/roles/{id}", patch(method_not_allowed_item))
         .api_route(
             "/api/v1/permissions",
             get_with(list_permissions, list_permissions_docs),
@@ -519,7 +393,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/permissions",
             post_with(create_permission, create_permission_docs),
         )
-        .route("/api/v1/permissions", patch(method_not_allowed_collection))
         .api_route(
             "/api/v1/permissions/{id}",
             get_with(get_permission, get_permission_docs),
@@ -532,14 +405,9 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/permissions/{id}",
             delete_with(delete_permission, delete_permission_docs),
         )
-        .route("/api/v1/permissions/{id}", patch(method_not_allowed_item))
         .api_route(
             "/api/v1/user-settings",
             get_with(list_user_settings, list_user_settings_docs),
-        )
-        .route(
-            "/api/v1/user-settings",
-            patch(method_not_allowed_collection),
         )
         .api_route(
             "/api/v1/user-settings/{id}",
@@ -549,11 +417,9 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/user-settings/{id}",
             put_with(update_user_setting, update_user_setting_docs),
         )
-        .route("/api/v1/user-settings/{id}", patch(method_not_allowed_item))
         // Tasks
         .api_route("/api/v1/tasks", get_with(list_tasks, list_tasks_docs))
         .api_route("/api/v1/tasks", post_with(create_task, create_task_docs))
-        .route("/api/v1/tasks", patch(method_not_allowed_collection))
         .api_route("/api/v1/tasks/{id}", get_with(get_task, get_task_docs))
         .api_route(
             "/api/v1/tasks/{id}",
@@ -563,7 +429,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/tasks/{id}",
             delete_with(delete_task, delete_task_docs),
         )
-        .route("/api/v1/tasks/{id}", patch(method_not_allowed_item))
         .api_route(
             "/api/v1/tasks/{id}/start",
             post_with(start_task, start_task_docs),
@@ -660,11 +525,7 @@ async fn serve_openapi(Extension(openapi_json): Extension<Arc<String>>) -> Respo
         .into_response()
 }
 
-pub(crate) async fn method_not_allowed_collection(uri: OriginalUri) -> Response {
-    RestError::method_not_allowed(uri.path()).into_response()
-}
-
-pub(crate) async fn method_not_allowed_item(uri: OriginalUri) -> Response {
+pub(crate) async fn method_not_allowed(uri: OriginalUri) -> Response {
     RestError::method_not_allowed(uri.path()).into_response()
 }
 
@@ -1056,45 +917,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn supporting_resource_mutations_return_problem_responses() {
+    async fn unsupported_methods_on_known_paths_return_problem_responses() {
         let service = static_gateway_service();
         let app = build_router(service);
 
+        // Covers the centralized 405 fallback so published paths cannot fall
+        // through to the unknown-route fallback when a method is unsupported.
+        for (method, uri) in [
+            ("PATCH", "/api/v1/scan-configs"),
+            (
+                "PATCH",
+                "/api/v1/scanners/123e4567-e89b-12d3-a456-426614174000",
+            ),
+            ("POST", "/api/v1/report-formats"),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(uri)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+            assert_eq!(
+                response
+                    .headers()
+                    .get("content-type")
+                    .and_then(|value| value.to_str().ok()),
+                Some("application/problem+json")
+            );
+        }
+
+        // A path that is not published must still use the 404 problem fallback.
         let response = app
-            .clone()
             .oneshot(
                 Request::builder()
-                    .method("POST")
-                    .uri("/api/v1/report-formats")
+                    .uri("/api/v1/does-not-exist")
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
-        assert_eq!(
-            response
-                .headers()
-                .get("content-type")
-                .and_then(|value| value.to_str().ok()),
-            Some("application/problem+json")
-        );
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("DELETE")
-                    .uri("/api/v1/notes/123e4567-e89b-12d3-a456-426614174000?ultimate=not-bool")
-                    .header("authorization", "Bearer test-session")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(
             response
                 .headers()

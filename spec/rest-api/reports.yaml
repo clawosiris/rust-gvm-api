@@ -23,6 +23,8 @@ paths:
                 $ref: "#/components/schemas/ReportList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /reports/{id}:
     parameters:
@@ -49,6 +51,8 @@ paths:
                 $ref: "#/components/schemas/Report"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     delete:
@@ -60,6 +64,8 @@ paths:
           description: Report deleted
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -148,6 +154,8 @@ paths:
                 $ref: "./results.yaml#/components/schemas/ResultList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
@@ -171,6 +179,8 @@ paths:
                 $ref: "./results.yaml#/components/schemas/ResultList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
         "501":
@@ -196,6 +206,8 @@ paths:
                 $ref: "#/components/schemas/TlsCertificateList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
         "501":
@@ -221,6 +233,8 @@ paths:
                 $ref: "./results.yaml#/components/schemas/ResultList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
         "501":
@@ -246,6 +260,8 @@ paths:
                 $ref: "./results.yaml#/components/schemas/ResultList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
         "501":

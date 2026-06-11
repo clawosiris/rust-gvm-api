@@ -209,6 +209,7 @@ pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperat
         .response_with::<201, Json<SessionCreatedResponse>, _>(ok_json("Session created"));
 
     let op = problem_response::<401>(op, "Authentication failed");
+    let op = problem_response::<429>(op, "Session limit or rate limit exceeded");
     problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 
