@@ -101,6 +101,7 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     }
 
     synchronize_report_export_responses(&mut normalized_paths);
+    document_backend_unavailable_responses(&mut normalized_paths);
 
     document["paths"] = Value::Object(normalized_paths);
 
@@ -759,6 +760,50 @@ fn ensure_problem_detail_schema(document: &mut Value) {
             }
         }),
     );
+}
+
+fn document_backend_unavailable_responses(paths: &mut Map<String, Value>) {
+    for (path, methods) in paths {
+        let Some(methods) = methods.as_object_mut() else {
+            continue;
+        };
+        for (method_name, operation) in methods {
+            if openapi_method(method_name).is_none() {
+                continue;
+            }
+            if !operation_can_proxy_to_backend(path, method_name, operation) {
+                continue;
+            }
+            let Some(responses) = operation["responses"].as_object_mut() else {
+                continue;
+            };
+            responses
+                .entry("502".to_string())
+                .or_insert_with(bad_gateway_response);
+        }
+    }
+}
+
+fn operation_can_proxy_to_backend(path: &str, method_name: &str, operation: &Value) -> bool {
+    if matches!((path, method_name), ("/session", "get" | "delete")) {
+        return false;
+    }
+
+    path == "/ready" || operation["responses"].get("401").is_some()
+}
+
+fn bad_gateway_response() -> Value {
+    json!({
+        "description": "Backend service unreachable or connection failed",
+        "content": {
+            "application/problem+json": {
+                "schema": {
+                    "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": ProblemDetailDoc::example()
+            }
+        }
+    })
 }
 
 fn normalize_problem_response_content_types(document: &mut Value) {

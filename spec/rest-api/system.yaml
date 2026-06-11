@@ -49,6 +49,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadinessStatus"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /version:
     get:

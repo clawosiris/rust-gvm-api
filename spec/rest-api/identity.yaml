@@ -27,6 +27,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
     post:
@@ -55,6 +57,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
 
@@ -77,6 +81,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -106,6 +112,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -122,6 +130,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -149,6 +159,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
     post:
@@ -176,6 +188,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
 
@@ -197,6 +211,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -223,6 +239,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -239,6 +257,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -266,6 +286,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
     post:
@@ -293,6 +315,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
 
@@ -314,6 +338,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -340,6 +366,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -356,6 +384,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -383,6 +413,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
     post:
@@ -410,6 +442,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
 
@@ -431,6 +465,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -457,6 +493,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -473,6 +511,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "403":
           $ref: "./common.yaml#/components/responses/Forbidden"
         "404":
@@ -498,6 +538,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /user-settings/{id}:
     parameters:
@@ -518,6 +560,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
     put:
@@ -542,6 +586,8 @@ paths:
           $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
