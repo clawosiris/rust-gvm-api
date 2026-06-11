@@ -319,7 +319,12 @@ async fn problem_details_shape_on_error() {
     assert_eq!(json["code"], serde_json::json!("backend_unavailable"));
     assert_eq!(json["title"], serde_json::json!("Bad Gateway"));
     assert_eq!(json["status"], serde_json::json!(502));
-    assert_eq!(json["detail"], serde_json::json!("backend offline"));
+    // Backend diagnostics must not leak into public RFC 9457 problem details.
+    assert_eq!(
+        json["detail"],
+        serde_json::json!("The backend service is unavailable.")
+    );
+    assert_ne!(json["detail"], serde_json::json!("backend offline"));
     assert_eq!(json["instance"], serde_json::json!("/api/v1/version"));
 
     handle.abort();
