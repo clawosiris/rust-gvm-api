@@ -5,6 +5,8 @@
 
 #![allow(missing_docs)]
 
+use std::fmt;
+
 use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
@@ -14,7 +16,7 @@ use axum::{
     Json,
 };
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::GatewayError;
+use gvm_gateway_domain::{hide_optional_value, GatewayError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -127,7 +129,7 @@ impl From<CredentialPage> for CredentialListResponse {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateCredential")]
 pub struct CreateCredentialRequest {
     pub name: String,
@@ -146,6 +148,28 @@ pub struct CreateCredentialRequest {
     pub privacy_algorithm: Option<String>,
     #[serde(rename = "privacyPassword")]
     pub privacy_password: Option<String>,
+}
+
+impl fmt::Debug for CreateCredentialRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CreateCredentialRequest")
+            .field("name", &self.name)
+            .field("comment", &self.comment)
+            .field("credential_type", &self.credential_type)
+            .field("login", &self.login)
+            .field("password", &hide_optional_value(&self.password))
+            .field("private_key", &hide_optional_value(&self.private_key))
+            .field("certificate", &self.certificate)
+            .field("community", &hide_optional_value(&self.community))
+            .field("auth_algorithm", &self.auth_algorithm)
+            .field("privacy_algorithm", &self.privacy_algorithm)
+            .field(
+                "privacy_password",
+                &hide_optional_value(&self.privacy_password),
+            )
+            .finish()
+    }
 }
 
 impl CreateCredentialRequest {
@@ -172,7 +196,7 @@ impl CreateCredentialRequest {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema)]
+#[derive(Clone, Default, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifyCredential")]
 pub struct ModifyCredentialRequest {
     pub name: Option<String>,
@@ -191,6 +215,27 @@ pub struct ModifyCredentialRequest {
     pub privacy_password: Option<String>,
 }
 
+impl fmt::Debug for ModifyCredentialRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ModifyCredentialRequest")
+            .field("name", &self.name)
+            .field("comment", &self.comment)
+            .field("login", &self.login)
+            .field("password", &hide_optional_value(&self.password))
+            .field("private_key", &hide_optional_value(&self.private_key))
+            .field("certificate", &self.certificate)
+            .field("community", &hide_optional_value(&self.community))
+            .field("auth_algorithm", &self.auth_algorithm)
+            .field("privacy_algorithm", &self.privacy_algorithm)
+            .field(
+                "privacy_password",
+                &hide_optional_value(&self.privacy_password),
+            )
+            .finish()
+    }
+}
+
 impl ModifyCredentialRequest {
     fn validate(self) -> ModifyCredentialInput {
         ModifyCredentialInput {
@@ -206,6 +251,14 @@ impl ModifyCredentialRequest {
             privacy_password: self.privacy_password,
         }
     }
+}
+
+fn credential_json_body_error(error: serde_json::Error) -> GatewayError {
+    GatewayError::InvalidInput(format!(
+        "invalid JSON body at line {}, column {}",
+        error.line(),
+        error.column()
+    ))
 }
 
 pub async fn list_credentials(
@@ -282,11 +335,8 @@ pub async fn create_credential(
     let request = match serde_json::from_slice::<CreateCredentialRequest>(&body) {
         Ok(request) => request,
         Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response()
+            return RestError::from_gateway_error(credential_json_body_error(error), instance)
+                .into_response()
         }
     };
     let input = match request.validate() {
@@ -346,11 +396,8 @@ pub async fn update_credential(
     let request = match serde_json::from_slice::<ModifyCredentialRequest>(&body) {
         Ok(request) => request,
         Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response()
+            return RestError::from_gateway_error(credential_json_body_error(error), instance)
+                .into_response()
         }
     };
     match service
@@ -473,8 +520,11 @@ pub(crate) fn delete_credential_docs(op: TransformOperation<'_>) -> TransformOpe
 mod tests {
     use serde_json::json;
 
-    use super::{CredentialResponse, CredentialType};
-    use gvm_gateway_domain::Credential;
+    use super::{
+        credential_json_body_error, CreateCredentialRequest, CredentialResponse, CredentialType,
+        ModifyCredentialRequest,
+    };
+    use gvm_gateway_domain::{Credential, GatewayError};
 
     fn credential_with_type(credential_type: &str) -> Credential {
         Credential {
@@ -514,5 +564,74 @@ mod tests {
 
         assert_eq!(known["type"], json!("up"));
         assert_eq!(unknown["type"], json!("future_credential"));
+    }
+
+    #[test]
+    fn credential_request_debug_redacts_secrets() {
+        // Request DTOs carry write-only credential secrets; debug output must
+        // only expose their presence, never their submitted values.
+        let create = CreateCredentialRequest {
+            name: "Credential".to_string(),
+            comment: Some("visible comment".to_string()),
+            credential_type: "snmpv3".to_string(),
+            login: Some("visible-login".to_string()),
+            password: Some("create-password-secret".to_string()),
+            private_key: Some("create-private-key-secret".to_string()),
+            certificate: Some("public-certificate".to_string()),
+            community: Some("create-community-secret".to_string()),
+            auth_algorithm: Some("sha1".to_string()),
+            privacy_algorithm: Some("aes".to_string()),
+            privacy_password: Some("create-privacy-secret".to_string()),
+        };
+        let modify = ModifyCredentialRequest {
+            name: Some("Credential".to_string()),
+            comment: Some("visible comment".to_string()),
+            login: Some("visible-login".to_string()),
+            password: Some("modify-password-secret".to_string()),
+            private_key: Some("modify-private-key-secret".to_string()),
+            certificate: Some("public-certificate".to_string()),
+            community: Some("modify-community-secret".to_string()),
+            auth_algorithm: Some("sha1".to_string()),
+            privacy_algorithm: Some("aes".to_string()),
+            privacy_password: Some("modify-privacy-secret".to_string()),
+        };
+
+        let debug = format!("{create:?}\n{modify:?}");
+
+        assert!(debug.contains("visible-login"));
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains("create-password-secret"));
+        assert!(!debug.contains("create-private-key-secret"));
+        assert!(!debug.contains("create-community-secret"));
+        assert!(!debug.contains("create-privacy-secret"));
+        assert!(!debug.contains("modify-password-secret"));
+        assert!(!debug.contains("modify-private-key-secret"));
+        assert!(!debug.contains("modify-community-secret"));
+        assert!(!debug.contains("modify-privacy-secret"));
+    }
+
+    #[test]
+    fn credential_json_parse_error_detail_omits_submitted_values() {
+        // Credential parse failures become client-visible problem details, so
+        // the detail string must not reuse serde's value-bearing error text.
+        let error = serde_json::from_value::<CreateCredentialRequest>(json!({
+            "name": "Credential",
+            "type": "up",
+            "password": 123456789,
+            "privateKey": 987654321,
+            "community": 111222333,
+            "privacyPassword": 444555666
+        }))
+        .expect_err("numeric secret fields should fail string deserialization");
+
+        let GatewayError::InvalidInput(detail) = credential_json_body_error(error) else {
+            panic!("credential parse errors should map to invalid input");
+        };
+
+        assert!(detail.starts_with("invalid JSON body at line "));
+        assert!(!detail.contains("123456789"));
+        assert!(!detail.contains("987654321"));
+        assert!(!detail.contains("111222333"));
+        assert!(!detail.contains("444555666"));
     }
 }

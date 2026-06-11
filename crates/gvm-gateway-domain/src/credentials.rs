@@ -3,9 +3,11 @@
 
 //! Credential domain types and commands.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
-use crate::Pagination;
+use crate::{hide_optional_value, Pagination};
 
 /// Domain credential representation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -66,7 +68,7 @@ pub struct CredentialQuery {
 }
 
 /// Credential create command.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
 pub struct CreateCredentialInput {
     /// Credential name.
     pub name: String,
@@ -93,7 +95,7 @@ pub struct CreateCredentialInput {
 }
 
 /// Credential update command.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
 pub struct ModifyCredentialInput {
     /// Optional name.
     pub name: Option<String>,
@@ -115,4 +117,47 @@ pub struct ModifyCredentialInput {
     pub privacy_algorithm: Option<String>,
     /// Optional SNMP privacy password.
     pub privacy_password: Option<String>,
+}
+
+impl fmt::Debug for CreateCredentialInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CreateCredentialInput")
+            .field("name", &self.name)
+            .field("comment", &self.comment)
+            .field("credential_type", &self.credential_type)
+            .field("login", &self.login)
+            .field("password", &hide_optional_value(&self.password))
+            .field("private_key", &hide_optional_value(&self.private_key))
+            .field("certificate", &self.certificate)
+            .field("community", &hide_optional_value(&self.community))
+            .field("auth_algorithm", &self.auth_algorithm)
+            .field("privacy_algorithm", &self.privacy_algorithm)
+            .field(
+                "privacy_password",
+                &hide_optional_value(&self.privacy_password),
+            )
+            .finish()
+    }
+}
+
+impl fmt::Debug for ModifyCredentialInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ModifyCredentialInput")
+            .field("name", &self.name)
+            .field("comment", &self.comment)
+            .field("login", &self.login)
+            .field("password", &hide_optional_value(&self.password))
+            .field("private_key", &hide_optional_value(&self.private_key))
+            .field("certificate", &self.certificate)
+            .field("community", &hide_optional_value(&self.community))
+            .field("auth_algorithm", &self.auth_algorithm)
+            .field("privacy_algorithm", &self.privacy_algorithm)
+            .field(
+                "privacy_password",
+                &hide_optional_value(&self.privacy_password),
+            )
+            .finish()
+    }
 }

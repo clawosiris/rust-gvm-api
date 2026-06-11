@@ -121,9 +121,70 @@ fn resource_ref_name_optional() {
     assert!(!json.contains("\"name\""));
 }
 
+/// Log-safety helpers expose only the shared marker and do not retain the
+/// original value in Debug, Display, or optional Debug formatting.
+#[test]
+fn log_safety_helpers_hide_values() {
+    let secret = "super-secret-value".to_string();
+    let optional_secret = Some(secret.clone());
+    let absent_secret: Option<String> = None;
+
+    assert_eq!(format!("{}", hide_value(&secret)), "<redacted>");
+    assert_eq!(format!("{:?}", hide_value(&secret)), "<redacted>");
+    assert_eq!(
+        format!("{:?}", hide_optional_value(&optional_secret)),
+        "Some(<redacted>)"
+    );
+    assert_eq!(format!("{:?}", hide_optional_value(&absent_secret)), "None");
+}
+
 // ------------------------------------------------------------------------
 // Target tests
 // ------------------------------------------------------------------------
+
+/// Credential command debug output must not expose write-only secret material
+/// if inputs are ever included in diagnostic logs or panic messages.
+#[test]
+fn credential_command_debug_redacts_secrets() {
+    let create = CreateCredentialInput {
+        name: "Credential".to_string(),
+        comment: Some("visible comment".to_string()),
+        credential_type: "snmpv3".to_string(),
+        login: Some("visible-login".to_string()),
+        password: Some("create-password-secret".to_string()),
+        private_key: Some("create-private-key-secret".to_string()),
+        certificate: Some("public-certificate".to_string()),
+        community: Some("create-community-secret".to_string()),
+        auth_algorithm: Some("sha1".to_string()),
+        privacy_algorithm: Some("aes".to_string()),
+        privacy_password: Some("create-privacy-secret".to_string()),
+    };
+    let modify = ModifyCredentialInput {
+        name: Some("Credential".to_string()),
+        comment: Some("visible comment".to_string()),
+        login: Some("visible-login".to_string()),
+        password: Some("modify-password-secret".to_string()),
+        private_key: Some("modify-private-key-secret".to_string()),
+        certificate: Some("public-certificate".to_string()),
+        community: Some("modify-community-secret".to_string()),
+        auth_algorithm: Some("sha1".to_string()),
+        privacy_algorithm: Some("aes".to_string()),
+        privacy_password: Some("modify-privacy-secret".to_string()),
+    };
+
+    let debug = format!("{create:?}\n{modify:?}");
+
+    assert!(debug.contains("visible-login"));
+    assert!(debug.contains("<redacted>"));
+    assert!(!debug.contains("create-password-secret"));
+    assert!(!debug.contains("create-private-key-secret"));
+    assert!(!debug.contains("create-community-secret"));
+    assert!(!debug.contains("create-privacy-secret"));
+    assert!(!debug.contains("modify-password-secret"));
+    assert!(!debug.contains("modify-private-key-secret"));
+    assert!(!debug.contains("modify-community-secret"));
+    assert!(!debug.contains("modify-privacy-secret"));
+}
 
 /// TargetQuery defaults preserve the existing zero-value pagination behavior.
 #[test]
