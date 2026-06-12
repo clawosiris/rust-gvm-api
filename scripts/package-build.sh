@@ -12,6 +12,10 @@ VERSION=""
 RELEASE="1"
 ARCHITECTURE=""
 OUTPUT_DIR="dist/packages"
+NFPM_VERSION="${NFPM_VERSION:-2.43.2}"
+NFPM_IMAGE_REPOSITORY="${NFPM_IMAGE_REPOSITORY:-ghcr.io/goreleaser/nfpm}"
+NFPM_IMAGE_DIGEST="${NFPM_IMAGE_DIGEST:-sha256:40fb2e649c8f7ab7b7465a825150ae64a6d9c56b45e44a4912541a36fd06014c}"
+NFPM_IMAGE="${NFPM_IMAGE:-${NFPM_IMAGE_REPOSITORY}@${NFPM_IMAGE_DIGEST}}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -55,10 +59,35 @@ fi
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "${ROOT_DIR}"
 
-if [[ ! -x "${ROOT_DIR}/.bin/nfpm" ]]; then
-  echo "nfpm is not installed; run scripts/install-nfpm.sh first" >&2
+case "${OUTPUT_DIR}" in
+  /*)
+    OUTPUT_DIR_ABS="$(realpath -m "${OUTPUT_DIR}")"
+    ;;
+  *)
+    OUTPUT_DIR_ABS="$(realpath -m "${ROOT_DIR}/${OUTPUT_DIR}")"
+    ;;
+esac
+
+case "${OUTPUT_DIR_ABS}" in
+  "${ROOT_DIR}/dist/"*)
+    ;;
+  *)
+    echo "package output directory must be under dist/: ${OUTPUT_DIR}" >&2
+    exit 1
+    ;;
+esac
+
+if [[ -z "${OUTPUT_DIR}" || "${OUTPUT_DIR_ABS}" == "/" || "${OUTPUT_DIR_ABS}" == "${ROOT_DIR}" || "${OUTPUT_DIR_ABS}" == "${ROOT_DIR}/dist" ]]; then
+  echo "unsafe package output directory: ${OUTPUT_DIR:-<empty>}" >&2
   exit 1
 fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker is required to run the verified nfpm image" >&2
+  exit 1
+fi
+
+NFPM_IMAGE="${NFPM_IMAGE}" "${ROOT_DIR}/scripts/verify-nfpm-image.sh" "${NFPM_VERSION}"
 
 if [[ ! -x "${ROOT_DIR}/target/release/gvm-gateway" ]]; then
   echo "release binary missing: target/release/gvm-gateway" >&2
@@ -98,16 +127,18 @@ esac
 eval "$(${ROOT_DIR}/scripts/package-version.sh "${VERSION}" "${PACKAGER}" "${RELEASE}")"
 
 rm -rf dist/package-root dist/package-work
-rm -rf "${OUTPUT_DIR}"
+rm -rf "${OUTPUT_DIR_ABS}"
 mkdir -p dist/package-root/usr/bin \
   dist/package-root/etc/gvm-gateway \
   dist/package-root/usr/share/doc/gvm-gateway \
   dist/package-root/usr/share/licenses/gvm-gateway \
   dist/package-work \
-  "${OUTPUT_DIR}"
+  "${OUTPUT_DIR_ABS}"
 
 install -m 0755 target/release/gvm-gateway dist/package-root/usr/bin/gvm-gateway
 install -m 0644 packaging/gvm-gateway.toml dist/package-root/etc/gvm-gateway/gvm-gateway.toml
+install -m 0644 README.md dist/package-root/usr/share/doc/gvm-gateway/README.md
+install -m 0644 LICENSE dist/package-root/usr/share/licenses/gvm-gateway/LICENSE
 
 cat > dist/package-root/usr/share/doc/gvm-gateway/BUILDINFO <<EOF
 package_name=gvm-gateway
@@ -123,12 +154,20 @@ EOF
 ARCHITECTURE="${ARCHITECTURE}" PACKAGE_VERSION="${PACKAGE_VERSION}" PACKAGE_RELEASE="${PACKAGE_RELEASE}" perl -0pe 's/__ARCH__/$ENV{ARCHITECTURE}/g; s/__VERSION__/$ENV{PACKAGE_VERSION}/g; s/__RELEASE__/$ENV{PACKAGE_RELEASE}/g' \
   packaging/nfpm.yaml.tpl > dist/package-work/nfpm.yaml
 
-"${ROOT_DIR}/.bin/nfpm" package \
+NFPM_DOCKER_ARGS=(
+  --rm
+  --user "$(id -u):$(id -g)"
+  --volume "${ROOT_DIR}/dist:${ROOT_DIR}/dist"
+  --workdir "${ROOT_DIR}"
+)
+
+docker run "${NFPM_DOCKER_ARGS[@]}" \
+  "${NFPM_IMAGE}" package \
   --config dist/package-work/nfpm.yaml \
   --packager "${PACKAGER}" \
-  --target "${OUTPUT_DIR}"
+  --target "${OUTPUT_DIR_ABS}"
 
-for artifact in "${OUTPUT_DIR}"/*; do
+for artifact in "${OUTPUT_DIR_ABS}"/*; do
   [[ -f "${artifact}" ]] || continue
   [[ "${artifact}" == *.sha256 ]] && continue
   sha256sum "${artifact}" > "${artifact}.sha256"
