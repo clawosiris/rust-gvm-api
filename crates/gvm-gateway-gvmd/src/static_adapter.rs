@@ -788,7 +788,10 @@ impl AuthPort for StaticGvmdAdapter {
         }
     }
 
-    async fn disconnect_session(&self, _session_token: &str) -> Result<(), GatewayError> {
+    async fn disconnect_session(
+        &self,
+        _session: &gvm_gateway_domain::SessionTokenDigest,
+    ) -> Result<(), GatewayError> {
         Ok(())
     }
 }

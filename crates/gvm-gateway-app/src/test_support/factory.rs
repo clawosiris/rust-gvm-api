@@ -9,7 +9,6 @@ use std::{
 
 use gvm_gateway_domain::SessionManager;
 use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
-use tracing::instrument::WithSubscriber;
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
     prelude::*,
@@ -75,16 +74,16 @@ impl io::Write for TestWriterGuard {
 /// Captures tracing output so tests can assert on audit and span behavior.
 pub(crate) struct TraceCapture {
     buffer: Arc<Mutex<Vec<u8>>>,
-    subscriber: tracing::Dispatch,
 }
 
 impl TraceCapture {
-    /// Runs a future with this capture's subscriber as the scoped default.
+    /// Runs a future while the global test subscriber writes to this capture's
+    /// cleared buffer.
     pub(crate) async fn run<F>(&self, future: F) -> F::Output
     where
         F: Future,
     {
-        future.with_subscriber(self.subscriber.clone()).await
+        future.await
     }
 
     /// Returns captured trace output as UTF-8 text.
@@ -93,29 +92,33 @@ impl TraceCapture {
     }
 }
 
-/// Creates an isolated tracing capture for one test.
+/// Clears and returns the shared tracing capture for one test.
 pub(crate) fn capture_tracing() -> TraceCapture {
-    let buffer = Arc::new(Mutex::new(Vec::new()));
-    let writer = TestWriter {
-        buffer: buffer.clone(),
-    };
-    let subscriber = tracing_subscriber::registry().with(
-        tracing_subscriber::fmt::layer()
-            .with_writer(writer)
-            .with_ansi(false)
-            .with_span_events(FmtSpan::CLOSE),
-    );
+    static BUFFER: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
+    static SUBSCRIBER: OnceLock<()> = OnceLock::new();
 
-    TraceCapture {
-        buffer,
-        subscriber: tracing::Dispatch::new(subscriber),
-    }
+    let buffer = Arc::clone(BUFFER.get_or_init(|| Arc::new(Mutex::new(Vec::new()))));
+    SUBSCRIBER.get_or_init(|| {
+        let writer = TestWriter {
+            buffer: Arc::clone(&buffer),
+        };
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(writer)
+                .with_ansi(false)
+                .with_span_events(FmtSpan::CLOSE),
+        );
+        let _ = tracing::subscriber::set_global_default(subscriber);
+    });
+    buffer.lock().unwrap().clear();
+
+    TraceCapture { buffer }
 }
 
-/// Serializes tests that assert on tracing output.
+/// Serializes tests that assert on the shared tracing output buffer.
 ///
-/// `tracing` callsite interest is process-global enough that several scoped
-/// subscribers running in parallel can make target-specific assertions flaky.
+/// The test subscriber is process-global, so capture tests must not run
+/// concurrently with each other.
 pub(crate) async fn lock_tracing() -> AsyncMutexGuard<'static, ()> {
     static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| AsyncMutex::new(())).lock().await

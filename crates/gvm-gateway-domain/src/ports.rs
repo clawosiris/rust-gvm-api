@@ -46,7 +46,10 @@ pub trait AuthPort: Send + Sync + 'static {
     ) -> Result<(), GatewayError>;
 
     /// Disconnect and clean up the backend connection for a session.
-    async fn disconnect_session(&self, session_token: &str) -> Result<(), GatewayError>;
+    async fn disconnect_session(
+        &self,
+        session: &crate::SessionTokenDigest,
+    ) -> Result<(), GatewayError>;
 }
 
 /// Port for alert CRUD operations.

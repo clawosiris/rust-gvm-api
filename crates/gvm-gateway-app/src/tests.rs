@@ -10,7 +10,7 @@ use gvm_gateway_domain::{
     SessionManager, TargetQuery,
 };
 
-use crate::{test_support::*, GatewayService};
+use crate::{service::safe_session_id, test_support::*, GatewayService};
 
 /// Health always reports `ok` because liveness is process-local.
 #[test]
@@ -18,6 +18,18 @@ fn service_health_always_returns_ok() {
     let service = create_test_service();
     let health = service.health();
     assert_eq!(health.status, "ok");
+}
+
+/// Raw-token observability paths use the documented `session:<suffix>` format
+/// without exposing the complete bearer token.
+#[test]
+fn safe_session_id_uses_documented_token_suffix() {
+    let token = "gvm_sess_1234567890abcdef";
+
+    let session_id = safe_session_id(token);
+
+    assert_eq!(session_id, "session:90abcdef");
+    assert!(!session_id.contains(token));
 }
 
 /// Ready forwards a healthy backend readiness response unchanged.
