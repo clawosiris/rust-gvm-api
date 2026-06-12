@@ -162,7 +162,7 @@ jobs:
       - name: Smoke test package install
         run: ./scripts/package-smoke.sh --packager "${{ matrix.packager }}" --package-dir dist/packages
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: gvm-gateway-${{ matrix.packager }}-${{ matrix.package_arch }}
           path: dist/packages/*
@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
         with:
           driver: docker-container
       - run: docker buildx version
@@ -199,7 +199,7 @@ jobs:
             -f Containerfile \
             .
           sha256sum dist/oci/gvm-gateway.oci.tar > dist/oci/gvm-gateway.oci.tar.sha256
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: gvm-gateway-oci
           path: dist/oci/*
