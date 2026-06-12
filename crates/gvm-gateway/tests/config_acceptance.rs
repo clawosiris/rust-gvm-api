@@ -4,7 +4,10 @@ use gvm_gateway::config::{
     load_config, load_config_with_default_path, parse_gvmd_endpoint, CliArgs, GatewayConfig,
     TransportSecurityConfig, TransportSecurityMode,
 };
-use gvm_gateway_rest::router::{RateLimitConfig, RestSecurityConfig};
+use gvm_gateway_rest::{
+    peer_addr::TrustedProxyCidr,
+    router::{RateLimitConfig, RestSecurityConfig},
+};
 use tempfile::{tempdir, NamedTempFile};
 
 #[test]
@@ -38,7 +41,7 @@ fn config_override_precedence() {
     let mut file = NamedTempFile::new().unwrap();
     writeln!(
         file,
-        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ntelemetry_service_name = \"gateway-file\"\ntelemetry_service_namespace = \"greenbone.file\"\ntelemetry_deployment_environment = \"staging\"\ntelemetry_service_instance_id = \"gw-file-1\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\nshutdown_drain_timeout_secs = 45\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3"
+        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ntelemetry_service_name = \"gateway-file\"\ntelemetry_service_namespace = \"greenbone.file\"\ntelemetry_deployment_environment = \"staging\"\ntelemetry_service_instance_id = \"gw-file-1\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\nshutdown_drain_timeout_secs = 45\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3\ntrusted_proxy_cidrs = [\"10.0.0.0/8\"]"
     )
     .unwrap();
 
@@ -71,6 +74,10 @@ fn config_override_precedence() {
     env.insert(
         "GVM_GATEWAY_TRANSPORT_SECURITY_MODE".to_string(),
         "terminated_by_proxy".to_string(),
+    );
+    env.insert(
+        "GVM_GATEWAY_TRUSTED_PROXY_CIDRS".to_string(),
+        "127.0.0.1/32, ::1/128".to_string(),
     );
 
     let config = load_config(
@@ -114,6 +121,10 @@ fn config_override_precedence() {
                 global_per_window: Some(12),
                 subject_per_window: None,
             },
+            trusted_proxy_cidrs: vec![
+                "127.0.0.1/32".parse::<TrustedProxyCidr>().unwrap(),
+                "::1/128".parse::<TrustedProxyCidr>().unwrap(),
+            ],
             native_tls_enabled: false,
         }
     );
@@ -291,4 +302,20 @@ fn invalid_transport_security_mode_is_rejected() {
     assert!(error
         .to_string()
         .contains("must be one of: disabled, terminated_by_proxy, native"));
+}
+
+#[test]
+fn invalid_trusted_proxy_cidr_is_rejected() {
+    // Trusted proxy CIDRs define whether caller-controlled forwarding headers
+    // can affect rate-limit buckets, so bad values must fail startup.
+    let mut env = BTreeMap::new();
+    env.insert(
+        "GVM_GATEWAY_TRUSTED_PROXY_CIDRS".to_string(),
+        "127.0.0.1/999".to_string(),
+    );
+
+    let error = load_config(&CliArgs::default(), &env).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("GVM_GATEWAY_TRUSTED_PROXY_CIDRS contains invalid CIDR"));
 }

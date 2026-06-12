@@ -3,7 +3,10 @@ mod common;
 use common::{
     assert_problem_status, assert_security_headers, target_harness, target_harness_with_security,
 };
-use gvm_gateway_rest::router::{RateLimitConfig, RestSecurityConfig};
+use gvm_gateway_rest::{
+    peer_addr::TrustedProxyCidr,
+    router::{RateLimitConfig, RestSecurityConfig},
+};
 use http::StatusCode;
 
 #[tokio::test]
@@ -145,6 +148,7 @@ async fn cors_preflight_allowed_origin() {
         RestSecurityConfig {
             cors_allowed_origins: vec!["https://ui.example".to_string()],
             rate_limit: RateLimitConfig::disabled(),
+            trusted_proxy_cidrs: Vec::new(),
             native_tls_enabled: false,
         },
     )
@@ -177,6 +181,7 @@ async fn cors_preflight_denied_origin() {
         RestSecurityConfig {
             cors_allowed_origins: vec!["https://ui.example".to_string()],
             rate_limit: RateLimitConfig::disabled(),
+            trusted_proxy_cidrs: Vec::new(),
             native_tls_enabled: false,
         },
     )
@@ -216,6 +221,7 @@ async fn native_tls_security_config_emits_hsts() {
         RestSecurityConfig {
             cors_allowed_origins: Vec::new(),
             rate_limit: RateLimitConfig::disabled(),
+            trusted_proxy_cidrs: Vec::new(),
             native_tls_enabled: true,
         },
     )
@@ -242,6 +248,7 @@ async fn over_limit_returns_429() {
                 global_per_window: Some(10),
                 subject_per_window: Some(1),
             },
+            trusted_proxy_cidrs: Vec::new(),
             native_tls_enabled: false,
         },
     )
@@ -270,6 +277,7 @@ async fn retry_after_header_present() {
                 global_per_window: Some(1),
                 subject_per_window: Some(100),
             },
+            trusted_proxy_cidrs: Vec::new(),
             native_tls_enabled: false,
         },
     )
@@ -299,6 +307,7 @@ async fn different_sessions_have_independent_subject_limits() {
                 global_per_window: Some(10),
                 subject_per_window: Some(1),
             },
+            trusted_proxy_cidrs: Vec::new(),
             native_tls_enabled: false,
         },
     )
@@ -334,6 +343,7 @@ async fn global_limit_applies_across_sessions() {
                 global_per_window: Some(1),
                 subject_per_window: Some(100),
             },
+            trusted_proxy_cidrs: Vec::new(),
             native_tls_enabled: false,
         },
     )
@@ -366,6 +376,7 @@ async fn session_creation_rate_limited_before_backend_work() {
                 global_per_window: Some(10),
                 subject_per_window: Some(1),
             },
+            trusted_proxy_cidrs: Vec::new(),
             native_tls_enabled: false,
         },
     )
@@ -408,6 +419,7 @@ async fn session_creation_rate_limit_is_source_aware_before_authentication() {
                 global_per_window: Some(10),
                 subject_per_window: Some(1),
             },
+            trusted_proxy_cidrs: Vec::new(),
             native_tls_enabled: false,
         },
     )
@@ -440,6 +452,59 @@ async fn session_creation_rate_limit_is_source_aware_before_authentication() {
             .count(),
         auth_count_after_first
     );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn trusted_forwarded_clients_have_independent_session_creation_limits() {
+    // In the documented container shape, the direct peer can be the proxy.
+    // Explicitly trusted proxy CIDRs let rate limiting use the forwarded client
+    // IP so one login abuser does not exhaust the shared proxy bucket.
+    let harness = target_harness_with_security(
+        |_| {},
+        RestSecurityConfig {
+            cors_allowed_origins: Vec::new(),
+            rate_limit: RateLimitConfig {
+                window_secs: 60,
+                global_per_window: Some(10),
+                subject_per_window: Some(1),
+            },
+            trusted_proxy_cidrs: vec!["127.0.0.1/32".parse::<TrustedProxyCidr>().unwrap()],
+            native_tls_enabled: false,
+        },
+    )
+    .await;
+
+    let first = harness
+        .client
+        .post(harness.url("/api/v1/session"))
+        .header("X-Forwarded-For", "198.51.100.10")
+        .basic_auth("admin", Some("admin"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::CREATED);
+
+    let second = harness
+        .client
+        .post(harness.url("/api/v1/session"))
+        .header("X-Forwarded-For", "198.51.100.11")
+        .basic_auth("admin", Some("admin"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::CREATED);
+
+    let first_again = harness
+        .client
+        .post(harness.url("/api/v1/session"))
+        .header("X-Forwarded-For", "198.51.100.10")
+        .basic_auth("admin", Some("admin"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first_again.status(), StatusCode::TOO_MANY_REQUESTS);
 
     harness.shutdown().await;
 }

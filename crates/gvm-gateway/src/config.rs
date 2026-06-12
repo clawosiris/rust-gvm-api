@@ -10,7 +10,7 @@ use std::{
 };
 
 use clap::Parser;
-use gvm_gateway_rest::router::RestSecurityConfig;
+use gvm_gateway_rest::{peer_addr::TrustedProxyCidr, router::RestSecurityConfig};
 use serde::Deserialize;
 
 /// Packaged config path used when no explicit `--config` path is provided.
@@ -208,6 +208,7 @@ struct FileConfig {
     rate_limit_window_secs: Option<u64>,
     rate_limit_global_per_window: Option<u64>,
     rate_limit_subject_per_window: Option<u64>,
+    trusted_proxy_cidrs: Option<Vec<String>>,
     transport_security_mode: Option<TransportSecurityMode>,
     tls_certificate_path: Option<PathBuf>,
     tls_private_key_path: Option<PathBuf>,
@@ -268,7 +269,7 @@ pub fn load_config_with_default_path(
         if let Some(path) = file.tls_private_key_path.as_ref() {
             config.transport_security.tls_private_key_path = Some(path.clone());
         }
-        apply_security_file_config(&mut config.rest_security, &file);
+        apply_security_file_config(&mut config.rest_security, &file)?;
     }
 
     if let Some(bind) = env.get("GVM_GATEWAY_BIND") {
@@ -357,7 +358,10 @@ pub fn parse_gvmd_endpoint(endpoint: &str) -> Result<PathBuf, ConfigError> {
     )))
 }
 
-fn apply_security_file_config(security: &mut RestSecurityConfig, file: &FileConfig) {
+fn apply_security_file_config(
+    security: &mut RestSecurityConfig,
+    file: &FileConfig,
+) -> Result<(), ConfigError> {
     if let Some(origins) = file.cors_allowed_origins.as_ref() {
         security.cors_allowed_origins = origins.clone();
     }
@@ -370,6 +374,10 @@ fn apply_security_file_config(security: &mut RestSecurityConfig, file: &FileConf
     if let Some(limit) = file.rate_limit_subject_per_window {
         security.rate_limit.subject_per_window = limit_to_option(limit);
     }
+    if let Some(cidrs) = file.trusted_proxy_cidrs.as_ref() {
+        security.trusted_proxy_cidrs = parse_trusted_proxy_cidrs("trusted_proxy_cidrs", cidrs)?;
+    }
+    Ok(())
 }
 
 fn apply_security_env_config(
@@ -400,7 +408,31 @@ fn apply_security_env_config(
             limit,
         )?);
     }
+    if let Some(cidrs) = env.get("GVM_GATEWAY_TRUSTED_PROXY_CIDRS") {
+        let cidrs = cidrs
+            .split(',')
+            .map(str::trim)
+            .filter(|cidr| !cidr.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        security.trusted_proxy_cidrs =
+            parse_trusted_proxy_cidrs("GVM_GATEWAY_TRUSTED_PROXY_CIDRS", &cidrs)?;
+    }
     Ok(())
+}
+
+fn parse_trusted_proxy_cidrs(
+    name: &str,
+    cidrs: &[String],
+) -> Result<Vec<TrustedProxyCidr>, ConfigError> {
+    cidrs
+        .iter()
+        .map(|cidr| {
+            cidr.parse::<TrustedProxyCidr>().map_err(|error| {
+                ConfigError::InvalidValue(format!("{name} contains invalid CIDR '{cidr}': {error}"))
+            })
+        })
+        .collect()
 }
 
 fn parse_u64(name: &str, value: &str) -> Result<u64, ConfigError> {

@@ -153,6 +153,7 @@ Useful follow-up commands:
 - Default container config: [packaging/gvm-gateway.container.toml](./packaging/gvm-gateway.container.toml)
 - Listener: `0.0.0.0:8080`
 - Default transport mode: `terminated_by_proxy`
+- Default trusted proxy CIDRs for forwarded client IPs: `127.0.0.1/32`, `::1/128`
 - gvmd socket mount: `/run/gvmd`
 - Required backend endpoint: `GVM_GATEWAY_GVMD_ENDPOINT=unix:///run/gvmd/gvmd.sock`
 - Required transport-security mode: `GVM_GATEWAY_TRANSPORT_SECURITY_MODE`
@@ -170,6 +171,7 @@ Useful follow-up commands:
   - `GVM_GATEWAY_RATE_LIMIT_WINDOW_SECS`
   - `GVM_GATEWAY_RATE_LIMIT_GLOBAL_PER_WINDOW`
   - `GVM_GATEWAY_RATE_LIMIT_SUBJECT_PER_WINDOW`
+  - `GVM_GATEWAY_TRUSTED_PROXY_CIDRS`
 
 ### Transport Security Contract
 
@@ -178,7 +180,7 @@ Useful follow-up commands:
 - `transport_security_mode = "native"` serves HTTPS directly from the gateway process.
 - Native TLS requires both `tls_certificate_path` and `tls_private_key_path`; startup fails if either path is missing or the PEM material cannot be loaded.
 - Proxy mode does not require local TLS files.
-- Forwarded headers are not trusted implicitly in proxy mode; proxy trust remains an explicit future concern rather than a side effect of enabling proxy termination.
+- Forwarded headers are not trusted implicitly in proxy mode. Configure `trusted_proxy_cidrs` or `GVM_GATEWAY_TRUSTED_PROXY_CIDRS` with the direct proxy CIDRs whose `X-Forwarded-For` client IPs may be used for unauthenticated rate-limit buckets.
 
 ### Telemetry Contract
 

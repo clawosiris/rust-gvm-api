@@ -18,6 +18,7 @@ use serde::Deserialize;
 use crate::{
     auth_policy::{classify_runtime_route, RestRouteAuthPolicy},
     error::RestError,
+    peer_addr::TrustedProxyCidr,
     rate_limit::{is_rate_limited_path, too_many_requests_response, RateLimitConfig, RateLimiter},
 };
 
@@ -30,6 +31,9 @@ pub struct RestSecurityConfig {
     /// Rate-limit and backpressure settings.
     #[serde(default)]
     pub rate_limit: RateLimitConfig,
+    /// Trusted direct proxy CIDRs whose X-Forwarded-For client IP may be used.
+    #[serde(default)]
+    pub trusted_proxy_cidrs: Vec<TrustedProxyCidr>,
     /// Whether this gateway process terminates HTTPS directly.
     #[serde(default)]
     pub native_tls_enabled: bool,
@@ -44,7 +48,10 @@ pub(crate) struct SecurityRuntime {
 impl SecurityRuntime {
     pub(crate) fn new(config: RestSecurityConfig) -> Self {
         Self {
-            limiter: RateLimiter::new(config.rate_limit.clone()),
+            limiter: RateLimiter::new(
+                config.rate_limit.clone(),
+                config.trusted_proxy_cidrs.clone(),
+            ),
             config,
         }
     }

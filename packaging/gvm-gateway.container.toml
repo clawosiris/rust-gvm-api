@@ -3,6 +3,7 @@
 bind = "0.0.0.0:8080"
 transport_security_mode = "terminated_by_proxy"
 gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
+trusted_proxy_cidrs = ["127.0.0.1/32", "::1/128"]
 # tls_certificate_path = "/run/secrets/gvm-gateway-cert.pem"
 # tls_private_key_path = "/run/secrets/gvm-gateway-key.pem"
 # otlp_endpoint = "http://otel-collector:4317"
