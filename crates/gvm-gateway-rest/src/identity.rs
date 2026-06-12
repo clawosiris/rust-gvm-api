@@ -6,7 +6,7 @@
 use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
-    extract::{OriginalUri, Path, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -30,7 +30,10 @@ use crate::{
     error::RestError,
     open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
-    query::{parse_collection_query, parse_filter_only_query},
+    query::{
+        parse_collection_query, parse_delete_resource_query, parse_filter_only_query,
+        DeleteResourceQueryParams,
+    },
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -753,9 +756,15 @@ pub async fn delete_user(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    delete_resource(service, headers, id, uri, |service, session, resource_id| async move {
-        service.delete_user(&session, &resource_id).await
-    })
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, resource_id, ultimate| async move {
+            service.delete_user(&session, &resource_id, ultimate).await
+        },
+    )
     .await
 }
 
@@ -847,8 +856,8 @@ pub async fn delete_group(
         headers,
         id,
         uri,
-        |service, session, resource_id| async move {
-            service.delete_group(&session, &resource_id).await
+        |service, session, resource_id, ultimate| async move {
+            service.delete_group(&session, &resource_id, ultimate).await
         },
     )
     .await
@@ -937,9 +946,15 @@ pub async fn delete_role(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    delete_resource(service, headers, id, uri, |service, session, resource_id| async move {
-        service.delete_role(&session, &resource_id).await
-    })
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, resource_id, ultimate| async move {
+            service.delete_role(&session, &resource_id, ultimate).await
+        },
+    )
     .await
 }
 
@@ -1045,8 +1060,10 @@ pub async fn delete_permission(
         headers,
         id,
         uri,
-        |service, session, resource_id| async move {
-            service.delete_permission(&session, &resource_id).await
+        |service, session, resource_id, ultimate| async move {
+            service
+                .delete_permission(&session, &resource_id, ultimate)
+                .await
         },
     )
     .await
@@ -1253,7 +1270,7 @@ async fn delete_resource<F, Fut>(
     operation: F,
 ) -> Response
 where
-    F: FnOnce(GatewayService, String, String) -> Fut,
+    F: FnOnce(GatewayService, String, String, bool) -> Fut,
     Fut: std::future::Future<Output = Result<(), GatewayError>>,
 {
     let instance = uri.path().to_string();
@@ -1264,7 +1281,11 @@ where
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    match operation(service, session, id).await {
+    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
+        Ok(ultimate) => ultimate,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match operation(service, session, id, ultimate).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
@@ -1455,9 +1476,9 @@ pub(crate) fn delete_user_docs(op: TransformOperation<'_>) -> TransformOperation
         "deleteUser",
         "Users",
         "Delete a user",
-        "Deletes an existing user.",
+        "Deletes a user. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.",
     )
-    .input::<Path<ResourceIdPathDoc>>()
+    .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
     .response_with::<204, (), _>(|response| response.description("User deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -1533,9 +1554,9 @@ pub(crate) fn delete_group_docs(op: TransformOperation<'_>) -> TransformOperatio
         "deleteGroup",
         "Groups",
         "Delete a group",
-        "Deletes an existing group.",
+        "Deletes a group. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.",
     )
-    .input::<Path<ResourceIdPathDoc>>()
+    .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
     .response_with::<204, (), _>(|response| response.description("Group deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -1611,9 +1632,9 @@ pub(crate) fn delete_role_docs(op: TransformOperation<'_>) -> TransformOperation
         "deleteRole",
         "Roles",
         "Delete a role",
-        "Deletes an existing role.",
+        "Deletes a role. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.",
     )
-    .input::<Path<ResourceIdPathDoc>>()
+    .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
     .response_with::<204, (), _>(|response| response.description("Role deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -1691,9 +1712,9 @@ pub(crate) fn delete_permission_docs(op: TransformOperation<'_>) -> TransformOpe
         "deletePermission",
         "Permissions",
         "Delete a permission",
-        "Deletes an existing permission.",
+        "Deletes a permission. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.",
     )
-    .input::<Path<ResourceIdPathDoc>>()
+    .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
     .response_with::<204, (), _>(|response| response.description("Permission deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");

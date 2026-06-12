@@ -26,6 +26,7 @@ use crate::{
     error::RestError,
     open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
+    query::{parse_delete_resource_query, DeleteResourceQueryParams},
     router::bearer_token,
     targets::{validate_uuid, TargetListQuery},
 };
@@ -425,7 +426,11 @@ pub async fn delete_credential(
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    match service.delete_credential(&session, &id).await {
+    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
+        Ok(ultimate) => ultimate,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.delete_credential(&session, &id, ultimate).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
@@ -507,9 +512,9 @@ pub(crate) fn delete_credential_docs(op: TransformOperation<'_>) -> TransformOpe
         .id("deleteCredential")
         .tag("Credentials")
         .summary("Delete a credential")
-        .description("Deletes an existing credential.")
+        .description("Deletes a credential. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.")
         .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
+        .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
         .response_with::<204, (), _>(|response| response.description("Credential deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");

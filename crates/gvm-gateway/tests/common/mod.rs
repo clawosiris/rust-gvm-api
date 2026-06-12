@@ -209,7 +209,12 @@ impl TargetPort for ControlledTargetAdapter {
         ))
     }
 
-    async fn delete_target(&self, _session_token: &str, _id: &str) -> Result<(), GatewayError> {
+    async fn delete_target(
+        &self,
+        _session_token: &str,
+        _id: &str,
+        _ultimate: bool,
+    ) -> Result<(), GatewayError> {
         Err(GatewayError::Internal(
             "not implemented in test adapter".to_string(),
         ))

@@ -88,7 +88,7 @@ impl AlertPort for MockAlertPort {
         Err(GatewayError::NotFound(format!("alert {id} not found")))
     }
 
-    async fn delete_alert(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_alert(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("alert {id} not found")))
     }
 }
@@ -143,7 +143,7 @@ impl SchedulePort for MockSchedulePort {
         Err(GatewayError::NotFound(format!("schedule {id} not found")))
     }
 
-    async fn delete_schedule(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_schedule(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("schedule {id} not found")))
     }
 }
@@ -201,7 +201,7 @@ impl CredentialPort for MockCredentialPort {
         Err(GatewayError::NotFound(format!("credential {id} not found")))
     }
 
-    async fn delete_credential(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_credential(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("credential {id} not found")))
     }
 }
@@ -249,7 +249,7 @@ impl PortListPort for MockPortListPort {
         Err(GatewayError::NotFound(format!("port list {id} not found")))
     }
 
-    async fn delete_port_list(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_port_list(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("port list {id} not found")))
     }
 }
@@ -300,7 +300,7 @@ impl IdentityPort for MockIdentityPort {
         Err(GatewayError::NotFound(format!("user {id} not found")))
     }
 
-    async fn delete_user(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_user(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("user {id} not found")))
     }
 
@@ -333,7 +333,7 @@ impl IdentityPort for MockIdentityPort {
         Err(GatewayError::NotFound(format!("group {id} not found")))
     }
 
-    async fn delete_group(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_group(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("group {id} not found")))
     }
 
@@ -366,7 +366,7 @@ impl IdentityPort for MockIdentityPort {
         Err(GatewayError::NotFound(format!("role {id} not found")))
     }
 
-    async fn delete_role(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_role(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("role {id} not found")))
     }
 
@@ -407,7 +407,7 @@ impl IdentityPort for MockIdentityPort {
         Err(GatewayError::NotFound(format!("permission {id} not found")))
     }
 
-    async fn delete_permission(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_permission(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("permission {id} not found")))
     }
 
@@ -526,7 +526,12 @@ impl TargetPort for MockTargetPort {
         })
     }
 
-    async fn delete_target(&self, _session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_target(
+        &self,
+        _session_token: &str,
+        id: &str,
+        _: bool,
+    ) -> Result<(), GatewayError> {
         if self.should_fail {
             return Err(GatewayError::NotFound(format!("target {id} not found")));
         }
@@ -593,7 +598,7 @@ impl TaskPort for MockTaskPort {
         })
     }
 
-    async fn delete_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_task(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         Ok(())
     }
 
@@ -690,7 +695,7 @@ impl ReportPort for MockReportPort {
         )))
     }
 
-    async fn delete_report(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_report(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("report {id} not found")))
     }
 
@@ -850,7 +855,7 @@ impl ScanConfigPort for MockScanConfigPort {
         )))
     }
 
-    async fn delete_scan_config(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_scan_config(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!(
             "scan config {id} not found"
         )))

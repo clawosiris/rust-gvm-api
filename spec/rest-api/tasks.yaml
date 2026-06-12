@@ -101,6 +101,9 @@ paths:
       operationId: deleteTask
       tags: [Tasks]
       summary: Delete a task
+      description: Deletes a task. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
       responses:
         "204":
           description: Task deleted

@@ -76,14 +76,19 @@ impl GatewayService {
     }
 
     /// Deletes a task for an authenticated session.
-    pub async fn delete_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    pub async fn delete_task(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "tasks.delete",
             session_token,
             "delete",
             "task",
             Some(id),
-            |session| async move { self.tasks.delete_task(&session.token, id).await },
+            |session| async move { self.tasks.delete_task(&session.token, id, ultimate).await },
         )
         .await
     }

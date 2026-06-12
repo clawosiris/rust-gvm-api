@@ -117,6 +117,7 @@ impl GatewayService {
         &self,
         session_token: &str,
         id: &str,
+        ultimate: bool,
     ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "credentials.delete",
@@ -124,7 +125,11 @@ impl GatewayService {
             "delete",
             "credential",
             Some(id),
-            |session| async move { self.credentials.delete_credential(&session.token, id).await },
+            |session| async move {
+                self.credentials
+                    .delete_credential(&session.token, id, ultimate)
+                    .await
+            },
         )
         .await
     }

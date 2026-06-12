@@ -122,7 +122,9 @@ paths:
       operationId: deleteUser
       tags: [Users]
       summary: Delete a user
-      description: Deletes a user.
+      description: Deletes a user. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
       responses:
         "204":
           description: User deleted
@@ -249,7 +251,9 @@ paths:
       operationId: deleteGroup
       tags: [Groups]
       summary: Delete a group
-      description: Deletes a gvmd group. This operation is administrator-only.
+      description: Deletes a gvmd group. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete. This operation is administrator-only.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
       responses:
         "204":
           description: Group deleted
@@ -376,7 +380,9 @@ paths:
       operationId: deleteRole
       tags: [Roles]
       summary: Delete a role
-      description: Deletes a gvmd role. This operation is administrator-only.
+      description: Deletes a gvmd role. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete. This operation is administrator-only.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
       responses:
         "204":
           description: Role deleted
@@ -503,7 +509,9 @@ paths:
       operationId: deletePermission
       tags: [Permissions]
       summary: Delete a permission
-      description: Deletes a gvmd permission grant. This operation is administrator-only.
+      description: Deletes a gvmd permission grant. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete. This operation is administrator-only.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
       responses:
         "204":
           description: Permission deleted

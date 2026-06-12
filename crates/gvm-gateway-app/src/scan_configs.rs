@@ -97,6 +97,7 @@ impl GatewayService {
         &self,
         session_token: &str,
         id: &str,
+        ultimate: bool,
     ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "scan_configs.delete",
@@ -106,7 +107,7 @@ impl GatewayService {
             Some(id),
             |session| async move {
                 self.scan_configs
-                    .delete_scan_config(&session.token, id)
+                    .delete_scan_config(&session.token, id, ultimate)
                     .await
             },
         )

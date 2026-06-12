@@ -108,7 +108,7 @@ impl AlertPort for StaticGvmdAdapter {
     ) -> Result<Alert, GatewayError> {
         unsupported!("static adapter does not support alerts")
     }
-    async fn delete_alert(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_alert(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         unsupported!("static adapter does not support alerts")
     }
 }
@@ -147,7 +147,7 @@ impl SchedulePort for StaticGvmdAdapter {
     ) -> Result<Schedule, GatewayError> {
         unsupported!("static adapter does not support schedules")
     }
-    async fn delete_schedule(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_schedule(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         unsupported!("static adapter does not support schedules")
     }
 }
@@ -189,7 +189,7 @@ impl CredentialPort for StaticGvmdAdapter {
     ) -> Result<Credential, GatewayError> {
         unsupported!("static adapter does not support credentials")
     }
-    async fn delete_credential(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_credential(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         unsupported!("static adapter does not support credentials")
     }
 }
@@ -221,7 +221,7 @@ impl PortListPort for StaticGvmdAdapter {
     ) -> Result<PortList, GatewayError> {
         unsupported!("static adapter does not support port lists")
     }
-    async fn delete_port_list(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_port_list(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         unsupported!("static adapter does not support port lists")
     }
 }
@@ -256,7 +256,7 @@ impl IdentityPort for StaticGvmdAdapter {
         unsupported!("static adapter does not support identity resources")
     }
 
-    async fn delete_user(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_user(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         unsupported!("static adapter does not support identity resources")
     }
 
@@ -281,7 +281,7 @@ impl IdentityPort for StaticGvmdAdapter {
         unsupported!("static adapter does not support identity resources")
     }
 
-    async fn delete_group(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_group(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         unsupported!("static adapter does not support identity resources")
     }
 
@@ -306,7 +306,7 @@ impl IdentityPort for StaticGvmdAdapter {
         unsupported!("static adapter does not support identity resources")
     }
 
-    async fn delete_role(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_role(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         unsupported!("static adapter does not support identity resources")
     }
 
@@ -339,7 +339,7 @@ impl IdentityPort for StaticGvmdAdapter {
         unsupported!("static adapter does not support identity resources")
     }
 
-    async fn delete_permission(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_permission(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         unsupported!("static adapter does not support identity resources")
     }
 
@@ -396,7 +396,7 @@ impl TargetPort for StaticGvmdAdapter {
         ))
     }
 
-    async fn delete_target(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_target(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
@@ -434,7 +434,7 @@ impl TaskPort for StaticGvmdAdapter {
         ))
     }
 
-    async fn delete_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_task(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support tasks".to_string(),
         ))
@@ -484,7 +484,7 @@ impl ReportPort for StaticGvmdAdapter {
         ))
     }
 
-    async fn delete_report(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_report(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support reports".to_string(),
         ))
@@ -600,7 +600,7 @@ impl ScanConfigPort for StaticGvmdAdapter {
         ))
     }
 
-    async fn delete_scan_config(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_scan_config(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support scan configs".to_string(),
         ))
@@ -874,7 +874,7 @@ mod tests {
     #[tokio::test]
     async fn static_adapter_delete_target_unsupported() {
         let adapter = StaticGvmdAdapter::ready("22.7");
-        let result = adapter.delete_target("token", "id").await;
+        let result = adapter.delete_target("token", "id", false).await;
         assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
     }
 }

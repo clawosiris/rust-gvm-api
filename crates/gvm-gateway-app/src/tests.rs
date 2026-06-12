@@ -144,7 +144,9 @@ async fn service_modify_target_requires_valid_session() {
 #[tokio::test]
 async fn service_delete_target_requires_valid_session() {
     let service = create_test_service();
-    let result = service.delete_target("invalid-token", "some-id").await;
+    let result = service
+        .delete_target("invalid-token", "some-id", false)
+        .await;
     assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 
@@ -206,7 +208,9 @@ async fn service_export_report_requires_valid_session() {
 #[tokio::test]
 async fn service_delete_report_requires_valid_session() {
     let service = create_test_service();
-    let result = service.delete_report("invalid-token", "some-id").await;
+    let result = service
+        .delete_report("invalid-token", "some-id", false)
+        .await;
     assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
 }
 

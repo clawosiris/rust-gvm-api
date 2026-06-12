@@ -739,12 +739,17 @@ impl AlertPort for GvmdAdapter {
         self.get_alert(session_token, id).await
     }
 
-    async fn delete_alert(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_alert(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
             .await
-            .call(delete_alert(&parse_entity_id(id)?, true))
+            .call(delete_alert(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -875,12 +880,17 @@ impl SchedulePort for GvmdAdapter {
         self.get_schedule(session_token, id).await
     }
 
-    async fn delete_schedule(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_schedule(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
             .await
-            .call(delete_schedule(&parse_entity_id(id)?, true))
+            .call(delete_schedule(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -1056,12 +1066,17 @@ impl CredentialPort for GvmdAdapter {
         self.get_credential(session_token, id).await
     }
 
-    async fn delete_credential(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_credential(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
             .await
-            .call(delete_credential(&parse_entity_id(id)?, true))
+            .call(delete_credential(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -1183,12 +1198,17 @@ impl PortListPort for GvmdAdapter {
         self.get_port_list(session_token, id).await
     }
 
-    async fn delete_port_list(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_port_list(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
             .await
-            .call(delete_port_list(&parse_entity_id(id)?, true))
+            .call(delete_port_list(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -1345,12 +1365,17 @@ impl IdentityPort for GvmdAdapter {
         self.get_user(session_token, id).await
     }
 
-    async fn delete_user(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_user(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let response = self
             .call_with_session(
                 session_token,
                 "users.delete",
-                delete_user(&parse_entity_id(id)?, true),
+                delete_user(&parse_entity_id(id)?, ultimate),
             )
             .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -1465,12 +1490,17 @@ impl IdentityPort for GvmdAdapter {
         self.get_group(session_token, id).await
     }
 
-    async fn delete_group(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_group(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
             .await
-            .call(delete_group(&parse_entity_id(id)?, true))
+            .call(delete_group(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -1586,12 +1616,17 @@ impl IdentityPort for GvmdAdapter {
         self.get_role(session_token, id).await
     }
 
-    async fn delete_role(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_role(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
             .await
-            .call(delete_role(&parse_entity_id(id)?, true))
+            .call(delete_role(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -1740,12 +1775,17 @@ impl IdentityPort for GvmdAdapter {
         self.get_permission(session_token, id).await
     }
 
-    async fn delete_permission(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_permission(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
             .await
-            .call(delete_permission(&parse_entity_id(id)?, true))
+            .call(delete_permission(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -2052,12 +2092,17 @@ impl TargetPort for GvmdAdapter {
         self.get_target(session_token, id).await
     }
 
-    async fn delete_target(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_target(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let response = self
             .call_with_session(
                 session_token,
                 "targets.delete",
-                delete_target(&parse_entity_id(id)?, true),
+                delete_target(&parse_entity_id(id)?, ultimate),
             )
             .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -2253,12 +2298,17 @@ impl TaskPort for GvmdAdapter {
         self.get_task(session_token, id).await
     }
 
-    async fn delete_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_task(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let response = self
             .call_with_session(
                 session_token,
                 "tasks.delete",
-                delete_task_cmd(&parse_entity_id(id)?, true),
+                delete_task_cmd(&parse_entity_id(id)?, ultimate),
             )
             .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -2450,12 +2500,17 @@ impl ReportPort for GvmdAdapter {
         })
     }
 
-    async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_report(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
             .await
-            .call(delete_report(&parse_entity_id(id)?, true))
+            .call(delete_report(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -2904,12 +2959,17 @@ impl ScanConfigPort for GvmdAdapter {
         self.get_scan_config(session_token, id).await
     }
 
-    async fn delete_scan_config(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    async fn delete_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
             .await
-            .call(delete_scan_config(&parse_entity_id(id)?, true))
+            .call(delete_scan_config(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
@@ -4451,7 +4511,7 @@ mod tests {
             let id = adapter.create_target(&token, input).await.unwrap();
 
             // Delete the target
-            let result = adapter.delete_target(&token, &id).await;
+            let result = adapter.delete_target(&token, &id, false).await;
 
             assert!(result.is_ok());
 

@@ -96,6 +96,7 @@ impl GatewayService {
         &self,
         session_token: &str,
         id: &str,
+        ultimate: bool,
     ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "port_lists.delete",
@@ -103,7 +104,11 @@ impl GatewayService {
             "delete",
             "port_list",
             Some(id),
-            |session| async move { self.port_lists.delete_port_list(&session.token, id).await },
+            |session| async move {
+                self.port_lists
+                    .delete_port_list(&session.token, id, ultimate)
+                    .await
+            },
         )
         .await
     }

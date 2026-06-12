@@ -81,7 +81,12 @@ pub trait AlertPort: Send + Sync + 'static {
     ) -> Result<Alert, GatewayError>;
 
     /// Delete an alert by identifier.
-    async fn delete_alert(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_alert(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 }
 
 /// Port for schedule CRUD operations.
@@ -116,7 +121,12 @@ pub trait SchedulePort: Send + Sync + 'static {
     ) -> Result<Schedule, GatewayError>;
 
     /// Delete a schedule by identifier.
-    async fn delete_schedule(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_schedule(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 }
 
 /// Port for credential CRUD operations.
@@ -158,7 +168,12 @@ pub trait CredentialPort: Send + Sync + 'static {
     ) -> Result<Credential, GatewayError>;
 
     /// Delete a credential by identifier.
-    async fn delete_credential(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_credential(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 }
 
 /// Port for port-list CRUD operations.
@@ -190,7 +205,12 @@ pub trait PortListPort: Send + Sync + 'static {
     ) -> Result<PortList, GatewayError>;
 
     /// Delete a port list by identifier.
-    async fn delete_port_list(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_port_list(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 }
 
 /// Port for feed status.
@@ -229,7 +249,12 @@ pub trait IdentityPort: Send + Sync + 'static {
     ) -> Result<User, GatewayError>;
 
     /// Delete a user by identifier.
-    async fn delete_user(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_user(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 
     /// List groups for the session.
     async fn list_groups(
@@ -257,7 +282,12 @@ pub trait IdentityPort: Send + Sync + 'static {
     ) -> Result<Group, GatewayError>;
 
     /// Delete a group by identifier.
-    async fn delete_group(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_group(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 
     /// List roles for the session.
     async fn list_roles(
@@ -285,7 +315,12 @@ pub trait IdentityPort: Send + Sync + 'static {
     ) -> Result<Role, GatewayError>;
 
     /// Delete a role by identifier.
-    async fn delete_role(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_role(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 
     /// List permissions for the session.
     async fn list_permissions(
@@ -317,7 +352,12 @@ pub trait IdentityPort: Send + Sync + 'static {
     ) -> Result<Permission, GatewayError>;
 
     /// Delete a permission by identifier.
-    async fn delete_permission(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_permission(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 
     /// List current-user settings for the session.
     async fn list_user_settings(
@@ -369,7 +409,12 @@ pub trait ReportPort: Send + Sync + 'static {
     ) -> Result<ReportExport, GatewayError>;
 
     /// Delete a report by identifier.
-    async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_report(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 
     /// List results for a specific report.
     async fn get_report_results(
@@ -459,7 +504,12 @@ pub trait ScanConfigPort: Send + Sync + 'static {
     ) -> Result<ScanConfig, GatewayError>;
 
     /// Delete a scan config by identifier.
-    async fn delete_scan_config(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 }
 
 /// Port for scanner read operations.
@@ -647,7 +697,12 @@ pub trait TargetPort: Send + Sync + 'static {
     ) -> Result<Target, GatewayError>;
 
     /// Delete a target by identifier.
-    async fn delete_target(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_target(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 }
 
 /// Port for task CRUD and lifecycle operations.
@@ -679,7 +734,12 @@ pub trait TaskPort: Send + Sync + 'static {
     ) -> Result<Task, GatewayError>;
 
     /// Delete a task by identifier.
-    async fn delete_task(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+    async fn delete_task(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 
     /// Start a task. Returns the report identifier created by the action.
     async fn start_task(&self, session_token: &str, id: &str) -> Result<TaskAction, GatewayError>;
