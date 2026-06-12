@@ -99,7 +99,8 @@ use gvm_gmp::{
             ModifyUserSettingOpts,
         },
         users::{
-            create_user, delete_user, get_user, get_users, modify_user, GetUsersOpts, UserOpts,
+            create_user, delete_user, get_user, get_users, modify_user, GetUsersOpts,
+            UserHostAccess, UserOpts,
         },
     },
     responses::{
@@ -114,7 +115,7 @@ use gvm_gmp::{
         GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse, GetTagsResponse,
         GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetUserSettingsResponse,
         GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse, ResumeTaskResponse,
-        StartTaskResponse,
+        StartTaskResponse, User as GmpUser,
     },
     EntityId, FilterFragmentError, PaginatedFilter, Pagination as GmpPagination,
 };
@@ -273,6 +274,18 @@ impl GvmdAdapter {
         }
         .instrument(span)
         .await
+    }
+
+    async fn get_gmp_user(&self, session_token: &str, id: &str) -> Result<GmpUser, GatewayError> {
+        let response = self
+            .call_with_session(session_token, "users.get", get_user(&parse_entity_id(id)?))
+            .await?;
+        let parsed = GetUsersResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .ok_or_else(|| GatewayError::NotFound(format!("user {id} not found")))
     }
 
     fn spawn_feed_sync(&self) -> Result<(), GatewayError> {
@@ -1286,7 +1299,7 @@ impl IdentityPort for GvmdAdapter {
                     UserOpts {
                         comment: input.comment,
                         password: input.password,
-                        host_access: input.hosts,
+                        host_access: input.hosts.map(UserHostAccess::allow),
                         role_ids,
                         auth_type,
                     },
@@ -1298,16 +1311,7 @@ impl IdentityPort for GvmdAdapter {
     }
 
     async fn get_user(&self, session_token: &str, id: &str) -> Result<User, GatewayError> {
-        let response = self
-            .call_with_session(session_token, "users.get", get_user(&parse_entity_id(id)?))
-            .await?;
-        let parsed = GetUsersResponse::from_response(&response).map_err(map_parse_error)?;
-        let user = parsed
-            .items
-            .into_iter()
-            .next()
-            .ok_or_else(|| GatewayError::NotFound(format!("user {id} not found")))?;
-        Ok(user_from_gmp(user))
+        Ok(user_from_gmp(self.get_gmp_user(session_token, id).await?))
     }
 
     async fn modify_user(
@@ -1316,14 +1320,24 @@ impl IdentityPort for GvmdAdapter {
         id: &str,
         input: ModifyUserInput,
     ) -> Result<User, GatewayError> {
-        let role_ids = input
-            .role_ids
+        let user_id = parse_entity_id(id)?;
+        let ModifyUserInput {
+            comment,
+            password,
+            hosts,
+            role_ids,
+            authentication_type,
+        } = input;
+        let host_access = match hosts {
+            Some(hosts) => Some(UserHostAccess::allow(hosts)),
+            None => self.get_gmp_user(session_token, id).await?.host_access(),
+        };
+        let role_ids = role_ids
             .unwrap_or_default()
             .into_iter()
             .map(|value| parse_entity_id(&value))
             .collect::<Result<Vec<_>, _>>()?;
-        let auth_type = input
-            .authentication_type
+        let auth_type = authentication_type
             .as_deref()
             .map(parse_user_auth_type)
             .transpose()?;
@@ -1332,11 +1346,11 @@ impl IdentityPort for GvmdAdapter {
                 session_token,
                 "users.modify",
                 modify_user(
-                    &parse_entity_id(id)?,
+                    &user_id,
                     UserOpts {
-                        comment: input.comment,
-                        password: input.password,
-                        host_access: input.hosts,
+                        comment,
+                        password,
+                        host_access,
                         role_ids,
                         auth_type,
                     },
@@ -4314,6 +4328,119 @@ mod tests {
             let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
             assert!(xml.contains("<scanner_name>scanner.max_hosts</scanner_name>"));
             assert!(xml.contains("<value>64</value>"));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_modify_user_preserves_hosts_when_request_omits_hosts() {
+            let user_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440099")
+                .expect("valid user id");
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_7)
+                .seed(move |store| {
+                    let mut user = Resource::with_id("user", "restricted-user", user_id);
+                    user.set_attr("hosts_allow", "1");
+                    user.set_attr("hosts", "192.0.2.0/24");
+                    store.create(user);
+                })
+                .unix_socket_auto()
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+            server.clear_history();
+
+            // Regression coverage for #274: gvmd treats an absent <hosts>
+            // element on modify_user as "allow all", so unrelated updates must
+            // echo the current host restriction through the typed rust-gvm
+            // command when the request did not explicitly change hosts.
+            let result = adapter
+                .modify_user(
+                    token,
+                    &user_id.to_string(),
+                    ModifyUserInput {
+                        comment: Some("updated comment".to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await;
+
+            assert!(result.is_ok(), "modify_user should succeed: {result:?}");
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "modify_user")
+                .expect("modify_user command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("<comment>updated comment</comment>"));
+            assert!(
+                xml.contains("<hosts allow=\"1\">192.0.2.0/24</hosts>"),
+                "modify_user should preserve existing host restrictions; xml={xml}"
+            );
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_modify_user_preserves_deny_hosts_when_request_omits_hosts() {
+            let user_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440100")
+                .expect("valid user id");
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_7)
+                .seed(move |store| {
+                    let mut user = Resource::with_id("user", "restricted-user", user_id);
+                    user.set_attr("hosts_allow", "0");
+                    user.set_attr("hosts", "198.51.100.0/24");
+                    store.create(user);
+                })
+                .unix_socket_auto()
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+            server.clear_history();
+
+            // Regression coverage for #274: preserving only the host string is
+            // not enough. Deny-mode restrictions must keep allow="0" when an
+            // unrelated user update omits hosts.
+            let result = adapter
+                .modify_user(
+                    token,
+                    &user_id.to_string(),
+                    ModifyUserInput {
+                        comment: Some("updated comment".to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await;
+
+            assert!(result.is_ok(), "modify_user should succeed: {result:?}");
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "modify_user")
+                .expect("modify_user command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("<comment>updated comment</comment>"));
+            assert!(
+                xml.contains("<hosts allow=\"0\">198.51.100.0/24</hosts>"),
+                "modify_user should preserve deny-mode host restrictions; xml={xml}"
+            );
 
             server.shutdown().await;
         }
