@@ -5,17 +5,20 @@
 
 use std::{
     collections::HashMap,
+    fmt,
     sync::{Arc, Mutex},
 };
 
-use crate::{time::now_secs, GatewayError};
+use sha2::{Digest, Sha256};
+
+use crate::{hide_value, time::now_secs, GatewayError};
 
 // ============================================================================
 // Domain Value Objects
 // ============================================================================
 
 /// Opaque authenticated session.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Session {
     /// Session token.
     pub token: String,
@@ -23,6 +26,17 @@ pub struct Session {
     pub user: String,
     /// Current state.
     pub state: SessionState,
+}
+
+impl fmt::Debug for Session {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Session")
+            .field("token", &hide_value(&self.token))
+            .field("user", &self.user)
+            .field("state", &self.state)
+            .finish()
+    }
 }
 
 /// Session lifecycle state.
@@ -35,7 +49,7 @@ pub enum SessionState {
 }
 
 /// Full session details returned by inspection endpoints.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct SessionInfo {
     /// Session token.
     pub token: String,
@@ -51,8 +65,22 @@ pub struct SessionInfo {
     pub expires_in: i64,
 }
 
+impl fmt::Debug for SessionInfo {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SessionInfo")
+            .field("token", &hide_value(&self.token))
+            .field("user", &self.user)
+            .field("state", &self.state)
+            .field("created_at", &self.created_at)
+            .field("last_used_at", &self.last_used_at)
+            .field("expires_in", &self.expires_in)
+            .finish()
+    }
+}
+
 /// Result returned after creating a new session.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct SessionCreated {
     /// Session token.
     pub token: String,
@@ -60,6 +88,62 @@ pub struct SessionCreated {
     pub expires_in: u64,
     /// GMP protocol version.
     pub gmp_version: String,
+}
+
+impl fmt::Debug for SessionCreated {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SessionCreated")
+            .field("token", &hide_value(&self.token))
+            .field("expires_in", &self.expires_in)
+            .field("gmp_version", &self.gmp_version)
+            .finish()
+    }
+}
+
+/// Stable, non-reversible key derived from a bearer session token.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct SessionTokenDigest([u8; 32]);
+
+impl SessionTokenDigest {
+    /// Build a digest key from a raw bearer token.
+    pub fn from_token(token: &str) -> Self {
+        let digest = Sha256::digest(token.as_bytes());
+        let mut bytes = [0u8; 32];
+        bytes.copy_from_slice(&digest);
+        Self(bytes)
+    }
+
+    /// Returns a short, non-secret identifier suitable for logs and tracing.
+    pub fn safe_id(&self) -> String {
+        format!("session:{}", hex_prefix(&self.0, 8))
+    }
+}
+
+impl fmt::Debug for SessionTokenDigest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("SessionTokenDigest")
+            .field(&self.safe_id())
+            .finish()
+    }
+}
+
+impl fmt::Display for SessionTokenDigest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.safe_id())
+    }
+}
+
+fn hex_prefix(bytes: &[u8], count: usize) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let count = count.min(bytes.len());
+    let mut output = String::with_capacity(count * 2);
+    for byte in &bytes[..count] {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
 }
 
 // ============================================================================
@@ -75,10 +159,21 @@ struct StoredSession {
 }
 
 /// In-memory domain session registry.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SessionManager {
-    inner: Arc<Mutex<HashMap<String, StoredSession>>>,
+    inner: Arc<Mutex<HashMap<SessionTokenDigest, StoredSession>>>,
     idle_timeout_secs: u64,
+}
+
+impl fmt::Debug for SessionManager {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let session_count = self.inner.lock().map(|guard| guard.len()).ok();
+        formatter
+            .debug_struct("SessionManager")
+            .field("session_count", &session_count)
+            .field("idle_timeout_secs", &self.idle_timeout_secs)
+            .finish()
+    }
 }
 
 impl Default for SessionManager {
@@ -120,7 +215,7 @@ impl SessionManager {
             .map_err(|_| {
                 GatewayError::BackendUnavailable("session registry unavailable".to_string())
             })?
-            .insert(token.clone(), session);
+            .insert(SessionTokenDigest::from_token(&token), session);
         Ok(Session {
             token,
             user,
@@ -133,7 +228,8 @@ impl SessionManager {
         let guard = self.inner.lock().map_err(|_| {
             GatewayError::BackendUnavailable("session registry unavailable".to_string())
         })?;
-        Ok(guard.get(token).map(|stored| Session {
+        let token_digest = SessionTokenDigest::from_token(token);
+        Ok(guard.get(&token_digest).map(|stored| Session {
             token: token.to_string(),
             user: stored.user.clone(),
             state: stored.state.clone(),
@@ -147,8 +243,9 @@ impl SessionManager {
         let guard = self.inner.lock().map_err(|_| {
             GatewayError::BackendUnavailable("session registry unavailable".to_string())
         })?;
+        let token_digest = SessionTokenDigest::from_token(token);
         let stored = guard
-            .get(token)
+            .get(&token_digest)
             .ok_or_else(|| GatewayError::NotFound("session not found".to_string()))?;
 
         let (state, expires_in) = match stored.state {
@@ -180,8 +277,9 @@ impl SessionManager {
         let mut guard = self.inner.lock().map_err(|_| {
             GatewayError::BackendUnavailable("session registry unavailable".to_string())
         })?;
+        let token_digest = SessionTokenDigest::from_token(token);
         let stored = guard
-            .get_mut(token)
+            .get_mut(&token_digest)
             .ok_or_else(|| GatewayError::SessionInvalidated("missing session".to_string()))?;
 
         match stored.state {
@@ -206,24 +304,24 @@ impl SessionManager {
         let mut guard = self.inner.lock().map_err(|_| {
             GatewayError::BackendUnavailable("session registry unavailable".to_string())
         })?;
+        let token_digest = SessionTokenDigest::from_token(token);
         let stored = guard
-            .get_mut(token)
+            .get_mut(&token_digest)
             .ok_or_else(|| GatewayError::SessionInvalidated("missing session".to_string()))?;
         stored.state = SessionState::Expired;
         Ok(())
     }
 
     /// Remove all sessions that have exceeded the idle timeout or are already
-    /// in a non-active state.  Returns the tokens of the removed sessions so
-    /// the caller can perform backend cleanup (e.g. disconnect) outside the
-    /// lock.
-    pub fn drain_expired(&self) -> Result<Vec<String>, GatewayError> {
+    /// in a non-active state. Returns digest keys of the removed sessions so
+    /// callers can perform backend cleanup without retaining bearer tokens.
+    pub fn drain_expired(&self) -> Result<Vec<SessionTokenDigest>, GatewayError> {
         let now = now_secs();
         let mut guard = self.inner.lock().map_err(|_| {
             GatewayError::BackendUnavailable("session registry unavailable".to_string())
         })?;
         let mut expired_tokens = Vec::new();
-        guard.retain(|token, stored| {
+        guard.retain(|token_digest, stored| {
             let dominated = match stored.state {
                 SessionState::Active => {
                     now.saturating_sub(stored.last_used_at) >= self.idle_timeout_secs
@@ -231,7 +329,7 @@ impl SessionManager {
                 SessionState::Expired => true,
             };
             if dominated {
-                expired_tokens.push(token.clone());
+                expired_tokens.push(*token_digest);
             }
             !dominated
         });
@@ -246,7 +344,7 @@ impl SessionManager {
             .map_err(|_| {
                 GatewayError::BackendUnavailable("session registry unavailable".to_string())
             })?
-            .remove(token);
+            .remove(&SessionTokenDigest::from_token(token));
         Ok(removed.map(|stored| Session {
             token: token.to_string(),
             user: stored.user,
@@ -375,6 +473,65 @@ mod tests {
         assert_eq!(touched.state, SessionState::Active);
     }
 
+    /// Session debug output redacts live bearer tokens because debug and panic
+    /// output can be captured by logs.
+    #[test]
+    fn session_debug_redacts_token() {
+        let manager = SessionManager::default();
+        let session = manager.create("debug-user").unwrap();
+
+        let debug = format!("{session:?}");
+
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains(&session.token));
+    }
+
+    /// SessionCreated debug output redacts the token returned to clients.
+    #[test]
+    fn session_created_debug_redacts_token() {
+        let created = SessionCreated {
+            token: "gvm_sess_debug_created_secret".to_string(),
+            expires_in: 300,
+            gmp_version: "22.7".to_string(),
+        };
+
+        let debug = format!("{created:?}");
+
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains(&created.token));
+    }
+
+    /// SessionInfo debug output redacts the inspected bearer token.
+    #[test]
+    fn session_info_debug_redacts_token() {
+        let info = SessionInfo {
+            token: "gvm_sess_debug_info_secret".to_string(),
+            user: "debug-user".to_string(),
+            state: "active".to_string(),
+            created_at: 1,
+            last_used_at: 1,
+            expires_in: 300,
+        };
+
+        let debug = format!("{info:?}");
+
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains(&info.token));
+    }
+
+    /// SessionManager debug output exposes registry metadata only, never the
+    /// raw token values used to access sessions.
+    #[test]
+    fn session_manager_debug_does_not_include_raw_token() {
+        let manager = SessionManager::default();
+        let session = manager.create("debug-user").unwrap();
+
+        let debug = format!("{manager:?}");
+
+        assert!(debug.contains("session_count"));
+        assert!(!debug.contains(&session.token));
+    }
+
     // ------------------------------------------------------------------------
     // SessionManager.get_info tests
     // ------------------------------------------------------------------------
@@ -452,33 +609,38 @@ mod tests {
         assert!(drained.is_empty());
     }
 
-    /// drain_expired returns tokens of manually expired sessions and removes them.
+    /// drain_expired returns token digests for manually expired sessions and
+    /// removes them without exposing raw bearer tokens.
     #[test]
     fn session_manager_drain_expired_manually_expired() {
         let manager = SessionManager::default();
         let s1 = manager.create("alice").unwrap();
         let s2 = manager.create("bob").unwrap();
+        let s1_digest = SessionTokenDigest::from_token(&s1.token);
         manager.expire(&s1.token).unwrap();
 
         let drained = manager.drain_expired().unwrap();
         assert_eq!(drained.len(), 1);
-        assert!(drained.contains(&s1.token));
+        assert!(drained.contains(&s1_digest));
+        assert!(!format!("{drained:?}").contains(&s1.token));
 
         assert!(manager.get(&s1.token).unwrap().is_none());
         assert!(manager.get(&s2.token).unwrap().is_some());
     }
 
-    /// drain_expired returns tokens of idle-expired sessions (timeout == 0).
+    /// drain_expired returns digests of idle-expired sessions (timeout == 0).
     #[test]
     fn session_manager_drain_expired_idle_timeout() {
         let manager = SessionManager::new(0);
         let s1 = manager.create("alice").unwrap();
         let s2 = manager.create("bob").unwrap();
+        let s1_digest = SessionTokenDigest::from_token(&s1.token);
+        let s2_digest = SessionTokenDigest::from_token(&s2.token);
 
         let drained = manager.drain_expired().unwrap();
         assert_eq!(drained.len(), 2);
-        assert!(drained.contains(&s1.token));
-        assert!(drained.contains(&s2.token));
+        assert!(drained.contains(&s1_digest));
+        assert!(drained.contains(&s2_digest));
 
         assert!(manager.get(&s1.token).unwrap().is_none());
         assert!(manager.get(&s2.token).unwrap().is_none());

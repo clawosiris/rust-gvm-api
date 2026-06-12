@@ -9,10 +9,12 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 use tracing::{field, info_span, Instrument};
 
-use gvm_gateway_domain::{AuthPort, GatewayError, SessionCreated, SessionInfo, SessionManager};
+use gvm_gateway_domain::{
+    AuthPort, GatewayError, SessionCreated, SessionInfo, SessionManager, SessionTokenDigest,
+};
 
 use crate::{
-    service::{emit_audit_event, safe_session_id},
+    service::{emit_audit_event, emit_audit_event_with_session_id, safe_session_id},
     GatewayService,
 };
 
@@ -143,7 +145,8 @@ impl GatewayService {
             }
 
             let removed = removed.expect("checked is_some");
-            if let Err(err) = self.auth.disconnect_session(token).await {
+            let session_digest = SessionTokenDigest::from_token(token);
+            if let Err(err) = self.auth.disconnect_session(&session_digest).await {
                 emit_audit_event(
                     "session.delete",
                     "backend_disconnect_failed",
@@ -222,43 +225,44 @@ impl SessionReaper {
     }
 
     async fn sweep_once(sessions: Arc<SessionManager>, auth: Arc<dyn AuthPort>) {
-        let tokens = match sessions.drain_expired() {
+        let session_digests = match sessions.drain_expired() {
             Ok(t) => t,
             Err(err) => {
                 tracing::warn!(?err, "session reaper: drain_expired failed");
                 return;
             }
         };
-        for token in &tokens {
-            emit_audit_event(
+        for session_digest in &session_digests {
+            let session_id = session_digest.safe_id();
+            emit_audit_event_with_session_id(
                 "session.expired",
                 "cleanup",
                 "unknown",
-                Some(token),
+                &session_id,
                 None,
                 Some("expire"),
                 None,
             );
-            if let Err(err) = auth.disconnect_session(token).await {
-                emit_audit_event(
+            if let Err(err) = auth.disconnect_session(session_digest).await {
+                emit_audit_event_with_session_id(
                     "session.disconnect",
                     "failure",
                     "unknown",
-                    Some(token),
+                    &session_id,
                     None,
                     Some("disconnect"),
                     Some(&err),
                 );
                 tracing::warn!(
-                    session_id = %safe_session_id(token),
+                    session_id = %session_id,
                     ?err,
                     "session reaper: disconnect_session failed"
                 );
             }
         }
-        if !tokens.is_empty() {
+        if !session_digests.is_empty() {
             tracing::info!(
-                count = tokens.len(),
+                count = session_digests.len(),
                 "session reaper: cleaned up expired sessions"
             );
         }
@@ -279,7 +283,7 @@ mod tests {
     use super::SessionReaper;
     use crate::test_support::*;
     use crate::GatewayService;
-    use gvm_gateway_domain::{GatewayError, SessionManager};
+    use gvm_gateway_domain::{GatewayError, SessionManager, SessionTokenDigest};
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -448,7 +452,7 @@ mod tests {
         handle.abort();
 
         let tokens = disconnected.lock().unwrap();
-        assert!(tokens.contains(&session.token));
+        assert!(tokens.contains(&SessionTokenDigest::from_token(&session.token)));
     }
 
     /// The reaper does not disconnect active sessions.

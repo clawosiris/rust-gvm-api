@@ -233,14 +233,35 @@ pub(crate) fn emit_audit_event(
     action: Option<&str>,
     error: Option<&GatewayError>,
 ) {
+    let session_id = session_token
+        .map(safe_session_id)
+        .unwrap_or_else(|| "session:unknown".to_string());
+    emit_audit_event_with_session_id(
+        event,
+        outcome,
+        username,
+        &session_id,
+        resource,
+        action,
+        error,
+    );
+}
+
+pub(crate) fn emit_audit_event_with_session_id(
+    event: &str,
+    outcome: &str,
+    username: &str,
+    session_id: &str,
+    resource: Option<&str>,
+    action: Option<&str>,
+    error: Option<&GatewayError>,
+) {
     tracing::info!(
         target: AUDIT_TARGET,
         audit_event = event,
         audit_outcome = outcome,
         gvmd_username = username,
-        session_id = session_token
-            .map(safe_session_id)
-            .unwrap_or_else(|| "session:unknown".to_string()),
+        session_id = session_id,
         resource = resource.unwrap_or("session"),
         action = action.unwrap_or("none"),
         error_category = error.map(error_category).unwrap_or("none"),

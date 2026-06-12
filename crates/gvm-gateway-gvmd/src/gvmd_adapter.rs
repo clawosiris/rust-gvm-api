@@ -5,7 +5,7 @@
 
 use std::{
     collections::HashMap,
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
     process::Command as ProcessCommand,
     sync::{Arc, Mutex},
@@ -30,9 +30,10 @@ use gvm_gateway_domain::{
     ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
     ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    SessionTokenDigest, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage,
+    Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
+    Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -137,10 +138,21 @@ use crate::conversions::{
 type SharedClient = Arc<AsyncMutex<GmpClient<UnixSocketConnection>>>;
 
 /// gvmd adapter backed by session-keyed GMP clients.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct GvmdAdapter {
     socket_path: PathBuf,
-    sessions: Arc<Mutex<HashMap<String, SharedClient>>>,
+    sessions: Arc<Mutex<HashMap<SessionTokenDigest, SharedClient>>>,
+}
+
+impl fmt::Debug for GvmdAdapter {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let session_count = self.sessions.lock().map(|guard| guard.len()).ok();
+        formatter
+            .debug_struct("GvmdAdapter")
+            .field("socket_path", &self.socket_path)
+            .field("session_count", &session_count)
+            .finish()
+    }
 }
 
 impl GvmdAdapter {
@@ -213,7 +225,10 @@ impl GvmdAdapter {
                 .map_err(|_| {
                     GatewayError::BackendUnavailable("session store unavailable".to_string())
                 })?
-                .insert(session_token.to_string(), Arc::new(AsyncMutex::new(client)));
+                .insert(
+                    SessionTokenDigest::from_token(session_token),
+                    Arc::new(AsyncMutex::new(client)),
+                );
 
             Ok(())
         }
@@ -225,7 +240,7 @@ impl GvmdAdapter {
         self.sessions
             .lock()
             .map_err(|_| GatewayError::BackendUnavailable("session store unavailable".to_string()))?
-            .get(session_token)
+            .get(&SessionTokenDigest::from_token(session_token))
             .cloned()
             .ok_or_else(|| GatewayError::SessionInvalidated("missing gvmd session".to_string()))
     }
@@ -3504,11 +3519,11 @@ impl AuthPort for GvmdAdapter {
             .await
     }
 
-    async fn disconnect_session(&self, session_token: &str) -> Result<(), GatewayError> {
+    async fn disconnect_session(&self, session: &SessionTokenDigest) -> Result<(), GatewayError> {
         self.sessions
             .lock()
             .map_err(|_| GatewayError::BackendUnavailable("session store unavailable".to_string()))?
-            .remove(session_token);
+            .remove(session);
         Ok(())
     }
 }
@@ -3567,6 +3582,16 @@ mod tests {
     async fn lock_tracing() -> AsyncMutexGuard<'static, ()> {
         static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| AsyncMutex::new(())).lock().await
+    }
+
+    #[test]
+    fn safe_session_id_uses_documented_token_suffix() {
+        let token = "gvm_sess_1234567890abcdef";
+
+        let session_id = safe_session_id(token);
+
+        assert_eq!(session_id, "session:90abcdef");
+        assert!(!session_id.contains(token));
     }
 
     #[test]
@@ -3799,9 +3824,13 @@ mod tests {
                 .unwrap();
 
             let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
-            let result = adapter.connect_session("token", "admin", "admin").await;
+            let token = "gvm_sess_adapter_debug_secret";
+            let result = adapter.connect_session(token, "admin", "admin").await;
 
             assert!(result.is_ok());
+            let debug = format!("{adapter:?}");
+            assert!(debug.contains("session_count"));
+            assert!(!debug.contains(token));
             server.shutdown().await;
         }
 
@@ -3819,7 +3848,8 @@ mod tests {
             let result = adapter.connect_session("token", "admin", "wrong").await;
 
             assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-            let disconnect_result = adapter.disconnect_session("token").await;
+            let session_digest = SessionTokenDigest::from_token("token");
+            let disconnect_result = adapter.disconnect_session(&session_digest).await;
             assert!(disconnect_result.is_ok());
             let follow_up = adapter
                 .list_targets(

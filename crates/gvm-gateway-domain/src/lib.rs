@@ -42,7 +42,9 @@ pub use results::*;
 pub use scan_configs::*;
 pub use scanners::*;
 pub use schedules::*;
-pub use session::{Session, SessionCreated, SessionInfo, SessionManager, SessionState};
+pub use session::{
+    Session, SessionCreated, SessionInfo, SessionManager, SessionState, SessionTokenDigest,
+};
 pub use supporting_resources::*;
 pub use system::*;
 pub use targets::*;

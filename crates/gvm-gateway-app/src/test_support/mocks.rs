@@ -623,7 +623,7 @@ impl TaskPort for MockTaskPort {
 pub(crate) struct MockAuthPort {
     pub(crate) should_fail: bool,
     pub(crate) disconnect_should_fail: bool,
-    pub(crate) disconnected: Arc<std::sync::Mutex<Vec<String>>>,
+    pub(crate) disconnected: Arc<std::sync::Mutex<Vec<gvm_gateway_domain::SessionTokenDigest>>>,
 }
 
 #[async_trait]
@@ -642,16 +642,16 @@ impl AuthPort for MockAuthPort {
         Ok(())
     }
 
-    async fn disconnect_session(&self, session_token: &str) -> Result<(), GatewayError> {
+    async fn disconnect_session(
+        &self,
+        session: &gvm_gateway_domain::SessionTokenDigest,
+    ) -> Result<(), GatewayError> {
         if self.disconnect_should_fail {
             return Err(GatewayError::BackendUnavailable(
                 "disconnect failed".to_string(),
             ));
         }
-        self.disconnected
-            .lock()
-            .unwrap()
-            .push(session_token.to_string());
+        self.disconnected.lock().unwrap().push(*session);
         Ok(())
     }
 }
