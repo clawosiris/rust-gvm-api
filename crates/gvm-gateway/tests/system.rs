@@ -160,7 +160,10 @@ async fn version_returns_api_and_gmp_version() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let json = response.json::<serde_json::Value>().await.unwrap();
-    assert_eq!(json["apiVersion"], serde_json::json!("0.3.1"));
+    assert_eq!(
+        json["apiVersion"],
+        serde_json::json!(env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(json["gmpVersion"], serde_json::json!("22.7"));
 
     handle.abort();
