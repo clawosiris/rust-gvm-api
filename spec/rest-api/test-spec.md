@@ -77,6 +77,8 @@
 | `retry_after_header_present` | 429 response → has `Retry-After` header |
 | `different_sessions_independent` | Two active session tokens → separate subject limits |
 | `session_creation_rate_limited` | Unauthenticated session creation pressure is limited before backend work |
+| `trusted_forwarded_clients_have_independent_session_creation_limits` | Trusted proxy CIDR + different `X-Forwarded-For` client IPs → independent session-creation buckets |
+| `untrusted_forwarded_client_ip_ignored` | Untrusted direct peer with spoofed `X-Forwarded-For` → rate-limit source remains the TCP peer |
 
 ### 2.5 Configuration (`config.rs`)
 
@@ -85,7 +87,8 @@
 | `default_config_valid` | No config file → sensible defaults |
 | `env_var_override` | `GVM_API_BIND=0.0.0.0:9090` overrides config |
 | `cli_arg_override` | `--bind 0.0.0.0:9090` overrides config + env |
-| `security_config_override` | CORS/rate-limit file config and env overrides map into REST security config |
+| `security_config_override` | CORS/rate-limit/trusted-proxy file config and env overrides map into REST security config |
+| `invalid_trusted_proxy_cidr_rejected` | Invalid trusted proxy CIDR config → startup/config load fails clearly |
 | `invalid_config_rejected` | Bad TOML → clear error message |
 
 ## 3. Integration Tests

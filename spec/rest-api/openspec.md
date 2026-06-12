@@ -400,6 +400,7 @@ Current required coverage:
 Fixed-window rate limiting per global API surface and authenticated subject, aligned with the session model in #27:
 - Defaults are conservative and configurable (`rate_limit_*` config keys)
 - Subject keys are derived from Bearer tokens or request-scoped Basic credentials without logging raw secrets
+- Session-creation and unauthenticated source keys use the direct TCP peer by default, or the first `X-Forwarded-For` client IP only when the direct peer matches an explicit `trusted_proxy_cidrs` entry
 - `429 Too Many Requests` includes a `Retry-After` header
 - Capacity/backpressure composes with global/per-user session limits and protects session creation from unauthenticated pressure
 
@@ -419,6 +420,7 @@ cors_allowed_origins = ["https://ui.example"]
 rate_limit_window_secs = 60
 rate_limit_global_per_window = 1000
 rate_limit_subject_per_window = 500
+trusted_proxy_cidrs = ["127.0.0.1/32", "::1/128"]
 
 otlp_endpoint = "http://localhost:4317"
 telemetry_service_name = "gvm-gateway"
@@ -434,6 +436,7 @@ Transport-security notes:
 - `terminated_by_proxy` means plain HTTP behind a trusted TLS-terminating proxy and does not require local TLS files.
 - `native` means the gateway itself serves HTTPS and must fail startup unless both the certificate and private-key files are configured and loadable.
 - Proxy mode does not implicitly enable trust for forwarded headers.
+- Forwarded client IPs are trusted only when the direct TCP peer matches `trusted_proxy_cidrs`; otherwise `X-Forwarded-For` is ignored for rate-limit source attribution.
 
 This explicit mode contract supersedes the earlier TLS-only ingress assumption from issue `#27` while preserving its shared session/connection model.
 

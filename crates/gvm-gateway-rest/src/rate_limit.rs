@@ -5,6 +5,7 @@
 
 use std::{
     collections::HashMap,
+    net::IpAddr,
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -12,15 +13,19 @@ use std::{
 use axum::{
     extract::ConnectInfo,
     extract::Request,
-    http::{header, HeaderValue},
+    http::{header, HeaderMap, HeaderValue},
     response::{IntoResponse, Response},
 };
 use gvm_gateway_domain::GatewayError;
 use serde::Deserialize;
 
-use crate::{error::RestError, peer_addr::ClientPeerAddr};
+use crate::{
+    error::RestError,
+    peer_addr::{ClientPeerAddr, TrustedProxyCidr},
+};
 
 const MAX_RATE_LIMIT_BUCKETS: usize = 16_384;
+const X_FORWARDED_FOR: &str = "x-forwarded-for";
 
 /// Fixed-window REST rate-limit settings.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -60,6 +65,7 @@ impl RateLimitConfig {
 #[derive(Debug)]
 pub(crate) struct RateLimiter {
     config: RateLimitConfig,
+    trusted_proxy_cidrs: Vec<TrustedProxyCidr>,
     state: Mutex<RateLimitState>,
 }
 
@@ -76,9 +82,10 @@ struct RateBucket {
 }
 
 impl RateLimiter {
-    pub(crate) fn new(config: RateLimitConfig) -> Self {
+    pub(crate) fn new(config: RateLimitConfig, trusted_proxy_cidrs: Vec<TrustedProxyCidr>) -> Self {
         Self {
             config,
+            trusted_proxy_cidrs,
             state: Mutex::new(RateLimitState {
                 buckets: HashMap::new(),
                 last_pruned_at: 0,
@@ -95,7 +102,11 @@ impl RateLimiter {
         }
 
         if let Some(limit) = self.config.subject_per_window {
-            return self.check_key(rate_limit_subject(request), limit, now);
+            return self.check_key(
+                rate_limit_subject(request, &self.trusted_proxy_cidrs),
+                limit,
+                now,
+            );
         }
 
         None
@@ -184,10 +195,13 @@ pub(crate) fn too_many_requests_response(instance: &str, retry_after_secs: u64) 
     response
 }
 
-fn rate_limit_subject(request: &Request) -> String {
+fn rate_limit_subject(request: &Request, trusted_proxy_cidrs: &[TrustedProxyCidr]) -> String {
     let path = request.uri().path();
     if path == "/api/v1/session" {
-        return format!("session-create:{}", source_subject(request));
+        return format!(
+            "session-create:{}",
+            source_subject(request, trusted_proxy_cidrs)
+        );
     }
 
     let auth = request
@@ -202,15 +216,43 @@ fn rate_limit_subject(request: &Request) -> String {
     if let Some(credentials) = auth.strip_prefix("Basic ") {
         return format!("basic:{}", stable_hash(credentials));
     }
-    format!("anonymous:{}", source_subject(request))
+    format!("anonymous:{}", source_subject(request, trusted_proxy_cidrs))
 }
 
-fn source_subject(request: &Request) -> String {
-    request
+fn source_subject(request: &Request, trusted_proxy_cidrs: &[TrustedProxyCidr]) -> String {
+    source_ip(request, trusted_proxy_cidrs)
+        .map(|ip| format!("ip:{ip}"))
+        .unwrap_or_else(|| "unknown-source".to_string())
+}
+
+fn source_ip(request: &Request, trusted_proxy_cidrs: &[TrustedProxyCidr]) -> Option<IpAddr> {
+    let peer_ip = request
         .extensions()
         .get::<ConnectInfo<ClientPeerAddr>>()
-        .map(|ConnectInfo(addr)| format!("ip:{}", addr.ip()))
-        .unwrap_or_else(|| "unknown-source".to_string())
+        .map(|ConnectInfo(addr)| addr.ip())?;
+
+    if trusted_proxy_cidrs
+        .iter()
+        .any(|cidr| cidr.contains(peer_ip))
+    {
+        forwarded_for_client_ip(request.headers())
+            .unwrap_or(peer_ip)
+            .into()
+    } else {
+        Some(peer_ip)
+    }
+}
+
+fn forwarded_for_client_ip(headers: &HeaderMap) -> Option<IpAddr> {
+    headers
+        .get(X_FORWARDED_FOR)?
+        .to_str()
+        .ok()?
+        .split(',')
+        .next()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn stable_hash(value: &str) -> String {
@@ -245,7 +287,7 @@ mod tests {
 
     use super::{
         rate_limit_subject, ClientPeerAddr, RateBucket, RateLimitConfig, RateLimiter,
-        MAX_RATE_LIMIT_BUCKETS,
+        TrustedProxyCidr, MAX_RATE_LIMIT_BUCKETS, X_FORWARDED_FOR,
     };
 
     fn request(path: &str) -> Request<Body> {
@@ -263,6 +305,10 @@ mod tests {
         request
     }
 
+    fn trusted_loopback() -> Vec<TrustedProxyCidr> {
+        vec!["127.0.0.1/32".parse().unwrap()]
+    }
+
     #[test]
     fn bearer_subject_uses_intentional_stable_digest() {
         // This locks the rate-limit bucket contract so Rust hasher changes or
@@ -273,7 +319,7 @@ mod tests {
             "Bearer gvm_sess_secret".parse().unwrap(),
         );
 
-        assert_eq!(rate_limit_subject(&request), "bearer:7731b204acf83e17");
+        assert_eq!(rate_limit_subject(&request, &[]), "bearer:7731b204acf83e17");
     }
 
     #[test]
@@ -286,7 +332,7 @@ mod tests {
             "Basic YWRtaW46YWRtaW4=".parse().unwrap(),
         );
 
-        assert_eq!(rate_limit_subject(&request), "basic:53cfaadc3e07c384");
+        assert_eq!(rate_limit_subject(&request, &[]), "basic:53cfaadc3e07c384");
     }
 
     #[test]
@@ -305,7 +351,10 @@ mod tests {
                 51_234,
             ))));
 
-        assert_eq!(rate_limit_subject(&request), "session-create:ip:192.0.2.10");
+        assert_eq!(
+            rate_limit_subject(&request, &[]),
+            "session-create:ip:192.0.2.10"
+        );
     }
 
     #[test]
@@ -327,7 +376,10 @@ mod tests {
                 40_001,
             ))));
 
-        assert_eq!(rate_limit_subject(&first), rate_limit_subject(&second));
+        assert_eq!(
+            rate_limit_subject(&first, &[]),
+            rate_limit_subject(&second, &[])
+        );
     }
 
     #[test]
@@ -337,8 +389,8 @@ mod tests {
         let first = request_from_ip("/api/v1/targets", Ipv4Addr::new(192, 0, 2, 10), 40_000);
         let second = request_from_ip("/api/v1/targets", Ipv4Addr::new(192, 0, 2, 11), 40_001);
 
-        assert_eq!(rate_limit_subject(&first), "anonymous:ip:192.0.2.10");
-        assert_eq!(rate_limit_subject(&second), "anonymous:ip:192.0.2.11");
+        assert_eq!(rate_limit_subject(&first, &[]), "anonymous:ip:192.0.2.10");
+        assert_eq!(rate_limit_subject(&second, &[]), "anonymous:ip:192.0.2.11");
     }
 
     #[test]
@@ -348,18 +400,96 @@ mod tests {
         let first = request_from_ip("/api/v1/targets", Ipv4Addr::new(192, 0, 2, 10), 40_000);
         let second = request_from_ip("/api/v1/targets", Ipv4Addr::new(192, 0, 2, 10), 40_001);
 
-        assert_eq!(rate_limit_subject(&first), rate_limit_subject(&second));
+        assert_eq!(
+            rate_limit_subject(&first, &[]),
+            rate_limit_subject(&second, &[])
+        );
+    }
+
+    #[test]
+    fn trusted_proxy_session_creation_uses_forwarded_client_ip() {
+        // In the container proxy deployment, the direct TCP peer is the proxy.
+        // When that proxy is explicitly trusted, unauthenticated login pressure
+        // must bucket by the original client IP instead of the shared proxy IP.
+        let mut request = request_from_ip("/api/v1/session", Ipv4Addr::new(127, 0, 0, 1), 40_000);
+        request
+            .headers_mut()
+            .insert(X_FORWARDED_FOR, "198.51.100.10".parse().unwrap());
+
+        assert_eq!(
+            rate_limit_subject(&request, &trusted_loopback()),
+            "session-create:ip:198.51.100.10"
+        );
+    }
+
+    #[test]
+    fn untrusted_peer_ignores_forwarded_client_ip() {
+        // X-Forwarded-For is caller-controlled unless the direct peer is a
+        // configured proxy, so spoofed headers must not move the bucket key.
+        let mut request =
+            request_from_ip("/api/v1/session", Ipv4Addr::new(203, 0, 113, 20), 40_000);
+        request
+            .headers_mut()
+            .insert(X_FORWARDED_FOR, "198.51.100.10".parse().unwrap());
+
+        assert_eq!(
+            rate_limit_subject(&request, &trusted_loopback()),
+            "session-create:ip:203.0.113.20"
+        );
+    }
+
+    #[test]
+    fn malformed_forwarded_client_ip_falls_back_to_proxy_peer() {
+        // A trusted proxy with a malformed forwarded header should fail closed
+        // to the direct peer instead of creating an attacker-chosen bucket.
+        let mut request = request_from_ip("/api/v1/session", Ipv4Addr::new(127, 0, 0, 1), 40_000);
+        request
+            .headers_mut()
+            .insert(X_FORWARDED_FOR, "not-an-ip".parse().unwrap());
+
+        assert_eq!(
+            rate_limit_subject(&request, &trusted_loopback()),
+            "session-create:ip:127.0.0.1"
+        );
+    }
+
+    #[test]
+    fn trusted_proxy_uses_first_forwarded_client_ip() {
+        // X-Forwarded-For is an ordered chain. The first address is the client
+        // that should receive the unauthenticated session-creation bucket.
+        let mut request = request_from_ip("/api/v1/session", Ipv4Addr::new(127, 0, 0, 1), 40_000);
+        request.headers_mut().insert(
+            X_FORWARDED_FOR,
+            "198.51.100.10, 203.0.113.30".parse().unwrap(),
+        );
+
+        assert_eq!(
+            rate_limit_subject(&request, &trusted_loopback()),
+            "session-create:ip:198.51.100.10"
+        );
+    }
+
+    #[test]
+    fn trusted_proxy_cidr_matches_ip_ranges() {
+        // CIDR matching controls the trust boundary for forwarded source IPs.
+        let cidr: TrustedProxyCidr = "192.0.2.0/24".parse().unwrap();
+
+        assert!(cidr.contains(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10))));
+        assert!(!cidr.contains(IpAddr::V4(Ipv4Addr::new(192, 0, 3, 10))));
     }
 
     #[test]
     fn poisoned_rate_limit_state_fails_closed() {
         // A panic while holding the limiter state must not turn rate limiting
         // into an allow-all path.
-        let limiter = RateLimiter::new(RateLimitConfig {
-            window_secs: 60,
-            global_per_window: None,
-            subject_per_window: Some(10),
-        });
+        let limiter = RateLimiter::new(
+            RateLimitConfig {
+                window_secs: 60,
+                global_per_window: None,
+                subject_per_window: Some(10),
+            },
+            Vec::new(),
+        );
 
         assert!(catch_unwind(AssertUnwindSafe(|| {
             let _state = limiter.state.lock().unwrap();
@@ -374,11 +504,14 @@ mod tests {
     fn bucket_capacity_rejects_new_subject_but_allows_existing_subject() {
         // The limiter must cap distinct bucket growth without breaking callers
         // that already have a bucket in the current window.
-        let limiter = RateLimiter::new(RateLimitConfig {
-            window_secs: 60,
-            global_per_window: None,
-            subject_per_window: Some(10),
-        });
+        let limiter = RateLimiter::new(
+            RateLimitConfig {
+                window_secs: 60,
+                global_per_window: None,
+                subject_per_window: Some(10),
+            },
+            Vec::new(),
+        );
         {
             let mut state = limiter.state.lock().unwrap();
             for index in 0..MAX_RATE_LIMIT_BUCKETS {
