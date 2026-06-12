@@ -1,17 +1,9 @@
-name: Orchestrated Release
+name: Publish Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (without 'v' prefix)"
-        required: true
-        type: string
-      release-type:
-        description: "Release type (alpha, beta, release-candidate, patch, minor, major)"
-        required: false
-        type: string
-        default: "patch"
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -19,92 +11,59 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  RELEASE_VERSION: ${{ inputs.version }}
-  RELEASE_TYPE: ${{ inputs.release-type }}
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
-  prepare:
-    name: "Prepare v${{ inputs.version }}"
+  validate:
+    name: Validate release tag
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
     steps:
-      - name: Validate release inputs
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 1
+
+      - name: Validate tag and repository version
+        id: release
         run: |
-          if [[ ! "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$ ]]; then
-            echo "Invalid release version: expected semver without v prefix" >&2
+          TAG="${GITHUB_REF_NAME}"
+
+          if [[ ! "${TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be semver-shaped with a leading 'v': ${TAG}" >&2
             exit 1
           fi
 
-          case "$RELEASE_TYPE" in
-            alpha|beta|release-candidate|patch|minor|major) ;;
-            *)
-              echo "Invalid release type: expected alpha, beta, release-candidate, patch, minor, or major" >&2
-              exit 1
-              ;;
-          esac
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - name: Pin upstream dependencies
-        run: |
-          if [[ "$RELEASE_VERSION" != *"-"* ]]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
-            sed -i "s|branch = \"main\"|tag = \"v$RELEASE_VERSION\"|g" Cargo.toml
-            git add Cargo.toml
-            git commit -m "build(deps): pin rust-gvm to v$RELEASE_VERSION" || true
-            git push
-          else
-            echo "Pre-release: keeping branch = main"
+          VERSION="${TAG#v}"
+          WORKSPACE_VERSION="$(./scripts/workspace-version.sh)"
+
+          if [[ "${WORKSPACE_VERSION}" != "${VERSION}" ]]; then
+            echo "Tag ${TAG} does not match Cargo.toml workspace version ${WORKSPACE_VERSION}" >&2
+            exit 1
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-      - name: Create release
-        uses: greenbone/actions/release@aa49604a7c2a28d7810d23addac6513af7d8e11f # v3
-        with:
-          github-user: ${{ vars.RELEASE_USER || 'clawosiris' }}
-          github-user-mail: ${{ vars.RELEASE_USER_MAIL || 'clawosiris@users.noreply.github.com' }}
-          github-user-token: ${{ secrets.RELEASE_TOKEN }}
-          release-type: ${{ inputs.release-type }}
-          release-version: ${{ inputs.version }}
-          versioning-scheme: semver
-          project-types: cargo
-          next-version: "false"
-          admin-bypass: "false"
-      - name: Regenerate Cargo.lock
-        run: |
-          cargo generate-lockfile
-          if ! git diff --quiet Cargo.lock 2>/dev/null; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
-            git add Cargo.lock
-            git commit --amend --no-edit
-            git push --force-with-lease
-            TAG="v$RELEASE_VERSION"
-            git tag -f "$TAG"
-            git push origin "$TAG" --force
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
   test:
     name: Test
-    needs: prepare
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: v${{ inputs.version }}
+          ref: ${{ github.ref }}
+      - name: Configure git credentials for private deps
+        run: git config --global url."https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/".insteadOf "https://github.com/"
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - run: cargo test --workspace --all-features
 
   package:
     name: Package (${{ matrix.packager }}, ${{ matrix.package_arch }})
-    needs: test
+    needs: [validate, test]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -122,8 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: v${{ inputs.version }}
-          persist-credentials: false
+          ref: ${{ github.ref }}
       - name: Configure git credentials for private deps
         run: git config --global url."https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/".insteadOf "https://github.com/"
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
@@ -132,7 +90,7 @@ jobs:
         run: cargo build --locked --release -p gvm-gateway
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Build package
-        run: ./scripts/package-build.sh --packager "${{ matrix.packager }}" --architecture "${{ matrix.package_arch }}" --version "$RELEASE_VERSION" --output-dir dist/packages
+        run: ./scripts/package-build.sh --packager "${{ matrix.packager }}" --architecture "${{ matrix.package_arch }}" --version "${{ needs.validate.outputs.version }}" --output-dir dist/packages
       - name: Smoke test package install
         run: ./scripts/package-smoke.sh --packager "${{ matrix.packager }}" --package-dir dist/packages
       - name: Store package assets
@@ -144,12 +102,12 @@ jobs:
 
   oci:
     name: OCI Image
-    needs: test
+    needs: [validate, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: v${{ inputs.version }}
+          ref: ${{ github.ref }}
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
         with:
           driver: docker-container
@@ -158,7 +116,7 @@ jobs:
         run: |
           docker buildx build \
             --load \
-            --build-arg "GVM_GATEWAY_VERSION=$RELEASE_VERSION" \
+            --build-arg "GVM_GATEWAY_VERSION=${{ needs.validate.outputs.version }}" \
             --build-arg "GVM_GATEWAY_VCS_REF=$(git rev-parse HEAD)" \
             -t local/gvm-gateway:release \
             -f Containerfile \
@@ -169,12 +127,12 @@ jobs:
         run: |
           mkdir -p dist/oci
           docker buildx build \
-            --output "type=oci,dest=dist/oci/gvm-gateway-$RELEASE_VERSION.oci.tar" \
-            --build-arg "GVM_GATEWAY_VERSION=$RELEASE_VERSION" \
+            --output "type=oci,dest=dist/oci/gvm-gateway-${{ needs.validate.outputs.version }}.oci.tar" \
+            --build-arg "GVM_GATEWAY_VERSION=${{ needs.validate.outputs.version }}" \
             --build-arg "GVM_GATEWAY_VCS_REF=$(git rev-parse HEAD)" \
             -f Containerfile \
             .
-          sha256sum "dist/oci/gvm-gateway-$RELEASE_VERSION.oci.tar" > "dist/oci/gvm-gateway-$RELEASE_VERSION.oci.tar.sha256"
+          sha256sum "dist/oci/gvm-gateway-${{ needs.validate.outputs.version }}.oci.tar" > "dist/oci/gvm-gateway-${{ needs.validate.outputs.version }}.oci.tar.sha256"
       - name: Store OCI assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -184,7 +142,7 @@ jobs:
 
   release-assets:
     name: Publish release assets
-    needs: [package, oci]
+    needs: [validate, package, oci]
     runs-on: ubuntu-latest
     steps:
       - name: Download generated release assets
@@ -222,20 +180,38 @@ jobs:
               exit 1
             fi
           done
+      - name: Ensure GitHub release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          if gh release view "${RELEASE_TAG}" --repo "${GH_REPO}" >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          gh release create "${RELEASE_TAG}" \
+            --repo "${GH_REPO}" \
+            --verify-tag \
+            --title "${RELEASE_TAG}" \
+            --generate-notes
       - name: Upload generated assets to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: gh release upload "v$RELEASE_VERSION" dist/release-assets/* --clobber
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: gh release upload "${RELEASE_TAG}" dist/release-assets/* --clobber
 
   sbom:
     name: Generate SBOM
-    needs: [test, release-assets]
+    needs: [validate, test, release-assets]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: v${{ inputs.version }}
+          ref: ${{ github.ref }}
+      - name: Configure git credentials for private deps
+        run: git config --global url."https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/".insteadOf "https://github.com/"
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Install cargo-cyclonedx
@@ -243,19 +219,20 @@ jobs:
       - name: Generate and upload SBOMs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
         run: |
           cargo cyclonedx --format json --all --spec-version 1.5
           cargo cyclonedx --format xml --all --spec-version 1.5
           mkdir -p sbom-artifacts
           find . -name '*.cdx.json' -not -path '*/target/*' -not -path '*/sbom-artifacts/*' -exec cp {} sbom-artifacts/ \;
           find . -name '*.cdx.xml' -not -path '*/target/*' -not -path '*/sbom-artifacts/*' -exec cp {} sbom-artifacts/ \;
-          cd sbom-artifacts && tar czf ../rust-gvm-api-sbom.tar.gz *.cdx.* && cd ..
+          cd sbom-artifacts && tar czf ../rust-gvm-api-sbom.tar.gz -- *.cdx.* && cd ..
           sha256sum rust-gvm-api-sbom.tar.gz > rust-gvm-api-sbom.tar.gz.sha256
-          gh release upload "v$RELEASE_VERSION" rust-gvm-api-sbom.tar.gz rust-gvm-api-sbom.tar.gz.sha256 --clobber
+          gh release upload "${RELEASE_TAG}" rust-gvm-api-sbom.tar.gz rust-gvm-api-sbom.tar.gz.sha256 --clobber
 
   collect:
     name: Release complete
-    needs: [release-assets, sbom]
+    needs: [validate, release-assets, sbom]
     runs-on: ubuntu-latest
     steps:
-      - run: echo "✅ All release artifacts published for v$RELEASE_VERSION"
+      - run: echo "All release artifacts published for ${{ needs.validate.outputs.tag }}"
