@@ -68,7 +68,7 @@ use gvm_gmp::{
             GetPortListsOpts, PortListOpts,
         },
         report_formats::{get_report_format, get_report_formats, GetReportFormatsOpts},
-        reports::{delete_report, get_report, get_reports, GetReportsOpts},
+        reports::{delete_report, get_reports, GetReportsOpts},
         results::{get_result, get_results, GetResultsOpts},
         roles::{
             create_role, delete_role, get_role, get_roles, modify_role, GetRolesOpts, RoleOpts,
@@ -1881,6 +1881,8 @@ impl TargetPort for GvmdAdapter {
                         comment: input.comment,
                         hosts: input.hosts.unwrap_or_default(),
                         exclude_hosts: input.exclude_hosts.unwrap_or_default(),
+                        reverse_lookup_only: None,
+                        reverse_lookup_unify: None,
                         alive_test: input
                             .alive_test
                             .as_deref()
@@ -2190,6 +2192,7 @@ impl ReportPort for GvmdAdapter {
             .lock()
             .await
             .call(get_reports(GetReportsOpts {
+                report_id: None,
                 filter_string: paginated_filter(
                     None,
                     query.filter_string.as_deref(),
@@ -2197,9 +2200,8 @@ impl ReportPort for GvmdAdapter {
                     query.per_page,
                 )?,
                 filter_id,
-                details: Some(true),
+                details: Some(false),
                 ignore_pagination: None,
-                no_report: Some(true),
             }))
             .await
             .map_err(map_gvm_error)?;
@@ -2227,11 +2229,18 @@ impl ReportPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(id)?;
 
-        // Get the report with details
+        // Fetch only report metadata; embedded results are loaded below through
+        // the explicit result-window request.
         let response = client
             .lock()
             .await
-            .call(get_report(&report_id))
+            .call(get_reports(GetReportsOpts {
+                report_id: Some(report_id),
+                filter_string: None,
+                filter_id: None,
+                details: Some(false),
+                ignore_pagination: None,
+            }))
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetReportsResponse::from_response(&response).map_err(map_parse_error)?;
@@ -4436,6 +4445,40 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn gvmd_adapter_list_reports_requests_summary_metadata_only() {
+            let (adapter, server, token) = create_mock_adapter().await;
+            server.clear_history();
+
+            // Regression coverage for issue #273: report listing maps only
+            // report summary metadata, so it must not ask gvmd to embed full
+            // report bodies or rely on unsupported report-suppression attrs.
+            let result = adapter
+                .list_reports(
+                    &token,
+                    &ReportQuery {
+                        filter_string: None,
+                        filter_id: None,
+                        page: 1,
+                        per_page: 25,
+                    },
+                )
+                .await;
+
+            assert!(result.is_ok(), "list reports should succeed: {result:?}");
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "get_reports")
+                .expect("get_reports command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("details=\"0\""), "xml={xml}");
+            assert!(!xml.contains("details=\"1\""), "xml={xml}");
+            assert!(!xml.contains("no_report"), "xml={xml}");
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
         async fn gvmd_adapter_list_hosts_emits_backend_pagination_filter() {
             let (adapter, server, token) = create_mock_adapter().await;
             server.clear_history();
@@ -4713,6 +4756,19 @@ mod tests {
             assert_eq!(report.results.len(), 30);
 
             let history = server.command_history();
+            let report_command = history
+                .iter()
+                .find(|record| record.command_name() == "get_reports")
+                .expect("get_reports command should be recorded");
+            let report_xml =
+                String::from_utf8(report_command.raw_xml().to_vec()).expect("xml command");
+            assert!(
+                report_xml.contains("report_id=\"550e8400-e29b-41d4-a716-446655440000\""),
+                "xml={report_xml}"
+            );
+            assert!(report_xml.contains("details=\"0\""), "xml={report_xml}");
+            assert!(!report_xml.contains("details=\"1\""), "xml={report_xml}");
+
             let command = history
                 .iter()
                 .find(|record| record.command_name() == "get_results")
