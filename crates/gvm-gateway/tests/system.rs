@@ -20,7 +20,7 @@ use http::StatusCode;
 use rcgen::generate_simple_self_signed;
 use reqwest::Client;
 use tempfile::TempDir;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Notify;
 
 #[tokio::test]
@@ -217,6 +217,61 @@ async fn https_health_returns_200_and_hsts_in_native_tls_mode() {
         response.headers().get("strict-transport-security").unwrap(),
         "max-age=31536000; includeSubDomains"
     );
+    handle.abort();
+}
+
+#[tokio::test]
+async fn native_tls_slow_handshake_does_not_block_later_connections() {
+    let cert_dir = TempDir::new().unwrap();
+    let rcgen::CertifiedKey { cert, signing_key } =
+        generate_simple_self_signed(["localhost".to_string()]).unwrap();
+    let cert_path = cert_dir.path().join("cert.pem");
+    let key_path = cert_dir.path().join("key.pem");
+    fs::write(&cert_path, cert.pem()).unwrap();
+    fs::write(&key_path, signing_key.serialize_pem()).unwrap();
+
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let service = static_service(adapter.clone(), adapter);
+    let shutdown = Arc::new(ShutdownRuntime::new());
+    let security = RestSecurityConfig {
+        native_tls_enabled: true,
+        ..Default::default()
+    };
+    let app = build_router_with_runtime_and_security(service, Arc::clone(&shutdown), security);
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let handle = tokio::spawn(server::serve(
+        listener,
+        app,
+        shutdown,
+        Duration::from_secs(1),
+        Some(NativeTlsFiles {
+            certificate_path: cert_path,
+            private_key_path: key_path,
+        }),
+    ));
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Regression test for the native TLS accept loop: an idle TCP client that
+    // never sends handshake bytes must not block subsequent connections.
+    let _stalled_handshake = TcpStream::connect(format!("127.0.0.1:{port}"))
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let request = Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap()
+        .get(format!("https://localhost:{port}/health"))
+        .send();
+    let response = tokio::time::timeout(Duration::from_secs(1), request)
+        .await
+        .expect("later native TLS connection should not wait behind a stalled handshake")
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
     handle.abort();
 }
 
