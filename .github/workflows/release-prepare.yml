@@ -1,0 +1,118 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (without 'v' prefix)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  prepare:
+    name: "Prepare v${{ inputs.version }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${INPUT_VERSION}"
+
+          if [[ "${VERSION}" == v* ]]; then
+            echo "Release version must not include a leading 'v': ${VERSION}" >&2
+            exit 1
+          fi
+
+          if [[ ! "${VERSION}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release version must be semver-shaped: ${VERSION}" >&2
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Configure git credentials for private deps
+        env:
+          RELEASE_AUTH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [[ -z "${RELEASE_AUTH_TOKEN}" ]]; then
+            echo "RELEASE_TOKEN is required for release preparation" >&2
+            exit 1
+          fi
+
+          git config --global url."https://x-access-token:${RELEASE_AUTH_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      - name: Update workspace version
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          perl -0pi -e 's/(\[workspace\.package\]\s*(?:(?!^\[).*\n)*?version\s*=\s*")[^"]+(")/$1$ENV{RELEASE_VERSION}$2/m' Cargo.toml
+
+          if [[ "$(./scripts/workspace-version.sh)" != "${RELEASE_VERSION}" ]]; then
+            echo "Cargo.toml workspace version was not updated to ${RELEASE_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Regenerate Cargo.lock
+        run: cargo generate-lockfile
+
+      - name: Open release preparation PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          RELEASE_AUTH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ -z "${RELEASE_AUTH_TOKEN}" ]]; then
+            echo "RELEASE_TOKEN is required to push the release preparation branch and open the PR" >&2
+            exit 1
+          fi
+
+          BRANCH="release/v${RELEASE_VERSION}"
+          TITLE="chore(release): prepare v${RELEASE_VERSION}"
+
+          if git diff --quiet -- Cargo.toml Cargo.lock; then
+            echo "No release preparation changes were produced for v${RELEASE_VERSION}" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${RELEASE_AUTH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git checkout -B "${BRANCH}"
+          git add Cargo.toml Cargo.lock
+          git commit -m "${TITLE}"
+          git push --force-with-lease origin "${BRANCH}"
+
+          cat > release-pr-body.md <<EOF
+          Prepare repository release state for v${RELEASE_VERSION}.
+
+          This PR updates the workspace version and refreshes Cargo.lock. After
+          it merges, main represents the release candidate for tag v${RELEASE_VERSION}.
+
+          Apply the \`release\` label before merging. After merge, the
+          "Create Release Tag" workflow creates tag v${RELEASE_VERSION} at the
+          merge commit and the publish workflow runs from that tag.
+          EOF
+
+          if gh pr view "${BRANCH}" --repo "${GH_REPO}" >/dev/null 2>&1; then
+            gh pr edit "${BRANCH}" --repo "${GH_REPO}" --title "${TITLE}" --body-file release-pr-body.md
+          else
+            gh pr create --repo "${GH_REPO}" --base main --head "${BRANCH}" --title "${TITLE}" --body-file release-pr-body.md
+          fi
