@@ -7,7 +7,7 @@ use std::{future::Future, future::IntoFuture, io, pin::Pin, sync::Arc, time::Dur
 
 use axum::{serve::ListenerExt, Router};
 use gvm_gateway_rest::{peer_addr::ClientPeerAddr, shutdown::ShutdownRuntime};
-use tokio::{net::TcpListener, net::TcpStream, time::timeout};
+use tokio::{net::TcpListener, net::TcpStream, sync::mpsc, time::timeout};
 use tokio_rustls::{
     rustls::{
         pki_types::pem::PemObject, pki_types::CertificateDer, pki_types::PrivateKeyDer,
@@ -18,6 +18,9 @@ use tokio_rustls::{
 };
 
 use crate::config::NativeTlsFiles;
+
+const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+const TLS_HANDSHAKE_COMPLETION_BUFFER: usize = 1024;
 
 /// Serve the gateway router until shutdown completes or the drain timeout elapses.
 pub async fn serve(
@@ -147,14 +150,51 @@ fn invalid_tls_data(kind: &str, error: impl std::fmt::Display) -> io::Error {
 struct TlsListener {
     listener: TcpListener,
     acceptor: TlsAcceptor,
+    completed_tx: mpsc::Sender<(TlsStream<TcpStream>, ClientPeerAddr)>,
+    completed_rx: mpsc::Receiver<(TlsStream<TcpStream>, ClientPeerAddr)>,
 }
 
 impl TlsListener {
     fn new(listener: TcpListener, config: Arc<ServerConfig>) -> Self {
+        let (completed_tx, completed_rx) = mpsc::channel(TLS_HANDSHAKE_COMPLETION_BUFFER);
         Self {
             listener,
             acceptor: TlsAcceptor::from(config),
+            completed_tx,
+            completed_rx,
         }
+    }
+
+    fn spawn_handshake(&self, stream: TcpStream, remote_addr: std::net::SocketAddr) {
+        let acceptor = self.acceptor.clone();
+        let completed_tx = self.completed_tx.clone();
+
+        tokio::spawn(async move {
+            match timeout(TLS_HANDSHAKE_TIMEOUT, acceptor.accept(stream)).await {
+                Ok(Ok(tls_stream)) => {
+                    if completed_tx
+                        .send((tls_stream, ClientPeerAddr(remote_addr)))
+                        .await
+                        .is_err()
+                    {
+                        tracing::trace!(
+                            %remote_addr,
+                            "native TLS handshake completed after listener stopped"
+                        );
+                    }
+                }
+                Ok(Err(error)) => {
+                    tracing::warn!(?error, %remote_addr, "native TLS handshake failed");
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        %remote_addr,
+                        timeout_secs = TLS_HANDSHAKE_TIMEOUT.as_secs(),
+                        "native TLS handshake timed out"
+                    );
+                }
+            }
+        });
     }
 }
 
@@ -164,22 +204,26 @@ impl axum::serve::Listener for TlsListener {
 
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {
         loop {
-            let (stream, remote_addr) = match self.listener.accept().await {
-                Ok(accepted) => accepted,
-                Err(error) => {
-                    handle_accept_error(error).await;
-                    continue;
+            tokio::select! {
+                completed = self.completed_rx.recv() => {
+                    if let Some(accepted) = completed {
+                        return accepted;
+                    }
                 }
-            };
+                accepted = self.listener.accept() => {
+                    let (stream, remote_addr) = match accepted {
+                        Ok(accepted) => accepted,
+                        Err(error) => {
+                            handle_accept_error(error).await;
+                            continue;
+                        }
+                    };
 
-            if let Err(error) = stream.set_nodelay(true) {
-                tracing::trace!(?error, %remote_addr, "failed to set TCP_NODELAY on native TLS connection");
-            }
+                    if let Err(error) = stream.set_nodelay(true) {
+                        tracing::trace!(?error, %remote_addr, "failed to set TCP_NODELAY on native TLS connection");
+                    }
 
-            match self.acceptor.accept(stream).await {
-                Ok(tls_stream) => return (tls_stream, ClientPeerAddr(remote_addr)),
-                Err(error) => {
-                    tracing::warn!(?error, %remote_addr, "native TLS handshake failed");
+                    self.spawn_handshake(stream, remote_addr);
                 }
             }
         }
