@@ -2,8 +2,9 @@ use std::{collections::BTreeMap, io::Write};
 
 use gvm_gateway::config::{
     load_config, load_config_with_default_path, parse_gvmd_endpoint, CliArgs, GatewayConfig,
-    TransportSecurityConfig, TransportSecurityMode,
+    SessionConfig, TransportSecurityConfig, TransportSecurityMode,
 };
+use gvm_gateway_domain::SessionLimits;
 use gvm_gateway_rest::{
     peer_addr::TrustedProxyCidr,
     router::{RateLimitConfig, RestSecurityConfig},
@@ -30,6 +31,7 @@ fn default_config_valid() {
             telemetry_service_instance_id: None,
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
             shutdown_drain_timeout_secs: 30,
+            session: SessionConfig::default(),
             rest_security: RestSecurityConfig::default(),
             transport_security: TransportSecurityConfig::default(),
         }
@@ -41,7 +43,7 @@ fn config_override_precedence() {
     let mut file = NamedTempFile::new().unwrap();
     writeln!(
         file,
-        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ntelemetry_service_name = \"gateway-file\"\ntelemetry_service_namespace = \"greenbone.file\"\ntelemetry_deployment_environment = \"staging\"\ntelemetry_service_instance_id = \"gw-file-1\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\nshutdown_drain_timeout_secs = 45\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3\ntrusted_proxy_cidrs = [\"10.0.0.0/8\"]"
+        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ntelemetry_service_name = \"gateway-file\"\ntelemetry_service_namespace = \"greenbone.file\"\ntelemetry_deployment_environment = \"staging\"\ntelemetry_service_instance_id = \"gw-file-1\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\nshutdown_drain_timeout_secs = 45\nsession_idle_timeout_secs = 120\nsession_max_global = 55\nsession_max_per_user = 5\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3\ntrusted_proxy_cidrs = [\"10.0.0.0/8\"]"
     )
     .unwrap();
 
@@ -62,6 +64,18 @@ fn config_override_precedence() {
     env.insert(
         "GVM_GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECS".to_string(),
         "5".to_string(),
+    );
+    env.insert(
+        "GVM_GATEWAY_SESSION_IDLE_TIMEOUT_SECS".to_string(),
+        "600".to_string(),
+    );
+    env.insert(
+        "GVM_GATEWAY_SESSION_MAX_GLOBAL".to_string(),
+        "0".to_string(),
+    );
+    env.insert(
+        "GVM_GATEWAY_SESSION_MAX_PER_USER".to_string(),
+        "7".to_string(),
     );
     env.insert(
         "GVM_GATEWAY_CORS_ALLOWED_ORIGINS".to_string(),
@@ -109,6 +123,16 @@ fn config_override_precedence() {
     );
     assert_eq!(config.gvmd_endpoint, "unix:///var/run/gvmd.sock");
     assert_eq!(config.shutdown_drain_timeout_secs, 5);
+    assert_eq!(
+        config.session,
+        SessionConfig {
+            idle_timeout_secs: 600,
+            limits: SessionLimits {
+                max_global: None,
+                max_per_user: Some(7),
+            },
+        }
+    );
     assert_eq!(
         config.rest_security,
         RestSecurityConfig {

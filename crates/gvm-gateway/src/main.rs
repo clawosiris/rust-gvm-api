@@ -35,7 +35,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     rest_security.native_tls_enabled = native_tls.is_some();
     let listener = TcpListener::bind(&config.bind).await?;
     let live_adapter = Arc::new(GvmdAdapter::unix_socket(&gvmd_socket_path));
-    let sessions = Arc::new(SessionManager::default());
+    let sessions = Arc::new(SessionManager::with_limits(
+        config.session.idle_timeout_secs,
+        config.session.limits,
+    ));
     let reaper = SessionReaper::new(Arc::clone(&sessions), live_adapter.clone());
     let service = gateway_service(live_adapter, sessions);
     let _reaper_handle = reaper.spawn();

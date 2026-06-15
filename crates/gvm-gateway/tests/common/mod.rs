@@ -102,9 +102,21 @@ pub async fn spawn_server(
     system_adapter: StaticGvmdAdapter,
     target_adapter: StaticGvmdAdapter,
 ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+    spawn_server_with_sessions(
+        system_adapter,
+        target_adapter,
+        Arc::new(SessionManager::default()),
+    )
+    .await
+}
+
+pub async fn spawn_server_with_sessions(
+    system_adapter: StaticGvmdAdapter,
+    target_adapter: StaticGvmdAdapter,
+    sessions: Arc<SessionManager>,
+) -> (SocketAddr, tokio::task::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let sessions = Arc::new(SessionManager::default());
     let service = static_gateway_service(system_adapter, target_adapter, sessions);
     let app = build_router(service);
     let handle = tokio::spawn(async move {

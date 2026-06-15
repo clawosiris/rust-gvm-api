@@ -10,6 +10,7 @@ use std::{
 };
 
 use clap::Parser;
+use gvm_gateway_domain::SessionLimits;
 use gvm_gateway_rest::{peer_addr::TrustedProxyCidr, router::RestSecurityConfig};
 use serde::Deserialize;
 
@@ -28,7 +29,7 @@ pub struct CliArgs {
 }
 
 /// Top-level gateway configuration.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GatewayConfig {
     /// REST bind address.
     pub bind: String,
@@ -46,6 +47,8 @@ pub struct GatewayConfig {
     pub gvmd_endpoint: String,
     /// Maximum time to wait for in-flight requests during shutdown.
     pub shutdown_drain_timeout_secs: u64,
+    /// Session lifecycle and capacity configuration.
+    pub session: SessionConfig,
     /// REST security middleware configuration.
     pub rest_security: RestSecurityConfig,
     /// Transport security mode and native TLS material.
@@ -63,6 +66,7 @@ impl Default for GatewayConfig {
             telemetry_service_instance_id: None,
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
             shutdown_drain_timeout_secs: 30,
+            session: SessionConfig::default(),
             rest_security: RestSecurityConfig::default(),
             transport_security: TransportSecurityConfig::default(),
         }
@@ -73,6 +77,24 @@ impl GatewayConfig {
     /// Parse the configured gvmd endpoint into a Unix socket path.
     pub fn gvmd_socket_path(&self) -> Result<PathBuf, ConfigError> {
         parse_gvmd_endpoint(&self.gvmd_endpoint)
+    }
+}
+
+/// Session lifecycle and capacity settings.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SessionConfig {
+    /// Idle timeout in seconds.
+    pub idle_timeout_secs: u64,
+    /// Capacity limits for active sessions.
+    pub limits: SessionLimits,
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self {
+            idle_timeout_secs: 300,
+            limits: SessionLimits::default(),
+        }
     }
 }
 
@@ -204,6 +226,9 @@ struct FileConfig {
     telemetry_service_instance_id: Option<String>,
     gvmd_endpoint: Option<String>,
     shutdown_drain_timeout_secs: Option<u64>,
+    session_idle_timeout_secs: Option<u64>,
+    session_max_global: Option<u64>,
+    session_max_per_user: Option<u64>,
     cors_allowed_origins: Option<Vec<String>>,
     rate_limit_window_secs: Option<u64>,
     rate_limit_global_per_window: Option<u64>,
@@ -260,6 +285,15 @@ pub fn load_config_with_default_path(
         if let Some(timeout_secs) = file.shutdown_drain_timeout_secs {
             config.shutdown_drain_timeout_secs = timeout_secs;
         }
+        if let Some(timeout_secs) = file.session_idle_timeout_secs {
+            config.session.idle_timeout_secs = timeout_secs;
+        }
+        if let Some(limit) = file.session_max_global {
+            config.session.limits.max_global = limit_to_option(limit);
+        }
+        if let Some(limit) = file.session_max_per_user {
+            config.session.limits.max_per_user = limit_to_option(limit);
+        }
         if let Some(mode) = file.transport_security_mode {
             config.transport_security.mode = mode;
         }
@@ -296,6 +330,18 @@ pub fn load_config_with_default_path(
     if let Some(timeout_secs) = env.get("GVM_GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECS") {
         config.shutdown_drain_timeout_secs =
             parse_u64("GVM_GATEWAY_SHUTDOWN_DRAIN_TIMEOUT_SECS", timeout_secs)?;
+    }
+    if let Some(timeout_secs) = env.get("GVM_GATEWAY_SESSION_IDLE_TIMEOUT_SECS") {
+        config.session.idle_timeout_secs =
+            parse_u64("GVM_GATEWAY_SESSION_IDLE_TIMEOUT_SECS", timeout_secs)?;
+    }
+    if let Some(limit) = env.get("GVM_GATEWAY_SESSION_MAX_GLOBAL") {
+        config.session.limits.max_global =
+            limit_to_option(parse_u64("GVM_GATEWAY_SESSION_MAX_GLOBAL", limit)?);
+    }
+    if let Some(limit) = env.get("GVM_GATEWAY_SESSION_MAX_PER_USER") {
+        config.session.limits.max_per_user =
+            limit_to_option(parse_u64("GVM_GATEWAY_SESSION_MAX_PER_USER", limit)?);
     }
     if let Some(mode) = env.get("GVM_GATEWAY_TRANSPORT_SECURITY_MODE") {
         config.transport_security.mode =

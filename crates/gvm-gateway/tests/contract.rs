@@ -8,11 +8,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common::spawn_server;
+use common::{spawn_server, spawn_server_with_sessions};
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    CreateTaskInput, GatewayError, ModifyTaskInput, Pagination, SessionManager, Task, TaskAction,
-    TaskObservers, TaskPage, TaskPort, TaskQuery,
+    CreateTaskInput, GatewayError, ModifyTaskInput, Pagination, SessionLimits, SessionManager,
+    Task, TaskAction, TaskObservers, TaskPage, TaskPort, TaskQuery,
 };
 use gvm_gateway_gvmd::StaticGvmdAdapter;
 use gvm_gateway_rest::{
@@ -77,7 +77,14 @@ async fn documented_route_inventory_matches_live_router_dispatch() {
     // just the path keys. A root or path-level `servers` change must therefore
     // still map to an implemented router path.
     let adapter = StaticGvmdAdapter::ready("22.7");
-    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+    let sessions = Arc::new(SessionManager::with_limits(
+        300,
+        SessionLimits {
+            max_global: None,
+            max_per_user: None,
+        },
+    ));
+    let (addr, handle) = spawn_server_with_sessions(adapter.clone(), adapter, sessions).await;
     let client = Client::new();
     let unused_generated = Value::Null;
     let docs = SpecDocs::load(&unused_generated);
