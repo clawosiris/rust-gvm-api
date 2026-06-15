@@ -117,7 +117,7 @@ use gvm_gmp::{
         GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse, ResumeTaskResponse,
         StartTaskResponse, User as GmpUser,
     },
-    EntityId, FilterFragment, FilterFragmentError, PaginatedFilter, Pagination as GmpPagination,
+    EntityId, FilterFragmentError, PaginatedFilter, Pagination as GmpPagination,
 };
 use gvm_protocol::{Request, Response};
 use tokio::sync::Mutex as AsyncMutex;
@@ -343,6 +343,65 @@ impl GvmdAdapter {
             writable: true,
         }]
     }
+
+    async fn saved_filter_term(
+        &self,
+        session_token: &str,
+        filter_id: Option<&EntityId>,
+    ) -> Result<Option<String>, GatewayError> {
+        let Some(filter_id) = filter_id else {
+            return Ok(None);
+        };
+
+        let response = self
+            .call_with_session(session_token, "filters.get", get_filter(filter_id))
+            .await?;
+        let parsed = GetFiltersResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .ok_or_else(|| GatewayError::NotFound(format!("filter {filter_id} not found")))
+            .map(|filter| filter.term)
+    }
+
+    async fn paginated_filter_resolving_filter_id(
+        &self,
+        session_token: &str,
+        prefix: Option<&str>,
+        filter_string: Option<&str>,
+        filter_id: Option<&EntityId>,
+        page: u32,
+        per_page: u32,
+        reserved_terms: &[&str],
+    ) -> Result<Option<String>, GatewayError> {
+        let saved_filter = self.saved_filter_term(session_token, filter_id).await?;
+        composed_filter(
+            prefix,
+            saved_filter.as_deref(),
+            filter_string,
+            Some(GmpPagination::new(page as usize, per_page as usize)),
+            reserved_terms,
+        )
+    }
+
+    async fn filter_resolving_filter_id(
+        &self,
+        session_token: &str,
+        prefix: Option<&str>,
+        filter_string: Option<&str>,
+        filter_id: Option<&EntityId>,
+        reserved_terms: &[&str],
+    ) -> Result<Option<String>, GatewayError> {
+        let saved_filter = self.saved_filter_term(session_token, filter_id).await?;
+        composed_filter(
+            prefix,
+            saved_filter.as_deref(),
+            filter_string,
+            None,
+            reserved_terms,
+        )
+    }
 }
 
 fn safe_session_id(token: &str) -> String {
@@ -421,17 +480,25 @@ fn paginated_filter_with_reserved_terms(
         .build())
 }
 
-fn validated_filter_string(
+fn composed_filter(
+    prefix: Option<&str>,
+    saved_filter_string: Option<&str>,
     filter_string: Option<&str>,
+    pagination: Option<GmpPagination>,
     reserved_terms: &[&str],
 ) -> Result<Option<String>, GatewayError> {
-    filter_string
-        .map(|filter_string| {
-            FilterFragment::new(filter_string, reserved_terms)
-                .map(FilterFragment::into_inner)
-                .map_err(map_filter_fragment_error)
-        })
-        .transpose()
+    let mut filter = PaginatedFilter::new();
+    filter = filter.with_filter_string(saved_filter_string);
+    if let Some(prefix) = prefix {
+        filter = filter.with_clause(prefix);
+    }
+    filter = filter
+        .try_with_filter_string(filter_string, reserved_terms)
+        .map_err(map_filter_fragment_error)?;
+    if let Some(pagination) = pagination {
+        filter = filter.with_pagination(pagination);
+    }
+    Ok(filter.build())
 }
 
 fn map_filter_fragment_error(error: FilterFragmentError) -> GatewayError {
@@ -530,17 +597,23 @@ impl AlertPort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_alerts(GetAlertsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -711,17 +784,23 @@ impl SchedulePort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_schedules(GetSchedulesOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
                 tasks: None,
@@ -841,17 +920,23 @@ impl CredentialPort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_credentials(GetCredentialsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -1012,17 +1097,23 @@ impl PortListPort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_port_lists(GetPortListsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -1153,13 +1244,18 @@ impl IdentityPort for GvmdAdapter {
                 session_token,
                 "users.list",
                 get_users(GetUsersOpts {
-                    filter_string: paginated_filter(
-                        None,
-                        query.filter_string.as_deref(),
-                        query.page,
-                        query.per_page,
-                    )?,
-                    filter_id,
+                    filter_string: self
+                        .paginated_filter_resolving_filter_id(
+                            session_token,
+                            None,
+                            query.filter_string.as_deref(),
+                            filter_id.as_ref(),
+                            query.page,
+                            query.per_page,
+                            &[],
+                        )
+                        .await?,
+                    filter_id: None,
                     trash: None,
                     details: Some(true),
                 }),
@@ -1292,13 +1388,18 @@ impl IdentityPort for GvmdAdapter {
                 session_token,
                 "groups.list",
                 get_groups(GetGroupsOpts {
-                    filter_string: paginated_filter(
-                        None,
-                        query.filter_string.as_deref(),
-                        query.page,
-                        query.per_page,
-                    )?,
-                    filter_id,
+                    filter_string: self
+                        .paginated_filter_resolving_filter_id(
+                            session_token,
+                            None,
+                            query.filter_string.as_deref(),
+                            filter_id.as_ref(),
+                            query.page,
+                            query.per_page,
+                            &[],
+                        )
+                        .await?,
+                    filter_id: None,
                     trash: None,
                     details: Some(true),
                 }),
@@ -1403,17 +1504,23 @@ impl IdentityPort for GvmdAdapter {
             .as_deref()
             .map(parse_entity_id)
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_roles(GetRolesOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -1518,17 +1625,23 @@ impl IdentityPort for GvmdAdapter {
             .as_deref()
             .map(parse_entity_id)
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_permissions(GetPermissionsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -1661,16 +1774,26 @@ impl IdentityPort for GvmdAdapter {
         query: &UserSettingQuery,
     ) -> Result<UserSettingList, GatewayError> {
         let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let filter = self
+            .filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_user_settings(GetUserSettingsOpts {
-                filter: validated_filter_string(query.filter_string.as_deref(), &[])?,
-                filter_id: query
-                    .filter_id
-                    .as_deref()
-                    .map(parse_entity_id)
-                    .transpose()?,
+                filter,
+                filter_id: None,
             }))
             .await
             .map_err(map_gvm_error)?;
@@ -1747,13 +1870,18 @@ impl TargetPort for GvmdAdapter {
                 session_token,
                 "targets.list",
                 get_targets(GetTargetsOpts {
-                    filter_string: paginated_filter(
-                        None,
-                        query.filter_string.as_deref(),
-                        query.page,
-                        query.per_page,
-                    )?,
-                    filter_id: filter_id.clone(),
+                    filter_string: self
+                        .paginated_filter_resolving_filter_id(
+                            session_token,
+                            None,
+                            query.filter_string.as_deref(),
+                            filter_id.as_ref(),
+                            query.page,
+                            query.per_page,
+                            &[],
+                        )
+                        .await?,
+                    filter_id: None,
                     trash: None,
                     details: Some(true),
                 }),
@@ -1775,11 +1903,16 @@ impl TargetPort for GvmdAdapter {
                     session_token,
                     "targets.list",
                     get_targets(GetTargetsOpts {
-                        filter_string: validated_filter_string(
-                            query.filter_string.as_deref(),
-                            &[],
-                        )?,
-                        filter_id,
+                        filter_string: self
+                            .filter_resolving_filter_id(
+                                session_token,
+                                None,
+                                query.filter_string.as_deref(),
+                                filter_id.as_ref(),
+                                &[],
+                            )
+                            .await?,
+                        filter_id: None,
                         trash: None,
                         details: Some(true),
                     }),
@@ -1968,13 +2101,18 @@ impl TaskPort for GvmdAdapter {
                 session_token,
                 "tasks.list",
                 get_tasks(GetTasksOpts {
-                    filter_string: paginated_filter(
-                        None,
-                        query.filter_string.as_deref(),
-                        query.page,
-                        query.per_page,
-                    )?,
-                    filter_id,
+                    filter_string: self
+                        .paginated_filter_resolving_filter_id(
+                            session_token,
+                            None,
+                            query.filter_string.as_deref(),
+                            filter_id.as_ref(),
+                            query.page,
+                            query.per_page,
+                            &[],
+                        )
+                        .await?,
+                    filter_id: None,
                     trash: None,
                     details: Some(true),
                     schedules_only: None,
@@ -2202,18 +2340,24 @@ impl ReportPort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_reports(GetReportsOpts {
                 report_id: None,
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 details: Some(false),
                 ignore_pagination: None,
             }))
@@ -2344,24 +2488,29 @@ impl ReportPort for GvmdAdapter {
         // Validate that the report_id is a valid UUID
         let _ = parse_entity_id(report_id)?;
 
-        let filter = paginated_filter_with_reserved_terms(
-            Some(&format!("report_id={report_id}")),
-            query.filter_string.as_deref(),
-            query.page,
-            query.per_page,
-            &["report_id"],
-        )?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let filter = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                Some(&format!("report_id={report_id}")),
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &["report_id"],
+            )
+            .await?;
 
         let response = client
             .lock()
             .await
             .call(get_results(GetResultsOpts {
                 filter_string: filter,
-                filter_id: query
-                    .filter_id
-                    .as_deref()
-                    .map(parse_entity_id)
-                    .transpose()?,
+                filter_id: None,
                 details: Some(true),
             }))
             .await
@@ -2389,7 +2538,7 @@ impl ReportPort for GvmdAdapter {
     ) -> Result<ResultPage, GatewayError> {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
-        let opts = report_detail_query(query)?;
+        let opts = report_detail_query(self, session_token, query).await?;
         let parsed = match client.lock().await.get_report_vulns(&report_id, opts).await {
             Ok(parsed) => parsed,
             Err(error) if typed_report_detail_unsupported(&error, "get_report_vulns") => {
@@ -2421,7 +2570,7 @@ impl ReportPort for GvmdAdapter {
     ) -> Result<TlsCertificatePage, GatewayError> {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
-        let opts = report_detail_query(query)?;
+        let opts = report_detail_query(self, session_token, query).await?;
         let parsed = match client
             .lock()
             .await
@@ -2464,7 +2613,7 @@ impl ReportPort for GvmdAdapter {
     ) -> Result<ResultPage, GatewayError> {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
-        let opts = report_detail_query(query)?;
+        let opts = report_detail_query(self, session_token, query).await?;
         let parsed = match client
             .lock()
             .await
@@ -2501,7 +2650,7 @@ impl ReportPort for GvmdAdapter {
     ) -> Result<ResultPage, GatewayError> {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
-        let opts = report_detail_query(query)?;
+        let opts = report_detail_query(self, session_token, query).await?;
         let parsed = match client
             .lock()
             .await
@@ -2531,20 +2680,29 @@ impl ReportPort for GvmdAdapter {
     }
 }
 
-fn report_detail_query(query: &ResultQuery) -> Result<GetReportDetailsOpts, GatewayError> {
+async fn report_detail_query(
+    adapter: &GvmdAdapter,
+    session_token: &str,
+    query: &ResultQuery,
+) -> Result<GetReportDetailsOpts, GatewayError> {
+    let filter_id = query
+        .filter_id
+        .as_deref()
+        .map(parse_entity_id)
+        .transpose()?;
     Ok(GetReportDetailsOpts {
-        filter_string: paginated_filter_with_reserved_terms(
-            None,
-            query.filter_string.as_deref(),
-            query.page,
-            query.per_page,
-            &["report_id"],
-        )?,
-        filter_id: query
-            .filter_id
-            .as_deref()
-            .map(parse_entity_id)
-            .transpose()?,
+        filter_string: adapter
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &["report_id"],
+            )
+            .await?,
+        filter_id: None,
         ignore_pagination: None,
         details: Some(true),
     })
@@ -2582,17 +2740,23 @@ impl ResultPort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_results(GetResultsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 details: Some(true),
             }))
             .await
@@ -2646,17 +2810,23 @@ impl ScanConfigPort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_scan_configs(GetScanConfigsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -2779,17 +2949,23 @@ impl ScannerPort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_scanners(GetScannersOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -2843,17 +3019,23 @@ impl SupportingResourcePort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_hosts(GetHostsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -2910,17 +3092,23 @@ impl SupportingResourcePort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_report_formats(GetReportFormatsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -2974,17 +3162,23 @@ impl SupportingResourcePort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_filters(GetFiltersOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -3034,17 +3228,23 @@ impl SupportingResourcePort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_tags(GetTagsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -3094,17 +3294,23 @@ impl SupportingResourcePort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_tickets(GetTicketsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
             }))
@@ -3154,17 +3360,23 @@ impl SupportingResourcePort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_notes(GetNotesOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
                 result: Some(true),
@@ -3273,17 +3485,23 @@ impl SupportingResourcePort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_overrides(GetOverridesOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id,
+                filter_string,
+                filter_id: None,
                 trash: None,
                 details: Some(true),
                 result: Some(true),
@@ -3395,17 +3613,23 @@ impl SupportingResourcePort for GvmdAdapter {
                     .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
             })
             .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
         let response = client
             .lock()
             .await
             .call(get_nvts(GetNvtsOpts {
-                filter_string: paginated_filter(
-                    None,
-                    query.filter_string.as_deref(),
-                    query.page,
-                    query.per_page,
-                )?,
-                filter_id: filter_id.clone(),
+                filter_string,
+                filter_id: None,
                 details: Some(true),
             }))
             .await
@@ -3431,11 +3655,16 @@ impl SupportingResourcePort for GvmdAdapter {
                     session_token,
                     "nvts.list",
                     get_nvts(GetNvtsOpts {
-                        filter_string: validated_filter_string(
-                            query.filter_string.as_deref(),
-                            &[],
-                        )?,
-                        filter_id,
+                        filter_string: self
+                            .filter_resolving_filter_id(
+                                session_token,
+                                None,
+                                query.filter_string.as_deref(),
+                                filter_id.as_ref(),
+                                &[],
+                            )
+                            .await?,
+                        filter_id: None,
                         details: Some(true),
                     }),
                 )
@@ -3557,6 +3786,7 @@ mod tests {
         io,
         io::Write,
         sync::{Arc, Mutex, OnceLock},
+        time::Duration,
     };
 
     use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
@@ -3758,11 +3988,16 @@ mod tests {
         async fn create_mock_adapter_v22_8() -> (GvmdAdapter, MockGmpServer, String) {
             let report_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")
                 .expect("valid report id");
+            let filter_id = uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000")
+                .expect("valid filter id");
             let server = MockGmpServer::builder()
                 .mode(ServerMode::Stateful)
                 .version(MockVersion::V22_8)
                 .seed(move |store| {
                     store.create(Resource::with_id("report", "Typed report", report_id));
+                    let mut filter = Resource::with_id("filter", "Saved alarm filter", filter_id);
+                    filter.set_attr("term", "threat=Alarm");
+                    store.create(filter);
                 })
                 .unix_socket_auto()
                 .build()
@@ -4572,6 +4807,119 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn gvmd_adapter_list_targets_resolves_filter_id_before_paginating() {
+            let filter_id = uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000")
+                .expect("valid filter id");
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_7)
+                .seed(move |store| {
+                    let mut filter = Resource::with_id("filter", "Saved target filter", filter_id);
+                    filter.set_attr("term", "name~Saved");
+                    store.create(filter);
+                })
+                .unix_socket_auto()
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+            server.clear_history();
+
+            // Regression coverage for issue #272: real gvmd ignores the
+            // inline filter when filter_id is set, so pagination must be
+            // composed into the inline filter after resolving the saved term.
+            let result = adapter
+                .list_targets(
+                    token,
+                    &TargetQuery {
+                        filter_string: Some("comment~web".to_string()),
+                        filter_id: Some(filter_id.to_string()),
+                        page: 2,
+                        per_page: 10,
+                    },
+                )
+                .await;
+
+            assert!(result.is_ok(), "target list should succeed: {result:?}");
+            let history = server.command_history();
+            let target_command = history
+                .iter()
+                .find(|record| record.command_name() == "get_targets")
+                .expect("get_targets command should be recorded");
+            let xml = String::from_utf8(target_command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("filter=\"name~Saved comment~web first=11 rows=10\""));
+            assert!(!xml.contains("filter_id"));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_list_alerts_filter_id_resolution_does_not_deadlock() {
+            let filter_id = uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000")
+                .expect("valid filter id");
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_7)
+                .seed(move |store| {
+                    let mut filter = Resource::with_id("filter", "Saved alert filter", filter_id);
+                    filter.set_attr("term", "name~Saved");
+                    store.create(filter);
+                })
+                .unix_socket_auto()
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+            server.clear_history();
+
+            // Regression coverage for the direct-lock list paths: resolving a
+            // saved filter must happen before the session client is locked, or
+            // the nested get_filter request waits forever on the same mutex.
+            let result = tokio::time::timeout(
+                Duration::from_millis(250),
+                adapter.list_alerts(
+                    token,
+                    &AlertQuery {
+                        filter_string: Some("comment~web".to_string()),
+                        filter_id: Some(filter_id.to_string()),
+                        page: 2,
+                        per_page: 10,
+                    },
+                ),
+            )
+            .await;
+
+            let history = server.command_history();
+            server.shutdown().await;
+
+            let page = result
+                .expect("list_alerts with filterId should not deadlock")
+                .expect("list_alerts with filterId should succeed");
+            assert_eq!(page.pagination.page, 2);
+            assert_eq!(page.pagination.per_page, 10);
+
+            let alert_command = history
+                .iter()
+                .find(|record| record.command_name() == "get_alerts")
+                .expect("get_alerts command should be recorded");
+            let xml = String::from_utf8(alert_command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains("filter=\"name~Saved comment~web first=11 rows=10\""));
+            assert!(!xml.contains("filter_id"));
+        }
+
+        #[tokio::test]
         async fn gvmd_adapter_list_reports_requests_summary_metadata_only() {
             let (adapter, server, token) = create_mock_adapter().await;
             server.clear_history();
@@ -4708,8 +5056,8 @@ mod tests {
                 .expect("get_report_vulns command should be recorded");
             let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
             assert!(xml.contains("report_id=\"550e8400-e29b-41d4-a716-446655440000\""));
-            assert!(xml.contains("filter=\"severity&gt;5 first=11 rows=10\""));
-            assert!(xml.contains("123e4567-e89b-12d3-a456-426614174000"));
+            assert!(xml.contains("filter=\"threat=Alarm severity&gt;5 first=11 rows=10\""));
+            assert!(!xml.contains("filter_id"));
             assert!(xml.contains("details=\"1\""));
 
             server.shutdown().await;
@@ -4791,10 +5139,13 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn gvmd_adapter_get_report_results_forwards_filter_id() {
+        async fn gvmd_adapter_get_report_results_resolves_filter_id_into_inline_filter() {
             let (adapter, server, token) = create_mock_adapter_v22_8().await;
             server.clear_history();
 
+            // Regression coverage for issue #272: gvmd ignores inline filter
+            // and pagination attributes when filter_id is set, so the adapter
+            // must resolve saved filters and send one composed inline filter.
             let _ = adapter
                 .get_report_results(
                     &token,
@@ -4815,8 +5166,10 @@ mod tests {
                 .find(|record| record.command_name() == "get_results")
                 .expect("get_results command should be recorded");
             let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
-            assert!(xml.contains("report_id=550e8400-e29b-41d4-a716-446655440000"));
-            assert!(xml.contains("123e4567-e89b-12d3-a456-426614174000"));
+            assert!(xml.contains(
+                "filter=\"threat=Alarm report_id=550e8400-e29b-41d4-a716-446655440000 severity&gt;5 first=1 rows=25\""
+            ));
+            assert!(!xml.contains("filter_id"));
 
             server.shutdown().await;
         }
