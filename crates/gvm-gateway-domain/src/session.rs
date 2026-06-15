@@ -55,8 +55,8 @@ pub struct SessionInfo {
     pub token: String,
     /// Authenticated user.
     pub user: String,
-    /// State label: "active" or "expired".
-    pub state: String,
+    /// Current lifecycle state.
+    pub state: SessionState,
     /// Creation time (epoch seconds).
     pub created_at: u64,
     /// Last usage time (epoch seconds).
@@ -313,11 +313,11 @@ impl SessionManager {
             .ok_or_else(|| GatewayError::NotFound("session not found".to_string()))?;
 
         let (state, expires_in) = if stored.is_expired_at(now, self.idle_timeout_secs) {
-            ("expired".to_string(), 0)
+            (SessionState::Expired, 0)
         } else {
             let elapsed = now.saturating_sub(stored.last_used_at);
             let remaining = (self.idle_timeout_secs - elapsed) as i64;
-            ("active".to_string(), remaining)
+            (SessionState::Active, remaining)
         };
 
         Ok(SessionInfo {
@@ -604,7 +604,7 @@ mod tests {
         let info = SessionInfo {
             token: "gvm_sess_debug_info_secret".to_string(),
             user: "debug-user".to_string(),
-            state: "active".to_string(),
+            state: SessionState::Active,
             created_at: 1,
             last_used_at: 1,
             expires_in: 300,
@@ -642,13 +642,13 @@ mod tests {
 
         assert_eq!(info.token, session.token);
         assert_eq!(info.user, "alice");
-        assert_eq!(info.state, "active");
+        assert_eq!(info.state, SessionState::Active);
         assert!(info.created_at > 0);
         assert!(info.last_used_at > 0);
         assert!(info.expires_in > 0);
     }
 
-    /// get_info returns 'expired' for a manually expired session.
+    /// get_info returns the typed expired state for a manually expired session.
     #[test]
     fn session_manager_get_info_expired() {
         let manager = SessionManager::default();
@@ -656,7 +656,7 @@ mod tests {
         manager.expire(&session.token).unwrap();
         let info = manager.get_info(&session.token).unwrap();
 
-        assert_eq!(info.state, "expired");
+        assert_eq!(info.state, SessionState::Expired);
         assert_eq!(info.expires_in, 0);
     }
 

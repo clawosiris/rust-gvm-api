@@ -12,9 +12,9 @@ use axum::{
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use gvm_gateway_app::GatewayService;
-use gvm_gateway_domain::{format_rfc3339, GatewayError};
+use gvm_gateway_domain::{format_rfc3339, GatewayError, SessionState as DomainSessionState};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::{
     dto::datetime_schema,
@@ -40,18 +40,21 @@ pub(crate) struct SessionCreatedResponse {
 }
 
 /// Session lifecycle state.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, JsonSchema)]
 pub(crate) enum SessionState {
     #[serde(rename = "active")]
     Active,
-    #[serde(rename = "idle")]
-    Idle,
     #[serde(rename = "expired")]
     Expired,
 }
 
-fn parse_session_state(s: &str) -> SessionState {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).unwrap_or(SessionState::Active)
+impl From<DomainSessionState> for SessionState {
+    fn from(state: DomainSessionState) -> Self {
+        match state {
+            DomainSessionState::Active => Self::Active,
+            DomainSessionState::Expired => Self::Expired,
+        }
+    }
 }
 
 /// JSON body returned by `GET /api/v1/session`.
@@ -125,7 +128,7 @@ pub async fn get_session(
             StatusCode::OK,
             Json(SessionInfoResponse {
                 user: info.user,
-                state: parse_session_state(&info.state),
+                state: info.state.into(),
                 created_at: format_rfc3339(info.created_at),
                 last_used_at: format_rfc3339(info.last_used_at),
                 expires_in: info.expires_in,

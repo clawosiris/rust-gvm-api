@@ -109,10 +109,9 @@ async fn rest_session_lifecycle_exposes_location_and_session_details() -> Result
         session.user, harness.config.username,
         "session read returned an unexpected user"
     );
-    assert!(
-        matches!(session.state.as_str(), "active" | "idle"),
-        "session read returned unexpected state {}",
-        session.state
+    assert_eq!(
+        session.state, "active",
+        "session read returned unexpected state"
     );
     assert!(
         !session.created_at.trim().is_empty() && !session.last_used_at.trim().is_empty(),

@@ -103,11 +103,12 @@ components:
           description: Username this session authenticated as.
         state:
           type: string
+          description: |
+            Current inspectable session state. Deleted sessions are not returned
+            as closed; they are no longer inspectable and return 404.
           enum:
             - active
-            - idle
             - expired
-            - closed
         createdAt:
           type: string
           format: date-time

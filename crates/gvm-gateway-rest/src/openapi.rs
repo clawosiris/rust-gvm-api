@@ -1613,6 +1613,22 @@ mod tests {
     }
 
     #[test]
+    fn generated_openapi_session_state_matches_inspectable_contract() {
+        let generated = build_openapi();
+        let schemas = &generated["components"]["schemas"];
+
+        assert_eq!(
+            schemas["SessionInfo"]["properties"]["state"]["$ref"],
+            json!("#/components/schemas/SessionState")
+        );
+        assert_eq!(
+            schemas["SessionState"]["enum"],
+            json!(["active", "expired"]),
+            "SessionInfo state must only document states returned by GET /session"
+        );
+    }
+
+    #[test]
     fn generated_openapi_includes_task_schemas() {
         let generated = build_openapi();
         let schemas = generated["components"]["schemas"].as_object().unwrap();
