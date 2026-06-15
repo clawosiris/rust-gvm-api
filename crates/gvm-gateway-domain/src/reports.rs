@@ -127,8 +127,6 @@ pub struct ReportQuery {
 /// Options for fetching a single report.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GetReportOpts {
-    /// Whether to ignore embedded-result pagination and return all results.
-    pub ignore_pagination: bool,
     /// Requested embedded-result page number.
     pub page: u32,
     /// Requested embedded-result page size.
@@ -138,7 +136,6 @@ pub struct GetReportOpts {
 impl Default for GetReportOpts {
     fn default() -> Self {
         Self {
-            ignore_pagination: false,
             page: 1,
             per_page: 25,
         }

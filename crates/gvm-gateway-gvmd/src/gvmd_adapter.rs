@@ -2491,16 +2491,12 @@ impl ReportPort for GvmdAdapter {
             .ok_or_else(|| GatewayError::NotFound(format!("report {id} not found")))?;
 
         // Fetch the explicitly requested embedded-result window for this report.
-        let filter = if opts.ignore_pagination {
-            Some(format!("report_id={id}"))
-        } else {
-            paginated_filter(
-                Some(&format!("report_id={id}")),
-                None,
-                opts.page,
-                opts.per_page,
-            )?
-        };
+        let filter = paginated_filter(
+            Some(&format!("report_id={id}")),
+            None,
+            opts.page,
+            opts.per_page,
+        )?;
 
         let results_response = client
             .lock()
@@ -5321,7 +5317,6 @@ mod tests {
                     token,
                     &report_id.to_string(),
                     &GetReportOpts {
-                        ignore_pagination: false,
                         page: 1,
                         per_page: 30,
                     },

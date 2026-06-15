@@ -12,6 +12,8 @@ use gvm_gateway_domain::{
 };
 use tracing::{field, info_span, Instrument};
 
+use crate::jobs::{new_job_registry, JobRegistry};
+
 pub(crate) const AUDIT_TARGET: &str = "gvm_gateway_app::audit";
 
 /// Application services exposed to adapters.
@@ -35,6 +37,7 @@ pub struct GatewayService {
     pub(crate) scanners: Arc<dyn ScannerPort>,
     pub(crate) supporting_resources: Arc<dyn SupportingResourcePort>,
     pub(crate) sessions: Arc<SessionManager>,
+    pub(crate) jobs: Arc<JobRegistry>,
 }
 
 impl GatewayService {
@@ -75,6 +78,7 @@ impl GatewayService {
             scanners,
             supporting_resources,
             sessions,
+            jobs: new_job_registry(),
         }
     }
 
@@ -289,6 +293,7 @@ impl Clone for GatewayService {
             scanners: Arc::clone(&self.scanners),
             supporting_resources: Arc::clone(&self.supporting_resources),
             sessions: Arc::clone(&self.sessions),
+            jobs: Arc::clone(&self.jobs),
         }
     }
 }

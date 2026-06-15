@@ -15,7 +15,9 @@ paths:
         Starts rendering a report artifact in the selected report format.
         Report exports may require gvmd to materialize the full report and run
         report-format generation scripts, so this endpoint always creates a
-        job instead of returning the artifact inline.
+        job instead of returning the artifact inline. Jobs are scoped to the
+        authenticated user that created them. The gateway retains at most 1000
+        jobs and removes terminal jobs 15 minutes after completion.
       requestBody:
         required: true
         content:
@@ -45,6 +47,8 @@ paths:
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
+        "429":
+          $ref: "./common.yaml#/components/responses/TooManyRequests"
         "502":
           $ref: "./common.yaml#/components/responses/BadGateway"
 
@@ -55,6 +59,7 @@ paths:
       operationId: getJob
       tags: [Jobs]
       summary: Get asynchronous job status
+      description: Returns status only for jobs created by the authenticated user.
       responses:
         "200":
           description: Job status
@@ -72,6 +77,7 @@ paths:
       operationId: cancelJob
       tags: [Jobs]
       summary: Cancel an asynchronous job
+      description: Cancels a job created by the authenticated user.
       responses:
         "202":
           description: Cancellation requested
@@ -99,7 +105,9 @@ paths:
       description: |
         Downloads the artifact produced by a completed report export job.
         Requests for queued, running, failed, cancelled, or expired jobs return
-        a problem response instead of blocking until completion.
+        a problem response instead of blocking until completion. Result
+        artifacts are available only to the authenticated user that created the
+        job and are removed 15 minutes after the job reaches a terminal state.
       responses:
         "200":
           description: Rendered report artifact
@@ -261,7 +269,7 @@ components:
         expiresAt:
           type: string
           format: date-time
-          description: Time after which the job metadata or artifact may be removed.
+          description: Time after which the job metadata and artifact are removed.
         resultLocation:
           type: string
           format: uri-reference

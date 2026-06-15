@@ -101,7 +101,6 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     }
     add_retry_after_header_to_too_many_requests_response(&mut normalized_paths, "/session");
 
-    synchronize_report_export_responses(&mut normalized_paths);
     document_backend_unavailable_responses(&mut normalized_paths);
 
     document["paths"] = Value::Object(normalized_paths);
@@ -139,8 +138,11 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
     tighten_list_query_parameters(&mut document, "/scan-configs");
     tighten_list_query_parameters(&mut document, "/scanners");
     tighten_report_get_parameters(&mut document);
+    tighten_pagination_schema(&mut document);
+    tighten_report_schema(&mut document);
     tighten_identity_schemas(&mut document);
     ensure_problem_detail_schema(&mut document);
+    synchronize_report_export_job_contract(&mut document);
     normalize_problem_response_content_types(&mut document);
     ensure_basic_auth_scheme(&mut document);
     strip_nullable_types(&mut document);
@@ -234,12 +236,20 @@ fn openapi_tags() -> Value {
             "description": "Current-user settings"
         },
         {
+            "name": "Jobs",
+            "description": "Asynchronous job management"
+        },
+        {
             "name": "Tasks",
             "description": "Scan task management"
         },
         {
             "name": "Reports",
             "description": "Scan report management"
+        },
+        {
+            "name": "Report Exports",
+            "description": "Asynchronous report artifact exports"
         },
         {
             "name": "Results",
@@ -258,44 +268,6 @@ fn openapi_tags() -> Value {
             "description": "System and health endpoints"
         }
     ])
-}
-
-fn synchronize_report_export_responses(paths: &mut Map<String, Value>) {
-    let Some(responses) = paths
-        .get_mut("/reports/{id}/export")
-        .and_then(|path| path.get_mut("get"))
-        .and_then(|operation| operation.get_mut("responses"))
-        .and_then(Value::as_object_mut)
-    else {
-        return;
-    };
-
-    responses.insert(
-        "200".to_string(),
-        json!({
-            "description": "Rendered report bytes for the selected report format.",
-            "headers": {
-                "traceparent": {
-                    "description": "W3C Trace Context traceparent header for distributed tracing.",
-                    "schema": { "type": "string" }
-                },
-                "Content-Disposition": {
-                    "description": "Attachment-style filename for the rendered report artifact.",
-                    "schema": { "type": "string" }
-                }
-            },
-            "content": {
-                "application/pdf": { "schema": { "type": "string", "format": "binary" } },
-                "application/xml": { "schema": { "type": "string", "format": "binary" } },
-                "text/csv": { "schema": { "type": "string", "format": "binary" } },
-                "text/plain": { "schema": { "type": "string", "format": "binary" } },
-                "image/svg+xml": { "schema": { "type": "string", "format": "binary" } },
-                "application/octet-stream": {
-                    "schema": { "type": "string", "format": "binary" }
-                }
-            }
-        }),
-    );
 }
 
 fn apply_route_auth_security(document: &mut Value) {
@@ -375,9 +347,6 @@ fn tighten_report_get_parameters(document: &mut Value) {
     {
         for parameter in parameters {
             match parameter["name"].as_str() {
-                Some("ignorePagination") => {
-                    parameter["schema"]["default"] = json!(false);
-                }
                 Some("page") => {
                     parameter["schema"]["minimum"] = json!(1);
                     parameter["schema"]["default"] = json!(1);
@@ -413,6 +382,169 @@ fn tighten_list_query_parameters(document: &mut Value, path: &str) {
             }
         }
     }
+}
+
+fn tighten_pagination_schema(document: &mut Value) {
+    let per_page = &mut document["components"]["schemas"]["Pagination"]["properties"]["perPage"];
+    if per_page.is_object() {
+        per_page["minimum"] = json!(1);
+        per_page["maximum"] = json!(1000);
+    }
+}
+
+fn tighten_report_schema(document: &mut Value) {
+    let results = &mut document["components"]["schemas"]["Report"]["properties"]["results"];
+    if results.is_object() {
+        results["maxItems"] = json!(1000);
+    }
+    for schema_name in ["ReportList", "ResultList", "TlsCertificateList"] {
+        let data = &mut document["components"]["schemas"][schema_name]["properties"]["data"];
+        if data.is_object() {
+            data["maxItems"] = json!(1000);
+        }
+    }
+}
+
+fn synchronize_report_export_job_contract(document: &mut Value) {
+    document["components"]["headers"]["Location"] = json!({
+        "description": "Canonical URI of the created resource.",
+        "schema": {
+            "type": "string",
+            "format": "uri-reference"
+        }
+    });
+
+    let components = &mut document["components"]["schemas"];
+    components["CreateReportExportRequest"] = json!({
+        "oneOf": [
+            { "$ref": "#/components/schemas/GvmdReportFormatExportRequest" },
+            { "$ref": "#/components/schemas/JsonReportExportRequest" }
+        ]
+    });
+    components["GvmdReportFormatExportRequest"] = json!({
+        "type": "object",
+        "required": ["reportFormatId"],
+        "additionalProperties": false,
+        "properties": {
+            "reportFormatId": { "type": "string", "format": "uuid" },
+            "reportConfigId": { "type": "string", "format": "uuid" },
+            "filter": { "type": "string" },
+            "filterId": { "type": "string", "format": "uuid" }
+        }
+    });
+    components["JsonReportExportRequest"] = json!({
+        "type": "object",
+        "required": ["format"],
+        "additionalProperties": false,
+        "properties": {
+            "format": { "type": "string", "enum": ["json"] },
+            "filter": { "type": "string" },
+            "filterId": { "type": "string", "format": "uuid" }
+        }
+    });
+    components["Job"] = json!({
+        "type": "object",
+        "required": ["id", "kind", "status", "createdAt"],
+        "properties": {
+            "id": { "type": "string", "format": "uuid" },
+            "kind": { "type": "string", "enum": ["report_export"] },
+            "status": {
+                "type": "string",
+                "enum": ["queued", "running", "succeeded", "failed", "cancelling", "cancelled", "expired"]
+            },
+            "progress": {
+                "type": "object",
+                "properties": {
+                    "percent": { "type": "integer", "minimum": 0, "maximum": 100 },
+                    "message": { "type": "string" }
+                }
+            },
+            "createdAt": { "type": "string", "format": "date-time" },
+            "startedAt": { "type": "string", "format": "date-time" },
+            "completedAt": { "type": "string", "format": "date-time" },
+            "expiresAt": { "type": "string", "format": "date-time" },
+            "resultLocation": { "type": "string", "format": "uri-reference" },
+            "error": { "$ref": "#/components/schemas/ProblemDetail" }
+        }
+    });
+    components["JobResult"] = json!({
+        "type": "object",
+        "properties": {
+            "contentType": { "type": "string" },
+            "filename": { "type": "string" },
+            "size": { "type": "integer", "minimum": 0 },
+            "location": { "type": "string", "format": "uri-reference" }
+        }
+    });
+    components["ReportExportJob"] = json!({
+        "allOf": [
+            { "$ref": "#/components/schemas/Job" },
+            {
+                "type": "object",
+                "required": ["report", "format"],
+                "properties": {
+                    "report": { "$ref": "#/components/schemas/ResourceRef" },
+                    "format": {
+                        "type": "string",
+                        "enum": ["gvmd_report_format", "json"]
+                    },
+                    "reportFormatId": { "type": "string", "format": "uuid" },
+                    "result": { "$ref": "#/components/schemas/JobResult" }
+                }
+            }
+        ]
+    });
+    components["ReportJsonExport"] = json!({
+        "type": "object",
+        "required": ["report", "results"],
+        "properties": {
+            "report": { "$ref": "#/components/schemas/Report" },
+            "results": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/Result" }
+            },
+            "generatedAt": { "type": "string", "format": "date-time" }
+        }
+    });
+
+    let paths = &mut document["paths"];
+    paths["/reports/{id}/exports"]["post"]["requestBody"]["content"]["application/json"]
+        ["schema"] = json!({ "$ref": "#/components/schemas/CreateReportExportRequest" });
+    paths["/reports/{id}/exports"]["post"]["responses"]["202"] = json!({
+        "description": "Report export job accepted",
+        "headers": {
+            "Location": { "$ref": "#/components/headers/Location" },
+            "Retry-After": {
+                "schema": { "type": "integer", "minimum": 1 },
+                "description": "Suggested seconds to wait before polling the job."
+            }
+        },
+        "content": {
+            "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReportExportJob" }
+            }
+        }
+    });
+    paths["/jobs/{id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"] =
+        json!({ "$ref": "#/components/schemas/ReportExportJob" });
+    paths["/jobs/{id}/result"]["get"]["responses"]["200"] = json!({
+        "description": "Rendered report artifact",
+        "headers": {
+            "Content-Disposition": {
+                "description": "Attachment-style filename for the rendered artifact.",
+                "schema": { "type": "string" }
+            }
+        },
+        "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ReportJsonExport" } },
+            "application/pdf": { "schema": { "type": "string", "format": "binary" } },
+            "application/xml": { "schema": { "type": "string", "format": "binary" } },
+            "text/csv": { "schema": { "type": "string", "format": "binary" } },
+            "text/plain": { "schema": { "type": "string", "format": "binary" } },
+            "image/svg+xml": { "schema": { "type": "string", "format": "binary" } },
+            "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
+        }
+    });
 }
 
 fn tighten_target_payload_schemas(document: &mut Value) {
@@ -1256,17 +1388,9 @@ pub(crate) struct ReportListQueryDoc {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 pub(crate) struct GetReportQueryDoc {
-    #[serde(rename = "ignorePagination")]
-    ignore_pagination: Option<bool>,
     page: Option<u32>,
     #[serde(rename = "perPage")]
     per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct ReportExportQueryDoc {
-    #[serde(rename = "reportFormatId")]
-    report_format_id: Uuid,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
@@ -1716,7 +1840,7 @@ mod tests {
             "/health": { "get": {} },
             "/ready": { "get": {} },
             "/api/v1/version": { "get": {} },
-            "/api/v1/reports/{id}/export": { "get": {} }
+            "/api/v1/reports/{id}/exports": { "post": {} }
         }))
         .unwrap();
 
@@ -1725,9 +1849,9 @@ mod tests {
         assert!(normalized.contains_key("/health"));
         assert!(normalized.contains_key("/ready"));
         assert!(normalized.contains_key("/version"));
-        assert!(normalized.contains_key("/reports/{id}/export"));
+        assert!(normalized.contains_key("/reports/{id}/exports"));
         assert!(!normalized.contains_key("/api/v1/version"));
-        assert!(!normalized.contains_key("/api/v1/reports/{id}/export"));
+        assert!(!normalized.contains_key("/api/v1/reports/{id}/exports"));
     }
 
     fn root_spec() -> Value {

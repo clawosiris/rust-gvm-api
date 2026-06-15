@@ -54,6 +54,10 @@ use crate::{
         update_role_docs, update_user, update_user_docs, update_user_setting,
         update_user_setting_docs,
     },
+    jobs::{
+        cancel_job, cancel_job_docs, create_report_export_job, create_report_export_job_docs,
+        download_job_result, download_job_result_docs, get_job, get_job_docs,
+    },
     openapi::{configure as configure_openapi, finalize_document},
     port_lists::{
         create_port_list, create_port_list_docs, delete_port_list, delete_port_list_docs,
@@ -61,10 +65,10 @@ use crate::{
         update_port_list_docs,
     },
     reports::{
-        delete_report, delete_report_docs, export_report, export_report_docs, get_report,
-        get_report_closed_cves, get_report_closed_cves_docs, get_report_docs, get_report_errors,
-        get_report_errors_docs, get_report_results, get_report_results_docs,
-        get_report_tls_certificates, get_report_tls_certificates_docs, get_report_vulnerabilities,
+        delete_report, delete_report_docs, get_report, get_report_closed_cves,
+        get_report_closed_cves_docs, get_report_docs, get_report_errors, get_report_errors_docs,
+        get_report_results, get_report_results_docs, get_report_tls_certificates,
+        get_report_tls_certificates_docs, get_report_vulnerabilities,
         get_report_vulnerabilities_docs, list_reports, list_reports_docs,
     },
     results::{get_result, get_result_docs, list_results, list_results_docs},
@@ -447,8 +451,8 @@ fn documented_router() -> ApiRouter<GatewayService> {
             get_with(get_report, get_report_docs),
         )
         .api_route(
-            "/api/v1/reports/{id}/export",
-            get_with(export_report, export_report_docs),
+            "/api/v1/reports/{id}/exports",
+            post_with(create_report_export_job, create_report_export_job_docs),
         )
         .api_route(
             "/api/v1/reports/{id}",
@@ -476,6 +480,16 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/reports/{id}/closed-cves",
             get_with(get_report_closed_cves, get_report_closed_cves_docs),
+        )
+        // Jobs
+        .api_route("/api/v1/jobs/{id}", get_with(get_job, get_job_docs))
+        .api_route(
+            "/api/v1/jobs/{id}",
+            delete_with(cancel_job, cancel_job_docs),
+        )
+        .api_route(
+            "/api/v1/jobs/{id}/result",
+            get_with(download_job_result, download_job_result_docs),
         )
         // Results
         .api_route("/api/v1/results", get_with(list_results, list_results_docs))

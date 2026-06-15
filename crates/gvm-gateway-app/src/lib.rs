@@ -10,6 +10,7 @@ mod alerts;
 mod credentials;
 mod feeds;
 mod identity;
+mod jobs;
 mod port_lists;
 mod reports;
 mod results;
@@ -28,5 +29,6 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 
+pub use jobs::JobReaper;
 pub use service::GatewayService;
 pub use session::SessionReaper;

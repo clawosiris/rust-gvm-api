@@ -42,6 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let reaper = SessionReaper::new(Arc::clone(&sessions), live_adapter.clone());
     let service = gateway_service(live_adapter, sessions);
     let _reaper_handle = reaper.spawn();
+    let _job_reaper_handle = service.job_reaper().spawn();
     let shutdown = Arc::new(ShutdownRuntime::new());
     let app = build_router_with_runtime_and_security(service, Arc::clone(&shutdown), rest_security);
 

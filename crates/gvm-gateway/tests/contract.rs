@@ -11,8 +11,10 @@ use async_trait::async_trait;
 use common::{spawn_server, spawn_server_with_sessions};
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    CreateTaskInput, GatewayError, ModifyTaskInput, Pagination, SessionLimits, SessionManager,
-    Task, TaskAction, TaskObservers, TaskPage, TaskPort, TaskQuery,
+    CreateTaskInput, GatewayError, GetReportOpts, ModifyTaskInput, Pagination, Report,
+    ReportExport, ReportPage, ReportPort, ReportQuery, ResourceRef, ResultPage, ResultQuery,
+    ScanResult, SessionLimits, SessionManager, Task, TaskAction, TaskObservers, TaskPage, TaskPort,
+    TaskQuery, TlsCertificatePage,
 };
 use gvm_gateway_gvmd::StaticGvmdAdapter;
 use gvm_gateway_rest::{
@@ -156,6 +158,160 @@ async fn update_task_preserves_preferences_through_handler() {
     handle.abort();
 }
 
+#[tokio::test]
+async fn report_export_job_api_downloads_json_result() {
+    let (addr, token, handle) = spawn_report_server(Arc::new(JsonExportReportPort)).await;
+    let report_id = "550e8400-e29b-41d4-a716-446655440000";
+    let client = Client::new();
+
+    // This covers the asynchronous export contract: creation returns 202 with a
+    // job location, job polling reaches success, and the result endpoint returns
+    // the gateway JSON report artifact.
+    let create_response = client
+        .post(format!("http://{addr}/api/v1/reports/{report_id}/exports"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "format": "json" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::ACCEPTED);
+    let location = create_response
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .expect("job creation should return Location")
+        .to_string();
+    let created = create_response.json::<Value>().await.unwrap();
+    assert_eq!(created["kind"], "report_export");
+    assert_eq!(created["format"], "json");
+    assert_eq!(created["report"]["id"], report_id);
+
+    let job_id = created["id"].as_str().unwrap();
+    assert_eq!(location, format!("/api/v1/jobs/{job_id}"));
+
+    let mut completed = None;
+    for _ in 0..20 {
+        let job = client
+            .get(format!("http://{addr}/api/v1/jobs/{job_id}"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+        if job["status"] == "succeeded" {
+            completed = Some(job);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    let completed = completed.expect("report export job should succeed");
+    assert_eq!(
+        completed["resultLocation"],
+        format!("/api/v1/jobs/{job_id}/result")
+    );
+    assert_eq!(completed["result"]["contentType"], "application/json");
+    assert!(completed["expiresAt"].as_str().is_some());
+
+    let result_response = client
+        .get(format!("http://{addr}/api/v1/jobs/{job_id}/result"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(result_response.status(), StatusCode::OK);
+    let content_type = result_response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(content_type.starts_with("application/json"));
+    let export = result_response.json::<Value>().await.unwrap();
+    assert_eq!(export["report"]["id"], report_id);
+    assert_eq!(export["results"].as_array().unwrap().len(), 1);
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn report_export_jobs_are_hidden_from_other_users() {
+    let (addr, owner_token, other_token, handle) =
+        spawn_report_server_with_users(Arc::new(JsonExportReportPort)).await;
+    let report_id = "550e8400-e29b-41d4-a716-446655440000";
+    let client = Client::new();
+
+    // Job artifacts are cached in the gateway, so this test locks the access
+    // contract: a different authenticated gvmd user must not be able to infer,
+    // cancel, or download another user's export job.
+    let created = client
+        .post(format!("http://{addr}/api/v1/reports/{report_id}/exports"))
+        .bearer_auth(&owner_token)
+        .json(&serde_json::json!({ "format": "json" }))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    let job_id = created["id"].as_str().unwrap();
+
+    let status_response = client
+        .get(format!("http://{addr}/api/v1/jobs/{job_id}"))
+        .bearer_auth(&other_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status_response.status(), StatusCode::NOT_FOUND);
+
+    let cancel_response = client
+        .delete(format!("http://{addr}/api/v1/jobs/{job_id}"))
+        .bearer_auth(&other_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cancel_response.status(), StatusCode::NOT_FOUND);
+
+    let result_response = client
+        .get(format!("http://{addr}/api/v1/jobs/{job_id}/result"))
+        .bearer_auth(&other_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(result_response.status(), StatusCode::NOT_FOUND);
+
+    let owner_response = client
+        .get(format!("http://{addr}/api/v1/jobs/{job_id}"))
+        .bearer_auth(&owner_token)
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(owner_response.status(), StatusCode::NOT_FOUND);
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn report_export_job_create_returns_not_found_for_missing_report() {
+    let (addr, token, handle) = spawn_report_server(Arc::new(MissingReportPort)).await;
+    let report_id = "550e8400-e29b-41d4-a716-446655440999";
+
+    // The create endpoint documents 404 for a missing report. This locks that
+    // contract at job creation time instead of hiding the failure in a later
+    // background status poll.
+    let response = Client::new()
+        .post(format!("http://{addr}/api/v1/reports/{report_id}/exports"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "format": "json" }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    handle.abort();
+}
+
 async fn spawn_task_server(
     task_port: Arc<dyn TaskPort>,
 ) -> (std::net::SocketAddr, String, tokio::task::JoinHandle<()>) {
@@ -188,6 +344,292 @@ async fn spawn_task_server(
     });
 
     (addr, token, handle)
+}
+
+async fn spawn_report_server(
+    report_port: Arc<dyn ReportPort>,
+) -> (std::net::SocketAddr, String, tokio::task::JoinHandle<()>) {
+    let (addr, token, _, handle) = spawn_report_server_with_users(report_port).await;
+    (addr, token, handle)
+}
+
+async fn spawn_report_server_with_users(
+    report_port: Arc<dyn ReportPort>,
+) -> (
+    std::net::SocketAddr,
+    String,
+    String,
+    tokio::task::JoinHandle<()>,
+) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let sessions = Arc::new(SessionManager::default());
+    let token = sessions.create("admin").unwrap().token;
+    let other_token = sessions.create("auditor").unwrap().token;
+    let adapter = Arc::new(StaticGvmdAdapter::ready("22.7"));
+    let service = GatewayService::new(
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        report_port,
+        adapter.clone(),
+        adapter.clone(),
+        adapter.clone(),
+        adapter,
+        sessions,
+    );
+    let app = build_router(service);
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (addr, token, other_token, handle)
+}
+
+struct JsonExportReportPort;
+
+#[async_trait]
+impl ReportPort for JsonExportReportPort {
+    async fn list_reports(&self, _: &str, query: &ReportQuery) -> Result<ReportPage, GatewayError> {
+        Ok(ReportPage {
+            data: vec![report_response("550e8400-e29b-41d4-a716-446655440000")],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 1,
+                total_pages: 1,
+            },
+        })
+    }
+
+    async fn get_report(
+        &self,
+        _: &str,
+        id: &str,
+        _: &GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        Ok(report_response(id))
+    }
+
+    async fn export_report(&self, _: &str, _: &str, _: &str) -> Result<ReportExport, GatewayError> {
+        Err(GatewayError::NotImplemented(
+            "gvmd report-format export is not used by this test port".to_string(),
+        ))
+    }
+
+    async fn delete_report(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn get_report_results(
+        &self,
+        _: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        let data = if query.page == 1 {
+            vec![scan_result_response(report_id)]
+        } else {
+            vec![]
+        };
+        Ok(ResultPage {
+            data,
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 1,
+                total_pages: 1,
+            },
+        })
+    }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        Ok(TlsCertificatePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_errors(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_closed_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+}
+
+struct MissingReportPort;
+
+#[async_trait]
+impl ReportPort for MissingReportPort {
+    async fn list_reports(&self, _: &str, query: &ReportQuery) -> Result<ReportPage, GatewayError> {
+        Ok(ReportPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report(
+        &self,
+        _: &str,
+        id: &str,
+        _: &GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        Err(GatewayError::NotFound(format!("report {id} not found")))
+    }
+
+    async fn export_report(
+        &self,
+        _: &str,
+        id: &str,
+        _: &str,
+    ) -> Result<ReportExport, GatewayError> {
+        Err(GatewayError::NotFound(format!("report {id} not found")))
+    }
+
+    async fn delete_report(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("report {id} not found")))
+    }
+
+    async fn get_report_results(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        Ok(TlsCertificatePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_errors(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_closed_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+}
+
+fn report_response(id: &str) -> Report {
+    Report {
+        id: id.to_string(),
+        task: Some(ResourceRef {
+            id: "660e8400-e29b-41d4-a716-446655440000".to_string(),
+            name: Some("Task".to_string()),
+        }),
+        scan_start: None,
+        scan_end: None,
+        severity: Some(5.0),
+        result_count: None,
+        results: vec![],
+    }
+}
+
+fn scan_result_response(report_id: &str) -> ScanResult {
+    ScanResult {
+        id: "770e8400-e29b-41d4-a716-446655440000".to_string(),
+        name: "Result".to_string(),
+        host: Some("127.0.0.1".to_string()),
+        port: None,
+        severity: Some(5.0),
+        threat: Some("Medium".to_string()),
+        nvt: None,
+        description: None,
+        task: None,
+        report: Some(ResourceRef {
+            id: report_id.to_string(),
+            name: None,
+        }),
+    }
+}
+
+fn empty_result_page(query: &ResultQuery) -> ResultPage {
+    ResultPage {
+        data: vec![],
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total: 0,
+            total_pages: 0,
+        },
+    }
 }
 
 struct CapturingTaskPort {
@@ -371,9 +813,13 @@ fn pagination_defaults() {
 
 #[test]
 fn pagination_bounds() {
-    let query = TargetListQuery::try_from_query_string("perPage=5000").unwrap();
+    let error = TargetListQuery::try_from_query_string("perPage=5000")
+        .expect_err("perPage above the API maximum should fail");
 
-    assert_eq!(query.per_page, 1000);
+    assert_eq!(
+        error,
+        GatewayError::InvalidInput("perPage must be between 1 and 1000".to_string())
+    );
 }
 
 #[test]
