@@ -631,7 +631,7 @@ dependencies = [
 [[package]]
 name = "gvm-client"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376#e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=628f6718b0a94f7484b26794b13c73d30d61b91a#628f6718b0a94f7484b26794b13c73d30d61b91a"
 dependencies = [
  "async-trait",
  "gvm-connection",
@@ -644,7 +644,7 @@ dependencies = [
 [[package]]
 name = "gvm-connection"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376#e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=628f6718b0a94f7484b26794b13c73d30d61b91a#628f6718b0a94f7484b26794b13c73d30d61b91a"
 dependencies = [
  "async-trait",
  "gvm-protocol",
@@ -777,7 +777,7 @@ dependencies = [
 [[package]]
 name = "gvm-gmp"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376#e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=628f6718b0a94f7484b26794b13c73d30d61b91a#628f6718b0a94f7484b26794b13c73d30d61b91a"
 dependencies = [
  "base64",
  "gvm-protocol",
@@ -789,7 +789,7 @@ dependencies = [
 [[package]]
 name = "gvm-mock-server"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376#e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=628f6718b0a94f7484b26794b13c73d30d61b91a#628f6718b0a94f7484b26794b13c73d30d61b91a"
 dependencies = [
  "clap",
  "getrandom 0.2.17",
@@ -805,7 +805,7 @@ dependencies = [
 [[package]]
 name = "gvm-protocol"
 version = "0.4.0-alpha.1"
-source = "git+https://github.com/clawosiris/rust-gvm?rev=e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376#e481b6c3e9ba0ac31d10a55aff9dbf3160a2d376"
+source = "git+https://github.com/clawosiris/rust-gvm?rev=628f6718b0a94f7484b26794b13c73d30d61b91a#628f6718b0a94f7484b26794b13c73d30d61b91a"
 dependencies = [
  "quick-xml",
  "thiserror",
