@@ -182,6 +182,15 @@ struct StoredSession {
     last_used_at: u64,
 }
 
+impl StoredSession {
+    fn is_expired_at(&self, now: u64, idle_timeout_secs: u64) -> bool {
+        match self.state {
+            SessionState::Active => now.saturating_sub(self.last_used_at) >= idle_timeout_secs,
+            SessionState::Expired => true,
+        }
+    }
+}
+
 /// In-memory domain session registry.
 #[derive(Clone)]
 pub struct SessionManager {
@@ -239,6 +248,17 @@ impl SessionManager {
 
     /// Create a new active session.
     pub fn create(&self, user: impl Into<String>) -> Result<Session, GatewayError> {
+        self.create_draining_expired(user)
+            .map(|(session, _expired_tokens)| session)
+    }
+
+    /// Create a new active session and remove sessions that were already
+    /// expired before capacity checks. Returned digests allow callers to clean
+    /// up backend connections without retaining bearer tokens.
+    pub fn create_draining_expired(
+        &self,
+        user: impl Into<String>,
+    ) -> Result<(Session, Vec<SessionTokenDigest>), GatewayError> {
         let user = user.into();
         let token = format!("gvm_sess_{}", uuid::Uuid::new_v4().simple());
         let now = now_secs();
@@ -251,13 +271,20 @@ impl SessionManager {
         let mut guard = self.inner.lock().map_err(|_| {
             GatewayError::BackendUnavailable("session registry unavailable".to_string())
         })?;
-        enforce_session_limits(&guard, &user, self.limits)?;
+        enforce_session_limits(&guard, &user, self.limits, now, self.idle_timeout_secs)?;
+        let expired_tokens = expired_session_digests(&guard, now, self.idle_timeout_secs);
+        for token_digest in &expired_tokens {
+            guard.remove(token_digest);
+        }
         guard.insert(SessionTokenDigest::from_token(&token), session);
-        Ok(Session {
-            token,
-            user,
-            state: SessionState::Active,
-        })
+        Ok((
+            Session {
+                token,
+                user,
+                state: SessionState::Active,
+            },
+            expired_tokens,
+        ))
     }
 
     /// Look up a session by token.
@@ -285,17 +312,12 @@ impl SessionManager {
             .get(&token_digest)
             .ok_or_else(|| GatewayError::NotFound("session not found".to_string()))?;
 
-        let (state, expires_in) = match stored.state {
-            SessionState::Active => {
-                let elapsed = now.saturating_sub(stored.last_used_at);
-                if elapsed >= self.idle_timeout_secs {
-                    ("expired".to_string(), 0i64)
-                } else {
-                    let remaining = (self.idle_timeout_secs - elapsed) as i64;
-                    ("active".to_string(), remaining)
-                }
-            }
-            SessionState::Expired => ("expired".to_string(), 0),
+        let (state, expires_in) = if stored.is_expired_at(now, self.idle_timeout_secs) {
+            ("expired".to_string(), 0)
+        } else {
+            let elapsed = now.saturating_sub(stored.last_used_at);
+            let remaining = (self.idle_timeout_secs - elapsed) as i64;
+            ("active".to_string(), remaining)
         };
 
         Ok(SessionInfo {
@@ -319,21 +341,17 @@ impl SessionManager {
             .get_mut(&token_digest)
             .ok_or_else(|| GatewayError::SessionInvalidated("missing session".to_string()))?;
 
-        match stored.state {
-            SessionState::Active => {
-                if now.saturating_sub(stored.last_used_at) >= self.idle_timeout_secs {
-                    stored.state = SessionState::Expired;
-                    return Err(GatewayError::SessionExpired("session expired".to_string()));
-                }
-                stored.last_used_at = now;
-                Ok(Session {
-                    token: token.to_string(),
-                    user: stored.user.clone(),
-                    state: SessionState::Active,
-                })
-            }
-            _ => Err(GatewayError::SessionExpired("session expired".to_string())),
+        if stored.is_expired_at(now, self.idle_timeout_secs) {
+            stored.state = SessionState::Expired;
+            return Err(GatewayError::SessionExpired("session expired".to_string()));
         }
+
+        stored.last_used_at = now;
+        Ok(Session {
+            token: token.to_string(),
+            user: stored.user.clone(),
+            state: SessionState::Active,
+        })
     }
 
     /// Expire an existing session.
@@ -357,19 +375,10 @@ impl SessionManager {
         let mut guard = self.inner.lock().map_err(|_| {
             GatewayError::BackendUnavailable("session registry unavailable".to_string())
         })?;
-        let mut expired_tokens = Vec::new();
-        guard.retain(|token_digest, stored| {
-            let dominated = match stored.state {
-                SessionState::Active => {
-                    now.saturating_sub(stored.last_used_at) >= self.idle_timeout_secs
-                }
-                SessionState::Expired => true,
-            };
-            if dominated {
-                expired_tokens.push(*token_digest);
-            }
-            !dominated
-        });
+        let expired_tokens = expired_session_digests(&guard, now, self.idle_timeout_secs);
+        for token_digest in &expired_tokens {
+            guard.remove(token_digest);
+        }
         Ok(expired_tokens)
     }
 
@@ -394,9 +403,15 @@ fn enforce_session_limits(
     sessions: &HashMap<SessionTokenDigest, StoredSession>,
     user: &str,
     limits: SessionLimits,
+    now: u64,
+    idle_timeout_secs: u64,
 ) -> Result<(), GatewayError> {
     if let Some(max_global) = limits.max_global {
-        if sessions.len() as u64 >= max_global {
+        let active_sessions = sessions
+            .values()
+            .filter(|session| !session.is_expired_at(now, idle_timeout_secs))
+            .count() as u64;
+        if active_sessions >= max_global {
             return Err(GatewayError::TooManyRequests(
                 "global session limit exceeded".to_string(),
             ));
@@ -406,7 +421,9 @@ fn enforce_session_limits(
     if let Some(max_per_user) = limits.max_per_user {
         let user_sessions = sessions
             .values()
-            .filter(|session| session.user == user)
+            .filter(|session| {
+                session.user == user && !session.is_expired_at(now, idle_timeout_secs)
+            })
             .count() as u64;
         if user_sessions >= max_per_user {
             return Err(GatewayError::TooManyRequests(
@@ -416,6 +433,21 @@ fn enforce_session_limits(
     }
 
     Ok(())
+}
+
+fn expired_session_digests(
+    sessions: &HashMap<SessionTokenDigest, StoredSession>,
+    now: u64,
+    idle_timeout_secs: u64,
+) -> Vec<SessionTokenDigest> {
+    sessions
+        .iter()
+        .filter_map(|(token_digest, stored)| {
+            stored
+                .is_expired_at(now, idle_timeout_secs)
+                .then_some(*token_digest)
+        })
+        .collect()
 }
 
 // ============================================================================
@@ -716,6 +748,69 @@ mod tests {
         assert!(replacement.is_ok());
     }
 
+    /// Idle-expired sessions do not consume global capacity during creation;
+    /// replacement logins should not wait for the background reaper.
+    #[test]
+    fn session_manager_create_drains_idle_expired_global_capacity() {
+        let manager = SessionManager::with_limits(
+            0,
+            SessionLimits {
+                max_global: Some(1),
+                max_per_user: None,
+            },
+        );
+        let expired = manager.create("alice").unwrap();
+        let expired_digest = SessionTokenDigest::from_token(&expired.token);
+
+        let (replacement, drained) = manager.create_draining_expired("bob").unwrap();
+
+        assert_eq!(drained, vec![expired_digest]);
+        assert!(manager.get(&expired.token).unwrap().is_none());
+        assert!(manager.get(&replacement.token).unwrap().is_some());
+    }
+
+    /// Idle-expired sessions from the same user do not consume per-user
+    /// capacity during creation.
+    #[test]
+    fn session_manager_create_drains_idle_expired_per_user_capacity() {
+        let manager = SessionManager::with_limits(
+            0,
+            SessionLimits {
+                max_global: None,
+                max_per_user: Some(1),
+            },
+        );
+        let expired = manager.create("alice").unwrap();
+        let expired_digest = SessionTokenDigest::from_token(&expired.token);
+
+        let (replacement, drained) = manager.create_draining_expired("alice").unwrap();
+
+        assert_eq!(drained, vec![expired_digest]);
+        assert!(manager.get(&expired.token).unwrap().is_none());
+        assert!(manager.get(&replacement.token).unwrap().is_some());
+    }
+
+    /// Explicitly expired sessions do not consume capacity during creation.
+    #[test]
+    fn session_manager_create_drains_explicitly_expired_capacity() {
+        let manager = SessionManager::with_limits(
+            300,
+            SessionLimits {
+                max_global: Some(1),
+                max_per_user: Some(1),
+            },
+        );
+        let expired = manager.create("alice").unwrap();
+        let expired_digest = SessionTokenDigest::from_token(&expired.token);
+        manager.expire(&expired.token).unwrap();
+
+        let (replacement, drained) = manager.create_draining_expired("alice").unwrap();
+
+        assert_eq!(drained, vec![expired_digest]);
+        assert!(manager.get(&expired.token).unwrap().is_none());
+        assert!(manager.get(&replacement.token).unwrap().is_some());
+    }
+
     // ------------------------------------------------------------------------
     // SessionManager drain_expired tests
     // ------------------------------------------------------------------------
@@ -755,17 +850,13 @@ mod tests {
     fn session_manager_drain_expired_idle_timeout() {
         let manager = SessionManager::new(0);
         let s1 = manager.create("alice").unwrap();
-        let s2 = manager.create("bob").unwrap();
         let s1_digest = SessionTokenDigest::from_token(&s1.token);
-        let s2_digest = SessionTokenDigest::from_token(&s2.token);
 
         let drained = manager.drain_expired().unwrap();
-        assert_eq!(drained.len(), 2);
+        assert_eq!(drained.len(), 1);
         assert!(drained.contains(&s1_digest));
-        assert!(drained.contains(&s2_digest));
 
         assert!(manager.get(&s1.token).unwrap().is_none());
-        assert!(manager.get(&s2.token).unwrap().is_none());
     }
 
     /// drain_expired is idempotent: calling twice returns empty on the second call.

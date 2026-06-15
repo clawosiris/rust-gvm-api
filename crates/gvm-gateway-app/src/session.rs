@@ -45,7 +45,15 @@ impl GatewayService {
         );
 
         async move {
-            let session = self.sessions.create(username)?;
+            let (session, expired_session_digests) =
+                self.sessions.create_draining_expired(username)?;
+            disconnect_expired_sessions(
+                Arc::clone(&self.auth),
+                username,
+                expired_session_digests,
+                "session.create",
+            )
+            .await;
             tracing::Span::current().record(
                 "session_id",
                 field::display(safe_session_id(&session.token)),
@@ -180,6 +188,38 @@ impl GatewayService {
     }
 }
 
+async fn disconnect_expired_sessions(
+    auth: Arc<dyn AuthPort>,
+    username: &str,
+    session_digests: Vec<SessionTokenDigest>,
+    event: &'static str,
+) {
+    for session_digest in &session_digests {
+        let session_id = session_digest.safe_id();
+        emit_audit_event_with_session_id(
+            "session.expired",
+            "cleanup",
+            username,
+            &session_id,
+            None,
+            Some("expire"),
+            None,
+        );
+        if let Err(err) = auth.disconnect_session(session_digest).await {
+            emit_audit_event_with_session_id(
+                "session.disconnect",
+                "failure",
+                username,
+                &session_id,
+                None,
+                Some("disconnect"),
+                Some(&err),
+            );
+            tracing::warn!(session_id = %session_id, ?err, "{event}: disconnect_session failed");
+        }
+    }
+}
+
 // ============================================================================
 // Session Reaper
 // ============================================================================
@@ -237,37 +277,11 @@ impl SessionReaper {
                 return;
             }
         };
-        for session_digest in &session_digests {
-            let session_id = session_digest.safe_id();
-            emit_audit_event_with_session_id(
-                "session.expired",
-                "cleanup",
-                "unknown",
-                &session_id,
-                None,
-                Some("expire"),
-                None,
-            );
-            if let Err(err) = auth.disconnect_session(session_digest).await {
-                emit_audit_event_with_session_id(
-                    "session.disconnect",
-                    "failure",
-                    "unknown",
-                    &session_id,
-                    None,
-                    Some("disconnect"),
-                    Some(&err),
-                );
-                tracing::warn!(
-                    session_id = %session_id,
-                    ?err,
-                    "session reaper: disconnect_session failed"
-                );
-            }
-        }
-        if !session_digests.is_empty() {
+        let cleaned_count = session_digests.len();
+        disconnect_expired_sessions(auth, "unknown", session_digests, "session reaper").await;
+        if cleaned_count > 0 {
             tracing::info!(
-                count = session_digests.len(),
+                count = cleaned_count,
                 "session reaper: cleaned up expired sessions"
             );
         }
@@ -288,7 +302,7 @@ mod tests {
     use super::SessionReaper;
     use crate::test_support::*;
     use crate::GatewayService;
-    use gvm_gateway_domain::{GatewayError, SessionManager, SessionTokenDigest};
+    use gvm_gateway_domain::{GatewayError, SessionLimits, SessionManager, SessionTokenDigest};
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -358,6 +372,34 @@ mod tests {
         assert!(created.token.starts_with("gvm_sess_"));
         assert_eq!(created.expires_in, 300);
         assert_eq!(created.gmp_version, "22.7");
+    }
+
+    /// create_session removes and disconnects expired sessions before applying
+    /// capacity limits, so replacement logins do not wait for the reaper.
+    #[tokio::test]
+    async fn service_create_session_replaces_idle_expired_limited_session() {
+        let auth = MockAuthPort::default();
+        let disconnected = Arc::clone(&auth.disconnected);
+        let sessions = Arc::new(SessionManager::with_limits(
+            0,
+            SessionLimits {
+                max_global: Some(1),
+                max_per_user: Some(1),
+            },
+        ));
+        let service = create_test_service_with_auth_and_sessions(Arc::new(auth), sessions);
+        let first = service.create_session("admin", "secret").await.unwrap();
+        let first_digest = SessionTokenDigest::from_token(&first.token);
+
+        let second = service.create_session("admin", "secret").await.unwrap();
+
+        assert_ne!(first.token, second.token);
+        assert!(service
+            .session_manager()
+            .get(&first.token)
+            .unwrap()
+            .is_none());
+        assert!(disconnected.lock().unwrap().contains(&first_digest));
     }
 
     /// create_session rolls back the domain session when backend auth fails.

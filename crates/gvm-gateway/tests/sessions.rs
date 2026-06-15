@@ -104,6 +104,51 @@ async fn create_session_returns_429_when_session_limit_reached() {
 }
 
 #[tokio::test]
+async fn create_session_replaces_expired_limited_session_without_reaper() {
+    // Regression coverage for replacement logins: idle-expired sessions must
+    // not keep consuming capacity until the background reaper happens to run.
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let sessions = Arc::new(SessionManager::with_limits(
+        0,
+        SessionLimits {
+            max_global: Some(1),
+            max_per_user: Some(1),
+        },
+    ));
+    let (service, _, _) = static_gateway_service_for_reaper(adapter, Arc::clone(&sessions));
+    let app = build_router(service);
+    let handle = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<ClientPeerAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    let client = Client::new();
+
+    let first = client
+        .post(format!("http://{addr}/api/v1/session"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        .send()
+        .await
+        .unwrap();
+    let second = client
+        .post(format!("http://{addr}/api/v1/session"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(first.status(), StatusCode::CREATED);
+    assert_eq!(second.status(), StatusCode::CREATED);
+
+    handle.abort();
+}
+
+#[tokio::test]
 async fn get_session_returns_details() {
     let adapter = StaticGvmdAdapter::ready("22.7");
     let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
