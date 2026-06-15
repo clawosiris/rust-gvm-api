@@ -246,7 +246,7 @@ impl GvmdAdapter {
         session_token: &str,
         username: &str,
         password: &str,
-    ) -> Result<(), GatewayError> {
+    ) -> Result<String, GatewayError> {
         let span = info_span!(
             "gvmd.session.connect",
             otel_name = "gvmd.session.connect",
@@ -260,6 +260,7 @@ impl GvmdAdapter {
             let mut client = GmpClient::connect(connection)
                 .await
                 .map_err(map_gvm_error)?;
+            let negotiated = client.version().to_string();
             let response = client
                 .call(authenticate(username, password))
                 .await
@@ -276,7 +277,7 @@ impl GvmdAdapter {
                     Arc::new(SessionClient::new(client)),
                 );
 
-            Ok(())
+            Ok(negotiated)
         }
         .instrument(span)
         .await
@@ -3861,7 +3862,7 @@ impl AuthPort for GvmdAdapter {
         session_token: &str,
         username: &str,
         password: &str,
-    ) -> Result<(), GatewayError> {
+    ) -> Result<String, GatewayError> {
         self.connect_session(session_token, username, password)
             .await
     }
@@ -4180,7 +4181,7 @@ mod tests {
             let token = "gvm_sess_adapter_debug_secret";
             let result = adapter.connect_session(token, "admin", "admin").await;
 
-            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), "22.7");
             let debug = format!("{adapter:?}");
             assert!(debug.contains("session_count"));
             assert!(!debug.contains(token));

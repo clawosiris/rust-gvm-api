@@ -38,12 +38,15 @@ pub trait SystemPort: Send + Sync + 'static {
 #[async_trait]
 pub trait AuthPort: Send + Sync + 'static {
     /// Authenticate and establish a backend connection for the session.
+    ///
+    /// Returns the GMP version negotiated for the authenticated backend
+    /// connection.
     async fn authenticate_session(
         &self,
         session_token: &str,
         username: &str,
         password: &str,
-    ) -> Result<(), GatewayError>;
+    ) -> Result<String, GatewayError>;
 
     /// Disconnect and clean up the backend connection for a session.
     async fn disconnect_session(

@@ -59,32 +59,14 @@ impl GatewayService {
                 field::display(safe_session_id(&session.token)),
             );
 
-            if let Err(err) = self
+            let gmp_version = match self
                 .auth
                 .authenticate_session(&session.token, username, password)
                 .await
             {
-                let _ = self.sessions.remove(&session.token);
-                emit_audit_event(
-                    "session.create",
-                    "failure",
-                    username,
-                    Some(&session.token),
-                    None,
-                    None,
-                    Some(&err),
-                );
-                return Err(err);
-            }
-
-            let gmp_version = match self.system.gmp_version().await {
                 Ok(version) => version,
                 Err(err) => {
                     let _ = self.sessions.remove(&session.token);
-                    let _ = self
-                        .auth
-                        .disconnect_session(&SessionTokenDigest::from_token(&session.token))
-                        .await;
                     emit_audit_event(
                         "session.create",
                         "failure",
