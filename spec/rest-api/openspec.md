@@ -168,19 +168,32 @@ Rules for these exceptions:
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/reports` | List reports |
-| `GET` | `/api/v1/reports/{id}` | Get report (with results) |
+| `GET` | `/api/v1/reports/{id}` | Get report with an embedded result page |
+| `POST` | `/api/v1/reports/{id}/exports` | Start an asynchronous report export job (`202 Accepted` + `Location`) |
 | `GET` | `/api/v1/reports/{id}/results` | Get report results (paginated) |
 | `GET` | `/api/v1/reports/{id}/vulnerabilities` | Get report vulnerability findings (paginated) |
 | `GET` | `/api/v1/reports/{id}/tls-certificates` | Get TLS certificates observed in a report (paginated) |
 | `GET` | `/api/v1/reports/{id}/errors` | Get report error findings (paginated) |
 | `GET` | `/api/v1/reports/{id}/closed-cves` | Get closed CVE findings for a report (paginated) |
 | `DELETE` | `/api/v1/reports/{id}` | Delete report |
-| `GET` | `/api/v1/reports/{id}/export` | Export report bytes for a selected report format (`reportFormatId`) |
 
-On success, the endpoint returns binary bytes with:
-- `Content-Type` derived from the chosen report format when known
-- `Content-Disposition` set for attachment-style download
-- streaming-friendly behavior for large artifacts when practical
+Report export is intentionally modeled as a job because gvmd may need to
+materialize the full report and run report-format generation scripts before an
+artifact exists. `POST /api/v1/reports/{id}/exports` returns `202 Accepted` with
+`Location: /api/v1/jobs/{jobId}`. Clients poll `GET /api/v1/jobs/{jobId}` and
+download completed artifacts from `GET /api/v1/jobs/{jobId}/result`.
+Export requests either reference a gvmd report format with `reportFormatId` or
+select the API JSON export with `format: "json"`.
+
+Report reads and result subresources use `page` and `perPage`.
+
+#### Jobs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/jobs/{id}` | Get asynchronous job status |
+| `DELETE` | `/api/v1/jobs/{id}` | Request job cancellation |
+| `GET` | `/api/v1/jobs/{id}/result` | Download a completed job artifact |
 
 #### Results
 
@@ -327,6 +340,8 @@ Response includes pagination metadata:
 
 `perPage` / `totalPages` are the canonical public JSON field names.
 For request compatibility, the gateway may continue to accept legacy snake_case query aliases such as `per_page`, but published examples and generated SDKs should use camelCase.
+The maximum published `perPage` value is 1000. Servers may reject or clamp larger
+values.
 
 #### Filtering
 

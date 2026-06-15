@@ -56,7 +56,7 @@ components:
         minimum: 1
         maximum: 1000
         default: 25
-      description: Number of items per page (max 1000)
+      description: Number of items per page.
 
     UltimateDelete:
       name: ultimate
@@ -262,6 +262,8 @@ components:
             - 1
         perPage:
           type: integer
+          minimum: 1
+          maximum: 1000
           examples:
             - 25
         total:

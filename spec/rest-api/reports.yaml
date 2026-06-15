@@ -34,17 +34,11 @@ paths:
       tags: [Reports]
       summary: Get a report
       parameters:
-        - name: ignorePagination
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: If true, return all embedded results without pagination.
         - $ref: "./common.yaml#/components/parameters/Page"
         - $ref: "./common.yaml#/components/parameters/PerPage"
       responses:
         "200":
-          description: Report details with embedded results from the requested embedded-result window
+          description: Report details with embedded results from the requested embedded-result page
           content:
             application/json:
               schema:
@@ -71,71 +65,6 @@ paths:
           $ref: "./common.yaml#/components/responses/BadGateway"
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
-
-  /reports/{id}/export:
-    parameters:
-      - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get:
-      operationId: exportReport
-      tags: [Reports]
-      summary: Export a report in a selected report format
-      parameters:
-        - name: reportFormatId
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: UUID of the report format used to render the exported artifact.
-      responses:
-        "200":
-          description: |
-            Rendered report bytes for the selected report format. The concrete
-            `Content-Type` should follow the chosen report format metadata when
-            known; `application/octet-stream` is the fallback for unknown or
-            backend-specific media types.
-          headers:
-            traceparent:
-              $ref: "./common.yaml#/components/headers/Traceparent"
-            Content-Disposition:
-              description: Attachment-style filename for the rendered report artifact.
-              schema:
-                type: string
-          content:
-            application/pdf:
-              schema:
-                type: string
-                format: binary
-            application/xml:
-              schema:
-                type: string
-                format: binary
-            text/csv:
-              schema:
-                type: string
-                format: binary
-            text/plain:
-              schema:
-                type: string
-                format: binary
-            image/svg+xml:
-              schema:
-                type: string
-                format: binary
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        "400":
-          $ref: "./common.yaml#/components/responses/BadRequest"
-        "401":
-          $ref: "./common.yaml#/components/responses/Unauthorized"
-        "404":
-          $ref: "./common.yaml#/components/responses/NotFound"
-        "502":
-          $ref: "./common.yaml#/components/responses/BadGateway"
-        "504":
-          $ref: "./common.yaml#/components/responses/GatewayTimeout"
 
   /reports/{id}/results:
     parameters:
@@ -296,9 +225,10 @@ components:
           $ref: "#/components/schemas/ResultCount"
         results:
           type: array
+          maxItems: 1000
           items:
             $ref: "./results.yaml#/components/schemas/Result"
-          description: Embedded results (when fetching a single report).
+          description: Embedded results from the requested page when fetching a single report.
 
     ResultCount:
       type: object
@@ -326,6 +256,7 @@ components:
       properties:
         data:
           type: array
+          maxItems: 1000
           items:
             $ref: "#/components/schemas/Report"
         pagination:
@@ -371,6 +302,7 @@ components:
       properties:
         data:
           type: array
+          maxItems: 1000
           items:
             $ref: "#/components/schemas/TlsCertificate"
         pagination:
