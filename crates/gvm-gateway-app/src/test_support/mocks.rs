@@ -263,10 +263,6 @@ impl FeedPort for MockFeedPort {
     async fn list_feeds(&self, _: &str) -> Result<Vec<Feed>, GatewayError> {
         Ok(vec![])
     }
-
-    async fn sync_feeds(&self, _: &str) -> Result<(), GatewayError> {
-        Ok(())
-    }
 }
 
 /// Mock identity port for tests that only need service wiring.

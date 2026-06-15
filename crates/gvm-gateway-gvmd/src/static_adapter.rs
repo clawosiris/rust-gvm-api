@@ -231,9 +231,6 @@ impl FeedPort for StaticGvmdAdapter {
     async fn list_feeds(&self, _: &str) -> Result<Vec<Feed>, GatewayError> {
         unsupported!("static adapter does not support feeds")
     }
-    async fn sync_feeds(&self, _: &str) -> Result<(), GatewayError> {
-        unsupported!("static adapter does not support feed sync")
-    }
 }
 
 #[async_trait]

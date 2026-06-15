@@ -41,7 +41,7 @@ use crate::{
         list_credentials, list_credentials_docs, update_credential, update_credential_docs,
     },
     error::RestError,
-    feeds::{list_feeds, list_feeds_docs, sync_feeds, sync_feeds_docs},
+    feeds::{list_feeds, list_feeds_docs},
     identity::{
         create_group, create_group_docs, create_permission, create_permission_docs, create_role,
         create_role_docs, create_user, create_user_docs, delete_group, delete_group_docs,
@@ -290,7 +290,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         // Feeds
         .api_route("/api/v1/feeds", get_with(list_feeds, list_feeds_docs))
-        .api_route("/api/v1/feeds/sync", post_with(sync_feeds, sync_feeds_docs))
         // Supporting resources
         .api_route("/api/v1/hosts", get_with(list_hosts, list_hosts_docs))
         .api_route("/api/v1/hosts/{id}", get_with(get_host, get_host_docs))

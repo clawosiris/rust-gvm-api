@@ -195,8 +195,6 @@ paths:
     $ref: './identity.yaml#/paths/~1user-settings~1{id}'
   /feeds:
     $ref: './feeds.yaml#/paths/~1feeds'
-  /feeds/sync:
-    $ref: './feeds.yaml#/paths/~1feeds~1sync'
   /hosts:
     $ref: './supporting-resources.yaml#/paths/~1hosts'
   /hosts/{id}:

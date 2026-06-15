@@ -88,22 +88,6 @@ pub async fn list_feeds(
     }
 }
 
-pub async fn sync_feeds(
-    State(service): State<GatewayService>,
-    headers: HeaderMap,
-    uri: OriginalUri,
-) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.sync_feeds(&session).await {
-        Ok(()) => StatusCode::ACCEPTED.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
 pub(crate) fn list_feeds_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     let op = op
         .id("getFeeds")
@@ -113,20 +97,6 @@ pub(crate) fn list_feeds_docs(op: TransformOperation<'_>) -> TransformOperation<
         .security_requirement("bearerAuth")
         .response_with::<200, Json<FeedListResponse>, _>(ok_json("Feed status"));
     problem_response::<401>(op, "Authentication required or session expired")
-}
-
-pub(crate) fn sync_feeds_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("syncFeeds")
-        .tag("Feeds")
-        .summary("Trigger feed synchronization")
-        .description("Triggers feed synchronization as a documented action-style exception.")
-        .security_requirement("bearerAuth")
-        .response_with::<202, (), _>(|response| {
-            response.description("Feed synchronization accepted")
-        });
-    let op = problem_response::<401>(op, "Authentication required or session expired");
-    problem_response::<409>(op, "Feed synchronization already in progress")
 }
 
 #[cfg(test)]

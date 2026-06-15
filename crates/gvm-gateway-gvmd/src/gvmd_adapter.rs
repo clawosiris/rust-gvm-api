@@ -7,7 +7,6 @@ use std::{
     collections::HashMap,
     fmt, fs,
     path::{Path, PathBuf},
-    process::Command as ProcessCommand,
     sync::{Arc, Mutex},
 };
 
@@ -286,17 +285,6 @@ impl GvmdAdapter {
             .into_iter()
             .next()
             .ok_or_else(|| GatewayError::NotFound(format!("user {id} not found")))
-    }
-
-    fn spawn_feed_sync(&self) -> Result<(), GatewayError> {
-        let bin = std::env::var("GVM_GATEWAY_FEED_SYNC_BIN")
-            .unwrap_or_else(|_| "greenbone-feed-sync".to_string());
-        ProcessCommand::new(bin)
-            .spawn()
-            .map(|_| ())
-            .map_err(|error| {
-                GatewayError::BackendUnavailable(format!("failed to start feed sync: {error}"))
-            })
     }
 
     fn load_timezones(&self) -> Vec<Timezone> {
@@ -1220,10 +1208,6 @@ impl FeedPort for GvmdAdapter {
             .map_err(map_gvm_error)?;
         let parsed = GetFeedsResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(parsed.items.into_iter().map(feed_from_gmp).collect())
-    }
-
-    async fn sync_feeds(&self, _session_token: &str) -> Result<(), GatewayError> {
-        self.spawn_feed_sync()
     }
 }
 
