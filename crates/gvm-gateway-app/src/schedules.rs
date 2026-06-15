@@ -100,14 +100,23 @@ impl GatewayService {
     }
 
     /// Deletes a schedule for an authenticated session.
-    pub async fn delete_schedule(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    pub async fn delete_schedule(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "schedules.delete",
             session_token,
             "delete",
             "schedule",
             Some(id),
-            |session| async move { self.schedules.delete_schedule(&session.token, id).await },
+            |session| async move {
+                self.schedules
+                    .delete_schedule(&session.token, id, ultimate)
+                    .await
+            },
         )
         .await
     }

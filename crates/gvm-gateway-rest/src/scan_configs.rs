@@ -24,7 +24,7 @@ use crate::{
     error::RestError,
     open_enum::open_u32_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc, ScanConfigListQueryDoc},
-    query::parse_collection_query,
+    query::{parse_collection_query, parse_delete_resource_query, DeleteResourceQueryParams},
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -335,7 +335,11 @@ pub async fn delete_scan_config(
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
 
-    match service.delete_scan_config(&session, &id).await {
+    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
+        Ok(ultimate) => ultimate,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.delete_scan_config(&session, &id, ultimate).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
@@ -413,9 +417,9 @@ pub(crate) fn delete_scan_config_docs(op: TransformOperation<'_>) -> TransformOp
         .id("deleteScanConfig")
         .tag("Scan Configs")
         .summary("Delete a scan configuration")
-        .description("Deletes an existing scan configuration.")
+        .description("Deletes a scan configuration. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.")
         .security_requirement("bearerAuth")
-        .input::<Path<ResourceIdPathDoc>>()
+        .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
         .response_with::<204, (), _>(|response| response.description("Scan config deleted"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");

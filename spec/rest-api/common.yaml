@@ -58,6 +58,14 @@ components:
         default: 25
       description: Number of items per page (max 1000)
 
+    UltimateDelete:
+      name: ultimate
+      in: query
+      required: false
+      description: Whether gvmd should delete the resource permanently instead of using the default non-ultimate delete.
+      schema:
+        type: boolean
+
 
     Traceparent:
       name: traceparent

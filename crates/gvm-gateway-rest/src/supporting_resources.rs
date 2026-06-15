@@ -28,7 +28,7 @@ use crate::{
     error::RestError,
     open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
-    query::parse_collection_query,
+    query::{parse_collection_query, parse_delete_resource_query, DeleteResourceQueryParams},
     results::NvtRefResponse,
     router::bearer_token,
     targets::validate_uuid,
@@ -609,13 +609,6 @@ pub(crate) struct ModifyOverrideRequest {
     active: Option<bool>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-/// Query parameters shared by triage-resource delete endpoints.
-pub(crate) struct DeleteSupportingResourceQueryParams {
-    /// Whether gvmd should delete the resource permanently instead of trashing it.
-    ultimate: Option<bool>,
-}
-
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "Nvt")]
 pub(crate) struct NvtResponse {
@@ -716,20 +709,6 @@ fn validate_optional_uuid(field: &str, value: Option<&str>) -> Result<(), Gatewa
         validate_uuid(field, value)?;
     }
     Ok(())
-}
-
-fn parse_delete_supporting_resource_query(query: &str) -> Result<bool, GatewayError> {
-    let mut ultimate = false;
-
-    for (key, value) in form_urlencoded::parse(query.as_bytes()) {
-        if key == "ultimate" {
-            ultimate = value.parse::<bool>().map_err(|_| {
-                GatewayError::InvalidInput("ultimate must be true or false".to_string())
-            })?;
-        }
-    }
-
-    Ok(ultimate)
 }
 
 impl CreateNoteRequest {
@@ -1174,7 +1153,7 @@ pub async fn delete_note(
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    let ultimate = match parse_delete_supporting_resource_query(uri.query().unwrap_or("")) {
+    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
         Ok(ultimate) => ultimate,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
@@ -1327,7 +1306,7 @@ pub async fn delete_override(
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    let ultimate = match parse_delete_supporting_resource_query(uri.query().unwrap_or("")) {
+    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
         Ok(ultimate) => ultimate,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
@@ -1612,7 +1591,7 @@ pub(crate) fn delete_note_docs(op: TransformOperation<'_>) -> TransformOperation
         .summary("Delete a note")
         .description("Deletes a note. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.")
         .security_requirement("bearerAuth")
-        .input::<(Path<ResourceIdPathDoc>, Query<DeleteSupportingResourceQueryParams>)>()
+        .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
         .response_with::<204, (), _>(|response| response.description("Note deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -1688,7 +1667,7 @@ pub(crate) fn delete_override_docs(op: TransformOperation<'_>) -> TransformOpera
         .summary("Delete an override")
         .description("Deletes an override. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.")
         .security_requirement("bearerAuth")
-        .input::<(Path<ResourceIdPathDoc>, Query<DeleteSupportingResourceQueryParams>)>()
+        .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
         .response_with::<204, (), _>(|response| response.description("Override deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
@@ -1745,10 +1724,8 @@ pub(crate) fn list_nvt_families_docs(op: TransformOperation<'_>) -> TransformOpe
 mod tests {
     use serde_json::json;
 
-    use super::{
-        parse_delete_supporting_resource_query, PaginationOnlyQuery, SupportingListQuery,
-        TicketResponse, TicketStatus,
-    };
+    use super::{PaginationOnlyQuery, SupportingListQuery, TicketResponse, TicketStatus};
+    use crate::query::parse_delete_resource_query;
     use gvm_gateway_domain::{SupportingResourceMeta, Ticket};
 
     #[test]
@@ -1794,7 +1771,7 @@ mod tests {
 
     #[test]
     fn delete_supporting_resource_query_rejects_invalid_bool() {
-        let error = parse_delete_supporting_resource_query("ultimate=not-bool")
+        let error = parse_delete_resource_query("ultimate=not-bool")
             .expect_err("invalid ultimate bool should be rejected");
 
         match error {

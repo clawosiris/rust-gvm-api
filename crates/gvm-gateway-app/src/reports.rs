@@ -69,14 +69,23 @@ impl GatewayService {
     }
 
     /// Deletes a report for an authenticated session.
-    pub async fn delete_report(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    pub async fn delete_report(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "reports.delete",
             session_token,
             "delete",
             "report",
             Some(id),
-            |session| async move { self.reports.delete_report(&session.token, id).await },
+            |session| async move {
+                self.reports
+                    .delete_report(&session.token, id, ultimate)
+                    .await
+            },
         )
         .await
     }

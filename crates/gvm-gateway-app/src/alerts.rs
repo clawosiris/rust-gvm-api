@@ -76,14 +76,19 @@ impl GatewayService {
     }
 
     /// Deletes an alert for an authenticated session.
-    pub async fn delete_alert(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    pub async fn delete_alert(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "alerts.delete",
             session_token,
             "delete",
             "alert",
             Some(id),
-            |session| async move { self.alerts.delete_alert(&session.token, id).await },
+            |session| async move { self.alerts.delete_alert(&session.token, id, ultimate).await },
         )
         .await
     }

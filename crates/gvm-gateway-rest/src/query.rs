@@ -6,6 +6,8 @@
 use std::borrow::Cow;
 
 use gvm_gateway_domain::GatewayError;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::targets::validate_uuid;
 
@@ -23,6 +25,13 @@ pub(crate) struct CollectionQueryParams {
 pub(crate) struct FilterOnlyQueryParams {
     pub(crate) filter_string: Option<String>,
     pub(crate) filter_id: Option<String>,
+}
+
+/// Query parameters shared by delete endpoints that support gvmd trashcan semantics.
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct DeleteResourceQueryParams {
+    /// Whether gvmd should delete the resource permanently instead of trashing it.
+    ultimate: Option<bool>,
 }
 
 pub(crate) fn decoded_query_pairs(
@@ -114,11 +123,27 @@ pub(crate) fn query_flag_is_true(query: &str, param_name: &str) -> bool {
     decoded_query_pairs(query).any(|(key, value)| key == param_name && value == "true")
 }
 
+pub(crate) fn parse_delete_resource_query(query: &str) -> Result<bool, GatewayError> {
+    let mut ultimate = false;
+
+    for (key, value) in decoded_query_pairs(query) {
+        if key == "ultimate" {
+            ultimate = value.parse::<bool>().map_err(|_| {
+                GatewayError::InvalidInput("ultimate must be true or false".to_string())
+            })?;
+        }
+    }
+
+    Ok(ultimate)
+}
+
 #[cfg(test)]
 mod tests {
+    use gvm_gateway_domain::GatewayError;
+
     use super::{
-        parse_collection_query, parse_filter_only_query, parse_required_uuid_query_param,
-        query_flag_is_true,
+        parse_collection_query, parse_delete_resource_query, parse_filter_only_query,
+        parse_required_uuid_query_param, query_flag_is_true,
     };
 
     #[test]
@@ -181,5 +206,18 @@ mod tests {
             "ignorePagination=false",
             "ignorePagination"
         ));
+    }
+
+    #[test]
+    fn delete_resource_query_rejects_invalid_boolean() {
+        let error = parse_delete_resource_query("ultimate=not-bool")
+            .expect_err("invalid ultimate bool should be rejected");
+
+        match error {
+            GatewayError::InvalidInput(detail) => {
+                assert_eq!(detail, "ultimate must be true or false");
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 }

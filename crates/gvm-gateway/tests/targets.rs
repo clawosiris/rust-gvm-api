@@ -99,7 +99,12 @@ impl TargetPort for CredentialReadbackTargetAdapter {
         })
     }
 
-    async fn delete_target(&self, _session_token: &str, _id: &str) -> Result<(), GatewayError> {
+    async fn delete_target(
+        &self,
+        _session_token: &str,
+        _id: &str,
+        _ultimate: bool,
+    ) -> Result<(), GatewayError> {
         Err(GatewayError::Internal(
             "delete_target is not used by this test adapter".to_string(),
         ))

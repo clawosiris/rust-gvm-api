@@ -356,7 +356,7 @@ paths:
       summary: Delete a note
       description: Deletes a note. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.
       parameters:
-        - $ref: "#/components/parameters/UltimateDelete"
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
       responses:
         "204":
           description: Note deleted
@@ -476,7 +476,7 @@ paths:
       summary: Delete an override
       description: Deletes an override. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.
       parameters:
-        - $ref: "#/components/parameters/UltimateDelete"
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
       responses:
         "204":
           description: Override deleted
@@ -567,14 +567,6 @@ paths:
           $ref: "./common.yaml#/components/responses/BadGateway"
 
 components:
-  parameters:
-    UltimateDelete:
-      name: ultimate
-      in: query
-      required: false
-      description: Whether gvmd should delete the resource permanently instead of using the default non-ultimate delete.
-      schema:
-        type: boolean
   schemas:
     Host:
       type: object

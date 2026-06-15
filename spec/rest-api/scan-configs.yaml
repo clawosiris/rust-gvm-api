@@ -101,6 +101,9 @@ paths:
       operationId: deleteScanConfig
       tags: [Scan Configs]
       summary: Delete a scan configuration
+      description: Deletes a scan configuration. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
       responses:
         "204":
           description: Scan config deleted

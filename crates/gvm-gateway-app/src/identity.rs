@@ -79,14 +79,23 @@ impl GatewayService {
     }
 
     /// Deletes a user for an authenticated session.
-    pub async fn delete_user(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    pub async fn delete_user(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "users.delete",
             session_token,
             "delete",
             "user",
             Some(id),
-            |session| async move { self.identity.delete_user(&session.token, id).await },
+            |session| async move {
+                self.identity
+                    .delete_user(&session.token, id, ultimate)
+                    .await
+            },
         )
         .await
     }
@@ -157,14 +166,23 @@ impl GatewayService {
     }
 
     /// Deletes a group for an authenticated session.
-    pub async fn delete_group(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    pub async fn delete_group(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "groups.delete",
             session_token,
             "delete",
             "group",
             Some(id),
-            |session| async move { self.identity.delete_group(&session.token, id).await },
+            |session| async move {
+                self.identity
+                    .delete_group(&session.token, id, ultimate)
+                    .await
+            },
         )
         .await
     }
@@ -235,14 +253,23 @@ impl GatewayService {
     }
 
     /// Deletes a role for an authenticated session.
-    pub async fn delete_role(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+    pub async fn delete_role(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "roles.delete",
             session_token,
             "delete",
             "role",
             Some(id),
-            |session| async move { self.identity.delete_role(&session.token, id).await },
+            |session| async move {
+                self.identity
+                    .delete_role(&session.token, id, ultimate)
+                    .await
+            },
         )
         .await
     }
@@ -325,6 +352,7 @@ impl GatewayService {
         &self,
         session_token: &str,
         id: &str,
+        ultimate: bool,
     ) -> Result<(), GatewayError> {
         self.execute_with_resource(
             "permissions.delete",
@@ -332,7 +360,11 @@ impl GatewayService {
             "delete",
             "permission",
             Some(id),
-            |session| async move { self.identity.delete_permission(&session.token, id).await },
+            |session| async move {
+                self.identity
+                    .delete_permission(&session.token, id, ultimate)
+                    .await
+            },
         )
         .await
     }

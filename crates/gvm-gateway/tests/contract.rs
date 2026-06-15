@@ -221,7 +221,7 @@ impl TaskPort for CapturingTaskPort {
         Ok(task_response(id, "Captured Task"))
     }
 
-    async fn delete_task(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+    async fn delete_task(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::Internal(
             "delete_task is not used by this test port".to_string(),
         ))
