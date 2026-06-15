@@ -3,7 +3,7 @@
 
 #![cfg(test)]
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use gvm_gateway_domain::{
@@ -11,7 +11,7 @@ use gvm_gateway_domain::{
     ReportQuery, ResultQuery, SessionLimits, SessionManager, SystemPort, TargetQuery,
 };
 
-use crate::{service::safe_session_id, test_support::*, GatewayService};
+use crate::{service::safe_session_id, test_support::*, GatewayService, SessionReaper};
 
 /// Health always reports `ok` because liveness is process-local.
 #[test]
@@ -140,6 +140,31 @@ async fn service_create_session_uses_authenticated_version_without_extra_probe()
     assert_eq!(created.gmp_version, "22.9");
     assert!(service.get_session(&created.token).is_ok());
     assert!(disconnected.lock().unwrap().is_empty());
+}
+
+/// Reaper startup clamps the derived default tick interval above Tokio's
+/// zero-period panic while preserving short idle-timeout configurations.
+#[tokio::test]
+async fn session_reaper_spawn_uses_non_zero_default_interval_for_short_timeouts() {
+    for timeout_secs in [0, 1] {
+        let sessions = Arc::new(SessionManager::new(timeout_secs));
+        let reaper = SessionReaper::new(sessions, Arc::new(MockAuthPort::default()));
+
+        let handle = reaper.spawn();
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        assert!(
+            !handle.is_finished(),
+            "reaper task exited for idle timeout {timeout_secs}"
+        );
+
+        handle.abort();
+        let result = handle.await;
+        assert!(
+            result.is_err_and(|err| err.is_cancelled()),
+            "reaper task should stop through cancellation"
+        );
+    }
 }
 
 /// Target listing rejects unknown session tokens before hitting the port.
