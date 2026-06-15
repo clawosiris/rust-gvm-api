@@ -45,7 +45,7 @@ pub use scan_configs::*;
 pub use scanners::*;
 pub use schedules::*;
 pub use session::{
-    Session, SessionCreated, SessionInfo, SessionLimits, SessionManager, SessionState,
+    Session, SessionCreated, SessionHold, SessionInfo, SessionLimits, SessionManager, SessionState,
     SessionTokenDigest, DEFAULT_MAX_GLOBAL_SESSIONS, DEFAULT_MAX_SESSIONS_PER_USER,
 };
 pub use supporting_resources::*;

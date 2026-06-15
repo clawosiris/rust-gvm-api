@@ -12,7 +12,7 @@ use std::{
 use gvm_gateway_domain::{
     CreateReportExportRequest, GatewayError, GetReportOpts, JobArtifact, JobCancelOutcome,
     JobProblem, JobProgress, JobResult, JobStatus, ReportExportFormat, ReportExportJob,
-    ReportJsonExport, ResourceRef, ResultQuery, Session,
+    ReportJsonExport, ResourceRef, ResultQuery, Session, SessionHold, SessionTokenDigest,
 };
 use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
@@ -43,6 +43,7 @@ struct JobPolicy {
 #[derive(Clone)]
 struct JobRecord {
     owner_user: String,
+    session_token_digest: SessionTokenDigest,
     job: ReportExportJob,
     artifact: Option<JobArtifact>,
     abort_handle: Option<AbortHandle>,
@@ -179,7 +180,9 @@ impl GatewayService {
 
         let job_id = Uuid::new_v4().to_string();
         let job = report_export_job(&job_id, &report_id, &request);
-        self.insert_job(session.user, job.clone())?;
+        let session_hold = self.sessions.hold(&session.token)?;
+        let session_token_digest = SessionTokenDigest::from_token(&session.token);
+        self.insert_job(session.user, session_token_digest, job.clone())?;
 
         let worker = self.clone();
         let worker_job_id = job_id.clone();
@@ -191,6 +194,7 @@ impl GatewayService {
                 .run_report_export_job(
                     worker_job_id,
                     session_token,
+                    session_hold,
                     worker_report_id,
                     worker_request,
                 )
@@ -205,6 +209,7 @@ impl GatewayService {
         &self,
         job_id: String,
         session_token: String,
+        _session_hold: SessionHold,
         report_id: String,
         request: CreateReportExportRequest,
     ) {
@@ -321,7 +326,12 @@ impl GatewayService {
         })
     }
 
-    fn insert_job(&self, owner_user: String, job: ReportExportJob) -> Result<(), GatewayError> {
+    fn insert_job(
+        &self,
+        owner_user: String,
+        session_token_digest: SessionTokenDigest,
+        job: ReportExportJob,
+    ) -> Result<(), GatewayError> {
         let mut state = self
             .jobs
             .state
@@ -339,6 +349,7 @@ impl GatewayService {
             job.id.clone(),
             JobRecord {
                 owner_user,
+                session_token_digest,
                 job,
                 artifact: None,
                 abort_handle: None,
@@ -362,6 +373,10 @@ impl GatewayService {
             .jobs
             .get_mut(job_id)
             .ok_or_else(|| GatewayError::NotFound(format!("job {job_id} not found")))?;
+        if record.job.status.is_terminal() {
+            abort_handle.abort();
+            return Ok(());
+        }
         record.abort_handle = Some(abort_handle);
         Ok(())
     }
@@ -511,6 +526,41 @@ impl GatewayService {
         Ok(JobCancelOutcome::CancellationRequested)
     }
 
+    pub(crate) fn cancel_jobs_for_session(
+        &self,
+        session_token_digest: &SessionTokenDigest,
+    ) -> Result<usize, GatewayError> {
+        let mut state = self
+            .jobs
+            .state
+            .lock()
+            .map_err(|_| GatewayError::Internal("job registry lock poisoned".to_string()))?;
+        purge_expired_jobs(&mut state, now_epoch_secs());
+        let now = now_epoch_secs();
+        let retention_secs = state.policy.terminal_retention_secs;
+        let mut abort_handles = Vec::new();
+        let mut cancelled = 0;
+
+        for record in state.jobs.values_mut() {
+            if record.session_token_digest != *session_token_digest
+                || record.job.status.is_terminal()
+            {
+                continue;
+            }
+            if let Some(handle) = cancel_job_record_in_place(record, now, retention_secs) {
+                abort_handles.push(handle);
+            }
+            cancelled += 1;
+        }
+
+        drop(state);
+        for handle in abort_handles {
+            handle.abort();
+        }
+
+        Ok(cancelled)
+    }
+
     fn job_artifact(&self, owner_user: &str, job_id: &str) -> Result<JobArtifact, GatewayError> {
         let mut state = self
             .jobs
@@ -553,6 +603,44 @@ impl GatewayService {
     pub(crate) fn retained_job_count_for_tests(&self) -> usize {
         self.jobs.state.lock().unwrap().jobs.len()
     }
+
+    #[cfg(test)]
+    pub(crate) fn attach_abort_handle_for_tests(
+        &self,
+        job_id: &str,
+        abort_handle: AbortHandle,
+    ) -> Result<(), GatewayError> {
+        self.set_job_abort_handle(job_id, abort_handle)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn job_has_abort_handle_for_tests(&self, job_id: &str) -> bool {
+        self.jobs
+            .state
+            .lock()
+            .unwrap()
+            .jobs
+            .get(job_id)
+            .and_then(|record| record.abort_handle.as_ref())
+            .is_some()
+    }
+}
+
+fn cancel_job_record_in_place(
+    record: &mut JobRecord,
+    now: u64,
+    retention_secs: u64,
+) -> Option<AbortHandle> {
+    record.job.status = JobStatus::Cancelled;
+    record.job.completed_at = Some(format_epoch_secs(now));
+    record.job.expires_at = Some(format_epoch_secs(now + retention_secs));
+    record.job.progress = Some(JobProgress {
+        percent: Some(100),
+        message: Some("cancelled".to_string()),
+    });
+    record.artifact = None;
+    record.purge_after_epoch_secs = Some(now + retention_secs);
+    record.abort_handle.take()
 }
 
 /// Background task that periodically removes expired asynchronous jobs.
