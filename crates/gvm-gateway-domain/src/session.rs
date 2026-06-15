@@ -150,6 +150,30 @@ fn hex_prefix(bytes: &[u8], count: usize) -> String {
 // Session Manager
 // ============================================================================
 
+/// Default maximum number of active sessions across all users.
+pub const DEFAULT_MAX_GLOBAL_SESSIONS: u64 = 1_000;
+
+/// Default maximum number of active sessions for one authenticated user.
+pub const DEFAULT_MAX_SESSIONS_PER_USER: u64 = 10;
+
+/// Session capacity limits enforced by the domain registry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SessionLimits {
+    /// Maximum sessions across all users. `None` disables the global cap.
+    pub max_global: Option<u64>,
+    /// Maximum sessions for a single user. `None` disables the per-user cap.
+    pub max_per_user: Option<u64>,
+}
+
+impl Default for SessionLimits {
+    fn default() -> Self {
+        Self {
+            max_global: Some(DEFAULT_MAX_GLOBAL_SESSIONS),
+            max_per_user: Some(DEFAULT_MAX_SESSIONS_PER_USER),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct StoredSession {
     user: String,
@@ -163,6 +187,7 @@ struct StoredSession {
 pub struct SessionManager {
     inner: Arc<Mutex<HashMap<SessionTokenDigest, StoredSession>>>,
     idle_timeout_secs: u64,
+    limits: SessionLimits,
 }
 
 impl fmt::Debug for SessionManager {
@@ -172,6 +197,7 @@ impl fmt::Debug for SessionManager {
             .debug_struct("SessionManager")
             .field("session_count", &session_count)
             .field("idle_timeout_secs", &self.idle_timeout_secs)
+            .field("limits", &self.limits)
             .finish()
     }
 }
@@ -181,6 +207,7 @@ impl Default for SessionManager {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
             idle_timeout_secs: 300,
+            limits: SessionLimits::default(),
         }
     }
 }
@@ -188,15 +215,26 @@ impl Default for SessionManager {
 impl SessionManager {
     /// Create a session manager with a custom idle timeout.
     pub fn new(idle_timeout_secs: u64) -> Self {
+        Self::with_limits(idle_timeout_secs, SessionLimits::default())
+    }
+
+    /// Create a session manager with custom idle timeout and capacity limits.
+    pub fn with_limits(idle_timeout_secs: u64, limits: SessionLimits) -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
             idle_timeout_secs,
+            limits,
         }
     }
 
     /// Returns the configured idle timeout in seconds.
     pub fn idle_timeout_secs(&self) -> u64 {
         self.idle_timeout_secs
+    }
+
+    /// Returns the configured session capacity limits.
+    pub fn limits(&self) -> SessionLimits {
+        self.limits
     }
 
     /// Create a new active session.
@@ -210,12 +248,11 @@ impl SessionManager {
             created_at: now,
             last_used_at: now,
         };
-        self.inner
-            .lock()
-            .map_err(|_| {
-                GatewayError::BackendUnavailable("session registry unavailable".to_string())
-            })?
-            .insert(SessionTokenDigest::from_token(&token), session);
+        let mut guard = self.inner.lock().map_err(|_| {
+            GatewayError::BackendUnavailable("session registry unavailable".to_string())
+        })?;
+        enforce_session_limits(&guard, &user, self.limits)?;
+        guard.insert(SessionTokenDigest::from_token(&token), session);
         Ok(Session {
             token,
             user,
@@ -351,6 +388,34 @@ impl SessionManager {
             state: stored.state,
         }))
     }
+}
+
+fn enforce_session_limits(
+    sessions: &HashMap<SessionTokenDigest, StoredSession>,
+    user: &str,
+    limits: SessionLimits,
+) -> Result<(), GatewayError> {
+    if let Some(max_global) = limits.max_global {
+        if sessions.len() as u64 >= max_global {
+            return Err(GatewayError::TooManyRequests(
+                "global session limit exceeded".to_string(),
+            ));
+        }
+    }
+
+    if let Some(max_per_user) = limits.max_per_user {
+        let user_sessions = sessions
+            .values()
+            .filter(|session| session.user == user)
+            .count() as u64;
+        if user_sessions >= max_per_user {
+            return Err(GatewayError::TooManyRequests(
+                "per-user session limit exceeded".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 // ============================================================================
@@ -592,6 +657,63 @@ mod tests {
         let manager = SessionManager::new(600);
         assert_eq!(manager.idle_timeout_secs(), 600);
         assert_eq!(SessionManager::default().idle_timeout_secs(), 300);
+    }
+
+    /// Global session limits protect gvmd from process exhaustion by rejecting
+    /// new sessions before another backend connection can be opened.
+    #[test]
+    fn session_manager_enforces_global_session_limit() {
+        let manager = SessionManager::with_limits(
+            300,
+            SessionLimits {
+                max_global: Some(1),
+                max_per_user: None,
+            },
+        );
+
+        manager.create("alice").unwrap();
+        let result = manager.create("bob");
+
+        assert!(matches!(result, Err(GatewayError::TooManyRequests(_))));
+    }
+
+    /// Per-user limits prevent one credential from consuming the whole
+    /// session budget while still allowing other users to create sessions.
+    #[test]
+    fn session_manager_enforces_per_user_session_limit() {
+        let manager = SessionManager::with_limits(
+            300,
+            SessionLimits {
+                max_global: None,
+                max_per_user: Some(1),
+            },
+        );
+
+        manager.create("alice").unwrap();
+        let result = manager.create("alice");
+        let other_user = manager.create("bob");
+
+        assert!(matches!(result, Err(GatewayError::TooManyRequests(_))));
+        assert!(other_user.is_ok());
+    }
+
+    /// Explicit teardown releases capacity so a user can create a replacement
+    /// session without waiting for idle-expiry cleanup.
+    #[test]
+    fn session_manager_remove_releases_session_limit_capacity() {
+        let manager = SessionManager::with_limits(
+            300,
+            SessionLimits {
+                max_global: Some(1),
+                max_per_user: Some(1),
+            },
+        );
+        let session = manager.create("alice").unwrap();
+
+        manager.remove(&session.token).unwrap();
+        let replacement = manager.create("alice");
+
+        assert!(replacement.is_ok());
     }
 
     // ------------------------------------------------------------------------

@@ -3,6 +3,9 @@
 bind = "127.0.0.1:8080"
 transport_security_mode = "disabled"
 gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
+# session_idle_timeout_secs = 300
+# session_max_global = 1000
+# session_max_per_user = 10
 # tls_certificate_path = "/etc/gvm-gateway/tls/cert.pem"
 # tls_private_key_path = "/etc/gvm-gateway/tls/key.pem"
 # otlp_endpoint = "http://127.0.0.1:4317"

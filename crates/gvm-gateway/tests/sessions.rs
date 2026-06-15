@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use common::{spawn_server, static_gateway_service_for_reaper};
-use gvm_gateway_domain::SessionManager;
+use gvm_gateway_domain::{SessionLimits, SessionManager};
 use gvm_gateway_gvmd::StaticGvmdAdapter;
 use gvm_gateway_rest::peer_addr::ClientPeerAddr;
 use gvm_gateway_rest::router::build_router;
@@ -55,6 +55,51 @@ async fn create_session_missing_auth() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    handle.abort();
+}
+
+#[tokio::test]
+async fn create_session_returns_429_when_session_limit_reached() {
+    // Protects the documented session-cap contract: persistent session
+    // creation must fail with 429 before an extra backend connection is kept.
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let sessions = Arc::new(SessionManager::with_limits(
+        300,
+        SessionLimits {
+            max_global: Some(1),
+            max_per_user: Some(1),
+        },
+    ));
+    let (service, _, _) = static_gateway_service_for_reaper(adapter, Arc::clone(&sessions));
+    let app = build_router(service);
+    let handle = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<ClientPeerAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    let client = Client::new();
+
+    let first = client
+        .post(format!("http://{addr}/api/v1/session"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        .send()
+        .await
+        .unwrap();
+    let second = client
+        .post(format!("http://{addr}/api/v1/session"))
+        .header("Authorization", "Basic YWRtaW46c2VjcmV0")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(first.status(), StatusCode::CREATED);
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
     handle.abort();
 }
 

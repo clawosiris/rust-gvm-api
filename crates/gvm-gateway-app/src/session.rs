@@ -72,6 +72,11 @@ impl GatewayService {
             let gmp_version = match self.system.gmp_version().await {
                 Ok(version) => version,
                 Err(err) => {
+                    let _ = self.sessions.remove(&session.token);
+                    let _ = self
+                        .auth
+                        .disconnect_session(&SessionTokenDigest::from_token(&session.token))
+                        .await;
                     emit_audit_event(
                         "session.create",
                         "failure",
@@ -204,7 +209,7 @@ impl SessionReaper {
     /// [`JoinHandle`] can be aborted to stop the reaper (e.g. on server
     /// shutdown).
     pub fn spawn(&self) -> JoinHandle<()> {
-        let interval = Duration::from_secs(self.sessions.idle_timeout_secs() / 2);
+        let interval = Duration::from_secs((self.sessions.idle_timeout_secs() / 2).max(1));
         self.spawn_with_interval(interval)
     }
 
@@ -471,6 +476,18 @@ mod tests {
         handle.abort();
 
         assert!(disconnected.lock().unwrap().is_empty());
+    }
+
+    /// Configurable short idle timeouts must not produce a zero-duration
+    /// reaper interval, because tokio intervals reject zero durations.
+    #[tokio::test]
+    async fn reaper_spawn_handles_sub_two_second_idle_timeout() {
+        let auth = MockAuthPort::default();
+        let sessions = Arc::new(SessionManager::new(1));
+        let reaper = SessionReaper::new(sessions, Arc::new(auth));
+
+        let handle = reaper.spawn();
+        handle.abort();
     }
 
     /// The reaper and delete_session are safe to race: if delete wins, the

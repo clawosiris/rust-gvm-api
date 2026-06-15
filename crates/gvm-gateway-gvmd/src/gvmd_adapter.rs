@@ -6,6 +6,7 @@
 use std::{
     collections::HashMap,
     fmt, fs,
+    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -119,7 +120,7 @@ use gvm_gmp::{
     EntityId, FilterFragmentError, PaginatedFilter, Pagination as GmpPagination,
 };
 use gvm_protocol::{Request, Response};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, OwnedSemaphorePermit, Semaphore};
 use tracing::{field, info_span, Instrument};
 
 use crate::conversions::{
@@ -135,7 +136,52 @@ use crate::conversions::{
     tls_certificate_from_report_tls_certificate, user_from_gmp, user_setting_from_gmp,
 };
 
-type SharedClient = Arc<AsyncMutex<GmpClient<UnixSocketConnection>>>;
+const MAX_SESSION_COMMANDS_IN_FLIGHT_OR_WAITING: usize = 64;
+
+struct SessionClient {
+    client: AsyncMutex<GmpClient<UnixSocketConnection>>,
+    command_slots: Arc<Semaphore>,
+}
+
+impl SessionClient {
+    fn new(client: GmpClient<UnixSocketConnection>) -> Self {
+        Self {
+            client: AsyncMutex::new(client),
+            command_slots: Arc::new(Semaphore::new(MAX_SESSION_COMMANDS_IN_FLIGHT_OR_WAITING)),
+        }
+    }
+
+    async fn lock(&self) -> Result<SessionClientGuard<'_>, GatewayError> {
+        let slot = Arc::clone(&self.command_slots)
+            .try_acquire_owned()
+            .map_err(|_| {
+                GatewayError::TooManyRequests("session command queue saturated".to_string())
+            })?;
+        let guard = self.client.lock().await;
+        Ok(SessionClientGuard { _slot: slot, guard })
+    }
+}
+
+struct SessionClientGuard<'a> {
+    _slot: OwnedSemaphorePermit,
+    guard: tokio::sync::MutexGuard<'a, GmpClient<UnixSocketConnection>>,
+}
+
+impl Deref for SessionClientGuard<'_> {
+    type Target = GmpClient<UnixSocketConnection>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+impl DerefMut for SessionClientGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.guard
+    }
+}
+
+type SharedClient = Arc<SessionClient>;
 
 /// gvmd adapter backed by session-keyed GMP clients.
 #[derive(Clone)]
@@ -227,7 +273,7 @@ impl GvmdAdapter {
                 })?
                 .insert(
                     SessionTokenDigest::from_token(session_token),
-                    Arc::new(AsyncMutex::new(client)),
+                    Arc::new(SessionClient::new(client)),
                 );
 
             Ok(())
@@ -264,7 +310,7 @@ impl GvmdAdapter {
         async move {
             let response = client
                 .lock()
-                .await
+                .await?
                 .call(request)
                 .await
                 .map_err(map_gvm_error)?;
@@ -598,7 +644,7 @@ impl AlertPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_alerts(GetAlertsOpts {
                 filter_string,
                 filter_id: None,
@@ -637,7 +683,7 @@ impl AlertPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_alert(
                 &input.name,
                 AlertOpts {
@@ -670,7 +716,7 @@ impl AlertPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_alert(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -709,7 +755,7 @@ impl AlertPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_alert(
                 &parse_entity_id(id)?,
                 AlertOpts {
@@ -748,7 +794,7 @@ impl AlertPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_alert(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -790,7 +836,7 @@ impl SchedulePort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_schedules(GetSchedulesOpts {
                 filter_string,
                 filter_id: None,
@@ -821,7 +867,7 @@ impl SchedulePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_schedule(
                 &input.name,
                 ScheduleOpts {
@@ -841,7 +887,7 @@ impl SchedulePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_schedule(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -863,7 +909,7 @@ impl SchedulePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_schedule(
                 &parse_entity_id(id)?,
                 ScheduleOpts {
@@ -889,7 +935,7 @@ impl SchedulePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_schedule(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -931,7 +977,7 @@ impl CredentialPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_credentials(GetCredentialsOpts {
                 filter_string,
                 filter_id: None,
@@ -969,7 +1015,7 @@ impl CredentialPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_credential(
                 &input.name,
                 CredentialOpts {
@@ -1006,7 +1052,7 @@ impl CredentialPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_credential(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -1036,7 +1082,7 @@ impl CredentialPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_credential(
                 &parse_entity_id(id)?,
                 CredentialOpts {
@@ -1075,7 +1121,7 @@ impl CredentialPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_credential(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -1113,7 +1159,7 @@ impl PortListPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_port_lists(GetPortListsOpts {
                 filter_string,
                 filter_id: None,
@@ -1143,7 +1189,7 @@ impl PortListPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_port_list(
                 &input.name,
                 PortListOpts {
@@ -1161,7 +1207,7 @@ impl PortListPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_port_list(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -1183,7 +1229,7 @@ impl PortListPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_port_list(
                 &parse_entity_id(id)?,
                 PortListOpts {
@@ -1207,7 +1253,7 @@ impl PortListPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_port_list(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -1222,7 +1268,7 @@ impl FeedPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_feeds())
             .await
             .map_err(map_gvm_error)?;
@@ -1436,7 +1482,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_group(
                 &input.name,
                 GroupOpts {
@@ -1454,7 +1500,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_group(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -1476,7 +1522,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_group(
                 &parse_entity_id(id)?,
                 GroupOpts {
@@ -1499,7 +1545,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_group(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -1531,7 +1577,7 @@ impl IdentityPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_roles(GetRolesOpts {
                 filter_string,
                 filter_id: None,
@@ -1562,7 +1608,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_role(
                 &input.name,
                 RoleOpts {
@@ -1580,7 +1626,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_role(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -1602,7 +1648,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_role(
                 &parse_entity_id(id)?,
                 RoleOpts {
@@ -1625,7 +1671,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_role(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -1657,7 +1703,7 @@ impl IdentityPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_permissions(GetPermissionsOpts {
                 filter_string,
                 filter_id: None,
@@ -1688,7 +1734,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_permission(PermissionOpts {
                 comment: input.comment,
                 name: input.name,
@@ -1723,7 +1769,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_permission(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -1745,7 +1791,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_permission(
                 &parse_entity_id(id)?,
                 PermissionOpts {
@@ -1784,7 +1830,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_permission(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -1814,7 +1860,7 @@ impl IdentityPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_user_settings(GetUserSettingsOpts {
                 filter,
                 filter_id: None,
@@ -1840,7 +1886,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_user_setting(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -1862,7 +1908,7 @@ impl IdentityPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_user_setting(
                 &parse_entity_id(id)?,
                 ModifyUserSettingOpts { value: input.value },
@@ -2387,7 +2433,7 @@ impl ReportPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_reports(GetReportsOpts {
                 report_id: None,
                 filter_string,
@@ -2425,7 +2471,7 @@ impl ReportPort for GvmdAdapter {
         // the explicit result-window request.
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_reports(GetReportsOpts {
                 report_id: Some(report_id),
                 filter_string: None,
@@ -2457,7 +2503,7 @@ impl ReportPort for GvmdAdapter {
 
         let results_response = client
             .lock()
-            .await
+            .await?
             .call(get_results(GetResultsOpts {
                 filter_string: filter,
                 filter_id: None,
@@ -2488,7 +2534,7 @@ impl ReportPort for GvmdAdapter {
 
         let export = client
             .lock()
-            .await
+            .await?
             .get_report_export(&report_id, &report_format_id)
             .await
             .map_err(map_gvm_error)?;
@@ -2509,7 +2555,7 @@ impl ReportPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_report(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -2546,7 +2592,7 @@ impl ReportPort for GvmdAdapter {
 
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_results(GetResultsOpts {
                 filter_string: filter,
                 filter_id: None,
@@ -2578,7 +2624,12 @@ impl ReportPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
         let opts = report_detail_query(self, session_token, query).await?;
-        let parsed = match client.lock().await.get_report_vulns(&report_id, opts).await {
+        let parsed = match client
+            .lock()
+            .await?
+            .get_report_vulns(&report_id, opts)
+            .await
+        {
             Ok(parsed) => parsed,
             Err(error) if typed_report_detail_unsupported(&error, "get_report_vulns") => {
                 return Err(unsupported_typed_report_detail_error(
@@ -2612,7 +2663,7 @@ impl ReportPort for GvmdAdapter {
         let opts = report_detail_query(self, session_token, query).await?;
         let parsed = match client
             .lock()
-            .await
+            .await?
             .get_report_tls_certificates(&report_id, opts)
             .await
         {
@@ -2655,7 +2706,7 @@ impl ReportPort for GvmdAdapter {
         let opts = report_detail_query(self, session_token, query).await?;
         let parsed = match client
             .lock()
-            .await
+            .await?
             .get_report_errors(&report_id, opts)
             .await
         {
@@ -2692,7 +2743,7 @@ impl ReportPort for GvmdAdapter {
         let opts = report_detail_query(self, session_token, query).await?;
         let parsed = match client
             .lock()
-            .await
+            .await?
             .get_report_closed_cves(&report_id, opts)
             .await
         {
@@ -2792,7 +2843,7 @@ impl ResultPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_results(GetResultsOpts {
                 filter_string,
                 filter_id: None,
@@ -2819,7 +2870,7 @@ impl ResultPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_result(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -2862,7 +2913,7 @@ impl ScanConfigPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_scan_configs(GetScanConfigsOpts {
                 filter_string,
                 filter_id: None,
@@ -2898,7 +2949,7 @@ impl ScanConfigPort for GvmdAdapter {
             .transpose()?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_scan_config(
                 &input.name,
                 base_id.as_ref(),
@@ -2921,7 +2972,7 @@ impl ScanConfigPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_scan_config(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -2944,7 +2995,7 @@ impl ScanConfigPort for GvmdAdapter {
         let config_id = parse_entity_id(id)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_scan_config(
                 &config_id,
                 ConfigOpts {
@@ -2968,7 +3019,7 @@ impl ScanConfigPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_scan_config(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -3006,7 +3057,7 @@ impl ScannerPort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_scanners(GetScannersOpts {
                 filter_string,
                 filter_id: None,
@@ -3033,7 +3084,7 @@ impl ScannerPort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_scanner(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -3076,7 +3127,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_hosts(GetHostsOpts {
                 filter_string,
                 filter_id: None,
@@ -3109,7 +3160,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_host(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -3149,7 +3200,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_report_formats(GetReportFormatsOpts {
                 filter_string,
                 filter_id: None,
@@ -3179,7 +3230,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_report_format(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -3219,7 +3270,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_filters(GetFiltersOpts {
                 filter_string,
                 filter_id: None,
@@ -3245,7 +3296,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_filter(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -3285,7 +3336,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_tags(GetTagsOpts {
                 filter_string,
                 filter_id: None,
@@ -3311,7 +3362,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_tag(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -3351,7 +3402,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_tickets(GetTicketsOpts {
                 filter_string,
                 filter_id: None,
@@ -3377,7 +3428,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_ticket(&parse_entity_id(id)?))
             .await
             .map_err(map_gvm_error)?;
@@ -3417,7 +3468,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_notes(GetNotesOpts {
                 filter_string,
                 filter_id: None,
@@ -3443,7 +3494,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let uuid_filter = format!("uuid={}", note_id.as_str());
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_notes(GetNotesOpts {
                 filter_string: paginated_filter(Some(&uuid_filter), None, 1, 1)?,
                 filter_id: None,
@@ -3472,7 +3523,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let opts = note_opts_from_create_input(input)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_note(&nvt_oid, opts))
             .await
             .map_err(map_gvm_error)?;
@@ -3490,7 +3541,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let note_id = parse_entity_id(id)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_note(&note_id, note_opts_from_modify_input(input)?))
             .await
             .map_err(map_gvm_error)?;
@@ -3507,7 +3558,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_note(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -3542,7 +3593,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_overrides(GetOverridesOpts {
                 filter_string,
                 filter_id: None,
@@ -3568,7 +3619,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let uuid_filter = format!("uuid={}", override_id.as_str());
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_overrides(GetOverridesOpts {
                 filter_string: paginated_filter(Some(&uuid_filter), None, 1, 1)?,
                 filter_id: None,
@@ -3597,7 +3648,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let opts = override_opts_from_create_input(input)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(create_override(&nvt_oid, opts))
             .await
             .map_err(map_gvm_error)?;
@@ -3615,7 +3666,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let override_id = parse_entity_id(id)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(modify_override(
                 &override_id,
                 override_opts_from_modify_input(input)?,
@@ -3635,7 +3686,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(delete_override(&parse_entity_id(id)?, ultimate))
             .await
             .map_err(map_gvm_error)?;
@@ -3670,7 +3721,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .await?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_nvts(GetNvtsOpts {
                 filter_string,
                 filter_id: None,
@@ -3742,7 +3793,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_nvt(oid))
             .await
             .map_err(map_gvm_error)?;
@@ -3764,7 +3815,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
-            .await
+            .await?
             .call(get_nvt_families())
             .await
             .map_err(map_gvm_error)?;
