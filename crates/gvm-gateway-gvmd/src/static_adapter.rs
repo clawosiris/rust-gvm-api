@@ -775,9 +775,9 @@ impl AuthPort for StaticGvmdAdapter {
         _session_token: &str,
         _username: &str,
         _password: &str,
-    ) -> Result<(), GatewayError> {
+    ) -> Result<String, GatewayError> {
         if self.ready {
-            Ok(())
+            Ok(self.gmp_version.clone())
         } else {
             Err(GatewayError::BackendUnavailable(
                 "static adapter not ready".to_string(),
@@ -809,6 +809,16 @@ mod tests {
     async fn static_adapter_ready_returns_gmp_version() {
         let adapter = StaticGvmdAdapter::ready("22.7");
         let version = adapter.gmp_version().await.unwrap();
+        assert_eq!(version, "22.7");
+    }
+
+    #[tokio::test]
+    async fn static_adapter_authenticate_session_returns_gmp_version() {
+        let adapter = StaticGvmdAdapter::ready("22.7");
+        let version = adapter
+            .authenticate_session("token", "admin", "secret")
+            .await
+            .unwrap();
         assert_eq!(version, "22.7");
     }
 

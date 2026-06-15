@@ -620,11 +620,23 @@ impl TaskPort for MockTaskPort {
 }
 
 /// Mock auth port for tests that need controlled auth and disconnect outcomes.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct MockAuthPort {
     pub(crate) should_fail: bool,
     pub(crate) disconnect_should_fail: bool,
+    pub(crate) gmp_version: String,
     pub(crate) disconnected: Arc<std::sync::Mutex<Vec<gvm_gateway_domain::SessionTokenDigest>>>,
+}
+
+impl Default for MockAuthPort {
+    fn default() -> Self {
+        Self {
+            should_fail: false,
+            disconnect_should_fail: false,
+            gmp_version: "22.7".to_string(),
+            disconnected: Arc::new(std::sync::Mutex::new(vec![])),
+        }
+    }
 }
 
 #[async_trait]
@@ -634,13 +646,13 @@ impl AuthPort for MockAuthPort {
         _session_token: &str,
         _username: &str,
         _password: &str,
-    ) -> Result<(), GatewayError> {
+    ) -> Result<String, GatewayError> {
         if self.should_fail {
             return Err(GatewayError::Unauthorized(
                 "invalid credentials".to_string(),
             ));
         }
-        Ok(())
+        Ok(self.gmp_version.clone())
     }
 
     async fn disconnect_session(

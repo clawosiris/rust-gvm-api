@@ -5,9 +5,10 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use gvm_gateway_domain::{
-    CreateTargetInput, GatewayError, GetReportOpts, ModifyTargetInput, ReportQuery, ResultQuery,
-    SessionManager, TargetQuery,
+    CreateTargetInput, GatewayError, GetReportOpts, ModifyTargetInput, ReadinessStatus,
+    ReportQuery, ResultQuery, SessionLimits, SessionManager, SystemPort, TargetQuery,
 };
 
 use crate::{service::safe_session_id, test_support::*, GatewayService};
@@ -77,6 +78,68 @@ async fn service_version_returns_api_and_gmp_version() {
     let version = service.version().await.unwrap();
     assert_eq!(version.gmp_version, "22.7");
     assert!(!version.api_version.is_empty());
+}
+
+#[derive(Clone)]
+struct FailingVersionSystemPort;
+
+#[async_trait]
+impl SystemPort for FailingVersionSystemPort {
+    async fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
+        Ok(ReadinessStatus {
+            status: "ready",
+            reason: None,
+        })
+    }
+
+    async fn gmp_version(&self) -> Result<String, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "version probe failed".to_string(),
+        ))
+    }
+}
+
+/// Session creation must use the version negotiated by the authenticated
+/// backend connection instead of opening a second connection for a post-auth
+/// version probe that can fail and orphan the newly created session.
+#[tokio::test]
+async fn service_create_session_uses_authenticated_version_without_extra_probe() {
+    let sessions = Arc::new(SessionManager::with_limits(
+        300,
+        SessionLimits {
+            max_global: Some(1),
+            max_per_user: Some(1),
+        },
+    ));
+    let auth = Arc::new(MockAuthPort {
+        gmp_version: "22.9".to_string(),
+        ..Default::default()
+    });
+    let disconnected = Arc::clone(&auth.disconnected);
+    let service = GatewayService::new(
+        Arc::new(FailingVersionSystemPort),
+        Arc::new(MockAlertPort),
+        Arc::new(MockSchedulePort),
+        Arc::new(MockCredentialPort),
+        Arc::new(MockPortListPort),
+        Arc::new(MockFeedPort),
+        Arc::new(MockIdentityPort),
+        Arc::new(MockTargetPort::default()),
+        Arc::new(MockTaskPort),
+        auth,
+        Arc::new(MockReportPort),
+        Arc::new(MockResultPort),
+        Arc::new(MockScanConfigPort),
+        Arc::new(MockScannerPort),
+        Arc::new(MockSupportingResourcePort),
+        Arc::clone(&sessions),
+    );
+
+    let created = service.create_session("admin", "secret").await.unwrap();
+
+    assert_eq!(created.gmp_version, "22.9");
+    assert!(service.get_session(&created.token).is_ok());
+    assert!(disconnected.lock().unwrap().is_empty());
 }
 
 /// Target listing rejects unknown session tokens before hitting the port.
