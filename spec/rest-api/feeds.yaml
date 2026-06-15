@@ -21,25 +21,6 @@ paths:
         "502":
           $ref: "./common.yaml#/components/responses/BadGateway"
 
-  /feeds/sync:
-    post:
-      operationId: syncFeeds
-      tags: [Feeds]
-      summary: Trigger feed synchronization
-      description: |
-        Documented action-style exception to the default collection/item rule.
-        Use this endpoint for global feed synchronization because the operation
-        triggers backend work rather than creating a stable child resource.
-      responses:
-        "202":
-          description: Feed synchronization accepted
-        "401":
-          $ref: "./common.yaml#/components/responses/Unauthorized"
-        "502":
-          $ref: "./common.yaml#/components/responses/BadGateway"
-        "409":
-          $ref: "./common.yaml#/components/responses/Conflict"
-
 components:
   schemas:
     Feed:

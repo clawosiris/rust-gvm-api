@@ -130,7 +130,6 @@ Accepted action-style exceptions:
 - `POST /api/v1/tasks/{id}/start`
 - `POST /api/v1/tasks/{id}/stop`
 - `POST /api/v1/tasks/{id}/resume`
-- `POST /api/v1/feeds/sync`
 
 Rules for these exceptions:
 
@@ -292,7 +291,6 @@ Protected routes accept either an existing Bearer session token or request-scope
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/feeds` | List feed status |
-| `POST` | `/api/v1/feeds/sync` | Trigger feed sync (documented action-style exception, `202 Accepted`) |
 
 #### System
 

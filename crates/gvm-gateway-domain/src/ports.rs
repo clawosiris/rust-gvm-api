@@ -193,14 +193,11 @@ pub trait PortListPort: Send + Sync + 'static {
     async fn delete_port_list(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
 }
 
-/// Port for feed status and feed synchronization.
+/// Port for feed status.
 #[async_trait]
 pub trait FeedPort: Send + Sync + 'static {
     /// List feed status for the session.
     async fn list_feeds(&self, session_token: &str) -> Result<Vec<Feed>, GatewayError>;
-
-    /// Trigger feed synchronization.
-    async fn sync_feeds(&self, session_token: &str) -> Result<(), GatewayError>;
 }
 
 /// Port for identity and access-control operations.
