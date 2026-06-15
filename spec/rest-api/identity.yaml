@@ -674,6 +674,7 @@ components:
           items:
             type: string
             format: uuid
+          description: Assigned role identifiers. Omitted, null, or empty arrays leave existing roles unchanged; clearing all roles is not supported by this request shape.
         authenticationType:
           type: string
           enum:

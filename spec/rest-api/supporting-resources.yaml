@@ -921,6 +921,7 @@ components:
           type: array
           items:
             type: string
+          description: Host selector list. Omitted, null, or empty arrays leave existing host selectors unchanged; clearing all hosts is not supported by this request shape.
         port:
           type: string
         severity:
@@ -1033,6 +1034,7 @@ components:
           type: array
           items:
             type: string
+          description: Host selector list. Omitted, null, or empty arrays leave existing host selectors unchanged; clearing all hosts is not supported by this request shape.
         port:
           type: string
         severity:
