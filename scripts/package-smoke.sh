@@ -38,6 +38,8 @@ if [[ -z "${PACKAGER}" ]]; then
 fi
 
 ROOT_DIR="$(git rev-parse --show-toplevel)"
+grep -F "dst: /etc/gvm-gateway" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
+grep -F "dst: /etc/gvm-gateway/gvm-gateway.toml.example" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
 grep -F "postinstall: ./packaging/scripts/postinstall" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
 grep -F "preremove: ./packaging/scripts/preremove" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
 grep -F "postremove: ./packaging/scripts/postremove" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
@@ -48,11 +50,16 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 assert_package_contents='
-  test -f /etc/gvm-gateway/gvm-gateway.toml
+  test -d /etc/gvm-gateway
+  test ! -e /etc/gvm-gateway/gvm-gateway.toml
+  test -f /etc/gvm-gateway/gvm-gateway.toml.example
+  grep -F "gvmd_endpoint = \"unix:///run/gvmd/gvmd.sock\"" /etc/gvm-gateway/gvm-gateway.toml.example >/dev/null
+  grep -F "local_log_output = \"journald\"" /etc/gvm-gateway/gvm-gateway.toml.example >/dev/null
   test -f /usr/lib/systemd/system/gvm-gateway.service
   grep -F "User=gvm" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
   grep -F "After=network.target networking.service gvmd.service" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
-  grep -F "ExecStart=/usr/bin/gvm-gateway --config /etc/gvm-gateway/gvm-gateway.toml" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
+  grep -F "ExecStart=/usr/bin/gvm-gateway" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
+  ! grep -F -- "--config" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
   grep -F "WantedBy=multi-user.target" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
   /usr/bin/gvm-gateway --help >/tmp/gvm-gateway-help.txt
 '

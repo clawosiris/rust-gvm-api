@@ -16,8 +16,10 @@ contents:
     dst: /usr/bin/gvm-gateway
   - src: ./dist/package-root/usr/lib/systemd/system/gvm-gateway.service
     dst: /usr/lib/systemd/system/gvm-gateway.service
-  - src: ./dist/package-root/etc/gvm-gateway/gvm-gateway.toml
-    dst: /etc/gvm-gateway/gvm-gateway.toml
+  - dst: /etc/gvm-gateway
+    type: dir
+  - src: ./dist/package-root/etc/gvm-gateway/gvm-gateway.toml.example
+    dst: /etc/gvm-gateway/gvm-gateway.toml.example
     type: config|noreplace
   - src: ./dist/package-root/usr/share/doc/gvm-gateway/README.md
     dst: /usr/share/doc/gvm-gateway/README.md

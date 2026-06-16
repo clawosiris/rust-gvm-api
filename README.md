@@ -180,7 +180,9 @@ Useful follow-up commands:
 
 ### OS Package Runtime Contract
 
-- Default package config: [packaging/gvm-gateway.toml](./packaging/gvm-gateway.toml), installed at `/etc/gvm-gateway/gvm-gateway.toml`
+- Example package config: [packaging/gvm-gateway.toml](./packaging/gvm-gateway.toml), installed at `/etc/gvm-gateway/gvm-gateway.toml.example`
+- Canonical package config path: `/etc/gvm-gateway/gvm-gateway.toml`; copy the example there to activate file-based settings
+- Config directory: `/etc/gvm-gateway`, created by package installation
 - systemd unit: [packaging/gvm-gateway.service](./packaging/gvm-gateway.service), installed at `/usr/lib/systemd/system/gvm-gateway.service`
 - Service user: `gvm`
 - Service ordering: `gvm-gateway.service` starts after `gvmd.service` and wants `gvmd.service`

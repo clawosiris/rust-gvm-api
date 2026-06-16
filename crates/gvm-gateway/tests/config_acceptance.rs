@@ -13,7 +13,7 @@ use tempfile::{tempdir, NamedTempFile};
 
 #[test]
 fn default_config_valid() {
-    // Covers the no-file path: without an explicit or packaged config file,
+    // Covers the no-file path: without an explicit or canonical config file,
     // built-in defaults should still form a valid startup configuration.
     let dir = tempdir().unwrap();
     let missing_default_path = dir.path().join("missing-gvm-gateway.toml");
@@ -184,9 +184,9 @@ fn invalid_local_log_output_is_rejected() {
 }
 
 #[test]
-fn packaged_default_config_used_when_cli_config_omitted() {
-    // Covers issue #256: installed packages ship a config file, so startup
-    // without --config should still honor that packaged default.
+fn canonical_default_config_used_when_cli_config_omitted() {
+    // Covers the package contract: admins may create the canonical config at
+    // the default path, and startup without --config should honor it.
     let dir = tempdir().unwrap();
     let default_path = dir.path().join("gvm-gateway.toml");
     std::fs::write(
@@ -204,9 +204,10 @@ fn packaged_default_config_used_when_cli_config_omitted() {
 }
 
 #[test]
-fn missing_packaged_default_config_keeps_builtin_defaults() {
-    // Documents the local-development edge case: the fallback path is optional
-    // so an unpackaged checkout can still start from built-in defaults.
+fn missing_canonical_default_config_keeps_builtin_defaults() {
+    // Documents the default package install: the canonical config path is
+    // optional, so a checkout or package with only .example still starts from
+    // built-in defaults.
     let dir = tempdir().unwrap();
     let missing_default_path = dir.path().join("missing-gvm-gateway.toml");
 
@@ -218,7 +219,7 @@ fn missing_packaged_default_config_keeps_builtin_defaults() {
 }
 
 #[test]
-fn explicit_cli_config_takes_priority_over_packaged_default_config() {
+fn explicit_cli_config_takes_priority_over_canonical_default_config() {
     // Protects the existing contract that --config selects the file layer
     // explicitly and is not blended with the packaged fallback file.
     let dir = tempdir().unwrap();

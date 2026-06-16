@@ -7,7 +7,7 @@ ConditionKernelCommandLine=!recovery
 [Service]
 Type=simple
 User=gvm
-ExecStart=/usr/bin/gvm-gateway --config /etc/gvm-gateway/gvm-gateway.toml
+ExecStart=/usr/bin/gvm-gateway
 Restart=always
 TimeoutStopSec=10
 
