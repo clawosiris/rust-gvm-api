@@ -1394,6 +1394,23 @@ mod tests {
             .expect("ModifyTask.preferences should document update semantics");
         assert!(preferences_description.contains("Omitted or empty objects"));
         assert!(preferences_description.contains("clearing preferences is not supported"));
+
+        let schemas = &generated["components"]["schemas"];
+        assert_empty_array_modify_limitation(
+            &schemas["UpdateNote"]["properties"]["hosts"],
+            "UpdateNote.hosts",
+            "clearing all hosts",
+        );
+        assert_empty_array_modify_limitation(
+            &schemas["UpdateOverride"]["properties"]["hosts"],
+            "UpdateOverride.hosts",
+            "clearing all hosts",
+        );
+        assert_empty_array_modify_limitation(
+            &schemas["ModifyUser"]["properties"]["roles"],
+            "ModifyUser.roles",
+            "clearing all roles",
+        );
     }
 
     #[test]
@@ -1609,6 +1626,22 @@ mod tests {
         assert!(
             schemas.contains_key("SessionInfo"),
             "missing SessionInfo schema"
+        );
+    }
+
+    #[test]
+    fn generated_openapi_session_state_matches_inspectable_contract() {
+        let generated = build_openapi();
+        let schemas = &generated["components"]["schemas"];
+
+        assert_eq!(
+            schemas["SessionInfo"]["properties"]["state"]["$ref"],
+            json!("#/components/schemas/SessionState")
+        );
+        assert_eq!(
+            schemas["SessionState"]["enum"],
+            json!(["active", "expired"]),
+            "SessionInfo state must only document states returned by GET /session"
         );
     }
 
@@ -1837,5 +1870,23 @@ mod tests {
             description.contains("clients must preserve them"),
             "{context} should document client preservation of unknown values"
         );
+    }
+
+    fn assert_empty_array_modify_limitation(schema: &Value, context: &str, clear_phrase: &str) {
+        let description = schema["description"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{context} should document empty-array update semantics"));
+        for phrase in [
+            "Omitted",
+            "null",
+            "empty arrays",
+            "leave existing",
+            clear_phrase,
+        ] {
+            assert!(
+                description.contains(phrase),
+                "{context} description should mention {phrase:?}; description={description:?}"
+            );
+        }
     }
 }

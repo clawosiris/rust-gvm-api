@@ -425,7 +425,7 @@ mod tests {
 
         assert_eq!(info.token, created.token);
         assert_eq!(info.user, "admin");
-        assert_eq!(info.state, "active");
+        assert_eq!(info.state, gvm_gateway_domain::SessionState::Active);
         assert!(info.expires_in > 0);
     }
 

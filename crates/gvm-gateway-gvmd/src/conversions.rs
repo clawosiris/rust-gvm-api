@@ -6,7 +6,7 @@
 //! Everything in this module is `pub(crate)` — it is an implementation detail
 //! of the gvmd adapter and not part of the crate's public API.
 
-use std::{collections::HashMap, str::FromStr};
+use std::str::FromStr;
 
 use gvm_gateway_domain::{
     Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt,
@@ -51,9 +51,9 @@ pub(crate) fn alert_from_gmp(alert: gvm_gmp::responses::Alert) -> Alert {
         event: alert.event,
         condition: alert.condition,
         method: alert.method,
-        event_data: HashMap::new(),
-        condition_data: HashMap::new(),
-        method_data: HashMap::new(),
+        event_data: alert.event_data,
+        condition_data: alert.condition_data,
+        method_data: alert.method_data,
         filter: alert.filter.map(|resource| ResourceRef {
             id: resource.id.to_string(),
             name: Some(resource.name),
@@ -70,8 +70,8 @@ pub(crate) fn schedule_from_gmp(schedule: gvm_gmp::responses::Schedule) -> Sched
         comment: schedule.meta.comment,
         icalendar: schedule.icalendar,
         timezone: schedule.timezone,
-        first_run: None,
-        next_run: None,
+        first_run: schedule.first_run,
+        next_run: schedule.next_run,
         duration: schedule
             .duration
             .and_then(|value| value.parse::<u32>().ok()),
@@ -708,8 +708,8 @@ mod tests {
     use super::*;
     use gvm_gmp::responses::{
         GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetPortListsResponse,
-        GetReportsResponse, GetResultsResponse, GetScanConfigsResponse, GetTargetsResponse,
-        GetTasksResponse, GetTicketsResponse, GetUsersResponse,
+        GetReportsResponse, GetResultsResponse, GetScanConfigsResponse, GetSchedulesResponse,
+        GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetUsersResponse,
     };
     use gvm_protocol::Response as GmpResponse;
 
@@ -1188,6 +1188,71 @@ mod tests {
         .expect("tickets parse");
         let ticket = ticket_from_gmp(tickets.items.into_iter().next().unwrap());
         assert_eq!(ticket.status.as_deref(), Some("Deferred"));
+    }
+
+    #[test]
+    fn alert_from_gmp_preserves_data_maps() {
+        // Alert reads expose event/condition/method data in the REST contract;
+        // the gateway must forward the typed maps parsed from gvmd responses.
+        let alerts = GetAlertsResponse::from_response(&GmpResponse::from(
+            r#"<get_alerts_response status="200" status_text="OK">
+                <alert id="123e4567-e89b-12d3-a456-426614174006">
+                    <name>Data Alert</name>
+                    <event>
+                        <name>Task run status changed</name>
+                        <data><name>status</name>Done</data>
+                    </event>
+                    <condition>
+                        Severity at least
+                        <data><name>severity</name>5.0</data>
+                    </condition>
+                    <method>
+                        Email
+                        <data><name>to_address</name>ops@example.com</data>
+                    </method>
+                </alert>
+            </get_alerts_response>"#,
+        ))
+        .expect("alerts parse");
+
+        let alert = alert_from_gmp(alerts.items.into_iter().next().unwrap());
+
+        assert_eq!(
+            alert.event_data.get("status").map(String::as_str),
+            Some("Done")
+        );
+        assert_eq!(
+            alert.condition_data.get("severity").map(String::as_str),
+            Some("5.0")
+        );
+        assert_eq!(
+            alert.method_data.get("to_address").map(String::as_str),
+            Some("ops@example.com")
+        );
+    }
+
+    #[test]
+    fn schedule_from_gmp_preserves_run_times() {
+        // Schedule reads expose firstRun/nextRun in the REST contract; these
+        // timestamps should not be replaced with null once rust-gvm parses them.
+        let schedules = GetSchedulesResponse::from_response(&GmpResponse::from(
+            r#"<get_schedules_response status="200" status_text="OK">
+                <schedule id="123e4567-e89b-12d3-a456-426614174007">
+                    <name>Timed Schedule</name>
+                    <icalendar>BEGIN:VCALENDAR&#10;END:VCALENDAR</icalendar>
+                    <timezone>UTC</timezone>
+                    <first_run>2026-01-03T00:00:00Z</first_run>
+                    <next_run>2026-01-04T00:00:00Z</next_run>
+                    <duration>3600</duration>
+                </schedule>
+            </get_schedules_response>"#,
+        ))
+        .expect("schedules parse");
+
+        let schedule = schedule_from_gmp(schedules.items.into_iter().next().unwrap());
+
+        assert_eq!(schedule.first_run.as_deref(), Some("2026-01-03T00:00:00Z"));
+        assert_eq!(schedule.next_run.as_deref(), Some("2026-01-04T00:00:00Z"));
     }
 
     #[test]

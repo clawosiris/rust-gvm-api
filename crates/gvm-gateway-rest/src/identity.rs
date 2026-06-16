@@ -356,6 +356,8 @@ struct ModifyUserDoc {
     comment: Option<String>,
     password: Option<String>,
     hosts: Option<String>,
+    /// Assigned role identifiers. Omitted, null, or empty arrays leave existing
+    /// roles unchanged; clearing all roles is not supported by this request shape.
     roles: Option<Vec<Uuid>>,
     #[serde(rename = "authenticationType")]
     authentication_type: Option<AuthenticationTypeDoc>,
@@ -513,6 +515,8 @@ struct ModifyUserRequest {
     comment: Option<String>,
     password: Option<String>,
     hosts: Option<String>,
+    /// Assigned role identifiers. Omitted, null, or empty arrays leave existing
+    /// roles unchanged; clearing all roles is not supported by this request shape.
     roles: Option<Vec<String>>,
     #[serde(rename = "authenticationType")]
     authentication_type: Option<String>,
