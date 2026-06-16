@@ -159,6 +159,7 @@ Useful follow-up commands:
 - Required transport-security mode: `GVM_GATEWAY_TRANSPORT_SECURITY_MODE`
 - Native TLS certificate path when `GVM_GATEWAY_TRANSPORT_SECURITY_MODE=native`: `GVM_GATEWAY_TLS_CERTIFICATE_PATH`
 - Native TLS private-key path when `GVM_GATEWAY_TRANSPORT_SECURITY_MODE=native`: `GVM_GATEWAY_TLS_PRIVATE_KEY_PATH`
+- Optional local log sink: `GVM_GATEWAY_LOCAL_LOG_OUTPUT` (`stdout` by default, `journald` for systemd deployments)
 - Optional telemetry endpoint: `GVM_GATEWAY_OTLP_ENDPOINT`
 - Optional telemetry resource attributes:
   - `GVM_GATEWAY_TELEMETRY_SERVICE_NAME`
@@ -189,6 +190,8 @@ Useful follow-up commands:
 ### Telemetry Contract
 
 - Logs are always emitted locally through the gateway tracing subscriber.
+- `local_log_output = "stdout"` keeps the current local formatter behavior and remains the default.
+- `local_log_output = "journald"` sends local logs directly to `systemd-journald`; startup fails clearly if journald is unavailable in the selected runtime.
 - OTLP trace export is enabled only when `otlp_endpoint` or `GVM_GATEWAY_OTLP_ENDPOINT` is set.
 - The current exporter path is OTLP over gRPC (for example `http://otel-collector:4317`).
 - Stable resource attributes are `service.name`, `service.namespace`, and `service.version`; `deployment.environment` and `service.instance.id` are emitted only when configured.

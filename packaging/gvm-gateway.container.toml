@@ -9,6 +9,7 @@ trusted_proxy_cidrs = ["127.0.0.1/32", "::1/128"]
 # session_max_per_user = 10
 # tls_certificate_path = "/run/secrets/gvm-gateway-cert.pem"
 # tls_private_key_path = "/run/secrets/gvm-gateway-key.pem"
+# local_log_output = "stdout"
 # otlp_endpoint = "http://otel-collector:4317"
 # telemetry_service_name = "gvm-gateway"
 # telemetry_service_namespace = "greenbone"

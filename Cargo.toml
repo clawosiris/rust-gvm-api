@@ -41,6 +41,7 @@ toml = "1.1.2"
 tower = { version = "0.5.2", features = ["util"] }
 tower-http = { version = "0.6.11", features = ["trace"] }
 tracing = "0.1.41"
+tracing-journald = "0.3.2"
 tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt", "std"] }
 uuid = { version = "1.23.2", features = ["v4", "serde"] }

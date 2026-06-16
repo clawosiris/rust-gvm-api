@@ -43,6 +43,8 @@ pub struct GatewayConfig {
     pub telemetry_deployment_environment: Option<String>,
     /// Optional OpenTelemetry service.instance.id attribute.
     pub telemetry_service_instance_id: Option<String>,
+    /// Local log sink for the tracing subscriber.
+    pub local_log_output: LocalLogOutput,
     /// Backend socket path or endpoint.
     pub gvmd_endpoint: String,
     /// Maximum time to wait for in-flight requests during shutdown.
@@ -64,6 +66,7 @@ impl Default for GatewayConfig {
             telemetry_service_namespace: Some("greenbone".to_string()),
             telemetry_deployment_environment: None,
             telemetry_service_instance_id: None,
+            local_log_output: LocalLogOutput::default(),
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
             shutdown_drain_timeout_secs: 30,
             session: SessionConfig::default(),
@@ -94,6 +97,29 @@ impl Default for SessionConfig {
         Self {
             idle_timeout_secs: 300,
             limits: SessionLimits::default(),
+        }
+    }
+}
+
+/// Supported local log sinks for the tracing subscriber.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalLogOutput {
+    /// Emit local logs through the default stdout/stderr formatter.
+    #[default]
+    Stdout,
+    /// Emit local logs directly to systemd-journald.
+    Journald,
+}
+
+impl LocalLogOutput {
+    fn parse(value: &str, source: &str) -> Result<Self, ConfigError> {
+        match value.trim() {
+            "stdout" => Ok(Self::Stdout),
+            "journald" => Ok(Self::Journald),
+            other => Err(ConfigError::InvalidValue(format!(
+                "{source} must be one of: stdout, journald (got '{other}')"
+            ))),
         }
     }
 }
@@ -224,6 +250,7 @@ struct FileConfig {
     telemetry_service_namespace: Option<String>,
     telemetry_deployment_environment: Option<String>,
     telemetry_service_instance_id: Option<String>,
+    local_log_output: Option<LocalLogOutput>,
     gvmd_endpoint: Option<String>,
     shutdown_drain_timeout_secs: Option<u64>,
     session_idle_timeout_secs: Option<u64>,
@@ -279,6 +306,9 @@ pub fn load_config_with_default_path(
         if let Some(instance_id) = file.telemetry_service_instance_id.as_ref() {
             config.telemetry_service_instance_id = Some(instance_id.clone());
         }
+        if let Some(local_log_output) = file.local_log_output {
+            config.local_log_output = local_log_output;
+        }
         if let Some(gvmd_endpoint) = file.gvmd_endpoint.as_ref() {
             config.gvmd_endpoint = gvmd_endpoint.clone();
         }
@@ -323,6 +353,10 @@ pub fn load_config_with_default_path(
     }
     if let Some(instance_id) = env.get("GVM_GATEWAY_TELEMETRY_SERVICE_INSTANCE_ID") {
         config.telemetry_service_instance_id = Some(instance_id.clone());
+    }
+    if let Some(local_log_output) = env.get("GVM_GATEWAY_LOCAL_LOG_OUTPUT") {
+        config.local_log_output =
+            LocalLogOutput::parse(local_log_output, "GVM_GATEWAY_LOCAL_LOG_OUTPUT")?;
     }
     if let Some(gvmd_endpoint) = env.get("GVM_GATEWAY_GVMD_ENDPOINT") {
         config.gvmd_endpoint = gvmd_endpoint.clone();
