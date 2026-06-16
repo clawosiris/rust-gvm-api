@@ -244,8 +244,7 @@ mod tests {
     #[test]
     fn stdout_local_logs_do_not_attempt_journald_setup() {
         let layer = prepare_local_log_output_with(&GatewayConfig::default(), |_| {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
+            Err(io::Error::other(
                 "journald factory should not be called for stdout mode",
             ))
         });
@@ -255,8 +254,10 @@ mod tests {
 
     #[test]
     fn journald_local_logs_surface_clear_runtime_errors() {
-        let mut config = GatewayConfig::default();
-        config.local_log_output = LocalLogOutput::Journald;
+        let config = GatewayConfig {
+            local_log_output: LocalLogOutput::Journald,
+            ..GatewayConfig::default()
+        };
 
         let error = prepare_local_log_output_with(&config, |_| {
             Err(io::Error::new(
