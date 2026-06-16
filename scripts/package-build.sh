@@ -130,12 +130,14 @@ rm -rf dist/package-root dist/package-work
 rm -rf "${OUTPUT_DIR_ABS}"
 mkdir -p dist/package-root/usr/bin \
   dist/package-root/etc/gvm-gateway \
+  dist/package-root/usr/lib/systemd/system \
   dist/package-root/usr/share/doc/gvm-gateway \
   dist/package-root/usr/share/licenses/gvm-gateway \
   dist/package-work \
   "${OUTPUT_DIR_ABS}"
 
 install -m 0755 target/release/gvm-gateway dist/package-root/usr/bin/gvm-gateway
+install -m 0644 packaging/gvm-gateway.service dist/package-root/usr/lib/systemd/system/gvm-gateway.service
 install -m 0644 packaging/gvm-gateway.toml dist/package-root/etc/gvm-gateway/gvm-gateway.toml
 install -m 0644 README.md dist/package-root/usr/share/doc/gvm-gateway/README.md
 install -m 0644 LICENSE dist/package-root/usr/share/licenses/gvm-gateway/LICENSE

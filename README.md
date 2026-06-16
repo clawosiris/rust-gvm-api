@@ -178,6 +178,16 @@ Useful follow-up commands:
   - `GVM_GATEWAY_RATE_LIMIT_SUBJECT_PER_WINDOW`
   - `GVM_GATEWAY_TRUSTED_PROXY_CIDRS`
 
+### OS Package Runtime Contract
+
+- Default package config: [packaging/gvm-gateway.toml](./packaging/gvm-gateway.toml), installed at `/etc/gvm-gateway/gvm-gateway.toml`
+- systemd unit: [packaging/gvm-gateway.service](./packaging/gvm-gateway.service), installed at `/usr/lib/systemd/system/gvm-gateway.service`
+- Service user: `gvm`
+- Service ordering: `gvm-gateway.service` starts after `gvmd.service` and wants `gvmd.service`
+- Default backend endpoint: `unix:///run/gvmd/gvmd.sock`
+- Package installation reloads systemd, enables `gvm-gateway.service`, and starts it on live systemd hosts.
+- Package removal stops and disables `gvm-gateway.service` on final removal, then reloads systemd. Upgrade removals skip the stop/disable step where the package manager exposes that lifecycle argument.
+
 ### Transport Security Contract
 
 - `transport_security_mode = "disabled"` serves plain HTTP intentionally.

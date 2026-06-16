@@ -1,0 +1,15 @@
+[Unit]
+Description=Greenbone GVM Gateway
+After=network.target networking.service gvmd.service
+Wants=gvmd.service
+ConditionKernelCommandLine=!recovery
+
+[Service]
+Type=simple
+User=gvm
+ExecStart=/usr/bin/gvm-gateway --config /etc/gvm-gateway/gvm-gateway.toml
+Restart=always
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

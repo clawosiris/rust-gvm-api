@@ -14,6 +14,8 @@ license: AGPL-3.0-or-later
 contents:
   - src: ./dist/package-root/usr/bin/gvm-gateway
     dst: /usr/bin/gvm-gateway
+  - src: ./dist/package-root/usr/lib/systemd/system/gvm-gateway.service
+    dst: /usr/lib/systemd/system/gvm-gateway.service
   - src: ./dist/package-root/etc/gvm-gateway/gvm-gateway.toml
     dst: /etc/gvm-gateway/gvm-gateway.toml
     type: config|noreplace
@@ -23,6 +25,10 @@ contents:
     dst: /usr/share/doc/gvm-gateway/BUILDINFO
   - src: ./dist/package-root/usr/share/licenses/gvm-gateway/LICENSE
     dst: /usr/share/licenses/gvm-gateway/LICENSE
+scripts:
+  postinstall: ./packaging/scripts/postinstall
+  preremove: ./packaging/scripts/preremove
+  postremove: ./packaging/scripts/postremove
 overrides:
   deb:
     depends:

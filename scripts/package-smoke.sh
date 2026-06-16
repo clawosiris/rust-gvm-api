@@ -37,32 +37,44 @@ if [[ -z "${PACKAGER}" ]]; then
   exit 1
 fi
 
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+grep -F "postinstall: ./packaging/scripts/postinstall" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
+grep -F "preremove: ./packaging/scripts/preremove" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
+grep -F "postremove: ./packaging/scripts/postremove" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker not found; skipping package smoke test" >&2
   exit 0
 fi
 
-ROOT_DIR="$(git rev-parse --show-toplevel)"
+assert_package_contents='
+  test -f /etc/gvm-gateway/gvm-gateway.toml
+  test -f /usr/lib/systemd/system/gvm-gateway.service
+  grep -F "User=gvm" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
+  grep -F "After=network.target networking.service gvmd.service" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
+  grep -F "ExecStart=/usr/bin/gvm-gateway --config /etc/gvm-gateway/gvm-gateway.toml" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
+  grep -F "WantedBy=multi-user.target" /usr/lib/systemd/system/gvm-gateway.service >/dev/null
+  /usr/bin/gvm-gateway --help >/tmp/gvm-gateway-help.txt
+'
+
 PACKAGE_DIR="$(cd "${ROOT_DIR}/${PACKAGE_DIR}" && pwd)"
 
 case "${PACKAGER}" in
   deb)
-    docker run --rm -v "${PACKAGE_DIR}:/packages:ro" debian:trixie-slim sh -lc '
+    docker run --rm -v "${PACKAGE_DIR}:/packages:ro" debian:trixie-slim sh -lc "
       set -e
       dpkg -i /packages/*.deb
-      test -f /etc/gvm-gateway/gvm-gateway.toml
-      /usr/bin/gvm-gateway --help >/tmp/gvm-gateway-help.txt
-    '
+      ${assert_package_contents}
+    "
     ;;
   archlinux)
-    docker run --rm -v "${PACKAGE_DIR}:/packages:ro" archlinux:latest sh -lc '
+    docker run --rm -v "${PACKAGE_DIR}:/packages:ro" archlinux:latest sh -lc "
       set -e
-      sed -i "s/^SigLevel.*/SigLevel = Never/" /etc/pacman.conf
+      sed -i 's/^SigLevel.*/SigLevel = Never/' /etc/pacman.conf
       pacman -Sy --noconfirm
       pacman -U --noconfirm /packages/*.pkg.tar.zst
-      test -f /etc/gvm-gateway/gvm-gateway.toml
-      /usr/bin/gvm-gateway --help >/tmp/gvm-gateway-help.txt
-    '
+      ${assert_package_contents}
+    "
     ;;
   *)
     echo "unsupported packager: ${PACKAGER}" >&2
