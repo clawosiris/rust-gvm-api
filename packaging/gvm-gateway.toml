@@ -8,6 +8,7 @@ gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
 # session_max_per_user = 10
 # tls_certificate_path = "/etc/gvm-gateway/tls/cert.pem"
 # tls_private_key_path = "/etc/gvm-gateway/tls/key.pem"
+# local_log_output = "journald"
 # otlp_endpoint = "http://127.0.0.1:4317"
 # telemetry_service_name = "gvm-gateway"
 # telemetry_service_namespace = "greenbone"

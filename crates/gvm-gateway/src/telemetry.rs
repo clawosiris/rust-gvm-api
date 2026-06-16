@@ -3,7 +3,10 @@
 
 //! OpenTelemetry and tracing setup for the gateway composition root.
 
-use std::sync::{Mutex, OnceLock};
+use std::{
+    io,
+    sync::{Mutex, OnceLock},
+};
 
 use opentelemetry::{
     global, propagation::TextMapCompositePropagator, trace::TracerProvider as _, KeyValue,
@@ -16,7 +19,7 @@ use opentelemetry_sdk::{
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-use crate::config::GatewayConfig;
+use crate::config::{GatewayConfig, LocalLogOutput};
 
 fn tracer_provider_slot() -> &'static Mutex<Option<SdkTracerProvider>> {
     static TRACER_PROVIDER: OnceLock<Mutex<Option<SdkTracerProvider>>> = OnceLock::new();
@@ -28,7 +31,6 @@ pub fn init_tracing(
     config: &GatewayConfig,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let fmt_layer = tracing_subscriber::fmt::layer();
     let registry = tracing_subscriber::registry().with(filter);
 
     global::set_text_map_propagator(build_trace_propagator());
@@ -47,18 +49,62 @@ pub fn init_tracing(
             .lock()
             .expect("tracer provider slot poisoned") = Some(provider.clone());
         global::set_tracer_provider(provider);
-        registry
-            .with(fmt_layer)
-            .with(tracing_opentelemetry::layer().with_tracer(tracer))
-            .try_init()?;
+        match config.local_log_output {
+            LocalLogOutput::Stdout => registry
+                .with(tracing_subscriber::fmt::layer())
+                .with(tracing_opentelemetry::layer().with_tracer(tracer))
+                .try_init()?,
+            LocalLogOutput::Journald => registry
+                .with(build_journald_layer(config)?)
+                .with(tracing_opentelemetry::layer().with_tracer(tracer))
+                .try_init()?,
+        };
     } else {
         *tracer_provider_slot()
             .lock()
             .expect("tracer provider slot poisoned") = None;
-        registry.with(fmt_layer).try_init()?;
+        match config.local_log_output {
+            LocalLogOutput::Stdout => registry.with(tracing_subscriber::fmt::layer()).try_init()?,
+            LocalLogOutput::Journald => registry.with(build_journald_layer(config)?).try_init()?,
+        };
     }
 
     Ok(())
+}
+
+fn build_journald_layer(
+    config: &GatewayConfig,
+) -> Result<tracing_journald::Layer, Box<dyn std::error::Error + Send + Sync>> {
+    tracing_journald::layer()
+        .map(|layer| layer.with_syslog_identifier(config.telemetry_service_name.clone()))
+        .map_err(map_journald_init_error)
+        .map_err(Into::into)
+}
+
+#[cfg(test)]
+fn prepare_local_log_output_with<F>(
+    config: &GatewayConfig,
+    journald_factory: F,
+) -> Result<LocalLogOutput, Box<dyn std::error::Error + Send + Sync>>
+where
+    F: FnOnce(&GatewayConfig) -> io::Result<()>,
+{
+    match config.local_log_output {
+        LocalLogOutput::Stdout => Ok(LocalLogOutput::Stdout),
+        LocalLogOutput::Journald => journald_factory(config)
+            .map(|_| LocalLogOutput::Journald)
+            .map_err(map_journald_init_error)
+            .map_err(Into::into),
+    }
+}
+
+fn map_journald_init_error(error: io::Error) -> io::Error {
+    io::Error::new(
+        error.kind(),
+        format!(
+            "failed to initialize journald log output: {error}. Ensure systemd-journald is available in this runtime or select local_log_output=\"stdout\""
+        ),
+    )
 }
 
 /// Flush any registered tracing provider before process exit.
@@ -119,6 +165,8 @@ fn non_empty_attribute(value: Option<&str>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
     use opentelemetry::{propagation::TextMapPropagator, Key, Value};
 
     use super::*;
@@ -130,6 +178,7 @@ mod tests {
             telemetry_service_namespace: Some("greenbone.gateway".to_string()),
             telemetry_deployment_environment: Some("staging".to_string()),
             telemetry_service_instance_id: Some("gateway-01".to_string()),
+            local_log_output: LocalLogOutput::Stdout,
             ..GatewayConfig::default()
         }
     }
@@ -190,5 +239,35 @@ mod tests {
         assert!(fields.contains(&"traceparent".to_string()));
         assert!(fields.contains(&"tracestate".to_string()));
         assert!(fields.contains(&"baggage".to_string()));
+    }
+
+    #[test]
+    fn stdout_local_logs_do_not_attempt_journald_setup() {
+        let layer = prepare_local_log_output_with(&GatewayConfig::default(), |_| {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "journald factory should not be called for stdout mode",
+            ))
+        });
+
+        assert!(layer.is_ok());
+    }
+
+    #[test]
+    fn journald_local_logs_surface_clear_runtime_errors() {
+        let mut config = GatewayConfig::default();
+        config.local_log_output = LocalLogOutput::Journald;
+
+        let error = prepare_local_log_output_with(&config, |_| {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "journald does not exist in this environment",
+            ))
+        })
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("failed to initialize journald log output"));
+        assert!(error.contains("select local_log_output=\"stdout\""));
     }
 }

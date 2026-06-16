@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, io::Write};
 
 use gvm_gateway::config::{
     load_config, load_config_with_default_path, parse_gvmd_endpoint, CliArgs, GatewayConfig,
-    SessionConfig, TransportSecurityConfig, TransportSecurityMode,
+    LocalLogOutput, SessionConfig, TransportSecurityConfig, TransportSecurityMode,
 };
 use gvm_gateway_domain::SessionLimits;
 use gvm_gateway_rest::{
@@ -29,6 +29,7 @@ fn default_config_valid() {
             telemetry_service_namespace: Some("greenbone".to_string()),
             telemetry_deployment_environment: None,
             telemetry_service_instance_id: None,
+            local_log_output: LocalLogOutput::Stdout,
             gvmd_endpoint: "unix:///run/gvmd/gvmd.sock".to_string(),
             shutdown_drain_timeout_secs: 30,
             session: SessionConfig::default(),
@@ -43,7 +44,7 @@ fn config_override_precedence() {
     let mut file = NamedTempFile::new().unwrap();
     writeln!(
         file,
-        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ntelemetry_service_name = \"gateway-file\"\ntelemetry_service_namespace = \"greenbone.file\"\ntelemetry_deployment_environment = \"staging\"\ntelemetry_service_instance_id = \"gw-file-1\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\nshutdown_drain_timeout_secs = 45\nsession_idle_timeout_secs = 120\nsession_max_global = 55\nsession_max_per_user = 5\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3\ntrusted_proxy_cidrs = [\"10.0.0.0/8\"]"
+        "bind = \"127.0.0.1:8081\"\notlp_endpoint = \"http://collector:4317\"\ntelemetry_service_name = \"gateway-file\"\ntelemetry_service_namespace = \"greenbone.file\"\ntelemetry_deployment_environment = \"staging\"\ntelemetry_service_instance_id = \"gw-file-1\"\nlocal_log_output = \"journald\"\ngvmd_endpoint = \"unix:///tmp/gvmd.sock\"\nshutdown_drain_timeout_secs = 45\nsession_idle_timeout_secs = 120\nsession_max_global = 55\nsession_max_per_user = 5\ncors_allowed_origins = [\"https://ui.example\"]\nrate_limit_window_secs = 30\nrate_limit_global_per_window = 12\nrate_limit_subject_per_window = 3\ntrusted_proxy_cidrs = [\"10.0.0.0/8\"]"
     )
     .unwrap();
 
@@ -56,6 +57,10 @@ fn config_override_precedence() {
     env.insert(
         "GVM_GATEWAY_TELEMETRY_SERVICE_INSTANCE_ID".to_string(),
         "gw-env-7".to_string(),
+    );
+    env.insert(
+        "GVM_GATEWAY_LOCAL_LOG_OUTPUT".to_string(),
+        "stdout".to_string(),
     );
     env.insert(
         "GVM_GATEWAY_GVMD_ENDPOINT".to_string(),
@@ -121,6 +126,7 @@ fn config_override_precedence() {
         config.telemetry_service_instance_id.as_deref(),
         Some("gw-env-7")
     );
+    assert_eq!(config.local_log_output, LocalLogOutput::Stdout);
     assert_eq!(config.gvmd_endpoint, "unix:///var/run/gvmd.sock");
     assert_eq!(config.shutdown_drain_timeout_secs, 5);
     assert_eq!(
@@ -160,6 +166,21 @@ fn config_override_precedence() {
             tls_private_key_path: None,
         }
     );
+}
+
+#[test]
+fn invalid_local_log_output_is_rejected() {
+    let mut env = BTreeMap::new();
+    env.insert(
+        "GVM_GATEWAY_LOCAL_LOG_OUTPUT".to_string(),
+        "syslog".to_string(),
+    );
+
+    let error = load_config(&CliArgs::default(), &env).unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("GVM_GATEWAY_LOCAL_LOG_OUTPUT must be one of: stdout, journald"));
 }
 
 #[test]

@@ -421,6 +421,7 @@ rate_limit_subject_per_window = 500
 trusted_proxy_cidrs = ["127.0.0.1/32", "::1/128"]
 
 otlp_endpoint = "http://localhost:4317"
+local_log_output = "stdout" # "stdout" | "journald"
 telemetry_service_name = "gvm-gateway"
 telemetry_service_namespace = "greenbone"
 telemetry_deployment_environment = "staging"
@@ -435,6 +436,10 @@ Transport-security notes:
 - `native` means the gateway itself serves HTTPS and must fail startup unless both the certificate and private-key files are configured and loadable.
 - Proxy mode does not implicitly enable trust for forwarded headers.
 - Forwarded client IPs are trusted only when the direct TCP peer matches `trusted_proxy_cidrs`; otherwise `X-Forwarded-For` is ignored for rate-limit source attribution.
+
+Logging notes:
+- `local_log_output = "stdout"` preserves the default local formatter path.
+- `local_log_output = "journald"` targets `systemd-journald` directly for systemd deployments and must fail startup clearly when journald is unavailable.
 
 This explicit mode contract supersedes the earlier TLS-only ingress assumption from issue `#27` while preserving its shared session/connection model.
 
