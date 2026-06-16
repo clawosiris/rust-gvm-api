@@ -333,6 +333,8 @@ impl SessionManager {
 
         let (state, expires_in) = if stored.is_expired_at(now, self.idle_timeout_secs) {
             (SessionState::Expired, 0)
+        } else if stored.hold_count > 0 {
+            (SessionState::Active, self.idle_timeout_secs.max(1) as i64)
         } else {
             let elapsed = now.saturating_sub(stored.last_used_at);
             let remaining = self.idle_timeout_secs.saturating_sub(elapsed) as i64;
@@ -939,6 +941,21 @@ mod tests {
 
         assert!(drained.is_empty());
         assert!(manager.get(&session.token).unwrap().is_some());
+    }
+
+    /// get_info reports held sessions as active with a positive lifetime while
+    /// backend work has suspended idle expiry.
+    #[test]
+    fn session_manager_get_info_held_session_reports_positive_expiry() {
+        let manager = SessionManager::new(1);
+        let session = manager.create("alice").unwrap();
+        let _hold = manager.hold(&session.token).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        let info = manager.get_info(&session.token).unwrap();
+
+        assert_eq!(info.state, SessionState::Active);
+        assert!(info.expires_in > 0);
     }
 
     /// Dropping the last hold restores the normal idle expiry behavior.

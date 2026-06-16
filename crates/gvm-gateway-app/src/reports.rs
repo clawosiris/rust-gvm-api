@@ -4,8 +4,8 @@
 //! Report use cases.
 
 use gvm_gateway_domain::{
-    GatewayError, GetReportOpts, Report, ReportExport, ReportPage, ReportQuery, ResultPage,
-    ResultQuery, TlsCertificatePage,
+    GatewayError, GetReportOpts, Report, ReportExport, ReportExportRequest, ReportPage,
+    ReportQuery, ResultPage, ResultQuery, TlsCertificatePage,
 };
 
 use crate::GatewayService;
@@ -60,8 +60,14 @@ impl GatewayService {
             "report_export",
             Some(report_id),
             |session| async move {
+                let request = ReportExportRequest {
+                    report_format_id: report_format_id.to_string(),
+                    report_config_id: None,
+                    filter: None,
+                    filter_id: None,
+                };
                 self.reports
-                    .export_report(&session.token, report_id, report_format_id)
+                    .export_report(&session.token, report_id, &request)
                     .await
             },
         )

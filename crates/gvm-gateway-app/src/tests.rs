@@ -3,14 +3,18 @@
 
 #![cfg(test)]
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use gvm_gateway_domain::{
-    CreateReportExportRequest, CreateTargetInput, GatewayError, GetReportOpts, JobStatus,
-    JsonReportExportRequest, ModifyTargetInput, Pagination, ReadinessStatus, Report, ReportExport,
-    ReportExportJob, ReportPage, ReportPort, ReportQuery, ResourceRef, ResultPage, ResultQuery,
-    ScanResult, SessionLimits, SessionManager, SystemPort, TargetQuery, TlsCertificatePage,
+    CreateReportExportRequest, CreateTargetInput, GatewayError, GetReportOpts,
+    GvmdReportFormatExportRequest, JobStatus, JsonReportExportRequest, ModifyTargetInput,
+    Pagination, ReadinessStatus, Report, ReportExport, ReportExportJob, ReportExportRequest,
+    ReportPage, ReportPort, ReportQuery, ResourceRef, ResultPage, ResultQuery, ScanResult,
+    SessionLimits, SessionManager, SystemPort, TargetQuery, TlsCertificatePage,
 };
 use tokio::sync::Notify;
 
@@ -343,6 +347,47 @@ async fn service_create_report_export_job_returns_pollable_job() {
     ));
 }
 
+/// Gvmd report-format export jobs preserve report config and result filter
+/// options so the gvmd adapter can render the documented request shape.
+#[tokio::test]
+async fn service_gvmd_report_export_job_forwards_export_options() {
+    let captured = Arc::new(Mutex::new(None));
+    let service = create_test_service_with_report_port(Arc::new(CapturingReportPort {
+        captured: Arc::clone(&captured),
+    }));
+    let session = service.session_manager().create("admin").unwrap();
+
+    let job = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::GvmdReportFormat(GvmdReportFormatExportRequest {
+                report_format_id: "123e4567-e89b-12d3-a456-426614174111".to_string(),
+                report_config_id: Some("123e4567-e89b-12d3-a456-426614174222".to_string()),
+                filter: Some("severity>5".to_string()),
+                filter_id: Some("123e4567-e89b-12d3-a456-426614174333".to_string()),
+            }),
+        )
+        .await
+        .expect("job should be accepted");
+    wait_for_job_status(&service, &session.token, &job.id, JobStatus::Succeeded).await;
+
+    let forwarded = captured
+        .lock()
+        .expect("captured export request mutex should not be poisoned")
+        .clone()
+        .expect("worker should call the report export port");
+    assert_eq!(
+        forwarded,
+        ReportExportRequest {
+            report_format_id: "123e4567-e89b-12d3-a456-426614174111".to_string(),
+            report_config_id: Some("123e4567-e89b-12d3-a456-426614174222".to_string()),
+            filter: Some("severity>5".to_string()),
+            filter_id: Some("123e4567-e89b-12d3-a456-426614174333".to_string()),
+        }
+    );
+}
+
 /// Terminal jobs expose an expiry timestamp and are purged after retention.
 #[tokio::test]
 async fn service_report_export_jobs_expire_after_terminal_retention() {
@@ -638,7 +683,12 @@ impl ReportPort for BlockingReportPort {
         Ok(test_report(id))
     }
 
-    async fn export_report(&self, _: &str, _: &str, _: &str) -> Result<ReportExport, GatewayError> {
+    async fn export_report(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ReportExportRequest,
+    ) -> Result<ReportExport, GatewayError> {
         self.release.notified().await;
         Ok(ReportExport {
             bytes: b"export".to_vec(),
@@ -731,7 +781,114 @@ impl ReportPort for ExistingReportPort {
         Ok(test_report(id))
     }
 
-    async fn export_report(&self, _: &str, _: &str, _: &str) -> Result<ReportExport, GatewayError> {
+    async fn export_report(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ReportExportRequest,
+    ) -> Result<ReportExport, GatewayError> {
+        Ok(ReportExport {
+            bytes: b"export".to_vec(),
+            content_type: Some("text/plain".to_string()),
+            extension: Some("txt".to_string()),
+        })
+    }
+
+    async fn delete_report(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn get_report_results(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        Ok(TlsCertificatePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_errors(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_closed_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+}
+
+struct CapturingReportPort {
+    captured: Arc<Mutex<Option<ReportExportRequest>>>,
+}
+
+#[async_trait]
+impl ReportPort for CapturingReportPort {
+    async fn list_reports(&self, _: &str, query: &ReportQuery) -> Result<ReportPage, GatewayError> {
+        Ok(ReportPage {
+            data: vec![test_report("123e4567-e89b-12d3-a456-426614174000")],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 1,
+                total_pages: 1,
+            },
+        })
+    }
+
+    async fn get_report(
+        &self,
+        _: &str,
+        id: &str,
+        _: &GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        Ok(test_report(id))
+    }
+
+    async fn export_report(
+        &self,
+        _: &str,
+        _: &str,
+        request: &ReportExportRequest,
+    ) -> Result<ReportExport, GatewayError> {
+        *self
+            .captured
+            .lock()
+            .expect("captured export request mutex should not be poisoned") = Some(request.clone());
         Ok(ReportExport {
             bytes: b"export".to_vec(),
             content_type: Some("text/plain".to_string()),
@@ -826,7 +983,7 @@ impl ReportPort for MissingReportPort {
         &self,
         _: &str,
         id: &str,
-        _: &str,
+        _: &ReportExportRequest,
     ) -> Result<ReportExport, GatewayError> {
         Err(GatewayError::NotFound(format!("report {id} not found")))
     }

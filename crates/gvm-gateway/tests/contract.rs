@@ -12,9 +12,9 @@ use common::{spawn_server, spawn_server_with_sessions};
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
     CreateTaskInput, GatewayError, GetReportOpts, ModifyTaskInput, Pagination, Report,
-    ReportExport, ReportPage, ReportPort, ReportQuery, ResourceRef, ResultPage, ResultQuery,
-    ScanResult, SessionLimits, SessionManager, Task, TaskAction, TaskObservers, TaskPage, TaskPort,
-    TaskQuery, TlsCertificatePage,
+    ReportExport, ReportExportRequest, ReportPage, ReportPort, ReportQuery, ResourceRef,
+    ResultPage, ResultQuery, ScanResult, SessionLimits, SessionManager, Task, TaskAction,
+    TaskObservers, TaskPage, TaskPort, TaskQuery, TlsCertificatePage,
 };
 use gvm_gateway_gvmd::StaticGvmdAdapter;
 use gvm_gateway_rest::{
@@ -418,7 +418,12 @@ impl ReportPort for JsonExportReportPort {
         Ok(report_response(id))
     }
 
-    async fn export_report(&self, _: &str, _: &str, _: &str) -> Result<ReportExport, GatewayError> {
+    async fn export_report(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ReportExportRequest,
+    ) -> Result<ReportExport, GatewayError> {
         Err(GatewayError::NotImplemented(
             "gvmd report-format export is not used by this test port".to_string(),
         ))
@@ -524,7 +529,7 @@ impl ReportPort for MissingReportPort {
         &self,
         _: &str,
         id: &str,
-        _: &str,
+        _: &ReportExportRequest,
     ) -> Result<ReportExport, GatewayError> {
         Err(GatewayError::NotFound(format!("report {id} not found")))
     }

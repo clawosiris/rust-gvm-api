@@ -78,6 +78,19 @@ pub struct ReportExport {
     pub extension: Option<String>,
 }
 
+/// Options for exporting a report through a backend report format.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReportExportRequest {
+    /// UUID of the report format used by gvmd.
+    pub report_format_id: String,
+    /// Optional report configuration identifier.
+    pub report_config_id: Option<String>,
+    /// Optional GMP result filter expression.
+    pub filter: Option<String>,
+    /// Optional saved result filter identifier.
+    pub filter_id: Option<String>,
+}
+
 /// TLS certificate observation associated with a report.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TlsCertificate {

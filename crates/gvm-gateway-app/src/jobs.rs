@@ -12,7 +12,8 @@ use std::{
 use gvm_gateway_domain::{
     CreateReportExportRequest, GatewayError, GetReportOpts, JobArtifact, JobCancelOutcome,
     JobProblem, JobProgress, JobResult, JobStatus, ReportExportFormat, ReportExportJob,
-    ReportJsonExport, ResourceRef, ResultQuery, Session, SessionHold, SessionTokenDigest,
+    ReportExportRequest, ReportJsonExport, ResourceRef, ResultQuery, Session, SessionHold,
+    SessionTokenDigest,
 };
 use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
@@ -219,28 +220,25 @@ impl GatewayService {
 
         let result = match request {
             CreateReportExportRequest::GvmdReportFormat(request) => {
-                if request.report_config_id.is_some()
-                    || request.filter.is_some()
-                    || request.filter_id.is_some()
-                {
-                    Err(GatewayError::NotImplemented(
-                        "reportConfigId, filter, and filterId for gvmd report-format exports require typed rust-gvm support".to_string(),
-                    ))
-                } else {
-                    self.reports
-                        .export_report(&session_token, &report_id, &request.report_format_id)
-                        .await
-                        .map(|export| {
-                            let extension = export.extension.unwrap_or_else(|| "bin".to_string());
-                            JobArtifact {
-                                bytes: export.bytes,
-                                content_type: export
-                                    .content_type
-                                    .unwrap_or_else(|| "application/octet-stream".to_string()),
-                                filename: format!("report-{report_id}.{extension}"),
-                            }
-                        })
-                }
+                let request = ReportExportRequest {
+                    report_format_id: request.report_format_id,
+                    report_config_id: request.report_config_id,
+                    filter: request.filter,
+                    filter_id: request.filter_id,
+                };
+                self.reports
+                    .export_report(&session_token, &report_id, &request)
+                    .await
+                    .map(|export| {
+                        let extension = export.extension.unwrap_or_else(|| "bin".to_string());
+                        JobArtifact {
+                            bytes: export.bytes,
+                            content_type: export
+                                .content_type
+                                .unwrap_or_else(|| "application/octet-stream".to_string()),
+                            filename: format!("report-{report_id}.{extension}"),
+                        }
+                    })
             }
             CreateReportExportRequest::Json(request) => {
                 self.export_report_json(
