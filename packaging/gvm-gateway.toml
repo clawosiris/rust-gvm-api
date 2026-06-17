@@ -1,16 +1,48 @@
 # Example configuration for packaged gvm-gateway installs.
+#
+# Copy this file to /etc/gvm-gateway/gvm-gateway.toml to make these settings
+# active. If the canonical config file is absent, gvm-gateway starts with
+# built-in defaults.
 
+# REST listener address. Keep loopback-only unless an upstream proxy or local
+# firewall intentionally exposes the gateway.
 bind = "127.0.0.1:8080"
+
+# Transport security mode for the REST listener:
+# - "disabled": serve plain HTTP intentionally.
+# - "terminated_by_proxy": serve plain HTTP behind a TLS-terminating proxy.
+# - "native": serve HTTPS directly from gvm-gateway using the TLS paths below.
 transport_security_mode = "disabled"
+
+# Canonical gvmd Unix socket endpoint.
 gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
+
+# Optional local log sink.
+# local_log_output = "journald"
+
+# Maximum seconds an idle gateway session may remain alive.
 # session_idle_timeout_secs = 300
+
+# Optional active session limits. Set either value to 0 to disable that limit.
 # session_max_global = 1000
 # session_max_per_user = 10
+
+# TLS material used only when transport_security_mode = "native".
 # tls_certificate_path = "/etc/gvm-gateway/tls/cert.pem"
 # tls_private_key_path = "/etc/gvm-gateway/tls/key.pem"
-# local_log_output = "journald"
+
+# Optional OTLP trace export endpoint.
 # otlp_endpoint = "http://127.0.0.1:4317"
+
+# Optional OpenTelemetry resource attributes.
 # telemetry_service_name = "gvm-gateway"
 # telemetry_service_namespace = "greenbone"
 # telemetry_deployment_environment = "staging"
 # telemetry_service_instance_id = "gateway-01"
+
+# Optional REST security controls.
+# cors_allowed_origins = ["https://gsa.example"]
+# rate_limit_window_secs = 60
+# rate_limit_global_per_window = 1000
+# rate_limit_subject_per_window = 100
+# trusted_proxy_cidrs = ["127.0.0.1/32", "::1/128"]

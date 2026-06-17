@@ -14,8 +14,10 @@ license: AGPL-3.0-or-later
 contents:
   - src: ./dist/package-root/usr/bin/gvm-gateway
     dst: /usr/bin/gvm-gateway
-  - src: ./dist/package-root/etc/gvm-gateway/gvm-gateway.toml
-    dst: /etc/gvm-gateway/gvm-gateway.toml
+  - dst: /etc/gvm-gateway
+    type: dir
+  - src: ./dist/package-root/etc/gvm-gateway/gvm-gateway.toml.example
+    dst: /etc/gvm-gateway/gvm-gateway.toml.example
     type: config|noreplace
   - src: ./dist/package-root/usr/share/doc/gvm-gateway/README.md
     dst: /usr/share/doc/gvm-gateway/README.md

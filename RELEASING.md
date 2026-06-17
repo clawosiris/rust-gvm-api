@@ -92,6 +92,5 @@ Compose stack validation and OCI archive export are also covered in CI/release a
 ## Packaging Notes
 
 - The first pass packages the unified `gvm-gateway` binary.
-- Packages also ship an example config at `/etc/gvm-gateway/gvm-gateway.toml`.
+- Packages create `/etc/gvm-gateway` and ship an example config at `/etc/gvm-gateway/gvm-gateway.toml.example`; administrators may copy it to `/etc/gvm-gateway/gvm-gateway.toml`.
 - OCI image builds ship a container-oriented config at `/etc/gvm-gateway/gvm-gateway.toml` with `0.0.0.0:8080` and a shared `/run/gvmd` socket contract.
-- systemd service/unit packaging is intentionally deferred until the runtime contract and service defaults settle.

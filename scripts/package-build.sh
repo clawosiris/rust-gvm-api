@@ -136,7 +136,7 @@ mkdir -p dist/package-root/usr/bin \
   "${OUTPUT_DIR_ABS}"
 
 install -m 0755 target/release/gvm-gateway dist/package-root/usr/bin/gvm-gateway
-install -m 0644 packaging/gvm-gateway.toml dist/package-root/etc/gvm-gateway/gvm-gateway.toml
+install -m 0644 packaging/gvm-gateway.toml dist/package-root/etc/gvm-gateway/gvm-gateway.toml.example
 install -m 0644 README.md dist/package-root/usr/share/doc/gvm-gateway/README.md
 install -m 0644 LICENSE dist/package-root/usr/share/licenses/gvm-gateway/LICENSE
 

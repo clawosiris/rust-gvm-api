@@ -178,6 +178,14 @@ Useful follow-up commands:
   - `GVM_GATEWAY_RATE_LIMIT_SUBJECT_PER_WINDOW`
   - `GVM_GATEWAY_TRUSTED_PROXY_CIDRS`
 
+### OS Package Runtime Contract
+
+- Example package config: [packaging/gvm-gateway.toml](./packaging/gvm-gateway.toml), installed at `/etc/gvm-gateway/gvm-gateway.toml.example`
+- Canonical package config path: `/etc/gvm-gateway/gvm-gateway.toml`; copy the example there to activate file-based settings
+- Config directory: `/etc/gvm-gateway`, created by package installation
+- Default backend endpoint: `unix:///run/gvmd/gvmd.sock`
+- Package installation does not create a live canonical config file automatically; administrators opt into file-based settings by copying the example to `/etc/gvm-gateway/gvm-gateway.toml`.
+
 ### Transport Security Contract
 
 - `transport_security_mode = "disabled"` serves plain HTTP intentionally.
