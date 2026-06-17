@@ -433,15 +433,5 @@ pub(crate) fn download_job_result_docs(op: TransformOperation<'_>) -> TransformO
 }
 
 #[cfg(test)]
-mod tests {
-    use super::CreateReportExportRequestBody;
-
-    /// JSON export requests parse into the JSON export variant.
-    #[test]
-    fn parses_json_export_request_body() {
-        let body: CreateReportExportRequestBody =
-            serde_json::from_str(r#"{"format":"json"}"#).expect("body should parse");
-
-        assert!(matches!(body, CreateReportExportRequestBody::Json(_)));
-    }
-}
+#[path = "jobs_test.rs"]
+mod jobs_test;

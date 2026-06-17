@@ -25,9 +25,10 @@ mod targets;
 mod tasks;
 
 #[cfg(test)]
-mod test_support;
+#[path = "lib_test.rs"]
+mod lib_test;
 #[cfg(test)]
-mod tests;
+mod test_support;
 
 pub use jobs::JobReaper;
 pub use service::GatewayService;

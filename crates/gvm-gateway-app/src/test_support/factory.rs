@@ -127,5 +127,24 @@ pub(crate) fn capture_tracing() -> TraceCapture {
 /// subscribers running in parallel can make target-specific assertions flaky.
 pub(crate) async fn lock_tracing() -> AsyncMutexGuard<'static, ()> {
     static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
+    ensure_tracing_callsites_stay_enabled();
+
     LOCK.get_or_init(|| AsyncMutex::new(())).lock().await
+}
+
+fn ensure_tracing_callsites_stay_enabled() {
+    static INIT: OnceLock<()> = OnceLock::new();
+    INIT.get_or_init(|| {
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(io::sink)
+                .with_ansi(false)
+                .with_span_events(FmtSpan::CLOSE),
+        );
+
+        // These tests assert captured audit and span output. A sink global
+        // subscriber keeps callsite interest enabled even while other tests
+        // exercise the same callsites without a scoped capture subscriber.
+        let _ = tracing::subscriber::set_global_default(subscriber);
+    });
 }

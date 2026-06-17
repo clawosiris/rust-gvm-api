@@ -101,8 +101,9 @@ fn gmp_wire_handling_stays_in_rust_gvm() {
     // This is an architecture boundary test, not a style lint. The gateway may
     // orchestrate typed rust-gvm APIs, but GMP XML command construction and GMP
     // response parsing, protocol-shape aliases, and wire/display-name parsing
-    // must be fixed upstream in clawosiris/rust-gvm. Unit-test fixtures may
-    // still contain raw XML; this test intentionally scans production source.
+    // must be fixed upstream in clawosiris/rust-gvm. Unit-test sidecar fixtures
+    // may still contain raw XML; this test intentionally scans production
+    // source.
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let src_dir = manifest_dir.join("src");
     let mut findings = find_forbidden_gmp_wire_handling(&manifest_dir, &src_dir);
@@ -247,7 +248,11 @@ fn rust_files(dir: &Path) -> Vec<PathBuf> {
         let path = entry.expect("read directory entry").path();
         if path.is_dir() {
             files.extend(rust_files(&path));
-        } else if path.extension().is_some_and(|extension| extension == "rs") {
+        } else if path.extension().is_some_and(|extension| extension == "rs")
+            && !path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().ends_with("_test.rs"))
+        {
             files.push(path);
         }
     }

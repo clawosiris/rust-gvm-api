@@ -128,6 +128,7 @@ mod supporting_inputs;
 #[cfg(test)]
 mod filters_test;
 #[cfg(test)]
+#[path = "mod_test.rs"]
 mod mod_test;
 
 use crate::conversions::{

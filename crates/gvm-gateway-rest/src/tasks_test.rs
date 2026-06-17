@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Greenbone AG
+
+use serde_json::json;
+
+use super::TaskResponse;
+use gvm_gateway_domain::{ResourceRef, Task, TaskObservers};
+
+fn task_with_status(status: &str) -> Task {
+    Task {
+        id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
+        name: "Example".to_string(),
+        comment: None,
+        status: status.to_string(),
+        progress: Some(42),
+        target: None,
+        scan_config: None,
+        scanner: None,
+        schedule: None,
+        alerts: vec![],
+        alterable: None,
+        hosts_ordering: None,
+        observers: TaskObservers::default(),
+        schedule_periods: None,
+        last_report: None,
+        current_report: None,
+        report_count: Some(3),
+        in_use: false,
+        writable: true,
+    }
+}
+
+#[test]
+fn task_response_preserves_unknown_hosts_ordering() {
+    let response = TaskResponse::from(Task {
+        hosts_ordering: Some("by-latency".to_string()),
+        ..task_with_status("Running")
+    });
+
+    let value = serde_json::to_value(response).expect("task response should serialize");
+    assert_eq!(value["hostsOrdering"], json!("by-latency"));
+}
+
+#[test]
+fn task_response_preserves_live_gvmd_status_values() {
+    // Live task lifecycle values must remain visible to clients rather
+    // than being coerced to an older enum variant.
+    for status in [
+        "New",
+        "Requested",
+        "Queued",
+        "Running",
+        "Stop Requested",
+        "Stopping",
+        "Processing",
+        "Done",
+        "Stopped",
+        "Error",
+        "Delete Requested",
+        "Ultimate Delete Requested",
+        "Container",
+        "Interrupted",
+    ] {
+        let json = serde_json::to_value(TaskResponse::from(task_with_status(status))).unwrap();
+
+        assert_eq!(json["status"], status);
+    }
+}
+
+#[test]
+fn task_response_preserves_unknown_status_and_report_count_semantics() {
+    // Unknown future gvmd statuses should still be round-tripped, and the
+    // count field must be named for the report-count source data.
+    let json = serde_json::to_value(TaskResponse::from(task_with_status("Future State"))).unwrap();
+
+    assert_eq!(json["status"], "Future State");
+    assert_eq!(json["progress"], 42);
+    assert_eq!(json["reportCount"], 3);
+    assert!(json.get("resultCount").is_none());
+}
+
+#[test]
+fn task_response_preserves_group_and_role_observers() {
+    // Task observers can be non-user principals; those must not disappear
+    // when gvmd reports a group-only or role-only observer shape.
+    let response = TaskResponse::from(Task {
+        observers: TaskObservers {
+            users: vec![],
+            groups: vec![ResourceRef {
+                id: "11111111-1111-1111-1111-111111111111".to_string(),
+                name: Some("Auditors".to_string()),
+            }],
+            roles: vec![ResourceRef {
+                id: "22222222-2222-2222-2222-222222222222".to_string(),
+                name: Some("Observers".to_string()),
+            }],
+        },
+        ..task_with_status("Running")
+    });
+
+    let json = serde_json::to_value(response).unwrap();
+
+    assert!(json["observers"].get("users").is_none());
+    assert_eq!(json["observers"]["groups"][0]["name"], "Auditors");
+    assert_eq!(json["observers"]["roles"][0]["name"], "Observers");
+}

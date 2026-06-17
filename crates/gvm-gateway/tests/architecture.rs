@@ -9,6 +9,8 @@
 //! (`gvm-gateway`) are allowed to reference `gvm-gmp`, `gvm-client`, or
 //! `gvm-connection`.
 
+use std::path::{Path, PathBuf};
+
 /// GMP/GVMD protocol crates that must NOT appear in inner-layer
 /// `[dependencies]` sections.
 const BANNED_DEPS: &[&str] = &["gvm-gmp", "gvm-client", "gvm-connection"];
@@ -99,4 +101,113 @@ fn extract_dependencies_section(content: &str) -> Option<String> {
     } else {
         Some(section)
     }
+}
+
+/// Unit tests must live in sidecar `*_test.rs` files, while integration and
+/// other higher-level tests stay under `tests/` directories.
+#[test]
+fn unit_tests_must_use_sidecar_test_files() {
+    let workspace_root = workspace_root();
+    let mut violations = Vec::new();
+
+    for rust_file in production_rust_files(&workspace_root.join("crates")) {
+        let relative_path = rust_file
+            .strip_prefix(&workspace_root)
+            .unwrap_or(&rust_file)
+            .display()
+            .to_string();
+
+        if rust_file.file_name().is_some_and(|name| name == "tests.rs") {
+            violations.push(format!(
+                "{relative_path}: unit-test sidecars must be named `*_test.rs`"
+            ));
+        }
+
+        let content = std::fs::read_to_string(&rust_file).unwrap_or_else(|err| {
+            panic!("failed to read {}: {err}", rust_file.display());
+        });
+
+        if let Some(line_number) = first_inline_cfg_test_module_line(&content) {
+            violations.push(format!(
+                "{relative_path}:{line_number}: move inline `#[cfg(test)] mod ... {{ ... }}` into a `*_test.rs` sidecar"
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Test-layout violations detected:\n  - {}",
+        violations.join("\n  - ")
+    );
+}
+
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
+}
+
+fn production_rust_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    collect_production_rust_files(root, &mut files);
+    files.sort();
+    files
+}
+
+fn collect_production_rust_files(path: &Path, files: &mut Vec<PathBuf>) {
+    let entries = std::fs::read_dir(path).unwrap_or_else(|err| {
+        panic!("failed to read directory {}: {err}", path.display());
+    });
+
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|err| {
+            panic!(
+                "failed to read directory entry in {}: {err}",
+                path.display()
+            );
+        });
+        let path = entry.path();
+        let file_type = entry.file_type().unwrap_or_else(|err| {
+            panic!("failed to read file type for {}: {err}", path.display());
+        });
+
+        if file_type.is_dir() {
+            if path
+                .file_name()
+                .is_some_and(|name| matches!(name.to_str(), Some("target" | ".git" | "tests")))
+            {
+                continue;
+            }
+            collect_production_rust_files(&path, files);
+        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            files.push(path);
+        }
+    }
+}
+
+fn first_inline_cfg_test_module_line(content: &str) -> Option<usize> {
+    let lines: Vec<_> = content.lines().collect();
+
+    for (index, line) in lines.iter().enumerate() {
+        if line.trim() != "#[cfg(test)]" {
+            continue;
+        }
+
+        for candidate in lines.iter().skip(index + 1) {
+            let trimmed = candidate.trim();
+            if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("#[") {
+                continue;
+            }
+
+            if trimmed.starts_with("mod ") && trimmed.ends_with('{') {
+                return Some(index + 1);
+            }
+            break;
+        }
+    }
+
+    None
 }
