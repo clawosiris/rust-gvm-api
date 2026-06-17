@@ -141,6 +141,23 @@ impl GatewayService {
 
             let removed = removed.expect("checked is_some");
             let session_digest = SessionTokenDigest::from_token(token);
+            match self.cancel_jobs_for_session(&session_digest) {
+                Ok(0) => {}
+                Ok(count) => {
+                    tracing::info!(count, "session.delete: cancelled session-bound jobs");
+                }
+                Err(err) => {
+                    emit_audit_event(
+                        "session.delete",
+                        "job_cancel_failed",
+                        &removed.user,
+                        Some(token),
+                        None,
+                        None,
+                        Some(&err),
+                    );
+                }
+            }
             if let Err(err) = self.auth.disconnect_session(&session_digest).await {
                 emit_audit_event(
                     "session.delete",

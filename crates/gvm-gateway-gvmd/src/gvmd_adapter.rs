@@ -12,7 +12,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use gvm_client::{GetReportDetailsOpts, GmpClient};
+use gvm_client::{GetReportDetailsOpts, GetReportExportOpts, GmpClient};
 use gvm_connection::UnixSocketConnection;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
@@ -26,14 +26,14 @@ use gvm_gateway_domain::{
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
     ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
     OverridePage, Pagination, Permission, PermissionPage, PortList, PortListPage, PortListPort,
-    PortListQuery, ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SessionTokenDigest, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage,
-    Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
-    Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery,
+    PortListQuery, ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat,
+    ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery,
+    Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult,
+    Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort,
+    ScheduleQuery, SessionTokenDigest, SupportingResourcePort, SupportingResourceQuery, SystemPort,
+    Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage,
+    TaskPort, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage,
+    UserSetting, UserSettingList, UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -2491,16 +2491,12 @@ impl ReportPort for GvmdAdapter {
             .ok_or_else(|| GatewayError::NotFound(format!("report {id} not found")))?;
 
         // Fetch the explicitly requested embedded-result window for this report.
-        let filter = if opts.ignore_pagination {
-            Some(format!("report_id={id}"))
-        } else {
-            paginated_filter(
-                Some(&format!("report_id={id}")),
-                None,
-                opts.page,
-                opts.per_page,
-            )?
-        };
+        let filter = paginated_filter(
+            Some(&format!("report_id={id}")),
+            None,
+            opts.page,
+            opts.per_page,
+        )?;
 
         let results_response = client
             .lock()
@@ -2527,16 +2523,27 @@ impl ReportPort for GvmdAdapter {
         &self,
         session_token: &str,
         report_id: &str,
-        report_format_id: &str,
+        request: &ReportExportRequest,
     ) -> Result<ReportExport, GatewayError> {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
-        let report_format_id = parse_entity_id(report_format_id)?;
+        let mut opts = GetReportExportOpts::new(parse_entity_id(&request.report_format_id)?);
+        opts.report_config_id = request
+            .report_config_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        opts.filter_string = request.filter.clone();
+        opts.filter_id = request
+            .filter_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
 
         let export = client
             .lock()
             .await?
-            .get_report_export(&report_id, &report_format_id)
+            .get_report_export_with_opts(&report_id, opts)
             .await
             .map_err(map_gvm_error)?;
 
@@ -5321,7 +5328,6 @@ mod tests {
                     token,
                     &report_id.to_string(),
                     &GetReportOpts {
-                        ignore_pagination: false,
                         page: 1,
                         per_page: 30,
                     },
@@ -5504,7 +5510,12 @@ mod tests {
                 .export_report(
                     token,
                     &report_id.to_string(),
-                    &REPORT_EXPORT_BINARY_FORMAT_ID.to_string(),
+                    &ReportExportRequest {
+                        report_format_id: REPORT_EXPORT_BINARY_FORMAT_ID.to_string(),
+                        report_config_id: None,
+                        filter: None,
+                        filter_id: None,
+                    },
                 )
                 .await
                 .expect("binary export");
@@ -5512,6 +5523,69 @@ mod tests {
             assert_eq!(export.bytes, b"Hello PDF");
             assert_eq!(export.content_type.as_deref(), Some("application/pdf"));
             assert_eq!(export.extension.as_deref(), Some("pdf"));
+
+            server.shutdown().await;
+        }
+
+        #[tokio::test]
+        async fn gvmd_adapter_export_report_emits_config_and_filter_options() {
+            let report_id = uuid::Uuid::from_u128(0x33333333_3333_3333_3333_333333333333);
+            let report_config_id =
+                uuid::Uuid::from_u128(0x44444444_4444_4444_4444_444444444444).to_string();
+            let filter_id =
+                uuid::Uuid::from_u128(0x55555555_5555_5555_5555_555555555555).to_string();
+            let server = MockGmpServer::builder()
+                .mode(ServerMode::Stateful)
+                .version(MockVersion::V22_8)
+                .unix_socket_auto()
+                .seed(move |store| {
+                    store.create(Resource::with_id(
+                        "report",
+                        "Filtered export report",
+                        report_id,
+                    ));
+                })
+                .build()
+                .await
+                .unwrap();
+
+            let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+            let token = "test-session-token";
+            adapter
+                .connect_session(token, "admin", "admin")
+                .await
+                .unwrap();
+            server.clear_history();
+
+            // The mock backend may reject unknown report configs, but command
+            // history still verifies that the adapter delegates all supported
+            // export options to rust-gvm's typed command builder.
+            let _ = adapter
+                .export_report(
+                    token,
+                    &report_id.to_string(),
+                    &ReportExportRequest {
+                        report_format_id: REPORT_EXPORT_BINARY_FORMAT_ID.to_string(),
+                        report_config_id: Some(report_config_id.clone()),
+                        filter: Some("severity>5".to_string()),
+                        filter_id: Some(filter_id.clone()),
+                    },
+                )
+                .await;
+
+            let history = server.command_history();
+            let command = history
+                .iter()
+                .find(|record| record.command_name() == "get_reports")
+                .expect("get_reports command should be recorded");
+            let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+            assert!(xml.contains(&format!("format_id=\"{REPORT_EXPORT_BINARY_FORMAT_ID}\"")));
+            assert!(xml.contains(&format!("config_id=\"{report_config_id}\"")));
+            assert!(xml.contains("filter=\"severity&gt;5\""));
+            assert!(xml.contains(&format!("filt_id=\"{filter_id}\"")));
+            assert!(xml.contains(&format!("report_id=\"{report_id}\"")));
+            assert!(xml.contains("details=\"1\""));
+            assert!(xml.contains("ignore_pagination=\"1\""));
 
             server.shutdown().await;
         }
@@ -5541,7 +5615,12 @@ mod tests {
                 .export_report(
                     token,
                     &report_id.to_string(),
-                    &REPORT_EXPORT_XML_FORMAT_ID.to_string(),
+                    &ReportExportRequest {
+                        report_format_id: REPORT_EXPORT_XML_FORMAT_ID.to_string(),
+                        report_config_id: None,
+                        filter: None,
+                        filter_id: None,
+                    },
                 )
                 .await
                 .expect("xml export");

@@ -119,9 +119,15 @@ impl PaginationOnlyQuery {
                     })?);
                 }
                 "perPage" | "per_page" => {
-                    per_page = Some(value.parse::<u32>().map_err(|_| {
+                    let parsed_per_page = value.parse::<u32>().map_err(|_| {
                         GatewayError::InvalidInput("perPage must be a positive integer".to_string())
-                    })?);
+                    })?;
+                    if parsed_per_page == 0 || parsed_per_page > 1000 {
+                        return Err(GatewayError::InvalidInput(
+                            "perPage must be between 1 and 1000".to_string(),
+                        ));
+                    }
+                    per_page = Some(parsed_per_page);
                 }
                 _ => {}
             }
@@ -133,7 +139,7 @@ impl PaginationOnlyQuery {
                 "page must be greater than or equal to 1".to_string(),
             ));
         }
-        let per_page = per_page.unwrap_or(25).clamp(1, 1000);
+        let per_page = per_page.unwrap_or(25);
 
         Ok(Self { page, per_page })
     }

@@ -1,0 +1,310 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Greenbone AG
+
+openapi: 3.1.0
+
+paths:
+  /reports/{id}/exports:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    post:
+      operationId: createReportExportJob
+      tags: [Report Exports]
+      summary: Start an asynchronous report export
+      description: |
+        Starts rendering a report artifact in the selected report format.
+        Report exports may require gvmd to materialize the full report and run
+        report-format generation scripts, so this endpoint always creates a
+        job instead of returning the artifact inline. Jobs are scoped to the
+        authenticated user that created them. A running export keeps the
+        creating session active for backend work; deleting that session cancels
+        non-terminal export jobs started from it. The gateway retains at most
+        1000 jobs and removes terminal jobs 15 minutes after completion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportExportRequest"
+      responses:
+        "202":
+          description: Report export job accepted
+          headers:
+            traceparent:
+              $ref: "./common.yaml#/components/headers/Traceparent"
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+              description: Suggested seconds to wait before polling the job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportExportJob"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "429":
+          $ref: "./common.yaml#/components/responses/TooManyRequests"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /jobs/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getJob
+      tags: [Jobs]
+      summary: Get asynchronous job status
+      description: Returns status only for jobs created by the authenticated user.
+      responses:
+        "200":
+          description: Job status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportExportJob"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+    delete:
+      operationId: cancelJob
+      tags: [Jobs]
+      summary: Cancel an asynchronous job
+      description: Cancels a job created by the authenticated user.
+      responses:
+        "202":
+          description: Cancellation requested
+          headers:
+            traceparent:
+              $ref: "./common.yaml#/components/headers/Traceparent"
+        "204":
+          description: Job already reached a terminal state
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "409":
+          $ref: "./common.yaml#/components/responses/Conflict"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /jobs/{id}/result:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: downloadJobResult
+      tags: [Jobs]
+      summary: Download a completed job result
+      description: |
+        Downloads the artifact produced by a completed report export job.
+        Requests for queued, running, failed, cancelled, or expired jobs return
+        a problem response instead of blocking until completion. Result
+        artifacts are available only to the authenticated user that created the
+        job and are removed 15 minutes after the job reaches a terminal state.
+      responses:
+        "200":
+          description: Rendered report artifact
+          headers:
+            traceparent:
+              $ref: "./common.yaml#/components/headers/Traceparent"
+            Content-Disposition:
+              description: Attachment-style filename for the rendered artifact.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportJsonExport"
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/xml:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+                format: binary
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "409":
+          $ref: "./common.yaml#/components/responses/Conflict"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+components:
+  schemas:
+    CreateReportExportRequest:
+      oneOf:
+        - $ref: "#/components/schemas/GvmdReportFormatExportRequest"
+        - $ref: "#/components/schemas/JsonReportExportRequest"
+
+    GvmdReportFormatExportRequest:
+      type: object
+      required:
+        - reportFormatId
+      additionalProperties: false
+      properties:
+        reportFormatId:
+          type: string
+          format: uuid
+          description: UUID of the report format used to render the artifact.
+        reportConfigId:
+          type: string
+          format: uuid
+          description: Optional report configuration to apply when supported by the selected report format.
+        filter:
+          type: string
+          description: Optional GMP filter expression for report generation. The export job may process all matching results.
+        filterId:
+          type: string
+          format: uuid
+          description: Optional saved filter to apply during report generation.
+
+    JsonReportExportRequest:
+      type: object
+      required:
+        - format
+      additionalProperties: false
+      properties:
+        format:
+          type: string
+          enum:
+            - json
+        filter:
+          type: string
+          description: Optional GMP filter expression for report generation.
+        filterId:
+          type: string
+          format: uuid
+          description: Optional saved filter to apply during report generation.
+
+    ReportExportJob:
+      allOf:
+        - $ref: "#/components/schemas/Job"
+        - type: object
+          required:
+            - report
+            - format
+          properties:
+            report:
+              $ref: "./common.yaml#/components/schemas/ResourceRef"
+            format:
+              type: string
+              enum:
+                - gvmd_report_format
+                - json
+            reportFormatId:
+              type: string
+              format: uuid
+            result:
+              $ref: "#/components/schemas/JobResult"
+
+    Job:
+      type: object
+      required:
+        - id
+        - kind
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            - report_export
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - succeeded
+            - failed
+            - cancelling
+            - cancelled
+            - expired
+        progress:
+          type: object
+          properties:
+            percent:
+              type: integer
+              minimum: 0
+              maximum: 100
+            message:
+              type: string
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: Time after which the job metadata and artifact are removed.
+        resultLocation:
+          type: string
+          format: uri-reference
+          description: Present when the job succeeded and the result can be downloaded.
+        error:
+          $ref: "./common.yaml#/components/schemas/ProblemDetail"
+
+    JobResult:
+      type: object
+      properties:
+        contentType:
+          type: string
+        filename:
+          type: string
+        size:
+          type: integer
+          minimum: 0
+        location:
+          type: string
+          format: uri-reference
+
+    ReportJsonExport:
+      type: object
+      required:
+        - report
+        - results
+      properties:
+        report:
+          $ref: "./reports.yaml#/components/schemas/Report"
+        results:
+          type: array
+          items:
+            $ref: "./results.yaml#/components/schemas/Result"
+        generatedAt:
+          type: string
+          format: date-time

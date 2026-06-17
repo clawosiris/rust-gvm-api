@@ -17,13 +17,13 @@ use gvm_gateway_domain::{
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
     ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
     OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
-    ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
-    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort,
-    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
-    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
+    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
+    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Static adapter for system readiness and version information.
@@ -478,7 +478,12 @@ impl ReportPort for StaticGvmdAdapter {
         ))
     }
 
-    async fn export_report(&self, _: &str, _: &str, _: &str) -> Result<ReportExport, GatewayError> {
+    async fn export_report(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ReportExportRequest,
+    ) -> Result<ReportExport, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support reports".to_string(),
         ))

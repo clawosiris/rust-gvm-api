@@ -1430,7 +1430,7 @@ impl E2eHarness {
         self.send_json(
             self.authed(
                 Method::GET,
-                &format!("/api/v1/reports/{report_id}?ignorePagination=true"),
+                &format!("/api/v1/reports/{report_id}?perPage=1000"),
                 token,
             ),
             StatusCode::OK,
@@ -1448,20 +1448,100 @@ impl E2eHarness {
         .await
     }
 
-    pub async fn export_report_response(
+    pub async fn create_json_report_export_job(
+        &self,
+        token: &str,
+        report_id: &str,
+    ) -> Result<ReportExportJob> {
+        self.send_json(
+            self.authed(
+                Method::POST,
+                &format!("/api/v1/reports/{report_id}/exports"),
+                token,
+            )
+            .json(&serde_json::json!({ "format": "json" })),
+            StatusCode::ACCEPTED,
+            "create JSON report export job",
+        )
+        .await
+    }
+
+    pub async fn create_report_format_export_job(
         &self,
         token: &str,
         report_id: &str,
         report_format_id: &str,
-    ) -> Result<reqwest::Response> {
-        self.authed(
-            Method::GET,
-            &format!("/api/v1/reports/{report_id}/export?reportFormatId={report_format_id}"),
-            token,
+    ) -> Result<ReportExportJob> {
+        self.send_json(
+            self.authed(
+                Method::POST,
+                &format!("/api/v1/reports/{report_id}/exports"),
+                token,
+            )
+            .json(&serde_json::json!({ "reportFormatId": report_format_id })),
+            StatusCode::ACCEPTED,
+            "create report-format export job",
         )
-        .send()
         .await
-        .context("export report")
+    }
+
+    pub async fn get_job(&self, token: &str, job_id: &str) -> Result<ReportExportJob> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/jobs/{job_id}"), token),
+            StatusCode::OK,
+            "get job",
+        )
+        .await
+    }
+
+    pub async fn wait_for_job_succeeded(
+        &self,
+        token: &str,
+        job_id: &str,
+    ) -> Result<ReportExportJob> {
+        let deadline = Instant::now() + self.config.ready_timeout;
+        let mut last_status = String::from("job status not yet observed");
+
+        while Instant::now() < deadline {
+            let job = self.get_job(token, job_id).await?;
+            last_status = job.status.clone();
+            if job.status == "succeeded" {
+                return Ok(job);
+            }
+            if matches!(job.status.as_str(), "failed" | "cancelled" | "expired") {
+                bail!("job {job_id} reached terminal status {}", job.status);
+            }
+            tokio::time::sleep(self.config.poll_interval).await;
+        }
+
+        bail!(
+            "job {job_id} did not succeed within {:?}; last status: {last_status}",
+            self.config.ready_timeout
+        )
+    }
+
+    pub async fn download_json_report_export(
+        &self,
+        token: &str,
+        job_id: &str,
+    ) -> Result<ReportJsonExport> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/jobs/{job_id}/result"), token),
+            StatusCode::OK,
+            "download JSON report export",
+        )
+        .await
+    }
+
+    pub async fn download_report_export_response(
+        &self,
+        token: &str,
+        job_id: &str,
+    ) -> Result<reqwest::Response> {
+        self.authed(Method::GET, &format!("/api/v1/jobs/{job_id}/result"), token)
+            .send()
+            .await
+            .context("download report export")
     }
 
     pub async fn list_results_page(
@@ -2414,6 +2494,38 @@ pub struct Report {
     pub result_count: Option<ResultCount>,
     #[serde(default)]
     pub results: Vec<ScanResult>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ReportExportJob {
+    pub id: String,
+    pub kind: String,
+    pub status: String,
+    pub report: ResourceRef,
+    pub format: String,
+    #[serde(rename = "expiresAt")]
+    pub expires_at: Option<String>,
+    #[serde(rename = "resultLocation")]
+    pub result_location: Option<String>,
+    pub result: Option<JobResult>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct JobResult {
+    #[serde(rename = "contentType")]
+    pub content_type: Option<String>,
+    pub filename: Option<String>,
+    pub size: Option<u64>,
+    pub location: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ReportJsonExport {
+    pub report: Report,
+    #[serde(default)]
+    pub results: Vec<ScanResult>,
+    #[serde(rename = "generatedAt")]
+    pub generated_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

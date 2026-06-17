@@ -48,7 +48,7 @@
 | `report_from_structured_response` | Map `rust-gvm` report response models to REST Report schema |
 | `result_from_structured_response` | Map `rust-gvm` result response models to REST Result schema |
 | `pagination_defaults` | Missing page/perPage → defaults (1, 25) |
-| `pagination_bounds` | perPage > 1000 → clamped to 1000 |
+| `pagination_bounds` | perPage > 1000 → rejected or clamped to 1000 |
 | `filter_to_gmp_string` | Structured filter params → GMP filter expression |
 | `uuid_validation` | Invalid UUID → 400 error |
 | `severity_range_validation` | severity_min=-1 or >10 → 400 |
@@ -148,15 +148,18 @@ async fn test_server() -> TestServer {
 | Test | Request | Setup | Expected |
 |------|---------|-------|----------|
 | `list_reports` | `GET /api/v1/reports` | Reports exist | 200, summaries |
-| `get_report_with_results` | `GET /api/v1/reports/{id}` | Report exists | 200, includes results |
+| `get_report_with_results` | `GET /api/v1/reports/{id}` | Report exists | 200, includes requested result page |
 | `get_report_results_paginated` | `GET /api/v1/reports/{id}/results?page=1&perPage=50` | Large report | 200, 50 results |
 | `get_report_vulnerabilities_paginated` | `GET /api/v1/reports/{id}/vulnerabilities?page=1&perPage=50` | Report exists | 200, paginated vulnerability findings |
 | `get_report_tls_certificates_paginated` | `GET /api/v1/reports/{id}/tls-certificates?page=1&perPage=50` | Report exists | 200, paginated TLS certificate observations |
 | `get_report_errors_paginated` | `GET /api/v1/reports/{id}/errors?page=1&perPage=50` | Report exists | 200, paginated report errors |
 | `get_report_closed_cves_paginated` | `GET /api/v1/reports/{id}/closed-cves?page=1&perPage=50` | Report exists | 200, paginated closed CVE findings |
-| `export_report_pdf_by_format_id` | `GET /api/v1/reports/{id}/export?reportFormatId={pdf-format-id}` | Report exists + PDF report format exists | 200, `application/pdf` |
-| `export_report_csv_by_format_id` | `GET /api/v1/reports/{id}/export?reportFormatId={csv-format-id}` | Report exists + CSV report format exists | 200, `text/csv` |
-| `export_report_unknown_format` | `GET /api/v1/reports/{id}/export?reportFormatId={bad-id}` | Report exists | 404 |
+| `create_report_export_job_pdf` | `POST /api/v1/reports/{id}/exports` + PDF `reportFormatId` | Report exists + PDF report format exists | 202 + `Location: /api/v1/jobs/{jobId}` |
+| `create_report_export_job_csv` | `POST /api/v1/reports/{id}/exports` + CSV `reportFormatId` | Report exists + CSV report format exists | 202 + `Location: /api/v1/jobs/{jobId}` |
+| `create_report_export_job_json` | `POST /api/v1/reports/{id}/exports` + `format=json` | Report exists | 202 + `Location: /api/v1/jobs/{jobId}` |
+| `create_report_export_job_unknown_format` | `POST /api/v1/reports/{id}/exports` + bad `reportFormatId` | Report exists | 404 |
+| `get_report_export_job` | `GET /api/v1/jobs/{jobId}` | Export job exists | 200, job status |
+| `download_report_export_job_result` | `GET /api/v1/jobs/{jobId}/result` | Export job succeeded | 200, rendered artifact content type |
 
 ### 3.5a Discovery Helpers
 

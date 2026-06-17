@@ -12,6 +12,7 @@ mod credentials;
 mod error;
 mod feeds;
 mod identity;
+mod jobs;
 mod log_safety;
 mod port_lists;
 mod ports;
@@ -34,6 +35,7 @@ pub use credentials::*;
 pub use error::*;
 pub use feeds::*;
 pub use identity::*;
+pub use jobs::*;
 pub use log_safety::{hide_optional_value, hide_value, HiddenValue};
 pub use port_lists::*;
 pub use ports::*;
@@ -43,7 +45,7 @@ pub use scan_configs::*;
 pub use scanners::*;
 pub use schedules::*;
 pub use session::{
-    Session, SessionCreated, SessionInfo, SessionLimits, SessionManager, SessionState,
+    Session, SessionCreated, SessionHold, SessionInfo, SessionLimits, SessionManager, SessionState,
     SessionTokenDigest, DEFAULT_MAX_GLOBAL_SESSIONS, DEFAULT_MAX_SESSIONS_PER_USER,
 };
 pub use supporting_resources::*;

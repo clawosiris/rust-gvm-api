@@ -271,7 +271,7 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
         assert_report_format_round_trip(&harness, &session.token, pdf_report_format).await?;
         assert_report_format_round_trip(&harness, &session.token, csv_report_format).await?;
 
-        assert_report_export(
+        assert_report_format_export_job(
             &harness,
             &session.token,
             &report,
@@ -280,7 +280,7 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
             "pdf",
         )
         .await?;
-        assert_report_export(
+        assert_report_format_export_job(
             &harness,
             &session.token,
             &report,
@@ -289,6 +289,7 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
             "csv",
         )
         .await?;
+        assert_json_report_export_job(&harness, &session.token, &report).await?;
 
         let first_results_page = harness
             .get_report_results_page(&session.token, &action.report_id, 1, 1)
@@ -595,7 +596,70 @@ fn assert_report_list_contains(reports: &ListResponse<Report>, report: &Report, 
     );
 }
 
-async fn assert_report_export(
+async fn assert_json_report_export_job(
+    harness: &E2eHarness,
+    token: &str,
+    report: &Report,
+) -> Result<()> {
+    let created_job = harness
+        .create_json_report_export_job(token, &report.id)
+        .await?;
+    assert_eq!(
+        created_job.kind, "report_export",
+        "JSON report export returned unexpected job kind"
+    );
+    assert_eq!(
+        created_job.report.id, report.id,
+        "JSON report export job points at a different report"
+    );
+    assert_eq!(
+        created_job.format, "json",
+        "JSON report export job returned unexpected format"
+    );
+
+    let completed_job = harness
+        .wait_for_job_succeeded(token, &created_job.id)
+        .await?;
+    let expected_location = format!("/api/v1/jobs/{}/result", created_job.id);
+    assert_eq!(
+        completed_job.result_location.as_deref(),
+        Some(expected_location.as_str()),
+        "completed JSON report export job exposed unexpected result location"
+    );
+    assert!(
+        completed_job.expires_at.is_some(),
+        "completed JSON report export job did not expose expiresAt"
+    );
+
+    let result = completed_job
+        .result
+        .as_ref()
+        .context("completed JSON export job did not include result metadata")?;
+    assert_eq!(
+        result.content_type.as_deref(),
+        Some("application/json"),
+        "completed JSON export job reported unexpected content type"
+    );
+    assert!(
+        result.size.unwrap_or_default() > 0,
+        "completed JSON export job reported an empty artifact"
+    );
+
+    let export = harness
+        .download_json_report_export(token, &created_job.id)
+        .await?;
+    assert_eq!(
+        export.report.id, report.id,
+        "downloaded JSON export contains a different report"
+    );
+    assert!(
+        export.generated_at.is_some(),
+        "downloaded JSON export did not include generatedAt"
+    );
+    Ok(())
+}
+
+async fn assert_report_format_export_job(
     harness: &E2eHarness,
     token: &str,
     report: &Report,
@@ -603,8 +667,32 @@ async fn assert_report_export(
     expected_content_type: &str,
     expected_extension: &str,
 ) -> Result<()> {
+    let created_job = harness
+        .create_report_format_export_job(token, &report.id, report_format_id)
+        .await?;
+    assert_eq!(
+        created_job.kind, "report_export",
+        "report-format export returned unexpected job kind"
+    );
+    assert_eq!(
+        created_job.report.id, report.id,
+        "report-format export job points at a different report"
+    );
+    assert_eq!(
+        created_job.format, "gvmd_report_format",
+        "report-format export job returned unexpected format"
+    );
+
+    let completed_job = harness
+        .wait_for_job_succeeded(token, &created_job.id)
+        .await?;
+    assert!(
+        completed_job.expires_at.is_some(),
+        "completed report-format export job did not expose expiresAt"
+    );
+
     let response = harness
-        .export_report_response(token, &report.id, report_format_id)
+        .download_report_export_response(token, &created_job.id)
         .await?;
     let status = response.status();
     let headers = response.headers().clone();

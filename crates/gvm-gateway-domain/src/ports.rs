@@ -16,12 +16,12 @@ use crate::{
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
     ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
     OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportFormat, ReportFormatPage, ReportPage, ReportQuery,
-    ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery,
-    ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage, ScheduleQuery,
-    SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task, TaskAction,
-    TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery,
+    ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
+    ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
+    ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
+    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User,
+    UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Port for system information needed by the gateway.
@@ -408,7 +408,7 @@ pub trait ReportPort: Send + Sync + 'static {
         &self,
         session_token: &str,
         report_id: &str,
-        report_format_id: &str,
+        request: &ReportExportRequest,
     ) -> Result<ReportExport, GatewayError>;
 
     /// Delete a report by identifier.

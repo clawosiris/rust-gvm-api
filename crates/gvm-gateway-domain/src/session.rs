@@ -180,13 +180,31 @@ struct StoredSession {
     state: SessionState,
     created_at: u64,
     last_used_at: u64,
+    hold_count: u64,
 }
 
 impl StoredSession {
     fn is_expired_at(&self, now: u64, idle_timeout_secs: u64) -> bool {
         match self.state {
+            SessionState::Active if self.hold_count > 0 => false,
             SessionState::Active => now.saturating_sub(self.last_used_at) >= idle_timeout_secs,
             SessionState::Expired => true,
+        }
+    }
+}
+
+/// RAII guard that keeps a session active while backend work depends on it.
+pub struct SessionHold {
+    inner: Arc<Mutex<HashMap<SessionTokenDigest, StoredSession>>>,
+    token_digest: SessionTokenDigest,
+}
+
+impl Drop for SessionHold {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.inner.lock() {
+            if let Some(session) = guard.get_mut(&self.token_digest) {
+                session.hold_count = session.hold_count.saturating_sub(1);
+            }
         }
     }
 }
@@ -267,6 +285,7 @@ impl SessionManager {
             state: SessionState::Active,
             created_at: now,
             last_used_at: now,
+            hold_count: 0,
         };
         let mut guard = self.inner.lock().map_err(|_| {
             GatewayError::BackendUnavailable("session registry unavailable".to_string())
@@ -314,9 +333,11 @@ impl SessionManager {
 
         let (state, expires_in) = if stored.is_expired_at(now, self.idle_timeout_secs) {
             (SessionState::Expired, 0)
+        } else if stored.hold_count > 0 {
+            (SessionState::Active, self.idle_timeout_secs.max(1) as i64)
         } else {
             let elapsed = now.saturating_sub(stored.last_used_at);
-            let remaining = (self.idle_timeout_secs - elapsed) as i64;
+            let remaining = self.idle_timeout_secs.saturating_sub(elapsed) as i64;
             (SessionState::Active, remaining)
         };
 
@@ -351,6 +372,31 @@ impl SessionManager {
             token: token.to_string(),
             user: stored.user.clone(),
             state: SessionState::Active,
+        })
+    }
+
+    /// Hold an active session so idle cleanup does not remove it while
+    /// asynchronous backend work is still using the associated connection.
+    pub fn hold(&self, token: &str) -> Result<SessionHold, GatewayError> {
+        let now = now_secs();
+        let mut guard = self.inner.lock().map_err(|_| {
+            GatewayError::BackendUnavailable("session registry unavailable".to_string())
+        })?;
+        let token_digest = SessionTokenDigest::from_token(token);
+        let stored = guard
+            .get_mut(&token_digest)
+            .ok_or_else(|| GatewayError::SessionInvalidated("missing session".to_string()))?;
+
+        if stored.is_expired_at(now, self.idle_timeout_secs) {
+            stored.state = SessionState::Expired;
+            return Err(GatewayError::SessionExpired("session expired".to_string()));
+        }
+
+        stored.hold_count = stored.hold_count.saturating_add(1);
+        stored.last_used_at = now;
+        Ok(SessionHold {
+            inner: Arc::clone(&self.inner),
+            token_digest,
         })
     }
 
@@ -881,5 +927,66 @@ mod tests {
 
         let drained = manager.drain_expired().unwrap();
         assert_eq!(drained.len(), 1);
+    }
+
+    /// Session holds protect active backend work from idle cleanup.
+    #[test]
+    fn session_manager_hold_prevents_idle_drain() {
+        let manager = SessionManager::new(1);
+        let session = manager.create("alice").unwrap();
+        let _hold = manager.hold(&session.token).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        let drained = manager.drain_expired().unwrap();
+
+        assert!(drained.is_empty());
+        assert!(manager.get(&session.token).unwrap().is_some());
+    }
+
+    /// get_info reports held sessions as active with a positive lifetime while
+    /// backend work has suspended idle expiry.
+    #[test]
+    fn session_manager_get_info_held_session_reports_positive_expiry() {
+        let manager = SessionManager::new(1);
+        let session = manager.create("alice").unwrap();
+        let _hold = manager.hold(&session.token).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        let info = manager.get_info(&session.token).unwrap();
+
+        assert_eq!(info.state, SessionState::Active);
+        assert!(info.expires_in > 0);
+    }
+
+    /// Dropping the last hold restores the normal idle expiry behavior.
+    #[test]
+    fn session_manager_drain_expires_after_hold_drop() {
+        let manager = SessionManager::new(1);
+        let session = manager.create("alice").unwrap();
+        let hold = manager.hold(&session.token).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        drop(hold);
+
+        let drained = manager.drain_expired().unwrap();
+
+        assert_eq!(
+            drained,
+            vec![SessionTokenDigest::from_token(&session.token)]
+        );
+        assert!(manager.get(&session.token).unwrap().is_none());
+    }
+
+    /// Explicit session removal wins over a hold and leaves guard drop harmless.
+    #[test]
+    fn session_manager_remove_while_held_invalidates_session() {
+        let manager = SessionManager::default();
+        let session = manager.create("alice").unwrap();
+        let hold = manager.hold(&session.token).unwrap();
+
+        let removed = manager.remove(&session.token).unwrap();
+        drop(hold);
+
+        assert!(removed.is_some());
+        assert!(manager.get(&session.token).unwrap().is_none());
     }
 }

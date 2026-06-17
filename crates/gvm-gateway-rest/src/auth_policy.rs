@@ -110,8 +110,8 @@ mod tests {
             "/api/v1/version"
         );
         assert_eq!(
-            runtime_path_from_openapi_path("/reports/{id}/export"),
-            "/api/v1/reports/{id}/export"
+            runtime_path_from_openapi_path("/reports/{id}/exports"),
+            "/api/v1/reports/{id}/exports"
         );
     }
 }

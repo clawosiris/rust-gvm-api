@@ -10,8 +10,10 @@ authors.workspace = true
 
 [dependencies]
 gvm-gateway-domain = { path = "../gvm-gateway-domain" }
+serde_json.workspace = true
 tokio = { workspace = true, features = ["rt", "time"] }
 tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true

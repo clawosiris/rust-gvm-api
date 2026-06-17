@@ -3,13 +3,20 @@
 
 #![cfg(test)]
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use gvm_gateway_domain::{
-    CreateTargetInput, GatewayError, GetReportOpts, ModifyTargetInput, ReadinessStatus,
-    ReportQuery, ResultQuery, SessionLimits, SessionManager, SystemPort, TargetQuery,
+    CreateReportExportRequest, CreateTargetInput, GatewayError, GetReportOpts,
+    GvmdReportFormatExportRequest, JobStatus, JsonReportExportRequest, ModifyTargetInput,
+    Pagination, ReadinessStatus, Report, ReportExport, ReportExportJob, ReportExportRequest,
+    ReportPage, ReportPort, ReportQuery, ResourceRef, ResultPage, ResultQuery, ScanResult,
+    SessionLimits, SessionManager, SystemPort, TargetQuery, TlsCertificatePage,
 };
+use tokio::sync::Notify;
 
 use crate::{service::safe_session_id, test_support::*, GatewayService, SessionReaper};
 
@@ -290,6 +297,780 @@ async fn service_export_report_requires_valid_session() {
         .export_report("invalid-token", "some-report-id", "some-report-format-id")
         .await;
     assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+}
+
+/// Creating an asynchronous report export job rejects unknown sessions before queuing work.
+#[tokio::test]
+async fn service_create_report_export_job_requires_valid_session() {
+    let service = create_test_service();
+    let result = service
+        .create_report_export_job(
+            "invalid-token",
+            "some-report-id",
+            CreateReportExportRequest::Json(JsonReportExportRequest {
+                filter: None,
+                filter_id: None,
+            }),
+        )
+        .await;
+
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+}
+
+/// Created report export jobs are visible through the job-status use case.
+#[tokio::test]
+async fn service_create_report_export_job_returns_pollable_job() {
+    let service = create_test_service_with_report_port(Arc::new(ExistingReportPort));
+    let session = service.session_manager().create("admin").unwrap();
+
+    let job = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::Json(JsonReportExportRequest {
+                filter: None,
+                filter_id: None,
+            }),
+        )
+        .await
+        .expect("job should be accepted");
+    let fetched = service
+        .get_job(&session.token, &job.id)
+        .await
+        .expect("created job should be pollable");
+
+    assert_eq!(fetched.id, job.id);
+    assert_eq!(fetched.report.id, "123e4567-e89b-12d3-a456-426614174000");
+    assert!(matches!(
+        fetched.status,
+        JobStatus::Queued | JobStatus::Running | JobStatus::Failed
+    ));
+}
+
+/// Gvmd report-format export jobs preserve report config and result filter
+/// options so the gvmd adapter can render the documented request shape.
+#[tokio::test]
+async fn service_gvmd_report_export_job_forwards_export_options() {
+    let captured = Arc::new(Mutex::new(None));
+    let service = create_test_service_with_report_port(Arc::new(CapturingReportPort {
+        captured: Arc::clone(&captured),
+    }));
+    let session = service.session_manager().create("admin").unwrap();
+
+    let job = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::GvmdReportFormat(GvmdReportFormatExportRequest {
+                report_format_id: "123e4567-e89b-12d3-a456-426614174111".to_string(),
+                report_config_id: Some("123e4567-e89b-12d3-a456-426614174222".to_string()),
+                filter: Some("severity>5".to_string()),
+                filter_id: Some("123e4567-e89b-12d3-a456-426614174333".to_string()),
+            }),
+        )
+        .await
+        .expect("job should be accepted");
+    wait_for_job_status(&service, &session.token, &job.id, JobStatus::Succeeded).await;
+
+    let forwarded = captured
+        .lock()
+        .expect("captured export request mutex should not be poisoned")
+        .clone()
+        .expect("worker should call the report export port");
+    assert_eq!(
+        forwarded,
+        ReportExportRequest {
+            report_format_id: "123e4567-e89b-12d3-a456-426614174111".to_string(),
+            report_config_id: Some("123e4567-e89b-12d3-a456-426614174222".to_string()),
+            filter: Some("severity>5".to_string()),
+            filter_id: Some("123e4567-e89b-12d3-a456-426614174333".to_string()),
+        }
+    );
+}
+
+/// Terminal jobs expose an expiry timestamp and are purged after retention.
+#[tokio::test]
+async fn service_report_export_jobs_expire_after_terminal_retention() {
+    let service = create_test_service_with_report_port(Arc::new(ExistingReportPort));
+    service.set_job_policy_for_tests(1000, 1);
+    let session = service.session_manager().create("admin").unwrap();
+
+    // The short retention locks the background cleanup contract without waiting
+    // for the production 15-minute expiry window.
+    let job = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::Json(JsonReportExportRequest {
+                filter: None,
+                filter_id: None,
+            }),
+        )
+        .await
+        .expect("job should be accepted");
+
+    let mut terminal = None;
+    for _ in 0..20 {
+        let fetched = service
+            .get_job(&session.token, &job.id)
+            .await
+            .expect("job should be visible before expiry");
+        if fetched.status.is_terminal() {
+            terminal = Some(fetched);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    let terminal = terminal.expect("job should reach a terminal state");
+    assert!(terminal.completed_at.is_some());
+    assert!(terminal.expires_at.is_some());
+
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    service.job_reaper().sweep_once_for_test().await;
+    assert_eq!(service.retained_job_count_for_tests(), 0);
+    let expired = service.get_job(&session.token, &job.id).await;
+    assert!(matches!(expired, Err(GatewayError::NotFound(_))));
+}
+
+/// Job creation fails with backpressure once the retained job cap is reached.
+#[tokio::test]
+async fn service_report_export_jobs_enforce_capacity_limit() {
+    let service = create_test_service_with_report_port(Arc::new(ExistingReportPort));
+    service.set_job_policy_for_tests(1, 900);
+    let session = service.session_manager().create("admin").unwrap();
+
+    let first = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::Json(JsonReportExportRequest {
+                filter: None,
+                filter_id: None,
+            }),
+        )
+        .await;
+    assert!(first.is_ok());
+
+    let second = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::Json(JsonReportExportRequest {
+                filter: None,
+                filter_id: None,
+            }),
+        )
+        .await;
+    assert!(matches!(second, Err(GatewayError::TooManyRequests(_))));
+}
+
+/// Missing reports are rejected before a background export job is queued.
+#[tokio::test]
+async fn service_create_report_export_job_preflights_report_existence() {
+    let service = create_test_service_with_report_port(Arc::new(MissingReportPort));
+    let session = service.session_manager().create("admin").unwrap();
+
+    let result = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::Json(JsonReportExportRequest {
+                filter: None,
+                filter_id: None,
+            }),
+        )
+        .await;
+
+    assert!(matches!(result, Err(GatewayError::NotFound(_))));
+    assert_eq!(service.retained_job_count_for_tests(), 0);
+}
+
+/// Running export jobs hold their creating session so the idle reaper does not
+/// remove the gvmd connection while background report retrieval is in progress.
+#[tokio::test]
+async fn service_report_export_job_holds_session_during_background_work() {
+    let release = Arc::new(Notify::new());
+    let service = create_test_service_with_report_port_and_sessions(
+        Arc::new(BlockingReportPort {
+            release: Arc::clone(&release),
+        }),
+        Arc::new(SessionManager::new(1)),
+    );
+    let session = service.session_manager().create("admin").unwrap();
+
+    let job = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::Json(JsonReportExportRequest {
+                filter: None,
+                filter_id: None,
+            }),
+        )
+        .await
+        .expect("job should be accepted");
+    wait_for_job_status(&service, &session.token, &job.id, JobStatus::Running).await;
+
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let drained = service.session_manager().drain_expired().unwrap();
+
+    release.notify_waiters();
+    assert!(drained.is_empty());
+    assert!(service
+        .session_manager()
+        .get(&session.token)
+        .unwrap()
+        .is_some());
+}
+
+/// Deleting a session cancels non-terminal jobs that were started from that
+/// session instead of leaving them to continue with an invalid backend login.
+#[tokio::test]
+async fn service_delete_session_cancels_running_report_export_job() {
+    let release = Arc::new(Notify::new());
+    let service = create_test_service_with_report_port(Arc::new(BlockingReportPort {
+        release: Arc::clone(&release),
+    }));
+    let session = service.session_manager().create("admin").unwrap();
+
+    let job = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::Json(JsonReportExportRequest {
+                filter: None,
+                filter_id: None,
+            }),
+        )
+        .await
+        .expect("job should be accepted");
+    wait_for_job_status(&service, &session.token, &job.id, JobStatus::Running).await;
+
+    service
+        .delete_session(&session.token)
+        .await
+        .expect("session deletion should succeed");
+    release.notify_waiters();
+
+    let replacement_session = service.session_manager().create("admin").unwrap();
+    let cancelled = service
+        .get_job(&replacement_session.token, &job.id)
+        .await
+        .expect("same user should still see retained cancelled job");
+    assert_eq!(cancelled.status, JobStatus::Cancelled);
+}
+
+/// A late abort-handle attachment must not resurrect cancellability after the
+/// job has already reached a terminal state.
+#[tokio::test]
+async fn service_cancelled_report_export_job_rejects_late_abort_handle() {
+    let release = Arc::new(Notify::new());
+    let service = create_test_service_with_report_port(Arc::new(BlockingReportPort {
+        release: Arc::clone(&release),
+    }));
+    let session = service.session_manager().create("admin").unwrap();
+
+    let job = service
+        .create_report_export_job(
+            &session.token,
+            "123e4567-e89b-12d3-a456-426614174000",
+            CreateReportExportRequest::Json(JsonReportExportRequest {
+                filter: None,
+                filter_id: None,
+            }),
+        )
+        .await
+        .expect("job should be accepted");
+    wait_for_job_status(&service, &session.token, &job.id, JobStatus::Running).await;
+
+    service
+        .cancel_job(&session.token, &job.id)
+        .await
+        .expect("job cancellation should succeed");
+
+    let late_worker = tokio::spawn(async {
+        std::future::pending::<()>().await;
+    });
+    service
+        .attach_abort_handle_for_tests(&job.id, late_worker.abort_handle())
+        .expect("late abort-handle attachment should be handled");
+    let join_error = late_worker
+        .await
+        .expect_err("late worker should be aborted immediately");
+
+    release.notify_waiters();
+    assert!(join_error.is_cancelled());
+    assert!(!service.job_has_abort_handle_for_tests(&job.id));
+}
+
+fn create_test_service_with_report_port(report_port: Arc<dyn ReportPort>) -> GatewayService {
+    create_test_service_with_report_port_and_sessions(
+        report_port,
+        Arc::new(SessionManager::default()),
+    )
+}
+
+fn create_test_service_with_report_port_and_sessions(
+    report_port: Arc<dyn ReportPort>,
+    sessions: Arc<SessionManager>,
+) -> GatewayService {
+    GatewayService::new(
+        Arc::new(MockSystemPort {
+            ready: true,
+            gmp_version: "22.7".to_string(),
+        }),
+        Arc::new(MockAlertPort),
+        Arc::new(MockSchedulePort),
+        Arc::new(MockCredentialPort),
+        Arc::new(MockPortListPort),
+        Arc::new(MockFeedPort),
+        Arc::new(MockIdentityPort),
+        Arc::new(MockTargetPort::default()),
+        Arc::new(MockTaskPort),
+        Arc::new(MockAuthPort::default()),
+        report_port,
+        Arc::new(MockResultPort),
+        Arc::new(MockScanConfigPort),
+        Arc::new(MockScannerPort),
+        Arc::new(MockSupportingResourcePort),
+        sessions,
+    )
+}
+
+async fn wait_for_job_status(
+    service: &GatewayService,
+    session_token: &str,
+    job_id: &str,
+    expected: JobStatus,
+) -> ReportExportJob {
+    for _ in 0..20 {
+        let fetched = service
+            .get_job(session_token, job_id)
+            .await
+            .expect("job should be visible while waiting for status");
+        if fetched.status == expected {
+            return fetched;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("job {job_id} did not reach status {expected:?}");
+}
+
+struct BlockingReportPort {
+    release: Arc<Notify>,
+}
+
+#[async_trait]
+impl ReportPort for BlockingReportPort {
+    async fn list_reports(&self, _: &str, query: &ReportQuery) -> Result<ReportPage, GatewayError> {
+        Ok(ReportPage {
+            data: vec![test_report("123e4567-e89b-12d3-a456-426614174000")],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 1,
+                total_pages: 1,
+            },
+        })
+    }
+
+    async fn get_report(
+        &self,
+        _: &str,
+        id: &str,
+        _: &GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        Ok(test_report(id))
+    }
+
+    async fn export_report(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ReportExportRequest,
+    ) -> Result<ReportExport, GatewayError> {
+        self.release.notified().await;
+        Ok(ReportExport {
+            bytes: b"export".to_vec(),
+            content_type: Some("text/plain".to_string()),
+            extension: Some("txt".to_string()),
+        })
+    }
+
+    async fn delete_report(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn get_report_results(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        self.release.notified().await;
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        Ok(TlsCertificatePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_errors(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_closed_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+}
+
+struct ExistingReportPort;
+
+#[async_trait]
+impl ReportPort for ExistingReportPort {
+    async fn list_reports(&self, _: &str, query: &ReportQuery) -> Result<ReportPage, GatewayError> {
+        Ok(ReportPage {
+            data: vec![test_report("123e4567-e89b-12d3-a456-426614174000")],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 1,
+                total_pages: 1,
+            },
+        })
+    }
+
+    async fn get_report(
+        &self,
+        _: &str,
+        id: &str,
+        _: &GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        Ok(test_report(id))
+    }
+
+    async fn export_report(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ReportExportRequest,
+    ) -> Result<ReportExport, GatewayError> {
+        Ok(ReportExport {
+            bytes: b"export".to_vec(),
+            content_type: Some("text/plain".to_string()),
+            extension: Some("txt".to_string()),
+        })
+    }
+
+    async fn delete_report(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn get_report_results(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        Ok(TlsCertificatePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_errors(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_closed_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+}
+
+struct CapturingReportPort {
+    captured: Arc<Mutex<Option<ReportExportRequest>>>,
+}
+
+#[async_trait]
+impl ReportPort for CapturingReportPort {
+    async fn list_reports(&self, _: &str, query: &ReportQuery) -> Result<ReportPage, GatewayError> {
+        Ok(ReportPage {
+            data: vec![test_report("123e4567-e89b-12d3-a456-426614174000")],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 1,
+                total_pages: 1,
+            },
+        })
+    }
+
+    async fn get_report(
+        &self,
+        _: &str,
+        id: &str,
+        _: &GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        Ok(test_report(id))
+    }
+
+    async fn export_report(
+        &self,
+        _: &str,
+        _: &str,
+        request: &ReportExportRequest,
+    ) -> Result<ReportExport, GatewayError> {
+        *self
+            .captured
+            .lock()
+            .expect("captured export request mutex should not be poisoned") = Some(request.clone());
+        Ok(ReportExport {
+            bytes: b"export".to_vec(),
+            content_type: Some("text/plain".to_string()),
+            extension: Some("txt".to_string()),
+        })
+    }
+
+    async fn delete_report(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn get_report_results(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        Ok(TlsCertificatePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_errors(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_closed_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+}
+
+struct MissingReportPort;
+
+#[async_trait]
+impl ReportPort for MissingReportPort {
+    async fn list_reports(&self, _: &str, query: &ReportQuery) -> Result<ReportPage, GatewayError> {
+        Ok(ReportPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report(
+        &self,
+        _: &str,
+        id: &str,
+        _: &GetReportOpts,
+    ) -> Result<Report, GatewayError> {
+        Err(GatewayError::NotFound(format!("report {id} not found")))
+    }
+
+    async fn export_report(
+        &self,
+        _: &str,
+        id: &str,
+        _: &ReportExportRequest,
+    ) -> Result<ReportExport, GatewayError> {
+        Err(GatewayError::NotFound(format!("report {id} not found")))
+    }
+
+    async fn delete_report(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("report {id} not found")))
+    }
+
+    async fn get_report_results(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_vulnerabilities(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_tls_certificates(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<TlsCertificatePage, GatewayError> {
+        Ok(TlsCertificatePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_errors(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+
+    async fn get_report_closed_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ResultPage, GatewayError> {
+        Ok(empty_result_page(query))
+    }
+}
+
+fn test_report(id: &str) -> Report {
+    Report {
+        id: id.to_string(),
+        task: Some(ResourceRef {
+            id: "223e4567-e89b-12d3-a456-426614174000".to_string(),
+            name: Some("Task".to_string()),
+        }),
+        scan_start: None,
+        scan_end: None,
+        severity: Some(0.0),
+        result_count: None,
+        results: vec![],
+    }
+}
+
+fn empty_result_page(query: &ResultQuery) -> ResultPage {
+    ResultPage {
+        data: Vec::<ScanResult>::new(),
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total: 0,
+            total_pages: 0,
+        },
+    }
 }
 
 /// Report deletion rejects unknown session tokens before hitting the port.

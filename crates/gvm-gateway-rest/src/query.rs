@@ -59,9 +59,15 @@ pub(crate) fn parse_collection_query(query: &str) -> Result<CollectionQueryParam
                 })?);
             }
             "perPage" | "per_page" => {
-                per_page = Some(value.parse::<u32>().map_err(|_| {
+                let parsed_per_page = value.parse::<u32>().map_err(|_| {
                     GatewayError::InvalidInput("perPage must be a positive integer".to_string())
-                })?);
+                })?;
+                if parsed_per_page == 0 || parsed_per_page > 1000 {
+                    return Err(GatewayError::InvalidInput(
+                        "perPage must be between 1 and 1000".to_string(),
+                    ));
+                }
+                per_page = Some(parsed_per_page);
             }
             _ => {}
         }
@@ -78,7 +84,7 @@ pub(crate) fn parse_collection_query(query: &str) -> Result<CollectionQueryParam
         filter_string,
         filter_id,
         page,
-        per_page: per_page.unwrap_or(25).clamp(1, 1000),
+        per_page: per_page.unwrap_or(25),
     })
 }
 
@@ -103,26 +109,6 @@ pub(crate) fn parse_filter_only_query(query: &str) -> Result<FilterOnlyQueryPara
     })
 }
 
-pub(crate) fn parse_required_uuid_query_param(
-    query: &str,
-    param_name: &'static str,
-) -> Result<String, GatewayError> {
-    for (key, value) in decoded_query_pairs(query) {
-        if key == param_name {
-            validate_uuid(param_name, value.as_ref())?;
-            return Ok(value.into_owned());
-        }
-    }
-
-    Err(GatewayError::InvalidInput(format!(
-        "{param_name} is required"
-    )))
-}
-
-pub(crate) fn query_flag_is_true(query: &str, param_name: &str) -> bool {
-    decoded_query_pairs(query).any(|(key, value)| key == param_name && value == "true")
-}
-
 pub(crate) fn parse_delete_resource_query(query: &str) -> Result<bool, GatewayError> {
     let mut ultimate = false;
 
@@ -141,10 +127,7 @@ pub(crate) fn parse_delete_resource_query(query: &str) -> Result<bool, GatewayEr
 mod tests {
     use gvm_gateway_domain::GatewayError;
 
-    use super::{
-        parse_collection_query, parse_delete_resource_query, parse_filter_only_query,
-        parse_required_uuid_query_param, query_flag_is_true,
-    };
+    use super::{parse_collection_query, parse_delete_resource_query, parse_filter_only_query};
 
     #[test]
     fn collection_query_decodes_reserved_characters_and_plus_spaces() {
@@ -186,26 +169,14 @@ mod tests {
     }
 
     #[test]
-    fn required_uuid_query_param_decodes_before_validation() {
-        let parsed = parse_required_uuid_query_param(
-            "reportFormatId=123e4567%2De89b%2D12d3%2Da456%2D426614174000",
-            "reportFormatId",
-        )
-        .expect("encoded report format uuid should validate");
+    fn collection_query_rejects_oversized_page_size() {
+        let error = parse_collection_query("perPage=1001")
+            .expect_err("perPage above the documented maximum should fail");
 
-        assert_eq!(parsed, "123e4567-e89b-12d3-a456-426614174000");
-    }
-
-    #[test]
-    fn boolean_flag_uses_decoded_query_values() {
-        assert!(query_flag_is_true(
-            "ignorePagination=%74rue",
-            "ignorePagination"
-        ));
-        assert!(!query_flag_is_true(
-            "ignorePagination=false",
-            "ignorePagination"
-        ));
+        assert_eq!(
+            error,
+            GatewayError::InvalidInput("perPage must be between 1 and 1000".to_string())
+        );
     }
 
     #[test]

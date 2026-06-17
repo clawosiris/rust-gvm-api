@@ -316,7 +316,6 @@ fn report_query_default() {
 #[test]
 fn get_report_opts_default_embeds_first_result_page() {
     let opts = GetReportOpts::default();
-    assert!(!opts.ignore_pagination);
     assert_eq!(opts.page, 1);
     assert_eq!(opts.per_page, 25);
 }

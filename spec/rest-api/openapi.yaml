@@ -61,6 +61,10 @@ tags:
     description: Scan task management and control
   - name: Reports
     description: Scan report retrieval and export
+  - name: Report Exports
+    description: Asynchronous report export jobs
+  - name: Jobs
+    description: Asynchronous job status and result retrieval
   - name: Results
     description: Individual scan result retrieval
   - name: Scan Configs
@@ -129,8 +133,8 @@ paths:
     $ref: './reports.yaml#/paths/~1reports'
   /reports/{id}:
     $ref: './reports.yaml#/paths/~1reports~1{id}'
-  /reports/{id}/export:
-    $ref: './reports.yaml#/paths/~1reports~1{id}~1export'
+  /reports/{id}/exports:
+    $ref: './report-exports.yaml#/paths/~1reports~1{id}~1exports'
   /reports/{id}/results:
     $ref: './reports.yaml#/paths/~1reports~1{id}~1results'
   /reports/{id}/vulnerabilities:
@@ -145,6 +149,10 @@ paths:
     $ref: './results.yaml#/paths/~1results'
   /results/{id}:
     $ref: './results.yaml#/paths/~1results~1{id}'
+  /jobs/{id}:
+    $ref: './report-exports.yaml#/paths/~1jobs~1{id}'
+  /jobs/{id}/result:
+    $ref: './report-exports.yaml#/paths/~1jobs~1{id}~1result'
   /scan-configs:
     $ref: './scan-configs.yaml#/paths/~1scan-configs'
   /scan-configs/{id}:
