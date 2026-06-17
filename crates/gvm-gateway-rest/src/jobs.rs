@@ -406,7 +406,7 @@ pub(crate) fn cancel_job_docs(op: TransformOperation<'_>) -> TransformOperation<
         .input::<Path<ResourceIdPathDoc>>()
         .response_with::<202, (), _>(|response| response.description("Cancellation requested"))
         .response_with::<204, (), _>(|response| {
-            response.description("Job already completed or removed")
+            response.description("Job already reached a terminal state")
         });
 
     let op = problem_response::<401>(op, "Authentication required or session expired");

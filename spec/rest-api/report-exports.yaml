@@ -87,7 +87,7 @@ paths:
             traceparent:
               $ref: "./common.yaml#/components/headers/Traceparent"
         "204":
-          description: Job already completed or removed
+          description: Job already reached a terminal state
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "404":
