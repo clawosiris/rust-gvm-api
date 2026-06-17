@@ -40,9 +40,9 @@ fi
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 grep -F "dst: /etc/gvm-gateway" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
 grep -F "dst: /etc/gvm-gateway/gvm-gateway.toml.example" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
-grep -F "postinstall: ./packaging/scripts/postinstall" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
-grep -F "preremove: ./packaging/scripts/preremove" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
-grep -F "postremove: ./packaging/scripts/postremove" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
+grep -F "postinstall: ./dist/package-work/scripts/postinstall" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
+grep -F "preremove: ./dist/package-work/scripts/preremove" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
+grep -F "postremove: ./dist/package-work/scripts/postremove" "${ROOT_DIR}/packaging/nfpm.yaml.tpl" >/dev/null
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker not found; skipping package smoke test" >&2

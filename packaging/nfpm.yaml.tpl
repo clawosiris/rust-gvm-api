@@ -28,9 +28,9 @@ contents:
   - src: ./dist/package-root/usr/share/licenses/gvm-gateway/LICENSE
     dst: /usr/share/licenses/gvm-gateway/LICENSE
 scripts:
-  postinstall: ./packaging/scripts/postinstall
-  preremove: ./packaging/scripts/preremove
-  postremove: ./packaging/scripts/postremove
+  postinstall: ./dist/package-work/scripts/postinstall
+  preremove: ./dist/package-work/scripts/preremove
+  postremove: ./dist/package-work/scripts/postremove
 overrides:
   deb:
     depends:
