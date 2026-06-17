@@ -3,9 +3,10 @@
 
 use anyhow::{Context, Result};
 use gvm_gateway_e2e::harness::{
-    Alert, CreatedResource, E2eHarness, ListResponse, Schedule, SessionResponse, Timezone,
+    Alert, CreatedResource, E2eHarness, ListResponse, Schedule, SessionResponse,
 };
 
+const SCHEDULE_TIMEZONE: &str = "UTC";
 const SCHEDULE_ICALENDAR: &str = "BEGIN:VCALENDAR\n\
 VERSION:2.0\n\
 PRODID:-//Greenbone//rust-gvm-api e2e//EN\n\
@@ -24,22 +25,20 @@ async fn rest_automation_schedule_lifecycle_creates_reads_lists_and_deletes() ->
     let mut schedule_id = None;
 
     let run = async {
-        let timezones = harness.list_timezones(&session.token).await?;
-        let timezone = select_schedule_timezone(&timezones)?;
         let schedule_name = harness.unique_name("nightly-automation-schedule");
         let created = harness
             .create_schedule(
                 &session.token,
                 &schedule_name,
                 SCHEDULE_ICALENDAR,
-                &timezone.name,
+                SCHEDULE_TIMEZONE,
             )
             .await?;
         assert_created_location(&created, "/api/v1/schedules");
         schedule_id = Some(created.id.clone());
 
         let schedule = harness.get_schedule(&session.token, &created.id).await?;
-        assert_schedule_matches_created(&schedule, &created.id, &schedule_name, &timezone.name);
+        assert_schedule_matches_created(&schedule, &created.id, &schedule_name, SCHEDULE_TIMEZONE);
 
         let schedules = harness.list_schedules(&session.token).await?;
         assert!(
@@ -136,18 +135,6 @@ async fn finish_session(
     }
 
     run
-}
-
-fn select_schedule_timezone(timezones: &[Timezone]) -> Result<&Timezone> {
-    timezones
-        .iter()
-        .find(|timezone| timezone.name == "Europe/Berlin")
-        .or_else(|| {
-            timezones
-                .iter()
-                .find(|timezone| !timezone.name.trim().is_empty())
-        })
-        .with_context(|| "timezone catalog did not return a usable timezone".to_string())
 }
 
 fn assert_created_location(created: &CreatedResource, collection_path: &str) {

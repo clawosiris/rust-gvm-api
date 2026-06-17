@@ -80,8 +80,8 @@ use crate::{
     scanners::{get_scanner, get_scanner_docs, list_scanners, list_scanners_docs},
     schedules::{
         create_schedule, create_schedule_docs, delete_schedule, delete_schedule_docs, get_schedule,
-        get_schedule_docs, list_schedules, list_schedules_docs, list_timezones,
-        list_timezones_docs, update_schedule, update_schedule_docs,
+        get_schedule_docs, list_schedules, list_schedules_docs, update_schedule,
+        update_schedule_docs,
     },
     security::{request_scoped_basic_auth_middleware, security_middleware, SecurityRuntime},
     sessions::{
@@ -222,10 +222,6 @@ fn documented_router() -> ApiRouter<GatewayService> {
             delete_with(delete_alert, delete_alert_docs),
         )
         // Schedules
-        .api_route(
-            "/api/v1/timezones",
-            get_with(list_timezones, list_timezones_docs),
-        )
         .api_route(
             "/api/v1/schedules",
             get_with(list_schedules, list_schedules_docs),

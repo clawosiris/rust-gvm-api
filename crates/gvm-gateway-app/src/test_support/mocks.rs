@@ -22,7 +22,7 @@ use gvm_gateway_domain::{
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
     SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -99,13 +99,6 @@ pub(crate) struct MockSchedulePort;
 
 #[async_trait]
 impl SchedulePort for MockSchedulePort {
-    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
-        Ok(vec![Timezone {
-            name: "UTC".to_string(),
-            display_name: Some("UTC".to_string()),
-        }])
-    }
-
     async fn list_schedules(
         &self,
         _: &str,

@@ -5,7 +5,7 @@
 
 use std::{
     collections::HashMap,
-    fmt, fs,
+    fmt,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -32,8 +32,8 @@ use gvm_gateway_domain::{
     Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort,
     ScheduleQuery, SessionTokenDigest, SupportingResourcePort, SupportingResourceQuery, SystemPort,
     Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage,
-    TaskPort, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery,
+    TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -332,41 +332,6 @@ impl GvmdAdapter {
             .into_iter()
             .next()
             .ok_or_else(|| GatewayError::NotFound(format!("user {id} not found")))
-    }
-
-    fn load_timezones(&self) -> Vec<Timezone> {
-        for path in [
-            "/usr/share/zoneinfo/zone1970.tab",
-            "/usr/share/zoneinfo/zone.tab",
-        ] {
-            if let Ok(contents) = fs::read_to_string(path) {
-                let mut zones = contents
-                    .lines()
-                    .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
-                    .filter_map(|line| {
-                        let mut fields = line.split('\t');
-                        let _country_codes = fields.next()?;
-                        let _coordinates = fields.next()?;
-                        let name = fields.next()?.trim();
-                        Some(Timezone {
-                            name: name.to_string(),
-                            display_name: Some(name.replace('_', " ")),
-                        })
-                    })
-                    .collect::<Vec<_>>();
-
-                if !zones.is_empty() {
-                    zones.sort_by(|left, right| left.name.cmp(&right.name));
-                    zones.dedup_by(|left, right| left.name == right.name);
-                    return zones;
-                }
-            }
-        }
-
-        vec![Timezone {
-            name: "UTC".to_string(),
-            display_name: Some("UTC".to_string()),
-        }]
     }
 
     fn default_credential_stores(&self) -> Vec<CredentialStore> {
@@ -806,10 +771,6 @@ impl AlertPort for GvmdAdapter {
 
 #[async_trait]
 impl SchedulePort for GvmdAdapter {
-    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
-        Ok(self.load_timezones())
-    }
-
     async fn list_schedules(
         &self,
         session_token: &str,

@@ -233,7 +233,6 @@ Report reads and result subresources use `page` and `perPage`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/v1/timezones` | List available schedule timezones |
 | `GET` | `/api/v1/schedules` | List schedules |
 | `POST` | `/api/v1/schedules` | Create schedule |
 | `GET` | `/api/v1/schedules/{id}` | Get schedule |

@@ -806,17 +806,6 @@ impl E2eHarness {
         .await
     }
 
-    pub async fn list_timezones(&self, token: &str) -> Result<Vec<Timezone>> {
-        let response: UnpaginatedListResponse<Timezone> = self
-            .send_json(
-                self.authed(Method::GET, "/api/v1/timezones", token),
-                StatusCode::OK,
-                "list timezones",
-            )
-            .await?;
-        Ok(response.data)
-    }
-
     pub async fn list_schedules(&self, token: &str) -> Result<ListResponse<Schedule>> {
         self.send_json(
             self.authed(Method::GET, "/api/v1/schedules?perPage=1000", token),
@@ -2322,13 +2311,6 @@ pub struct NvtFamily {
     pub name: String,
     #[serde(rename = "maxNvtCount")]
     pub max_nvt_count: Option<u32>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct Timezone {
-    pub name: String,
-    #[serde(rename = "displayName")]
-    pub display_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Greenbone AG
 
-use anyhow::{Context, Result};
-use gvm_gateway_e2e::harness::{E2eHarness, PortList, SessionResponse, Timezone};
+use anyhow::Result;
+use gvm_gateway_e2e::harness::{E2eHarness, PortList, SessionResponse};
 
+const SCHEDULE_TIMEZONE: &str = "UTC";
 const SCHEDULE_ICALENDAR: &str = "BEGIN:VCALENDAR\n\
 VERSION:2.0\n\
 PRODID:-//Greenbone//rust-gvm-api e2e//EN\n\
@@ -81,15 +82,13 @@ async fn rest_update_resource_lifecycles_preserve_ids_and_changed_fields() -> Re
             "port-list read after update did not preserve changed comment"
         );
 
-        let timezones = harness.list_timezones(&session.token).await?;
-        let timezone = select_schedule_timezone(&timezones)?;
         let schedule_name = harness.unique_name("nightly-update-schedule");
         let created_schedule = harness
             .create_schedule(
                 &session.token,
                 &schedule_name,
                 SCHEDULE_ICALENDAR,
-                &timezone.name,
+                SCHEDULE_TIMEZONE,
             )
             .await?;
         schedule_id = Some(created_schedule.id.clone());
@@ -102,7 +101,7 @@ async fn rest_update_resource_lifecycles_preserve_ids_and_changed_fields() -> Re
                 &updated_schedule_name,
                 updated_schedule_comment,
                 SCHEDULE_ICALENDAR,
-                &timezone.name,
+                SCHEDULE_TIMEZONE,
             )
             .await?;
         assert_eq!(
@@ -175,18 +174,6 @@ async fn finish_session(
 async fn select_port_list(harness: &E2eHarness, token: &str) -> Result<PortList> {
     let port_lists = harness.list_port_lists(token).await?;
     Ok(harness.select_port_list(&port_lists)?.clone())
-}
-
-fn select_schedule_timezone(timezones: &[Timezone]) -> Result<&Timezone> {
-    timezones
-        .iter()
-        .find(|timezone| timezone.name == "Europe/Berlin")
-        .or_else(|| {
-            timezones
-                .iter()
-                .find(|timezone| !timezone.name.trim().is_empty())
-        })
-        .with_context(|| "timezone catalog did not return a usable timezone".to_string())
 }
 
 async fn best_effort_cleanup(

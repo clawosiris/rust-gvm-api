@@ -18,7 +18,6 @@ async fn rest_supporting_catalogs_list_and_read_resources() -> Result<()> {
         assert_scanner_catalog(&harness, &session.token).await?;
         assert_port_list_catalog(&harness, &session.token).await?;
         assert_feed_catalog(&harness, &session.token).await?;
-        assert_timezone_catalog(&harness, &session.token).await?;
         assert_credential_store_catalog(&harness, &session.token).await?;
         assert_credential_list_shape(&harness, &session.token).await?;
         assert_report_format_catalog(&harness, &session.token).await?;
@@ -512,21 +511,6 @@ async fn assert_feed_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
             "feed entry returned an empty name"
         );
     }
-    Ok(())
-}
-
-async fn assert_timezone_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
-    let timezones = harness.list_timezones(token).await?;
-    assert!(
-        !timezones.is_empty(),
-        "timezone catalog did not return any entries"
-    );
-    assert!(
-        timezones
-            .iter()
-            .any(|timezone| !timezone.name.trim().is_empty()),
-        "timezone catalog returned only empty names"
-    );
     Ok(())
 }
 

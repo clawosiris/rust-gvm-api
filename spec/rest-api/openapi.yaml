@@ -165,8 +165,6 @@ paths:
     $ref: './alerts.yaml#/paths/~1alerts'
   /alerts/{id}:
     $ref: './alerts.yaml#/paths/~1alerts~1{id}'
-  /timezones:
-    $ref: './schedules.yaml#/paths/~1timezones'
   /schedules:
     $ref: './schedules.yaml#/paths/~1schedules'
   /schedules/{id}:
