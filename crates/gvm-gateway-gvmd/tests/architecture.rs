@@ -109,7 +109,7 @@ fn gmp_wire_handling_stays_in_rust_gvm() {
     findings.extend(find_forbidden_direct_dependencies(&manifest_dir));
     findings.extend(find_mismatched_response_parsers(
         &manifest_dir,
-        &src_dir.join("gvmd_adapter.rs"),
+        &src_dir.join("gvmd_adapter"),
     ));
 
     assert!(
@@ -199,39 +199,42 @@ fn find_forbidden_direct_dependencies(manifest_dir: &Path) -> Vec<Finding> {
     findings
 }
 
-fn find_mismatched_response_parsers(manifest_dir: &Path, file: &Path) -> Vec<Finding> {
-    let relative = file
-        .strip_prefix(manifest_dir)
-        .expect("source file should be below manifest dir")
-        .to_string_lossy()
-        .replace('\\', "/");
-    let contents = fs::read_to_string(file).expect("read gvmd adapter source file");
+fn find_mismatched_response_parsers(manifest_dir: &Path, dir: &Path) -> Vec<Finding> {
     let mut findings = Vec::new();
-    let mut last_operation: Option<(&'static str, usize)> = None;
 
-    for (line_index, line) in contents.lines().enumerate() {
-        if line.contains("\"tasks.start\"") {
-            last_operation = Some(("tasks.start", line_index + 1));
-        } else if line.contains("\"tasks.resume\"") {
-            last_operation = Some(("tasks.resume", line_index + 1));
-        } else if line.contains("StartTaskResponse::from_response(&response)") {
-            if let Some(("tasks.resume", operation_line)) = last_operation {
-                findings.push(Finding {
-                    path: relative.clone(),
-                    line: line_index + 1,
-                    marker: "resume_task must use a typed rust-gvm resume response parser",
-                    text: format!(
-                        "operation declared at line {operation_line}; parser: {}",
-                        line.trim()
-                    ),
-                });
+    for file in rust_files(dir) {
+        let relative = file
+            .strip_prefix(manifest_dir)
+            .expect("source file should be below manifest dir")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let contents = fs::read_to_string(file).expect("read gvmd adapter source file");
+        let mut last_operation: Option<(&'static str, usize)> = None;
+
+        for (line_index, line) in contents.lines().enumerate() {
+            if line.contains("\"tasks.start\"") {
+                last_operation = Some(("tasks.start", line_index + 1));
+            } else if line.contains("\"tasks.resume\"") {
+                last_operation = Some(("tasks.resume", line_index + 1));
+            } else if line.contains("StartTaskResponse::from_response(&response)") {
+                if let Some(("tasks.resume", operation_line)) = last_operation {
+                    findings.push(Finding {
+                        path: relative.clone(),
+                        line: line_index + 1,
+                        marker: "resume_task must use a typed rust-gvm resume response parser",
+                        text: format!(
+                            "operation declared at line {operation_line}; parser: {}",
+                            line.trim()
+                        ),
+                    });
+                }
+                last_operation = None;
+            } else if line.contains("ActionResponse::from_response(&response)")
+                || line.contains("GetTasksResponse::from_response(&response)")
+                || line.contains("CreateTaskResponse::from_response(&response)")
+            {
+                last_operation = None;
             }
-            last_operation = None;
-        } else if line.contains("ActionResponse::from_response(&response)")
-            || line.contains("GetTasksResponse::from_response(&response)")
-            || line.contains("CreateTaskResponse::from_response(&response)")
-        {
-            last_operation = None;
         }
     }
 
