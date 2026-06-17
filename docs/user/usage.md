@@ -2,13 +2,9 @@
 
 ## Release artifacts
 
-Current releases publish:
-
-- Debian packages
-- Arch Linux packages
-- an OCI image archive
-- this user documentation package
-- the matching OpenAPI specification inside this package
+Current releases publish Debian packages, Arch Linux packages, an OCI image
+archive, and this user documentation package with the matching OpenAPI
+specification.
 
 Choose the package or container form that matches your environment.
 
@@ -41,7 +37,7 @@ container example config:
 - `container-config.example.toml`
 
 In a normal container setup the gateway listens on `0.0.0.0:8080` and runs
-behind a TLS-terminating proxy.
+and assumes it is running behind a TLS-terminating proxy.
 
 ## Configuration reference
 

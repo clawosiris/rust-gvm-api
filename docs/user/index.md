@@ -2,14 +2,12 @@
 
 This package is the release-aligned user documentation for `rust-gvm-api`.
 
-It is intended for:
-
-- administrators installing and configuring the gateway
-- users and client developers calling the REST API
+`rust-gvm-api` provides a REST API for gvmd through GMP. It is intended to make
+integration with gvmd easier, including automated management of targets,
+schedules, and tasks, as well as access to scan results and reports.
 
 ## Contents
 
-- [What this service is for](./overview.md)
 - [Installation and configuration](./usage.md)
 - [Workflow examples](./examples.md)
 - Example config files:
