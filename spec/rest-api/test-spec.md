@@ -165,7 +165,6 @@ async fn test_server() -> TestServer {
 
 | Test | Request | Setup | Expected |
 |------|---------|-------|----------|
-| `list_timezones` | `GET /api/v1/timezones` | Backend exposes timezone catalog | 200, timezone list |
 | `list_credential_stores` | `GET /api/v1/credential-stores` | Backend exposes credential store catalog | 200, credential store list |
 
 ### 3.5b Identity & Access Control

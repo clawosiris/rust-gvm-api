@@ -20,8 +20,8 @@ use crate::{
     ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
     ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
     ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificatePage, User,
-    UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificatePage, User, UserPage,
+    UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Port for system information needed by the gateway.
@@ -95,9 +95,6 @@ pub trait AlertPort: Send + Sync + 'static {
 /// Port for schedule CRUD operations.
 #[async_trait]
 pub trait SchedulePort: Send + Sync + 'static {
-    /// List timezone identifiers accepted for schedules.
-    async fn list_timezones(&self, session_token: &str) -> Result<Vec<Timezone>, GatewayError>;
-
     /// List schedules for the session.
     async fn list_schedules(
         &self,

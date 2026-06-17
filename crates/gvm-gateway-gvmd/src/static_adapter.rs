@@ -23,7 +23,7 @@ use gvm_gateway_domain::{
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
     SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Static adapter for system readiness and version information.
@@ -115,13 +115,6 @@ impl AlertPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl SchedulePort for StaticGvmdAdapter {
-    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
-        Ok(vec![Timezone {
-            name: "UTC".to_string(),
-            display_name: Some("UTC".to_string()),
-        }])
-    }
-
     async fn list_schedules(
         &self,
         _: &str,
