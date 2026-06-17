@@ -9,7 +9,7 @@ use gvm_gateway_domain::GatewayError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::targets::validate_uuid;
+use crate::handler::validate_uuid;
 
 /// Normalized list query fields shared by multiple collection handlers.
 #[derive(Clone, Debug, Eq, PartialEq)]

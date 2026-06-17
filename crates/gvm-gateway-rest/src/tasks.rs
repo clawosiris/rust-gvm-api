@@ -9,7 +9,7 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -20,17 +20,18 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{
-        created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse,
-        ResourceRefResponse,
-    },
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
     error::RestError,
+    handler::{
+        create_resource, delete_resource, get_resource, list_resource, update_resource,
+        validate_uuid, ValidateInto,
+    },
     open_enum::open_string_enum,
     openapi::{
         ok_json, problem_response, CreateTaskDoc, ModifyTaskDoc, ResourceIdPathDoc,
         TaskListQueryDoc,
     },
-    query::{parse_collection_query, parse_delete_resource_query, DeleteResourceQueryParams},
+    query::{parse_collection_query, DeleteResourceQueryParams},
     router::bearer_token,
 };
 
@@ -317,6 +318,12 @@ impl CreateTaskRequest {
     }
 }
 
+impl ValidateInto<CreateTaskInput> for CreateTaskRequest {
+    fn validate_into(self) -> Result<CreateTaskInput, GatewayError> {
+        self.validate()
+    }
+}
+
 /// Modify-task request payload.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 pub struct ModifyTaskRequest {
@@ -382,6 +389,12 @@ impl ModifyTaskRequest {
     }
 }
 
+impl ValidateInto<ModifyTaskInput> for ModifyTaskRequest {
+    fn validate_into(self) -> Result<ModifyTaskInput, GatewayError> {
+        self.validate()
+    }
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -392,31 +405,27 @@ pub async fn list_tasks(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match TaskListQuery::try_from_query_string(uri.query().unwrap_or("")) {
-        Ok(query) => query,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service
-        .list_tasks(
-            &session,
-            TaskQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
-        .await
-    {
-        Ok(tasks) => (StatusCode::OK, Json(TaskListResponse::from(tasks))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        TaskListQuery::try_from_query_string,
+        |service, session, query| async move {
+            service
+                .list_tasks(
+                    &session,
+                    TaskQuery {
+                        filter_string: query.filter_string,
+                        filter_id: query.filter_id,
+                        page: query.page,
+                        per_page: query.per_page,
+                    },
+                )
+                .await
+        },
+        TaskListResponse::from,
+    )
+    .await
 }
 
 /// Create task handler.
@@ -426,40 +435,14 @@ pub async fn create_task(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<CreateTaskRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.create_task(&session, input).await {
-        Ok(id) => {
-            let location = created_resource_location(&instance, &id);
-            (
-                StatusCode::CREATED,
-                [(header::LOCATION, location)],
-                Json(ResourceCreatedResponse {
-                    id: parse_uuid(&id),
-                }),
-            )
-                .into_response()
-        }
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    create_resource::<CreateTaskInput, CreateTaskRequest, _, _>(
+        service,
+        headers,
+        uri,
+        body,
+        |service, session, input| async move { service.create_task(&session, input).await },
+    )
+    .await
 }
 
 /// Get task handler.
@@ -469,19 +452,15 @@ pub async fn get_task(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.get_task(&session, &id).await {
-        Ok(task) => (StatusCode::OK, Json(TaskResponse::from(task))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_task(&session, &id).await },
+        TaskResponse::from,
+    )
+    .await
 }
 
 /// Update task handler.
@@ -492,33 +471,16 @@ pub async fn update_task(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<ModifyTaskRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.modify_task(&session, &id, input).await {
-        Ok(task) => (StatusCode::OK, Json(TaskResponse::from(task))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    update_resource::<ModifyTaskInput, ModifyTaskRequest, _, _, _, _>(
+        service,
+        headers,
+        id,
+        uri,
+        body,
+        |service, session, id, input| async move { service.modify_task(&session, &id, input).await },
+        TaskResponse::from,
+    )
+    .await
 }
 
 /// Delete task handler.
@@ -528,23 +490,16 @@ pub async fn delete_task(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
-        Ok(ultimate) => ultimate,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.delete_task(&session, &id, ultimate).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id, ultimate| async move {
+            service.delete_task(&session, &id, ultimate).await
+        },
+    )
+    .await
 }
 
 /// Start task handler.
@@ -622,13 +577,6 @@ fn validate_optional_uuid(field: &str, value: Option<&str>) -> Result<(), Gatewa
         validate_uuid(field, value)?;
     }
     Ok(())
-}
-
-/// Validate a UUID-like REST resource identifier.
-pub fn validate_uuid(field: &str, value: &str) -> Result<(), GatewayError> {
-    Uuid::parse_str(value)
-        .map(|_| ())
-        .map_err(|_| GatewayError::InvalidInput(format!("{field} must be a valid UUID")))
 }
 
 // ============================================================================

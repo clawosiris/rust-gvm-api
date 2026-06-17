@@ -7,8 +7,8 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    http::HeaderMap,
+    response::Response,
     Json,
 };
 use gvm_gateway_app::GatewayService;
@@ -23,18 +23,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{
-        created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse,
-        ResourceRefResponse,
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
+    handler::{
+        create_resource, delete_resource, get_resource, list_resource, update_resource,
+        ValidateInto,
     },
-    error::RestError,
     open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
-    query::{
-        parse_collection_query, parse_delete_resource_query, parse_filter_only_query,
-        DeleteResourceQueryParams,
-    },
-    router::bearer_token,
+    query::{parse_collection_query, parse_filter_only_query, DeleteResourceQueryParams},
     targets::validate_uuid,
 };
 
@@ -683,19 +679,15 @@ pub async fn list_users(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match IdentityListQuery::try_from_query_string(uri.query().unwrap_or_default()) {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_users(&session, query).await {
-        Ok(page) => (StatusCode::OK, Json(UserListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| IdentityListQuery::try_from_query_string(query).map(IdentityListQuery::into_domain),
+        |service, session, query| async move { service.list_users(&session, query).await },
+        UserListResponse::from,
+    )
+    .await
 }
 
 /// Creates a user.
@@ -710,7 +702,6 @@ pub async fn create_user(
         headers,
         uri,
         body,
-        "/api/v1/users",
         |service, session, input| async move { service.create_user(&session, input).await },
     )
     .await
@@ -778,19 +769,15 @@ pub async fn list_groups(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match IdentityListQuery::try_from_query_string(uri.query().unwrap_or_default()) {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_groups(&session, query).await {
-        Ok(page) => (StatusCode::OK, Json(GroupListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| IdentityListQuery::try_from_query_string(query).map(IdentityListQuery::into_domain),
+        |service, session, query| async move { service.list_groups(&session, query).await },
+        GroupListResponse::from,
+    )
+    .await
 }
 
 /// Creates a group.
@@ -805,7 +792,6 @@ pub async fn create_group(
         headers,
         uri,
         body,
-        "/api/v1/groups",
         |service, session, input| async move { service.create_group(&session, input).await },
     )
     .await
@@ -873,19 +859,15 @@ pub async fn list_roles(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match IdentityListQuery::try_from_query_string(uri.query().unwrap_or_default()) {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_roles(&session, query).await {
-        Ok(page) => (StatusCode::OK, Json(RoleListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| IdentityListQuery::try_from_query_string(query).map(IdentityListQuery::into_domain),
+        |service, session, query| async move { service.list_roles(&session, query).await },
+        RoleListResponse::from,
+    )
+    .await
 }
 
 /// Creates a role.
@@ -900,7 +882,6 @@ pub async fn create_role(
         headers,
         uri,
         body,
-        "/api/v1/roles",
         |service, session, input| async move { service.create_role(&session, input).await },
     )
     .await
@@ -968,19 +949,15 @@ pub async fn list_permissions(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match IdentityListQuery::try_from_query_string(uri.query().unwrap_or_default()) {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_permissions(&session, query).await {
-        Ok(page) => (StatusCode::OK, Json(PermissionListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| IdentityListQuery::try_from_query_string(query).map(IdentityListQuery::into_domain),
+        |service, session, query| async move { service.list_permissions(&session, query).await },
+        PermissionListResponse::from,
+    )
+    .await
 }
 
 /// Creates a permission.
@@ -995,7 +972,6 @@ pub async fn create_permission(
         headers,
         uri,
         body,
-        "/api/v1/permissions",
         |service, session, input| async move { service.create_permission(&session, input).await },
     )
     .await
@@ -1079,20 +1055,18 @@ pub async fn list_user_settings(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match UserSettingsListQuery::try_from_query_string(uri.query().unwrap_or_default())
-    {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_user_settings(&session, query).await {
-        Ok(list) => (StatusCode::OK, Json(UserSettingListResponse::from(list))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| {
+            UserSettingsListQuery::try_from_query_string(query)
+                .map(UserSettingsListQuery::into_domain)
+        },
+        |service, session, query| async move { service.list_user_settings(&session, query).await },
+        UserSettingListResponse::from,
+    )
+    .await
 }
 
 /// Returns one user setting by ID.
@@ -1144,159 +1118,6 @@ pub async fn update_user_setting(
         UserSettingResponse::from,
     )
     .await
-}
-
-async fn create_resource<I, Req, F, Fut>(
-    service: GatewayService,
-    headers: HeaderMap,
-    uri: OriginalUri,
-    body: Bytes,
-    collection_path: &str,
-    operation: F,
-) -> Response
-where
-    Req: for<'de> Deserialize<'de>,
-    Req: ValidateInto<I>,
-    F: FnOnce(GatewayService, String, I) -> Fut,
-    Fut: std::future::Future<Output = Result<String, GatewayError>>,
-{
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<Req>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate_into() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match operation(service, session, input).await {
-        Ok(id) => {
-            let location = created_resource_location(collection_path, &id);
-            (
-                StatusCode::CREATED,
-                [(header::LOCATION, location)],
-                Json(ResourceCreatedResponse {
-                    id: parse_uuid(&id),
-                }),
-            )
-                .into_response()
-        }
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn get_resource<T, R, F, Fut>(
-    service: GatewayService,
-    headers: HeaderMap,
-    id: String,
-    uri: OriginalUri,
-    operation: F,
-    map: fn(T) -> R,
-) -> Response
-where
-    R: Serialize,
-    F: FnOnce(GatewayService, String, String) -> Fut,
-    Fut: std::future::Future<Output = Result<T, GatewayError>>,
-{
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match operation(service, session, id).await {
-        Ok(resource) => (StatusCode::OK, Json(map(resource))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn update_resource<I, Req, T, R, F, Fut>(
-    service: GatewayService,
-    headers: HeaderMap,
-    id: String,
-    uri: OriginalUri,
-    body: Bytes,
-    operation: F,
-    map: fn(T) -> R,
-) -> Response
-where
-    Req: for<'de> Deserialize<'de>,
-    Req: ValidateInto<I>,
-    R: Serialize,
-    F: FnOnce(GatewayService, String, String, I) -> Fut,
-    Fut: std::future::Future<Output = Result<T, GatewayError>>,
-{
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<Req>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate_into() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match operation(service, session, id, input).await {
-        Ok(resource) => (StatusCode::OK, Json(map(resource))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn delete_resource<F, Fut>(
-    service: GatewayService,
-    headers: HeaderMap,
-    id: String,
-    uri: OriginalUri,
-    operation: F,
-) -> Response
-where
-    F: FnOnce(GatewayService, String, String, bool) -> Fut,
-    Fut: std::future::Future<Output = Result<(), GatewayError>>,
-{
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
-        Ok(ultimate) => ultimate,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match operation(service, session, id, ultimate).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-trait ValidateInto<T> {
-    fn validate_into(self) -> Result<T, GatewayError>;
 }
 
 impl ValidateInto<CreateUserInput> for CreateUserRequest {

@@ -12,6 +12,7 @@ pub mod credentials;
 pub(crate) mod dto;
 pub mod error;
 pub mod feeds;
+pub(crate) mod handler;
 pub mod identity;
 pub mod jobs;
 pub(crate) mod open_enum;
