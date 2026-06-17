@@ -132,6 +132,7 @@ mkdir -p dist/package-root/usr/bin \
   dist/package-root/etc/gvm-gateway \
   dist/package-root/usr/share/doc/gvm-gateway \
   dist/package-root/usr/share/licenses/gvm-gateway \
+  dist/package-work \
   "${OUTPUT_DIR_ABS}"
 
 install -m 0755 target/release/gvm-gateway dist/package-root/usr/bin/gvm-gateway
