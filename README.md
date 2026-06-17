@@ -7,7 +7,8 @@
 > **Releases** use a PR-gated GitHub Actions flow. Run the "Prepare Release"
 > workflow with the target version, label the generated PR `release`, and merge
 > it. The tag workflow creates `v<version>` from the merge commit, and the
-> publish workflow builds Debian, Arch Linux, OCI, and SBOM release artifacts.
+> publish workflow builds Debian, Arch Linux, OCI, user-documentation, and SBOM
+> release artifacts.
 
 Gateway API surfaces for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm). REST is implemented on `main`; gRPC and MCP remain planned peer adapters over the same shared core.
 
@@ -209,6 +210,11 @@ Useful follow-up commands:
 
 ## Documentation
 
+- Release-shipped user docs source:
+  - [docs/user/index.md](docs/user/index.md)
+  - [docs/user/overview.md](docs/user/overview.md)
+  - [docs/user/usage.md](docs/user/usage.md)
+  - [docs/user/examples.md](docs/user/examples.md)
 - [REST API OpenSpec](spec/rest-api/openspec.md)
 - [gRPC API OpenSpec](spec/grpc-api/openspec.md)
 - [Gateway Architecture](docs/gateway-architecture.md)

@@ -1,0 +1,206 @@
+# Workflow Examples
+
+These examples are intentionally practical rather than exhaustive. They show a
+normal REST workflow against a running gateway with a gvmd backend.
+
+The examples assume:
+
+```bash
+export GVM_GATEWAY_BASE_URL="http://127.0.0.1:8080"
+export GVM_GATEWAY_USERNAME="admin"
+export GVM_GATEWAY_PASSWORD="admin"
+```
+
+## 1. Create a session
+
+Authenticate with HTTP Basic credentials and capture the returned bearer token:
+
+```bash
+SESSION_JSON="$(
+  curl -fsS \
+    -u "${GVM_GATEWAY_USERNAME}:${GVM_GATEWAY_PASSWORD}" \
+    -H 'Accept: application/json' \
+    -X POST \
+    "${GVM_GATEWAY_BASE_URL}/api/v1/session"
+)"
+
+SESSION_TOKEN="$(printf '%s' "${SESSION_JSON}" | jq -r '.sessionToken')"
+printf '%s\n' "${SESSION_JSON}" | jq
+```
+
+Expected fields include:
+
+- `sessionToken`
+- `expiresIn`
+- `gmpVersion`
+
+## 2. Inspect readiness and version
+
+Check that the service is healthy and learn the exposed gateway version:
+
+```bash
+curl -fsS "${GVM_GATEWAY_BASE_URL}/ready" | jq
+curl -fsS \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/version" | jq
+```
+
+## 3. Discover supporting resources
+
+Most scan workflows need a scanner, scan config, and port list before creating
+targets and tasks:
+
+```bash
+curl -fsS \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/scanners?perPage=100" | jq '.data[] | {id, name}'
+
+curl -fsS \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/scan-configs?perPage=100" | jq '.data[] | {id, name}'
+
+curl -fsS \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/port-lists?perPage=100" | jq '.data[] | {id, name}'
+```
+
+Use the returned IDs in the later create calls.
+
+## 4. Create a target
+
+This example uses one host entry and an explicit port list reference:
+
+```bash
+PORT_LIST_ID="<replace-with-port-list-id>"
+
+TARGET_JSON="$(
+  curl -fsS \
+    -H "Authorization: Bearer ${SESSION_TOKEN}" \
+    -H 'Content-Type: application/json' \
+    -X POST \
+    -d '{
+      "name": "example-target",
+      "hosts": ["192.0.2.10"],
+      "aliveTest": "Consider Alive",
+      "portListId": "'"${PORT_LIST_ID}"'"
+    }' \
+    "${GVM_GATEWAY_BASE_URL}/api/v1/targets"
+)"
+
+TARGET_ID="$(printf '%s' "${TARGET_JSON}" | jq -r '.id')"
+printf '%s\n' "${TARGET_JSON}" | jq
+```
+
+## 5. Create a task
+
+Use a target ID, scan config ID, and scanner ID discovered earlier:
+
+```bash
+SCAN_CONFIG_ID="<replace-with-scan-config-id>"
+SCANNER_ID="<replace-with-scanner-id>"
+
+TASK_JSON="$(
+  curl -fsS \
+    -H "Authorization: Bearer ${SESSION_TOKEN}" \
+    -H 'Content-Type: application/json' \
+    -X POST \
+    -d '{
+      "name": "example-task",
+      "targetId": "'"${TARGET_ID}"'",
+      "scanConfigId": "'"${SCAN_CONFIG_ID}"'",
+      "scannerId": "'"${SCANNER_ID}"'"
+    }' \
+    "${GVM_GATEWAY_BASE_URL}/api/v1/tasks"
+)"
+
+TASK_ID="$(printf '%s' "${TASK_JSON}" | jq -r '.id')"
+printf '%s\n' "${TASK_JSON}" | jq
+```
+
+## 6. Start the task and poll for status
+
+```bash
+curl -fsS \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  -X POST \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/tasks/${TASK_ID}/start" | jq
+
+curl -fsS \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/tasks/${TASK_ID}" | jq
+```
+
+For longer-running automation, poll `GET /api/v1/tasks/{id}` until the task
+reaches a terminal backend status such as `Done`, `Stopped`, or `Error`.
+
+## 7. Find reports for the task
+
+```bash
+curl -fsS \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/reports?filter=task_id=${TASK_ID}&perPage=25" | jq '.data[] | {id, reportFormat, task}'
+```
+
+Pick the report ID you want to inspect or export.
+
+## 8. Export a report asynchronously
+
+The gateway exposes report export as a job. This example uses a gvmd PDF report
+format ID:
+
+```bash
+REPORT_ID="<replace-with-report-id>"
+PDF_REPORT_FORMAT_ID="c402cc3e-b531-11e1-9163-406186ea4fc5"
+
+EXPORT_HEADERS="$(
+  mktemp
+)"
+
+EXPORT_JSON="$(
+  curl -fsS \
+    -D "${EXPORT_HEADERS}" \
+    -H "Authorization: Bearer ${SESSION_TOKEN}" \
+    -H 'Content-Type: application/json' \
+    -X POST \
+    -d '{
+      "reportFormatId": "'"${PDF_REPORT_FORMAT_ID}"'"
+    }' \
+    "${GVM_GATEWAY_BASE_URL}/api/v1/reports/${REPORT_ID}/exports"
+)"
+
+JOB_ID="$(printf '%s' "${EXPORT_JSON}" | jq -r '.jobId')"
+printf '%s\n' "${EXPORT_JSON}" | jq
+grep -i '^location:' "${EXPORT_HEADERS}"
+```
+
+Poll the job, then download the finished artifact:
+
+```bash
+curl -fsS \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/jobs/${JOB_ID}" | jq
+
+curl -fSLo "report-${REPORT_ID}.pdf" \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/jobs/${JOB_ID}/result"
+```
+
+## 9. Close the session
+
+```bash
+curl -fsS \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  -X DELETE \
+  "${GVM_GATEWAY_BASE_URL}/api/v1/session"
+```
+
+## Finding the formal contract
+
+For the full contract, schema definitions, and endpoint list for this release,
+use:
+
+- `api/rest/openapi.yaml`
+- `api/rest/openspec.md`
+
+Those files are shipped in this package so clients do not need to reconstruct
+the API from repository state or build artifacts.
