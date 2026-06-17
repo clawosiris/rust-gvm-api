@@ -1,25 +1,24 @@
 # rust-gvm-api User Documentation
 
-This package is the user-facing introduction to `rust-gvm-api` for the matching release.
+This package is the release-aligned user documentation for `rust-gvm-api`.
 
-Use it as the primary starting point for:
+It is intended for:
 
-- understanding what the gateway is for
-- learning how to run and configure it
-- following realistic client workflows
-- finding the formal REST API contract that matches this release
+- administrators installing and configuring the gateway
+- users and client developers calling the REST API
 
-## Package Contents
+## Contents
 
-- [Service overview](./overview.md)
-- [Usage guidance](./usage.md)
+- [What this service is for](./overview.md)
+- [Installation and configuration](./usage.md)
 - [Workflow examples](./examples.md)
-- Formal REST API contract:
-  - [OpenAPI root](./api/rest/openapi.yaml)
-  - [REST narrative spec](./api/rest/openspec.md)
+- Example config files:
+  - [package-config.example.toml](./package-config.example.toml)
+  - [container-config.example.toml](./container-config.example.toml)
+- OpenAPI specification for this release:
+  - [openapi.yaml](./api/rest/openapi.yaml)
 
-## Version Alignment
+## Version alignment
 
-This documentation package is built from the same Git tag as the release assets.
-If you are troubleshooting behavior, always compare the deployed gateway version
-to the documentation package version that shipped with that release.
+Use the documentation package that shipped with the same release version as the
+gateway you are running.

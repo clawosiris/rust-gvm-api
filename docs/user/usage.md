@@ -1,95 +1,141 @@
-# Usage Guidance
+# Installation And Configuration
 
-## Getting the service
+## Release artifacts
 
-`rust-gvm-api` release outputs are published through GitHub releases. The
-release pipeline currently produces:
+Current releases publish:
 
 - Debian packages
 - Arch Linux packages
 - an OCI image archive
-- an SBOM archive
 - this user documentation package
+- the matching OpenAPI specification inside this package
 
-Choose the delivery format that matches your environment, then deploy the
-gateway close to the gvmd instance it serves.
+Choose the package or container form that matches your environment.
 
-## Runtime model
+## What an installation needs
 
-The gateway is not a replacement for gvmd. It is a separate process that talks
-to gvmd on the operator's behalf. A deployment therefore needs:
+A working installation needs:
 
 - a reachable gvmd instance
-- a gateway configuration that points at the gvmd socket or endpoint
-- user credentials that gvmd accepts
+- a gateway configuration that points to the gvmd socket
+- valid gvmd user credentials for the people or systems calling the API
 
-## Configuration expectations
+The gateway is a separate service in front of gvmd. It does not replace gvmd.
 
-Important configuration assumptions for current releases:
+## Package installation
 
-- packaged installs ship an example config at
-  `/etc/gvm-gateway/gvm-gateway.toml.example`
-- the canonical package config path is
-  `/etc/gvm-gateway/gvm-gateway.toml`
-- container deployments can use environment variables and the container-focused
-  example config in `packaging/gvm-gateway.container.toml`
-- the default gvmd backend endpoint is `unix:///run/gvmd/gvmd.sock`
+Packaged installs use:
 
-Configuration is versioned with the gateway release. When behavior differs by
-deployment mode, prefer the config examples and release-specific docs from the
-same release package over older repository snippets.
+- example config: `/etc/gvm-gateway/gvm-gateway.toml.example`
+- active config: `/etc/gvm-gateway/gvm-gateway.toml`
+- shipped example in this documentation package: `package-config.example.toml`
 
-## Authentication expectations
+The package does not create the active config automatically. Copy the example
+file to the active path and then adjust the values for your deployment.
 
-The REST workflow is session-based:
+## Container installation
 
-1. `POST /api/v1/session` with HTTP Basic credentials that gvmd accepts
-2. receive an opaque `sessionToken`
-3. send `Authorization: Bearer <sessionToken>` on subsequent API requests
-4. close the session with `DELETE /api/v1/session` when finished
+Container-oriented deployments can start from the settings shown in the shipped
+container example config:
 
-The returned `expiresIn` value is an idle timeout in seconds. Clients should not
-assume sessions are permanent.
+- `container-config.example.toml`
 
-## Connecting to the API
+In a normal container setup the gateway listens on `0.0.0.0:8080` and runs
+behind a TLS-terminating proxy.
 
-Typical local base URLs are:
+## Configuration reference
 
-- package/service deployment behind a local reverse proxy:
-  `http://127.0.0.1:8080/api/v1`
-- container deployment with published port:
-  `http://<host>:8080/api/v1`
+### Core listener and backend
 
-Operational probes live outside `/api/v1`:
+- `bind`
+  HTTP listener address for the gateway, for example `127.0.0.1:8080`.
+- `gvmd_endpoint`
+  Unix socket endpoint for gvmd. Current releases expect a Unix socket path such
+  as `unix:///run/gvmd/gvmd.sock`.
+
+### Transport security
+
+- `transport_security_mode`
+  One of:
+  - `disabled`: serve plain HTTP intentionally
+  - `terminated_by_proxy`: serve plain HTTP behind a TLS-terminating proxy
+  - `native`: serve HTTPS directly from the gateway
+- `tls_certificate_path`
+  Required when `transport_security_mode = "native"`.
+- `tls_private_key_path`
+  Required when `transport_security_mode = "native"`.
+
+If `transport_security_mode` is `disabled` or `terminated_by_proxy`, TLS file
+paths must not be set.
+
+### Session handling
+
+- `session_idle_timeout_secs`
+  Maximum idle time for a gateway session before it expires.
+- `session_max_global`
+  Maximum number of active sessions across all users. Set to `0` to disable the
+  limit.
+- `session_max_per_user`
+  Maximum number of active sessions for one user. Set to `0` to disable the
+  limit.
+
+### Logging and telemetry
+
+- `local_log_output`
+  Local log sink. Supported values:
+  - `stdout`
+  - `journald`
+- `otlp_endpoint`
+  Optional OTLP trace export endpoint.
+- `telemetry_service_name`
+  OpenTelemetry `service.name`.
+- `telemetry_service_namespace`
+  OpenTelemetry `service.namespace`.
+- `telemetry_deployment_environment`
+  OpenTelemetry `deployment.environment`.
+- `telemetry_service_instance_id`
+  OpenTelemetry `service.instance.id`.
+
+### REST security settings
+
+- `cors_allowed_origins`
+  Allowed browser origins for CORS.
+- `rate_limit_window_secs`
+  Window size for REST rate limiting.
+- `rate_limit_global_per_window`
+  Total request budget per window. Set to `0` to disable that limit.
+- `rate_limit_subject_per_window`
+  Per-subject request budget per window. Set to `0` to disable that limit.
+- `trusted_proxy_cidrs`
+  Proxy source CIDRs whose forwarded client IPs may be trusted.
+
+## Authentication options
+
+The gateway supports two practical authentication patterns:
+
+- session-based access:
+  - create a session with `POST /api/v1/session` using HTTP Basic auth
+  - reuse the returned bearer token on later requests
+- request-scoped HTTP Basic auth:
+  - for endpoints that allow it, the gateway can authenticate the request
+    directly from Basic credentials instead of reusing a previously created
+    session
+
+For scripts, automation, and multi-step workflows, session-based access is the
+normal choice because it avoids sending the username and password on every
+request.
+
+## Connection points
+
+Operational probes:
 
 - `/health`
 - `/ready`
 
-The REST contract is also exposed at runtime:
+Versioned REST API:
+
+- `/api/v1/...`
+
+OpenAPI document exposed by the running service:
 
 - `GET /api/v1/openapi.json`
-
-## Transport security and proxies
-
-Current releases support three transport modes:
-
-- `disabled`
-- `terminated_by_proxy`
-- `native`
-
-For production-style deployments, `terminated_by_proxy` or `native` is usually
-the right choice. When running behind a TLS-terminating proxy, configure trusted
-proxy CIDRs explicitly rather than assuming forwarded headers are accepted from
-any source.
-
-## Version-specific behavior
-
-Version alignment matters for:
-
-- request and response shapes
-- supported endpoints
-- packaged configuration expectations
-- release artifact names and checksums
-
-When documenting or automating against the gateway, pin examples to the release
-you actually deploy and keep the shipped OpenAPI tree nearby.

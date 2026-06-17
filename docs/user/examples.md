@@ -11,6 +11,10 @@ export GVM_GATEWAY_USERNAME="admin"
 export GVM_GATEWAY_PASSWORD="admin"
 ```
 
+For multi-step workflows, these examples use a created session plus bearer
+token. Single requests can also use HTTP Basic authentication where the gateway
+accepts it.
+
 ## 1. Create a session
 
 Authenticate with HTTP Basic credentials and capture the returned bearer token:
@@ -196,11 +200,4 @@ curl -fsS \
 
 ## Finding the formal contract
 
-For the full contract, schema definitions, and endpoint list for this release,
-use:
-
-- `api/rest/openapi.yaml`
-- `api/rest/openspec.md`
-
-Those files are shipped in this package so clients do not need to reconstruct
-the API from repository state or build artifacts.
+Use `api/rest/openapi.yaml` for the full release-aligned API contract.
