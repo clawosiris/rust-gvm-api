@@ -12,6 +12,8 @@
 - Always document the intent of tests.
 - When adding or updating tests, make it clear what behavior, contract, regression, or edge case each test is meant to cover.
 - Prefer test names and nearby comments that explain why the test exists, not just what commands it runs.
+- Unit tests belong in sidecar files named `*_test.rs`, not inline `mod tests` blocks.
+- Integration tests, contract tests, and other higher-level behavior tests belong under the crate's `tests/` directory.
 - Always run `cargo fmt --all -- --check` to validate code formatting before considering the work complete.
 - Always run `cargo clippy --workspace --all-targets --all-features -- -D warnings` to validate code changes before considering the work complete.
 
