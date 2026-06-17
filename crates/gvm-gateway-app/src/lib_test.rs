@@ -14,7 +14,7 @@ use gvm_gateway_domain::{
     GvmdReportFormatExportRequest, JobStatus, JsonReportExportRequest, ModifyTargetInput,
     Pagination, ReadinessStatus, Report, ReportExport, ReportExportJob, ReportExportRequest,
     ReportPage, ReportPort, ReportQuery, ResourceRef, ResultPage, ResultQuery, ScanResult,
-    SessionLimits, SessionManager, SystemPort, TargetQuery, TlsCertificatePage,
+    SessionLimits, SessionManager, SessionTokenDigest, SystemPort, TargetQuery, TlsCertificatePage,
 };
 use tokio::sync::Notify;
 
@@ -28,16 +28,17 @@ fn service_health_always_returns_ok() {
     assert_eq!(health.status, "ok");
 }
 
-/// Raw-token observability paths use the documented `session:<suffix>` format
-/// without exposing the complete bearer token.
+/// Raw-token observability paths use the shared digest-based safe ID without
+/// exposing the complete bearer token or a raw token suffix.
 #[test]
-fn safe_session_id_uses_documented_token_suffix() {
+fn safe_session_id_uses_session_token_digest() {
     let token = "gvm_sess_1234567890abcdef";
 
     let session_id = safe_session_id(token);
 
-    assert_eq!(session_id, "session:90abcdef");
+    assert_eq!(session_id, SessionTokenDigest::from_token(token).safe_id());
     assert!(!session_id.contains(token));
+    assert!(!session_id.contains("90abcdef"));
 }
 
 /// Ready forwards a healthy backend readiness response unchanged.

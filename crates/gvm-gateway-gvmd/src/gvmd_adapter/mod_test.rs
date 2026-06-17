@@ -1,13 +1,14 @@
 use super::*;
 
 #[test]
-fn safe_session_id_uses_documented_token_suffix() {
+fn safe_session_id_uses_session_token_digest() {
     let token = "gvm_sess_1234567890abcdef";
 
     let session_id = safe_session_id(token);
 
-    assert_eq!(session_id, "session:90abcdef");
+    assert_eq!(session_id, SessionTokenDigest::from_token(token).safe_id());
     assert!(!session_id.contains(token));
+    assert!(!session_id.contains("90abcdef"));
 }
 
 #[test]

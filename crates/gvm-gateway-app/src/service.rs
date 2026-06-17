@@ -8,7 +8,7 @@ use std::sync::Arc;
 use gvm_gateway_domain::{
     AlertPort, AuthPort, CredentialPort, FeedPort, GatewayError, IdentityPort, PortListPort,
     ReportPort, ResultPort, ScanConfigPort, ScannerPort, SchedulePort, SessionManager,
-    SupportingResourcePort, SystemPort, TargetPort, TaskPort,
+    SessionTokenDigest, SupportingResourcePort, SystemPort, TargetPort, TaskPort,
 };
 use tracing::{field, info_span, Instrument};
 
@@ -200,15 +200,7 @@ pub(crate) fn execution_span(
 }
 
 pub(crate) fn safe_session_id(token: &str) -> String {
-    let suffix: String = token
-        .chars()
-        .rev()
-        .take(8)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    format!("session:{suffix}")
+    SessionTokenDigest::from_token(token).safe_id()
 }
 
 fn error_category(error: &GatewayError) -> &'static str {

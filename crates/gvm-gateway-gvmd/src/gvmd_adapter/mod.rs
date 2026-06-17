@@ -375,13 +375,5 @@ impl GvmdAdapter {
 }
 
 fn safe_session_id(token: &str) -> String {
-    let suffix: String = token
-        .chars()
-        .rev()
-        .take(8)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    format!("session:{suffix}")
+    SessionTokenDigest::from_token(token).safe_id()
 }
