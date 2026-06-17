@@ -20,6 +20,28 @@ pub(crate) struct CollectionQueryParams {
     pub(crate) per_page: u32,
 }
 
+/// Parsed collection-list query shared by REST handlers with filter and pagination.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CollectionListQuery {
+    pub(crate) filter_string: Option<String>,
+    pub(crate) filter_id: Option<String>,
+    pub(crate) page: u32,
+    pub(crate) per_page: u32,
+}
+
+impl CollectionListQuery {
+    pub(crate) fn try_from_query_string(query: &str) -> Result<Self, GatewayError> {
+        let parsed = parse_collection_query(query)?;
+
+        Ok(Self {
+            filter_string: parsed.filter_string,
+            filter_id: parsed.filter_id,
+            page: parsed.page,
+            per_page: parsed.per_page,
+        })
+    }
+}
+
 /// Normalized filter-only query fields.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct FilterOnlyQueryParams {

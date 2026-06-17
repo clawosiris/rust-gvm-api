@@ -3,7 +3,10 @@
 
 use gvm_gateway_domain::GatewayError;
 
-use super::{parse_collection_query, parse_delete_resource_query, parse_filter_only_query};
+use super::{
+    parse_collection_query, parse_delete_resource_query, parse_filter_only_query,
+    CollectionListQuery,
+};
 
 #[test]
 fn collection_query_decodes_reserved_characters_and_plus_spaces() {
@@ -50,6 +53,36 @@ fn collection_query_rejects_oversized_page_size() {
     assert_eq!(
         error,
         GatewayError::InvalidInput("perPage must be between 1 and 1000".to_string())
+    );
+}
+
+#[test]
+fn collection_list_query_wraps_shared_collection_parser() {
+    let parsed = CollectionListQuery::try_from_query_string(
+        "filter=name%3Dfoo+and+severity%3E5&filterId=123e4567-e89b-12d3-a456-426614174000",
+    )
+    .expect("shared collection query should parse");
+
+    assert_eq!(
+        parsed.filter_string.as_deref(),
+        Some("name=foo and severity>5")
+    );
+    assert_eq!(
+        parsed.filter_id.as_deref(),
+        Some("123e4567-e89b-12d3-a456-426614174000")
+    );
+    assert_eq!(parsed.page, 1);
+    assert_eq!(parsed.per_page, 25);
+}
+
+#[test]
+fn collection_list_query_rejects_invalid_filter_id() {
+    let error = CollectionListQuery::try_from_query_string("filterId=not-a-uuid")
+        .expect_err("invalid shared filterId should be rejected");
+
+    assert_eq!(
+        error,
+        GatewayError::InvalidInput("filterId must be a valid UUID".to_string())
     );
 }
 

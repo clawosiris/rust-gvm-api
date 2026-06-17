@@ -29,9 +29,9 @@ use crate::{
     error::RestError,
     open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
-    query::{parse_delete_resource_query, DeleteResourceQueryParams},
+    query::{parse_delete_resource_query, CollectionListQuery, DeleteResourceQueryParams},
     router::bearer_token,
-    targets::{validate_uuid, TargetListQuery},
+    targets::validate_uuid,
 };
 
 pub use gvm_gateway_domain::{Alert, AlertPage, AlertQuery, CreateAlertInput, ModifyAlertInput};
@@ -235,7 +235,7 @@ pub async fn list_alerts(
         Ok(session) => session,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
-    let query = match TargetListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+    let query = match CollectionListQuery::try_from_query_string(uri.query().unwrap_or("")) {
         Ok(query) => query,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
     };
