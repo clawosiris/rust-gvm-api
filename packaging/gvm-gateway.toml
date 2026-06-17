@@ -17,8 +17,8 @@ transport_security_mode = "disabled"
 # Canonical gvmd Unix socket endpoint.
 gvmd_endpoint = "unix:///run/gvmd/gvmd.sock"
 
-# Packaged systemd installs should log locally through systemd-journald.
-local_log_output = "journald"
+# Optional local log sink.
+# local_log_output = "journald"
 
 # Maximum seconds an idle gateway session may remain alive.
 # session_idle_timeout_secs = 300

@@ -130,20 +130,14 @@ rm -rf dist/package-root dist/package-work
 rm -rf "${OUTPUT_DIR_ABS}"
 mkdir -p dist/package-root/usr/bin \
   dist/package-root/etc/gvm-gateway \
-  dist/package-root/usr/lib/systemd/system \
   dist/package-root/usr/share/doc/gvm-gateway \
   dist/package-root/usr/share/licenses/gvm-gateway \
-  dist/package-work/scripts \
   "${OUTPUT_DIR_ABS}"
 
 install -m 0755 target/release/gvm-gateway dist/package-root/usr/bin/gvm-gateway
-install -m 0644 packaging/gvm-gateway.service dist/package-root/usr/lib/systemd/system/gvm-gateway.service
 install -m 0644 packaging/gvm-gateway.toml dist/package-root/etc/gvm-gateway/gvm-gateway.toml.example
 install -m 0644 README.md dist/package-root/usr/share/doc/gvm-gateway/README.md
 install -m 0644 LICENSE dist/package-root/usr/share/licenses/gvm-gateway/LICENSE
-install -m 0755 packaging/scripts/postinstall dist/package-work/scripts/postinstall
-install -m 0755 packaging/scripts/preremove dist/package-work/scripts/preremove
-install -m 0755 packaging/scripts/postremove dist/package-work/scripts/postremove
 
 cat > dist/package-root/usr/share/doc/gvm-gateway/BUILDINFO <<EOF
 package_name=gvm-gateway

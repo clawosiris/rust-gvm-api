@@ -183,12 +183,8 @@ Useful follow-up commands:
 - Example package config: [packaging/gvm-gateway.toml](./packaging/gvm-gateway.toml), installed at `/etc/gvm-gateway/gvm-gateway.toml.example`
 - Canonical package config path: `/etc/gvm-gateway/gvm-gateway.toml`; copy the example there to activate file-based settings
 - Config directory: `/etc/gvm-gateway`, created by package installation
-- systemd unit: [packaging/gvm-gateway.service](./packaging/gvm-gateway.service), installed at `/usr/lib/systemd/system/gvm-gateway.service`
-- Service user: `gvm`
-- Service ordering: `gvm-gateway.service` starts after `gvmd.service` and wants `gvmd.service`
 - Default backend endpoint: `unix:///run/gvmd/gvmd.sock`
-- Package installation reloads systemd, enables `gvm-gateway.service`, and starts it on live systemd hosts.
-- Package removal stops and disables `gvm-gateway.service` on final removal, then reloads systemd. Upgrade removals skip the stop/disable step where the package manager exposes that lifecycle argument.
+- Package installation does not create a live canonical config file automatically; administrators opt into file-based settings by copying the example to `/etc/gvm-gateway/gvm-gateway.toml`.
 
 ### Transport Security Contract
 
