@@ -334,39 +334,48 @@ impl GvmdAdapter {
             .ok_or_else(|| GatewayError::NotFound(format!("user {id} not found")))
     }
 
-    fn load_timezones(&self) -> Vec<Timezone> {
+    fn parse_timezones(contents: &str) -> Vec<Timezone> {
+        let mut zones = contents
+            .lines()
+            .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+            .filter_map(|line| {
+                let mut fields = line.split('\t');
+                let _country_codes = fields.next()?;
+                let _coordinates = fields.next()?;
+                let name = fields.next()?.trim();
+                Some(Timezone {
+                    name: name.to_string(),
+                    display_name: Some(name.replace('_', " ")),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        zones.sort_by(|left, right| left.name.cmp(&right.name));
+        zones.dedup_by(|left, right| left.name == right.name);
+        zones
+    }
+
+    fn utc_timezone() -> Vec<Timezone> {
+        vec![Timezone {
+            name: "UTC".to_string(),
+            display_name: Some("UTC".to_string()),
+        }]
+    }
+
+    fn load_timezones() -> Vec<Timezone> {
         for path in [
             "/usr/share/zoneinfo/zone1970.tab",
             "/usr/share/zoneinfo/zone.tab",
         ] {
             if let Ok(contents) = fs::read_to_string(path) {
-                let mut zones = contents
-                    .lines()
-                    .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
-                    .filter_map(|line| {
-                        let mut fields = line.split('\t');
-                        let _country_codes = fields.next()?;
-                        let _coordinates = fields.next()?;
-                        let name = fields.next()?.trim();
-                        Some(Timezone {
-                            name: name.to_string(),
-                            display_name: Some(name.replace('_', " ")),
-                        })
-                    })
-                    .collect::<Vec<_>>();
-
+                let zones = Self::parse_timezones(&contents);
                 if !zones.is_empty() {
-                    zones.sort_by(|left, right| left.name.cmp(&right.name));
-                    zones.dedup_by(|left, right| left.name == right.name);
                     return zones;
                 }
             }
         }
 
-        vec![Timezone {
-            name: "UTC".to_string(),
-            display_name: Some("UTC".to_string()),
-        }]
+        Self::utc_timezone()
     }
 
     fn default_credential_stores(&self) -> Vec<CredentialStore> {
@@ -807,7 +816,10 @@ impl AlertPort for GvmdAdapter {
 #[async_trait]
 impl SchedulePort for GvmdAdapter {
     async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
-        Ok(self.load_timezones())
+        match tokio::task::spawn_blocking(Self::load_timezones).await {
+            Ok(timezones) => Ok(timezones),
+            Err(_) => Ok(Self::utc_timezone()),
+        }
     }
 
     async fn list_schedules(
@@ -3955,6 +3967,48 @@ mod tests {
         let adapter = GvmdAdapter::unix_socket("/tmp/nonexistent.sock");
         let result = adapter.session_client("missing-token");
         assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+    }
+
+    #[test]
+    fn parse_timezones_sorts_deduplicates_and_formats_display_names() {
+        let zones = GvmdAdapter::parse_timezones(
+            "# comment\n\
+FR\t+4852+00220\tEurope/Paris\tParis\n\
+US\t+404251-0740023\tAmerica/New_York\tEastern\n\
+US\t+404251-0740023\tAmerica/New_York\tDuplicate\n",
+        );
+
+        assert_eq!(
+            zones,
+            vec![
+                Timezone {
+                    name: "America/New_York".to_string(),
+                    display_name: Some("America/New York".to_string()),
+                },
+                Timezone {
+                    name: "Europe/Paris".to_string(),
+                    display_name: Some("Europe/Paris".to_string()),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_timezones_ignores_blank_and_malformed_lines() {
+        let zones = GvmdAdapter::parse_timezones(
+            "\n\
+comment-without-tabs\n\
+DE\t+5230+01322\tEurope/Berlin\n\
+\t\t\n",
+        );
+
+        assert_eq!(
+            zones,
+            vec![Timezone {
+                name: "Europe/Berlin".to_string(),
+                display_name: Some("Europe/Berlin".to_string()),
+            }]
+        );
     }
 
     #[test]
