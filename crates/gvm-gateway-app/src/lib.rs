@@ -31,5 +31,5 @@ mod lib_test;
 mod test_support;
 
 pub use jobs::JobReaper;
-pub use service::GatewayService;
+pub use service::{GatewayPorts, GatewayService};
 pub use session::SessionReaper;

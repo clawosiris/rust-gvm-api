@@ -16,6 +16,41 @@ use crate::jobs::{new_job_registry, JobRegistry};
 
 pub(crate) const AUDIT_TARGET: &str = "gvm_gateway_app::audit";
 
+/// Application port bundle used by composition roots and tests.
+#[derive(Clone)]
+pub struct GatewayPorts {
+    /// System/readiness/version port.
+    pub system: Arc<dyn SystemPort>,
+    /// Alert resource port.
+    pub alerts: Arc<dyn AlertPort>,
+    /// Schedule resource port.
+    pub schedules: Arc<dyn SchedulePort>,
+    /// Credential resource port.
+    pub credentials: Arc<dyn CredentialPort>,
+    /// Port-list resource port.
+    pub port_lists: Arc<dyn PortListPort>,
+    /// Feed resource port.
+    pub feeds: Arc<dyn FeedPort>,
+    /// Identity resource port.
+    pub identity: Arc<dyn IdentityPort>,
+    /// Target resource port.
+    pub targets: Arc<dyn TargetPort>,
+    /// Task resource port.
+    pub tasks: Arc<dyn TaskPort>,
+    /// Authentication/session backend port.
+    pub auth: Arc<dyn AuthPort>,
+    /// Report resource port.
+    pub reports: Arc<dyn ReportPort>,
+    /// Result resource port.
+    pub results: Arc<dyn ResultPort>,
+    /// Scan-config resource port.
+    pub scan_configs: Arc<dyn ScanConfigPort>,
+    /// Scanner resource port.
+    pub scanners: Arc<dyn ScannerPort>,
+    /// Supporting resource port.
+    pub supporting_resources: Arc<dyn SupportingResourcePort>,
+}
+
 /// Application services exposed to adapters.
 ///
 /// Ports are held as trait objects so that adding a new resource does not
@@ -42,41 +77,23 @@ pub struct GatewayService {
 
 impl GatewayService {
     /// Creates a new service backed by the provided ports and session manager.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        system: Arc<dyn SystemPort>,
-        alerts: Arc<dyn AlertPort>,
-        schedules: Arc<dyn SchedulePort>,
-        credentials: Arc<dyn CredentialPort>,
-        port_lists: Arc<dyn PortListPort>,
-        feeds: Arc<dyn FeedPort>,
-        identity: Arc<dyn IdentityPort>,
-        targets: Arc<dyn TargetPort>,
-        tasks: Arc<dyn TaskPort>,
-        auth: Arc<dyn AuthPort>,
-        reports: Arc<dyn ReportPort>,
-        results: Arc<dyn ResultPort>,
-        scan_configs: Arc<dyn ScanConfigPort>,
-        scanners: Arc<dyn ScannerPort>,
-        supporting_resources: Arc<dyn SupportingResourcePort>,
-        sessions: Arc<SessionManager>,
-    ) -> Self {
+    pub fn new(ports: GatewayPorts, sessions: Arc<SessionManager>) -> Self {
         Self {
-            system,
-            alerts,
-            schedules,
-            credentials,
-            port_lists,
-            feeds,
-            identity,
-            targets,
-            tasks,
-            auth,
-            reports,
-            results,
-            scan_configs,
-            scanners,
-            supporting_resources,
+            system: ports.system,
+            alerts: ports.alerts,
+            schedules: ports.schedules,
+            credentials: ports.credentials,
+            port_lists: ports.port_lists,
+            feeds: ports.feeds,
+            identity: ports.identity,
+            targets: ports.targets,
+            tasks: ports.tasks,
+            auth: ports.auth,
+            reports: ports.reports,
+            results: ports.results,
+            scan_configs: ports.scan_configs,
+            scanners: ports.scanners,
+            supporting_resources: ports.supporting_resources,
             sessions,
             jobs: new_job_registry(),
         }

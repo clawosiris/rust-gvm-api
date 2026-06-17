@@ -79,21 +79,23 @@ fn static_gateway_service() -> GatewayService {
     let supporting_resources: Arc<dyn gvm_gateway_domain::SupportingResourcePort> = adapter;
 
     GatewayService::new(
-        system,
-        alerts,
-        schedules,
-        credentials,
-        port_lists,
-        feeds,
-        identity,
-        targets,
-        tasks,
-        auth,
-        reports,
-        results,
-        scan_configs,
-        scanners,
-        supporting_resources,
+        gvm_gateway_app::GatewayPorts {
+            system,
+            alerts,
+            schedules,
+            credentials,
+            port_lists,
+            feeds,
+            identity,
+            targets,
+            tasks,
+            auth,
+            reports,
+            results,
+            scan_configs,
+            scanners,
+            supporting_resources,
+        },
         Arc::new(gvm_gateway_domain::SessionManager::default()),
     )
 }

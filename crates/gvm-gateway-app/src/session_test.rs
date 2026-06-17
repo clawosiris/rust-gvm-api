@@ -12,27 +12,9 @@ fn create_test_service_with_auth_and_sessions(
     auth: Arc<MockAuthPort>,
     sessions: Arc<SessionManager>,
 ) -> GatewayService {
-    GatewayService::new(
-        Arc::new(MockSystemPort {
-            ready: true,
-            gmp_version: "22.7".to_string(),
-        }),
-        Arc::new(MockAlertPort),
-        Arc::new(MockSchedulePort),
-        Arc::new(MockCredentialPort),
-        Arc::new(MockPortListPort),
-        Arc::new(MockFeedPort),
-        Arc::new(MockIdentityPort),
-        Arc::new(MockTargetPort::default()),
-        Arc::new(MockTaskPort),
-        auth,
-        Arc::new(MockReportPort),
-        Arc::new(MockResultPort),
-        Arc::new(MockScanConfigPort),
-        Arc::new(MockScannerPort),
-        Arc::new(MockSupportingResourcePort),
-        sessions,
-    )
+    let mut ports = test_ports();
+    ports.auth = auth;
+    GatewayService::new(ports, sessions)
 }
 
 // ------------------------------------------------------------------------
@@ -107,30 +89,12 @@ async fn service_create_session_replaces_idle_expired_limited_session() {
 /// create_session rolls back the domain session when backend auth fails.
 #[tokio::test]
 async fn service_create_session_auth_failure_rolls_back() {
-    let service = GatewayService::new(
-        Arc::new(MockSystemPort {
-            ready: true,
-            gmp_version: "22.7".to_string(),
-        }),
-        Arc::new(MockAlertPort),
-        Arc::new(MockSchedulePort),
-        Arc::new(MockCredentialPort),
-        Arc::new(MockPortListPort),
-        Arc::new(MockFeedPort),
-        Arc::new(MockIdentityPort),
-        Arc::new(MockTargetPort::default()),
-        Arc::new(MockTaskPort),
-        Arc::new(MockAuthPort {
-            should_fail: true,
-            ..Default::default()
-        }),
-        Arc::new(MockReportPort),
-        Arc::new(MockResultPort),
-        Arc::new(MockScanConfigPort),
-        Arc::new(MockScannerPort),
-        Arc::new(MockSupportingResourcePort),
-        Arc::new(SessionManager::default()),
-    );
+    let mut ports = test_ports();
+    ports.auth = Arc::new(MockAuthPort {
+        should_fail: true,
+        ..Default::default()
+    });
+    let service = GatewayService::new(ports, Arc::new(SessionManager::default()));
 
     let result = service.create_session("admin", "wrong").await;
     assert!(matches!(result, Err(GatewayError::Unauthorized(_))));

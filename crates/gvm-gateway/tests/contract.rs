@@ -9,7 +9,7 @@ use std::{
 
 use async_trait::async_trait;
 use common::{spawn_server, spawn_server_with_sessions};
-use gvm_gateway_app::GatewayService;
+use gvm_gateway_app::{GatewayPorts, GatewayService};
 use gvm_gateway_domain::{
     CreateTaskInput, GatewayError, GetReportOpts, ModifyTaskInput, Pagination, Report,
     ReportExport, ReportExportRequest, ReportPage, ReportPort, ReportQuery, ResourceRef,
@@ -321,21 +321,23 @@ async fn spawn_task_server(
     let token = sessions.create("admin").unwrap().token;
     let adapter = Arc::new(StaticGvmdAdapter::ready("22.7"));
     let service = GatewayService::new(
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        task_port,
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter,
+        GatewayPorts {
+            system: adapter.clone(),
+            alerts: adapter.clone(),
+            schedules: adapter.clone(),
+            credentials: adapter.clone(),
+            port_lists: adapter.clone(),
+            feeds: adapter.clone(),
+            identity: adapter.clone(),
+            targets: adapter.clone(),
+            tasks: task_port,
+            auth: adapter.clone(),
+            reports: adapter.clone(),
+            results: adapter.clone(),
+            scan_configs: adapter.clone(),
+            scanners: adapter.clone(),
+            supporting_resources: adapter,
+        },
         sessions,
     );
     let app = build_router(service);
@@ -368,21 +370,23 @@ async fn spawn_report_server_with_users(
     let other_token = sessions.create("auditor").unwrap().token;
     let adapter = Arc::new(StaticGvmdAdapter::ready("22.7"));
     let service = GatewayService::new(
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        report_port,
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter,
+        GatewayPorts {
+            system: adapter.clone(),
+            alerts: adapter.clone(),
+            schedules: adapter.clone(),
+            credentials: adapter.clone(),
+            port_lists: adapter.clone(),
+            feeds: adapter.clone(),
+            identity: adapter.clone(),
+            targets: adapter.clone(),
+            tasks: adapter.clone(),
+            auth: adapter.clone(),
+            reports: report_port,
+            results: adapter.clone(),
+            scan_configs: adapter.clone(),
+            scanners: adapter.clone(),
+            supporting_resources: adapter,
+        },
         sessions,
     );
     let app = build_router(service);

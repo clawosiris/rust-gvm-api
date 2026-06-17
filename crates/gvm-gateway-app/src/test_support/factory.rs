@@ -15,31 +15,35 @@ use tracing_subscriber::{
     prelude::*,
 };
 
-use crate::{test_support::mocks::*, GatewayService};
+use crate::{test_support::mocks::*, GatewayPorts, GatewayService};
 
 /// Builds a service with permissive mocks for tests that only care about service wiring.
 pub(crate) fn create_test_service() -> GatewayService {
-    GatewayService::new(
-        Arc::new(MockSystemPort {
+    GatewayService::new(test_ports(), Arc::new(SessionManager::default()))
+}
+
+/// Builds the default mock port bundle for app-layer tests.
+pub(crate) fn test_ports() -> GatewayPorts {
+    GatewayPorts {
+        system: Arc::new(MockSystemPort {
             ready: true,
             gmp_version: "22.7".to_string(),
         }),
-        Arc::new(MockAlertPort),
-        Arc::new(MockSchedulePort),
-        Arc::new(MockCredentialPort),
-        Arc::new(MockPortListPort),
-        Arc::new(MockFeedPort),
-        Arc::new(MockIdentityPort),
-        Arc::new(MockTargetPort::default()),
-        Arc::new(MockTaskPort),
-        Arc::new(MockAuthPort::default()),
-        Arc::new(MockReportPort),
-        Arc::new(MockResultPort),
-        Arc::new(MockScanConfigPort),
-        Arc::new(MockScannerPort),
-        Arc::new(MockSupportingResourcePort),
-        Arc::new(SessionManager::default()),
-    )
+        alerts: Arc::new(MockAlertPort),
+        schedules: Arc::new(MockSchedulePort),
+        credentials: Arc::new(MockCredentialPort),
+        port_lists: Arc::new(MockPortListPort),
+        feeds: Arc::new(MockFeedPort),
+        identity: Arc::new(MockIdentityPort),
+        targets: Arc::new(MockTargetPort::default()),
+        tasks: Arc::new(MockTaskPort),
+        auth: Arc::new(MockAuthPort::default()),
+        reports: Arc::new(MockReportPort),
+        results: Arc::new(MockResultPort),
+        scan_configs: Arc::new(MockScanConfigPort),
+        scanners: Arc::new(MockScannerPort),
+        supporting_resources: Arc::new(MockSupportingResourcePort),
+    }
 }
 
 #[derive(Clone, Default)]
