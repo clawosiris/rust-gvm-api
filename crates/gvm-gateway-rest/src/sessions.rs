@@ -19,7 +19,7 @@ use serde::Serialize;
 use crate::{
     dto::datetime_schema,
     error::RestError,
-    openapi::{ok_json, problem_response},
+    openapi::{created_json, ok_json, problem_response, response_with_retry_after},
     router::bearer_token,
 };
 
@@ -209,10 +209,11 @@ pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperat
              session token. Include the token as a Bearer token on all subsequent requests.",
         )
         .security_requirement("basicAuth")
-        .response_with::<201, Json<SessionCreatedResponse>, _>(ok_json("Session created"));
+        .response_with::<201, Json<SessionCreatedResponse>, _>(created_json("Session created"));
 
     let op = problem_response::<401>(op, "Authentication failed");
     let op = problem_response::<429>(op, "Session limit or rate limit exceeded");
+    let op = response_with_retry_after::<429>(op, "Seconds to wait before retrying");
     problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 
@@ -249,82 +250,5 @@ pub(crate) fn delete_session_docs(op: TransformOperation<'_>) -> TransformOperat
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::http::{HeaderMap, HeaderValue};
-
-    // -- Basic auth extraction -----------------------------------------------
-
-    /// Valid Basic auth header is decoded correctly.
-    #[test]
-    fn extract_basic_credentials_valid() {
-        let mut headers = HeaderMap::new();
-        // "admin:secret" → base64
-        headers.insert(
-            axum::http::header::AUTHORIZATION,
-            HeaderValue::from_static("Basic YWRtaW46c2VjcmV0"),
-        );
-        let (user, pass) = extract_basic_credentials(&headers).unwrap();
-        assert_eq!(user, "admin");
-        assert_eq!(pass, "secret");
-    }
-
-    /// Missing Authorization header produces Unauthorized.
-    #[test]
-    fn extract_basic_credentials_missing_header() {
-        let headers = HeaderMap::new();
-        let result = extract_basic_credentials(&headers);
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-    }
-
-    /// Bearer prefix is rejected (must be Basic).
-    #[test]
-    fn extract_basic_credentials_bearer_rejected() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            axum::http::header::AUTHORIZATION,
-            HeaderValue::from_static("Bearer some-token"),
-        );
-        let result = extract_basic_credentials(&headers);
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-    }
-
-    /// Invalid base64 in the credentials is rejected.
-    #[test]
-    fn extract_basic_credentials_invalid_base64() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            axum::http::header::AUTHORIZATION,
-            HeaderValue::from_static("Basic !!!invalid!!!"),
-        );
-        let result = extract_basic_credentials(&headers);
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-    }
-
-    /// Empty username is rejected.
-    #[test]
-    fn extract_basic_credentials_empty_username() {
-        let mut headers = HeaderMap::new();
-        // ":password" → base64
-        headers.insert(
-            axum::http::header::AUTHORIZATION,
-            HeaderValue::from_static("Basic OnBhc3N3b3Jk"),
-        );
-        let result = extract_basic_credentials(&headers);
-        assert!(matches!(result, Err(GatewayError::Unauthorized(_))));
-    }
-
-    /// Password containing colons is preserved.
-    #[test]
-    fn extract_basic_credentials_password_with_colon() {
-        let mut headers = HeaderMap::new();
-        // "user:pass:word" → base64
-        headers.insert(
-            axum::http::header::AUTHORIZATION,
-            HeaderValue::from_static("Basic dXNlcjpwYXNzOndvcmQ="),
-        );
-        let (user, pass) = extract_basic_credentials(&headers).unwrap();
-        assert_eq!(user, "user");
-        assert_eq!(pass, "pass:word");
-    }
-}
+#[path = "sessions_test.rs"]
+mod sessions_test;

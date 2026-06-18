@@ -9,7 +9,7 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -20,17 +20,18 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{
-        created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse,
-        ResourceRefResponse,
-    },
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
     error::RestError,
+    handler::{
+        create_resource, delete_resource, get_resource, list_resource, update_resource,
+        validate_uuid, ValidateInto,
+    },
     open_enum::open_string_enum,
     openapi::{
-        ok_json, problem_response, CreateTaskDoc, ModifyTaskDoc, ResourceIdPathDoc,
+        created_json, ok_json, problem_response, CreateTaskDoc, ModifyTaskDoc, ResourceIdPathDoc,
         TaskListQueryDoc,
     },
-    query::{parse_collection_query, parse_delete_resource_query, DeleteResourceQueryParams},
+    query::{parse_collection_query, DeleteResourceQueryParams},
     router::bearer_token,
 };
 
@@ -317,6 +318,12 @@ impl CreateTaskRequest {
     }
 }
 
+impl ValidateInto<CreateTaskInput> for CreateTaskRequest {
+    fn validate_into(self) -> Result<CreateTaskInput, GatewayError> {
+        self.validate()
+    }
+}
+
 /// Modify-task request payload.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 pub struct ModifyTaskRequest {
@@ -382,6 +389,12 @@ impl ModifyTaskRequest {
     }
 }
 
+impl ValidateInto<ModifyTaskInput> for ModifyTaskRequest {
+    fn validate_into(self) -> Result<ModifyTaskInput, GatewayError> {
+        self.validate()
+    }
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -392,31 +405,27 @@ pub async fn list_tasks(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match TaskListQuery::try_from_query_string(uri.query().unwrap_or("")) {
-        Ok(query) => query,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service
-        .list_tasks(
-            &session,
-            TaskQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
-        .await
-    {
-        Ok(tasks) => (StatusCode::OK, Json(TaskListResponse::from(tasks))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        TaskListQuery::try_from_query_string,
+        |service, session, query| async move {
+            service
+                .list_tasks(
+                    &session,
+                    TaskQuery {
+                        filter_string: query.filter_string,
+                        filter_id: query.filter_id,
+                        page: query.page,
+                        per_page: query.per_page,
+                    },
+                )
+                .await
+        },
+        TaskListResponse::from,
+    )
+    .await
 }
 
 /// Create task handler.
@@ -426,40 +435,14 @@ pub async fn create_task(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<CreateTaskRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.create_task(&session, input).await {
-        Ok(id) => {
-            let location = created_resource_location(&instance, &id);
-            (
-                StatusCode::CREATED,
-                [(header::LOCATION, location)],
-                Json(ResourceCreatedResponse {
-                    id: parse_uuid(&id),
-                }),
-            )
-                .into_response()
-        }
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    create_resource::<CreateTaskInput, CreateTaskRequest, _, _>(
+        service,
+        headers,
+        uri,
+        body,
+        |service, session, input| async move { service.create_task(&session, input).await },
+    )
+    .await
 }
 
 /// Get task handler.
@@ -469,19 +452,15 @@ pub async fn get_task(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.get_task(&session, &id).await {
-        Ok(task) => (StatusCode::OK, Json(TaskResponse::from(task))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_task(&session, &id).await },
+        TaskResponse::from,
+    )
+    .await
 }
 
 /// Update task handler.
@@ -492,33 +471,16 @@ pub async fn update_task(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<ModifyTaskRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.modify_task(&session, &id, input).await {
-        Ok(task) => (StatusCode::OK, Json(TaskResponse::from(task))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    update_resource::<ModifyTaskInput, ModifyTaskRequest, _, _, _, _>(
+        service,
+        headers,
+        id,
+        uri,
+        body,
+        |service, session, id, input| async move { service.modify_task(&session, &id, input).await },
+        TaskResponse::from,
+    )
+    .await
 }
 
 /// Delete task handler.
@@ -528,23 +490,16 @@ pub async fn delete_task(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
-        Ok(ultimate) => ultimate,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.delete_task(&session, &id, ultimate).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id, ultimate| async move {
+            service.delete_task(&session, &id, ultimate).await
+        },
+    )
+    .await
 }
 
 /// Start task handler.
@@ -624,13 +579,6 @@ fn validate_optional_uuid(field: &str, value: Option<&str>) -> Result<(), Gatewa
     Ok(())
 }
 
-/// Validate a UUID-like REST resource identifier.
-pub fn validate_uuid(field: &str, value: &str) -> Result<(), GatewayError> {
-    Uuid::parse_str(value)
-        .map(|_| ())
-        .map_err(|_| GatewayError::InvalidInput(format!("{field} must be a valid UUID")))
-}
-
 // ============================================================================
 // OpenAPI transforms
 // ============================================================================
@@ -658,7 +606,7 @@ pub(crate) fn create_task_docs(op: TransformOperation<'_>) -> TransformOperation
         .description("Creates a new scan task.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateTaskDoc>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Task created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Task created"));
 
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
@@ -760,109 +708,5 @@ pub(crate) fn resume_task_docs(op: TransformOperation<'_>) -> TransformOperation
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::TaskResponse;
-    use gvm_gateway_domain::{ResourceRef, Task, TaskObservers};
-
-    fn task_with_status(status: &str) -> Task {
-        Task {
-            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
-            name: "Example".to_string(),
-            comment: None,
-            status: status.to_string(),
-            progress: Some(42),
-            target: None,
-            scan_config: None,
-            scanner: None,
-            schedule: None,
-            alerts: vec![],
-            alterable: None,
-            hosts_ordering: None,
-            observers: TaskObservers::default(),
-            schedule_periods: None,
-            last_report: None,
-            current_report: None,
-            report_count: Some(3),
-            in_use: false,
-            writable: true,
-        }
-    }
-
-    #[test]
-    fn task_response_preserves_unknown_hosts_ordering() {
-        let response = TaskResponse::from(Task {
-            hosts_ordering: Some("by-latency".to_string()),
-            ..task_with_status("Running")
-        });
-
-        let value = serde_json::to_value(response).expect("task response should serialize");
-        assert_eq!(value["hostsOrdering"], json!("by-latency"));
-    }
-
-    #[test]
-    fn task_response_preserves_live_gvmd_status_values() {
-        // Live task lifecycle values must remain visible to clients rather
-        // than being coerced to an older enum variant.
-        for status in [
-            "New",
-            "Requested",
-            "Queued",
-            "Running",
-            "Stop Requested",
-            "Stopping",
-            "Processing",
-            "Done",
-            "Stopped",
-            "Error",
-            "Delete Requested",
-            "Ultimate Delete Requested",
-            "Container",
-            "Interrupted",
-        ] {
-            let json = serde_json::to_value(TaskResponse::from(task_with_status(status))).unwrap();
-
-            assert_eq!(json["status"], status);
-        }
-    }
-
-    #[test]
-    fn task_response_preserves_unknown_status_and_report_count_semantics() {
-        // Unknown future gvmd statuses should still be round-tripped, and the
-        // count field must be named for the report-count source data.
-        let json =
-            serde_json::to_value(TaskResponse::from(task_with_status("Future State"))).unwrap();
-
-        assert_eq!(json["status"], "Future State");
-        assert_eq!(json["progress"], 42);
-        assert_eq!(json["reportCount"], 3);
-        assert!(json.get("resultCount").is_none());
-    }
-
-    #[test]
-    fn task_response_preserves_group_and_role_observers() {
-        // Task observers can be non-user principals; those must not disappear
-        // when gvmd reports a group-only or role-only observer shape.
-        let response = TaskResponse::from(Task {
-            observers: TaskObservers {
-                users: vec![],
-                groups: vec![ResourceRef {
-                    id: "11111111-1111-1111-1111-111111111111".to_string(),
-                    name: Some("Auditors".to_string()),
-                }],
-                roles: vec![ResourceRef {
-                    id: "22222222-2222-2222-2222-222222222222".to_string(),
-                    name: Some("Observers".to_string()),
-                }],
-            },
-            ..task_with_status("Running")
-        });
-
-        let json = serde_json::to_value(response).unwrap();
-
-        assert!(json["observers"].get("users").is_none());
-        assert_eq!(json["observers"]["groups"][0]["name"], "Auditors");
-        assert_eq!(json["observers"]["roles"][0]["name"], "Observers");
-    }
-}
+#[path = "tasks_test.rs"]
+mod tasks_test;

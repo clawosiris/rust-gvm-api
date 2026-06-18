@@ -11,8 +11,8 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    http::HeaderMap,
+    response::Response,
     Json,
 };
 use gvm_gateway_app::GatewayService;
@@ -22,16 +22,15 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{
-        created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse,
-        ResourceRefResponse,
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
+    handler::{
+        create_resource, delete_resource, get_resource, list_resource, update_resource,
+        ValidateInto,
     },
-    error::RestError,
     open_enum::open_string_enum,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
-    query::{parse_delete_resource_query, DeleteResourceQueryParams},
-    router::bearer_token,
-    targets::{validate_uuid, TargetListQuery},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
+    query::{CollectionListQuery, DeleteResourceQueryParams},
+    targets::validate_uuid,
 };
 
 pub use gvm_gateway_domain::{Alert, AlertPage, AlertQuery, CreateAlertInput, ModifyAlertInput};
@@ -83,10 +82,13 @@ pub(crate) struct AlertResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(required)]
     event: Option<AlertEvent>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(required)]
     condition: Option<AlertCondition>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(required)]
     method: Option<AlertMethod>,
     #[serde(
         rename = "eventData",
@@ -150,20 +152,24 @@ impl From<AlertPage> for AlertListResponse {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateAlert")]
-pub struct CreateAlertRequest {
-    pub name: String,
-    pub comment: Option<String>,
-    pub event: Option<String>,
-    pub condition: Option<String>,
-    pub method: Option<String>,
+pub(crate) struct CreateAlertRequest {
+    name: String,
+    comment: Option<String>,
+    #[schemars(required)]
+    event: Option<AlertEvent>,
+    #[schemars(required)]
+    condition: Option<AlertCondition>,
+    #[schemars(required)]
+    method: Option<AlertMethod>,
     #[serde(rename = "eventData", default)]
-    pub event_data: HashMap<String, String>,
+    event_data: HashMap<String, String>,
     #[serde(rename = "conditionData", default)]
-    pub condition_data: HashMap<String, String>,
+    condition_data: HashMap<String, String>,
     #[serde(rename = "methodData", default)]
-    pub method_data: HashMap<String, String>,
+    method_data: HashMap<String, String>,
     #[serde(rename = "filterId")]
-    pub filter_id: Option<String>,
+    #[schemars(with = "Option<Uuid>")]
+    filter_id: Option<String>,
 }
 
 impl CreateAlertRequest {
@@ -177,14 +183,22 @@ impl CreateAlertRequest {
         Ok(CreateAlertInput {
             name: self.name,
             comment: self.comment,
-            event: self.event,
-            condition: self.condition,
-            method: self.method,
+            event: self.event.map(|event| event.as_str().to_string()),
+            condition: self
+                .condition
+                .map(|condition| condition.as_str().to_string()),
+            method: self.method.map(|method| method.as_str().to_string()),
             event_data: self.event_data,
             condition_data: self.condition_data,
             method_data: self.method_data,
             filter_id: self.filter_id,
         })
+    }
+}
+
+impl ValidateInto<CreateAlertInput> for CreateAlertRequest {
+    fn validate_into(self) -> Result<CreateAlertInput, GatewayError> {
+        self.validate()
     }
 }
 
@@ -203,6 +217,7 @@ pub struct ModifyAlertRequest {
     #[serde(rename = "methodData")]
     pub method_data: Option<HashMap<String, String>>,
     #[serde(rename = "filterId")]
+    #[schemars(with = "Option<Uuid>")]
     pub filter_id: Option<String>,
 }
 
@@ -225,35 +240,38 @@ impl ModifyAlertRequest {
     }
 }
 
+impl ValidateInto<ModifyAlertInput> for ModifyAlertRequest {
+    fn validate_into(self) -> Result<ModifyAlertInput, GatewayError> {
+        self.validate()
+    }
+}
+
 pub async fn list_alerts(
     State(service): State<GatewayService>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match TargetListQuery::try_from_query_string(uri.query().unwrap_or("")) {
-        Ok(query) => query,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service
-        .list_alerts(
-            &session,
-            AlertQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
-        .await
-    {
-        Ok(alerts) => (StatusCode::OK, Json(AlertListResponse::from(alerts))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        CollectionListQuery::try_from_query_string,
+        |service, session, query| async move {
+            service
+                .list_alerts(
+                    &session,
+                    AlertQuery {
+                        filter_string: query.filter_string,
+                        filter_id: query.filter_id,
+                        page: query.page,
+                        per_page: query.per_page,
+                    },
+                )
+                .await
+        },
+        AlertListResponse::from,
+    )
+    .await
 }
 
 pub async fn create_alert(
@@ -262,36 +280,14 @@ pub async fn create_alert(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<CreateAlertRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response()
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.create_alert(&session, input).await {
-        Ok(id) => (
-            StatusCode::CREATED,
-            [(header::LOCATION, created_resource_location(&instance, &id))],
-            Json(ResourceCreatedResponse {
-                id: parse_uuid(&id),
-            }),
-        )
-            .into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    create_resource::<CreateAlertInput, CreateAlertRequest, _, _>(
+        service,
+        headers,
+        uri,
+        body,
+        |service, session, input| async move { service.create_alert(&session, input).await },
+    )
+    .await
 }
 
 pub async fn get_alert(
@@ -300,18 +296,15 @@ pub async fn get_alert(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.get_alert(&session, &id).await {
-        Ok(alert) => (StatusCode::OK, Json(AlertResponse::from(alert))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_alert(&session, &id).await },
+        AlertResponse::from,
+    )
+    .await
 }
 
 pub async fn update_alert(
@@ -321,32 +314,18 @@ pub async fn update_alert(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<ModifyAlertRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response()
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.modify_alert(&session, &id, input).await {
-        Ok(alert) => (StatusCode::OK, Json(AlertResponse::from(alert))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    update_resource::<ModifyAlertInput, ModifyAlertRequest, _, _, _, _>(
+        service,
+        headers,
+        id,
+        uri,
+        body,
+        |service, session, id, input| async move {
+            service.modify_alert(&session, &id, input).await
+        },
+        AlertResponse::from,
+    )
+    .await
 }
 
 pub async fn delete_alert(
@@ -355,22 +334,16 @@ pub async fn delete_alert(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
-        Ok(ultimate) => ultimate,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.delete_alert(&session, &id, ultimate).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id, ultimate| async move {
+            service.delete_alert(&session, &id, ultimate).await
+        },
+    )
+    .await
 }
 
 pub(crate) fn list_alerts_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
@@ -394,7 +367,7 @@ pub(crate) fn create_alert_docs(op: TransformOperation<'_>) -> TransformOperatio
         .description("Creates a new alert.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateAlertRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Alert created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Alert created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }
@@ -442,75 +415,5 @@ pub(crate) fn delete_alert_docs(op: TransformOperation<'_>) -> TransformOperatio
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use serde_json::json;
-
-    use super::{AlertCondition, AlertEvent, AlertMethod, AlertResponse};
-    use gvm_gateway_domain::Alert;
-
-    fn alert_with_selectors(event: &str, condition: &str, method: &str) -> Alert {
-        Alert {
-            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
-            name: "Alert".to_string(),
-            comment: None,
-            event: Some(event.to_string()),
-            condition: Some(condition.to_string()),
-            method: Some(method.to_string()),
-            event_data: HashMap::new(),
-            condition_data: HashMap::new(),
-            method_data: HashMap::new(),
-            filter: None,
-            in_use: false,
-            writable: true,
-        }
-    }
-
-    #[test]
-    fn alert_selector_deserialization_preserves_unknown_values() {
-        // Alert selector vocabularies are owned by gvmd/rust-gvm. The REST
-        // response wrapper must keep unknown future values intact.
-        let event: AlertEvent =
-            serde_json::from_value(json!("future_event")).expect("event should parse");
-        let condition: AlertCondition =
-            serde_json::from_value(json!("future_condition")).expect("condition should parse");
-        let method: AlertMethod =
-            serde_json::from_value(json!("future_method")).expect("method should parse");
-
-        assert_eq!(serde_json::to_value(event).unwrap(), json!("future_event"));
-        assert_eq!(
-            serde_json::to_value(condition).unwrap(),
-            json!("future_condition")
-        );
-        assert_eq!(
-            serde_json::to_value(method).unwrap(),
-            json!("future_method")
-        );
-    }
-
-    #[test]
-    fn alert_response_preserves_known_and_unknown_selectors() {
-        // Response conversion should not collapse alert selectors that are not
-        // yet known to this gateway build.
-        let known = serde_json::to_value(AlertResponse::from(alert_with_selectors(
-            "task_run_status_changed",
-            "always",
-            "email",
-        )))
-        .expect("alert response should serialize");
-        let unknown = serde_json::to_value(AlertResponse::from(alert_with_selectors(
-            "future_event",
-            "future_condition",
-            "future_method",
-        )))
-        .expect("alert response should serialize");
-
-        assert_eq!(known["event"], json!("task_run_status_changed"));
-        assert_eq!(known["condition"], json!("always"));
-        assert_eq!(known["method"], json!("email"));
-        assert_eq!(unknown["event"], json!("future_event"));
-        assert_eq!(unknown["condition"], json!("future_condition"));
-        assert_eq!(unknown["method"], json!("future_method"));
-    }
-}
+#[path = "alerts_test.rs"]
+mod alerts_test;

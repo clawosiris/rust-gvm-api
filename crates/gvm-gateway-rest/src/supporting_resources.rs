@@ -7,7 +7,7 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -21,14 +21,15 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{
-        created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse,
-        ResourceRefResponse,
-    },
+    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
     error::RestError,
+    handler::{
+        create_resource, delete_resource, get_resource, list_resource, update_resource,
+        ValidateInto,
+    },
     open_enum::open_string_enum,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc},
-    query::{parse_collection_query, parse_delete_resource_query, DeleteResourceQueryParams},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc},
+    query::{parse_collection_query, DeleteResourceQueryParams},
     results::NvtRefResponse,
     router::bearer_token,
     targets::validate_uuid,
@@ -543,6 +544,7 @@ impl From<gvm_gateway_domain::OverridePage> for OverrideListResponse {
 #[schemars(rename = "CreateNote")]
 pub(crate) struct CreateNoteRequest {
     #[serde(rename = "nvtOid")]
+    #[schemars(required)]
     nvt_oid: Option<String>,
     text: Option<String>,
     #[serde(default)]
@@ -582,6 +584,7 @@ pub(crate) struct ModifyNoteRequest {
 #[schemars(rename = "CreateOverride")]
 pub(crate) struct CreateOverrideRequest {
     #[serde(rename = "nvtOid")]
+    #[schemars(required)]
     nvt_oid: Option<String>,
     text: Option<String>,
     #[serde(default)]
@@ -740,6 +743,12 @@ impl CreateNoteRequest {
     }
 }
 
+impl ValidateInto<CreateNoteInput> for CreateNoteRequest {
+    fn validate_into(self) -> Result<CreateNoteInput, GatewayError> {
+        self.validate()
+    }
+}
+
 impl ModifyNoteRequest {
     fn validate(self) -> Result<ModifyNoteInput, GatewayError> {
         validate_optional_uuid("taskId", self.task_id.as_deref())?;
@@ -755,6 +764,12 @@ impl ModifyNoteRequest {
             active: self.active,
             orphan: self.orphan,
         })
+    }
+}
+
+impl ValidateInto<ModifyNoteInput> for ModifyNoteRequest {
+    fn validate_into(self) -> Result<ModifyNoteInput, GatewayError> {
+        self.validate()
     }
 }
 
@@ -777,6 +792,12 @@ impl CreateOverrideRequest {
     }
 }
 
+impl ValidateInto<CreateOverrideInput> for CreateOverrideRequest {
+    fn validate_into(self) -> Result<CreateOverrideInput, GatewayError> {
+        self.validate()
+    }
+}
+
 impl ModifyOverrideRequest {
     fn validate(self) -> Result<ModifyOverrideInput, GatewayError> {
         validate_optional_uuid("taskId", self.task_id.as_deref())?;
@@ -792,6 +813,12 @@ impl ModifyOverrideRequest {
             result_id: self.result_id,
             active: self.active,
         })
+    }
+}
+
+impl ValidateInto<ModifyOverrideInput> for ModifyOverrideRequest {
+    fn validate_into(self) -> Result<ModifyOverrideInput, GatewayError> {
+        self.validate()
     }
 }
 
@@ -1030,20 +1057,15 @@ pub async fn list_notes(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match SupportingListQuery::try_from_query_string(uri.query().unwrap_or("")) {
-        Ok(query) => query,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.list_notes(&session, supporting_query(query)).await {
-        Ok(page) => (StatusCode::OK, Json(NoteListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| SupportingListQuery::try_from_query_string(query).map(supporting_query),
+        |service, session, query| async move { service.list_notes(&session, query).await },
+        NoteListResponse::from,
+    )
+    .await
 }
 
 /// Returns a single note by id.
@@ -1053,19 +1075,15 @@ pub async fn get_note(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.get_note(&session, &id).await {
-        Ok(item) => (StatusCode::OK, Json(NoteResponse::from(item))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_note(&session, &id).await },
+        NoteResponse::from,
+    )
+    .await
 }
 
 /// Creates a note for result triage.
@@ -1075,40 +1093,14 @@ pub async fn create_note(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<CreateNoteRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.create_note(&session, input).await {
-        Ok(id) => {
-            let location = created_resource_location(&instance, &id);
-            (
-                StatusCode::CREATED,
-                [(header::LOCATION, location)],
-                Json(ResourceCreatedResponse {
-                    id: parse_uuid(&id),
-                }),
-            )
-                .into_response()
-        }
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    create_resource::<CreateNoteInput, CreateNoteRequest, _, _>(
+        service,
+        headers,
+        uri,
+        body,
+        |service, session, input| async move { service.create_note(&session, input).await },
+    )
+    .await
 }
 
 /// Updates a note used for result triage.
@@ -1119,33 +1111,16 @@ pub async fn update_note(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<ModifyNoteRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.modify_note(&session, &id, input).await {
-        Ok(item) => (StatusCode::OK, Json(NoteResponse::from(item))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    update_resource::<ModifyNoteInput, ModifyNoteRequest, _, _, _, _>(
+        service,
+        headers,
+        id,
+        uri,
+        body,
+        |service, session, id, input| async move { service.modify_note(&session, &id, input).await },
+        NoteResponse::from,
+    )
+    .await
 }
 
 /// Deletes a note. Set `ultimate=true` to request permanent backend deletion.
@@ -1155,23 +1130,16 @@ pub async fn delete_note(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
-        Ok(ultimate) => ultimate,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.delete_note(&session, &id, ultimate).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id, ultimate| async move {
+            service.delete_note(&session, &id, ultimate).await
+        },
+    )
+    .await
 }
 
 /// Lists overrides visible to the authenticated session.
@@ -1180,23 +1148,15 @@ pub async fn list_overrides(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match SupportingListQuery::try_from_query_string(uri.query().unwrap_or("")) {
-        Ok(query) => query,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service
-        .list_overrides(&session, supporting_query(query))
-        .await
-    {
-        Ok(page) => (StatusCode::OK, Json(OverrideListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| SupportingListQuery::try_from_query_string(query).map(supporting_query),
+        |service, session, query| async move { service.list_overrides(&session, query).await },
+        OverrideListResponse::from,
+    )
+    .await
 }
 
 /// Returns a single override by id.
@@ -1206,19 +1166,15 @@ pub async fn get_override(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.get_override(&session, &id).await {
-        Ok(item) => (StatusCode::OK, Json(OverrideResponse::from(item))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_override(&session, &id).await },
+        OverrideResponse::from,
+    )
+    .await
 }
 
 /// Creates an override for result triage.
@@ -1228,40 +1184,14 @@ pub async fn create_override(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<CreateOverrideRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.create_override(&session, input).await {
-        Ok(id) => {
-            let location = created_resource_location(&instance, &id);
-            (
-                StatusCode::CREATED,
-                [(header::LOCATION, location)],
-                Json(ResourceCreatedResponse {
-                    id: parse_uuid(&id),
-                }),
-            )
-                .into_response()
-        }
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    create_resource::<CreateOverrideInput, CreateOverrideRequest, _, _>(
+        service,
+        headers,
+        uri,
+        body,
+        |service, session, input| async move { service.create_override(&session, input).await },
+    )
+    .await
 }
 
 /// Updates an override used for result triage.
@@ -1272,33 +1202,18 @@ pub async fn update_override(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<ModifyOverrideRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.modify_override(&session, &id, input).await {
-        Ok(item) => (StatusCode::OK, Json(OverrideResponse::from(item))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    update_resource::<ModifyOverrideInput, ModifyOverrideRequest, _, _, _, _>(
+        service,
+        headers,
+        id,
+        uri,
+        body,
+        |service, session, id, input| async move {
+            service.modify_override(&session, &id, input).await
+        },
+        OverrideResponse::from,
+    )
+    .await
 }
 
 /// Deletes an override. Set `ultimate=true` to request permanent backend deletion.
@@ -1308,23 +1223,16 @@ pub async fn delete_override(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
-        Ok(ultimate) => ultimate,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-
-    match service.delete_override(&session, &id, ultimate).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id, ultimate| async move {
+            service.delete_override(&session, &id, ultimate).await
+        },
+    )
+    .await
 }
 
 /// Lists NVTs visible to the authenticated session.
@@ -1575,7 +1483,7 @@ pub(crate) fn create_note_docs(op: TransformOperation<'_>) -> TransformOperation
         )
         .security_requirement("bearerAuth")
         .input::<Json<CreateNoteRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Note created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Note created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }
@@ -1651,7 +1559,7 @@ pub(crate) fn create_override_docs(op: TransformOperation<'_>) -> TransformOpera
         )
         .security_requirement("bearerAuth")
         .input::<Json<CreateOverrideRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Override created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Override created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }
@@ -1731,108 +1639,5 @@ pub(crate) fn list_nvt_families_docs(op: TransformOperation<'_>) -> TransformOpe
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::{PaginationOnlyQuery, SupportingListQuery, TicketResponse, TicketStatus};
-    use crate::query::parse_delete_resource_query;
-    use gvm_gateway_domain::{SupportingResourceMeta, Ticket};
-
-    #[test]
-    fn supporting_query_decodes_percent_encoded_filter_values() {
-        let parsed = SupportingListQuery::try_from_query_string(
-            "filter=name~webserver%20and%20severity%3E5&perPage=10&page=2",
-        )
-        .expect("supporting-resource query should parse");
-
-        assert_eq!(
-            parsed.filter_string.as_deref(),
-            Some("name~webserver and severity>5")
-        );
-        assert_eq!(parsed.page, 2);
-        assert_eq!(parsed.per_page, 10);
-    }
-
-    #[test]
-    fn supporting_query_rejects_zero_page_after_decoding() {
-        let error = SupportingListQuery::try_from_query_string("page=0")
-            .expect_err("page=0 should remain invalid");
-
-        match error {
-            gvm_gateway_domain::GatewayError::InvalidInput(detail) => {
-                assert_eq!(detail, "page must be greater than or equal to 1");
-            }
-            other => panic!("unexpected error variant: {:?}", other),
-        }
-    }
-
-    #[test]
-    fn pagination_only_query_rejects_filter_params() {
-        let error = PaginationOnlyQuery::try_from_query_string("filter=name~general")
-            .expect_err("filter should be rejected");
-
-        match error {
-            gvm_gateway_domain::GatewayError::InvalidInput(detail) => {
-                assert_eq!(detail, "filter is not supported on this endpoint");
-            }
-            other => panic!("unexpected error variant: {:?}", other),
-        }
-    }
-
-    #[test]
-    fn delete_supporting_resource_query_rejects_invalid_bool() {
-        let error = parse_delete_resource_query("ultimate=not-bool")
-            .expect_err("invalid ultimate bool should be rejected");
-
-        match error {
-            gvm_gateway_domain::GatewayError::InvalidInput(detail) => {
-                assert_eq!(detail, "ultimate must be true or false");
-            }
-            other => panic!("unexpected error variant: {:?}", other),
-        }
-    }
-
-    fn ticket_with_status(status: &str) -> Ticket {
-        Ticket {
-            meta: SupportingResourceMeta {
-                id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
-                name: "Ticket".to_string(),
-                comment: None,
-                creation_time: None,
-                modification_time: None,
-                writable: true,
-                in_use: false,
-            },
-            status: Some(status.to_string()),
-            assigned_to: None,
-            result: None,
-            task: None,
-            open_note: None,
-            fixed_note: None,
-            closed_note: None,
-        }
-    }
-
-    #[test]
-    fn ticket_status_deserialization_preserves_unknown_values() {
-        // Ticket status responses should preserve backend-added states even
-        // when this gateway build only documents the current rust-gvm set.
-        let parsed: TicketStatus =
-            serde_json::from_value(json!("Deferred")).expect("ticket status should parse");
-
-        assert_eq!(serde_json::to_value(parsed).unwrap(), json!("Deferred"));
-    }
-
-    #[test]
-    fn ticket_response_preserves_known_and_unknown_statuses() {
-        // Current gvmd responses use display-case ticket statuses; future
-        // values should remain visible to clients without coercion.
-        let known = serde_json::to_value(TicketResponse::from(ticket_with_status("Open")))
-            .expect("ticket response should serialize");
-        let unknown = serde_json::to_value(TicketResponse::from(ticket_with_status("Deferred")))
-            .expect("ticket response should serialize");
-
-        assert_eq!(known["status"], json!("Open"));
-        assert_eq!(unknown["status"], json!("Deferred"));
-    }
-}
+#[path = "supporting_resources_test.rs"]
+mod supporting_resources_test;

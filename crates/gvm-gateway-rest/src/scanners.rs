@@ -94,9 +94,23 @@ pub(crate) struct ScannerListQueryParams {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
     page: Option<u32>,
     #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: Option<u32>,
+}
+
+fn default_page() -> Option<u32> {
+    Some(1)
+}
+
+fn default_per_page() -> Option<u32> {
+    Some(25)
 }
 
 /// Parsed list-scanners query from HTTP request.
@@ -215,24 +229,5 @@ pub(crate) fn get_scanner_docs(op: TransformOperation<'_>) -> TransformOperation
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::ScannerResponse;
-    use gvm_gateway_domain::Scanner;
-
-    #[test]
-    fn scanner_response_preserves_unknown_type() {
-        let response = ScannerResponse::from(Scanner {
-            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
-            name: "Custom".to_string(),
-            comment: None,
-            host: None,
-            port: None,
-            scanner_type: Some("Sensor".to_string()),
-        });
-
-        let value = serde_json::to_value(response).expect("scanner response should serialize");
-        assert_eq!(value["type"], json!("Sensor"));
-    }
-}
+#[path = "scanners_test.rs"]
+mod scanners_test;

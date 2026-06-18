@@ -3,7 +3,7 @@
 
 //! Report export job DTOs, handlers, and OpenAPI transforms.
 
-use aide::transform::TransformOperation;
+use aide::transform::{TransformOperation, TransformResponse};
 use axum::{
     extract::{OriginalUri, Path, State},
     http::{
@@ -20,18 +20,22 @@ use gvm_gateway_domain::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
-    dto::ResourceRefResponse,
+    dto::{datetime_schema, uri_reference_schema, ResourceRefResponse},
     error::RestError,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc},
+    openapi::{accepted_job_json, ok_json, problem_response, ResourceIdPathDoc},
+    reports::ReportResponse,
+    results::ResultResponse,
     router::bearer_token,
     targets::validate_uuid,
 };
 
 /// JSON request body for `POST /reports/{id}/exports`.
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[schemars(rename = "CreateReportExportRequest")]
 #[serde(untagged)]
 pub(crate) enum CreateReportExportRequestBody {
     /// gvmd report-format export request.
@@ -42,24 +46,30 @@ pub(crate) enum CreateReportExportRequestBody {
 
 /// gvmd report-format export request body.
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[schemars(rename = "GvmdReportFormatExportRequest")]
 #[serde(deny_unknown_fields)]
 pub(crate) struct GvmdReportFormatExportRequestBody {
     #[serde(rename = "reportFormatId")]
+    #[schemars(with = "Uuid")]
     report_format_id: String,
     #[serde(rename = "reportConfigId")]
+    #[schemars(with = "Option<Uuid>")]
     report_config_id: Option<String>,
     filter: Option<String>,
     #[serde(rename = "filterId")]
+    #[schemars(with = "Option<Uuid>")]
     filter_id: Option<String>,
 }
 
 /// Gateway JSON export request body.
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[schemars(rename = "JsonReportExportRequest")]
 #[serde(deny_unknown_fields)]
 pub(crate) struct JsonReportExportRequestBody {
     format: JsonExportFormatBody,
     filter: Option<String>,
     #[serde(rename = "filterId")]
+    #[schemars(with = "Option<Uuid>")]
     filter_id: Option<String>,
 }
 
@@ -131,6 +141,7 @@ enum ReportExportFormatResponse {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 struct JobProgressResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 0, max = 100))]
     percent: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
@@ -138,14 +149,17 @@ struct JobProgressResponse {
 
 /// JSON job result metadata response.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "JobResult")]
 struct JobResultResponse {
     #[serde(rename = "contentType", skip_serializing_if = "Option::is_none")]
     content_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     filename: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 0))]
     size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "uri_reference_schema")]
     location: Option<String>,
 }
 
@@ -170,12 +184,16 @@ pub(crate) struct ReportExportJobResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     progress: Option<JobProgressResponse>,
     #[serde(rename = "createdAt")]
+    #[schemars(schema_with = "datetime_schema")]
     created_at: String,
     #[serde(rename = "startedAt", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
     started_at: Option<String>,
     #[serde(rename = "completedAt", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
     completed_at: Option<String>,
     #[serde(rename = "expiresAt", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
     expires_at: Option<String>,
     #[serde(rename = "resultLocation", skip_serializing_if = "Option::is_none")]
     result_location: Option<String>,
@@ -187,6 +205,118 @@ pub(crate) struct ReportExportJobResponse {
     report_format_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<JobResultResponse>,
+}
+
+/// OpenAPI schema for the gateway JSON report export artifact.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportJsonExport")]
+struct ReportJsonExportResponse {
+    report: ReportResponse,
+    results: Vec<ResultResponse>,
+    #[serde(rename = "generatedAt", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    generated_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct CreateReportExportRequestDoc;
+
+impl JsonSchema for CreateReportExportRequestDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("CreateReportExportRequest")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<GvmdReportFormatExportRequestBody>();
+        let _ = generator.subschema_for::<JsonReportExportRequestBody>();
+        serde_json::from_value(json!({
+            "oneOf": [
+                { "$ref": "#/components/schemas/GvmdReportFormatExportRequest" },
+                { "$ref": "#/components/schemas/JsonReportExportRequest" }
+            ]
+        }))
+        .expect("static CreateReportExportRequest schema is valid")
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct JobDoc;
+
+impl JsonSchema for JobDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Job")
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        serde_json::from_value(json!({
+            "type": "object",
+            "required": ["id", "kind", "status", "createdAt"],
+            "properties": {
+                "id": { "type": "string", "format": "uuid" },
+                "kind": { "type": "string", "enum": ["report_export"] },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "succeeded",
+                        "failed",
+                        "cancelling",
+                        "cancelled",
+                        "expired"
+                    ]
+                },
+                "progress": {
+                    "type": "object",
+                    "properties": {
+                        "percent": { "type": "integer", "minimum": 0, "maximum": 100 },
+                        "message": { "type": "string" }
+                    }
+                },
+                "createdAt": { "type": "string", "format": "date-time" },
+                "startedAt": { "type": "string", "format": "date-time" },
+                "completedAt": { "type": "string", "format": "date-time" },
+                "expiresAt": { "type": "string", "format": "date-time" },
+                "resultLocation": { "type": "string", "format": "uri-reference" },
+                "error": { "$ref": "#/components/schemas/ProblemDetail" }
+            }
+        }))
+        .expect("static Job schema is valid")
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ReportExportJobDoc;
+
+impl JsonSchema for ReportExportJobDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("ReportExportJob")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<JobDoc>();
+        let _ = generator.subschema_for::<JobResultResponse>();
+        let _ = generator.subschema_for::<ResourceRefResponse>();
+        serde_json::from_value(json!({
+            "allOf": [
+                { "$ref": "#/components/schemas/Job" },
+                {
+                    "type": "object",
+                    "required": ["report", "format"],
+                    "properties": {
+                        "report": { "$ref": "#/components/schemas/ResourceRef" },
+                        "format": {
+                            "type": "string",
+                            "enum": ["gvmd_report_format", "json"]
+                        },
+                        "reportFormatId": { "type": "string", "format": "uuid" },
+                        "result": { "$ref": "#/components/schemas/JobResult" }
+                    }
+                }
+            ]
+        }))
+        .expect("static ReportExportJob schema is valid")
+    }
 }
 
 impl From<ReportExportJob> for ReportExportJobResponse {
@@ -368,8 +498,8 @@ pub(crate) fn create_report_export_job_docs(op: TransformOperation<'_>) -> Trans
             "Starts rendering a report artifact in the selected report format. Jobs are scoped to the authenticated user that created them.",
         )
         .security_requirement("bearerAuth")
-        .input::<(Path<ResourceIdPathDoc>, Json<CreateReportExportRequestBody>)>()
-        .response_with::<202, Json<ReportExportJobResponse>, _>(ok_json(
+        .input::<(Path<ResourceIdPathDoc>, Json<CreateReportExportRequestDoc>)>()
+        .response_with::<202, Json<ReportExportJobDoc>, _>(accepted_job_json(
             "Report export job accepted",
         ));
 
@@ -389,7 +519,7 @@ pub(crate) fn get_job_docs(op: TransformOperation<'_>) -> TransformOperation<'_>
         .description("Returns status only for jobs created by the authenticated user.")
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, Json<ReportExportJobResponse>, _>(ok_json("Job status"));
+        .response_with::<200, Json<ReportExportJobDoc>, _>(ok_json("Job status"));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
@@ -425,23 +555,38 @@ pub(crate) fn download_job_result_docs(op: TransformOperation<'_>) -> TransformO
         )
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
-        .response_with::<200, (), _>(|response| response.description("Rendered report artifact"));
+        .response_with::<200, Json<ReportJsonExportResponse>, _>(rendered_report_artifact);
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<404>(op, "Resource not found");
     problem_response::<409>(op, "Job result is not available")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::CreateReportExportRequestBody;
-
-    /// JSON export requests parse into the JSON export variant.
-    #[test]
-    fn parses_json_export_request_body() {
-        let body: CreateReportExportRequestBody =
-            serde_json::from_str(r#"{"format":"json"}"#).expect("body should parse");
-
-        assert!(matches!(body, CreateReportExportRequestBody::Json(_)));
-    }
+fn rendered_report_artifact<T>(mut response: TransformResponse<T>) -> TransformResponse<T> {
+    *response.inner() = serde_json::from_value(json!({
+        "description": "Rendered report artifact",
+        "headers": {
+            "Content-Disposition": {
+                "description": "Attachment-style filename for the rendered artifact.",
+                "schema": { "type": "string" }
+            }
+        },
+        "content": {
+            "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReportJsonExport" }
+            },
+            "application/pdf": { "schema": { "type": "string", "format": "binary" } },
+            "application/xml": { "schema": { "type": "string", "format": "binary" } },
+            "text/csv": { "schema": { "type": "string", "format": "binary" } },
+            "text/plain": { "schema": { "type": "string", "format": "binary" } },
+            "image/svg+xml": { "schema": { "type": "string", "format": "binary" } },
+            "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
+        }
+    }))
+    .expect("static rendered artifact response is valid");
+    response
 }
+
+#[cfg(test)]
+#[path = "jobs_test.rs"]
+mod jobs_test;

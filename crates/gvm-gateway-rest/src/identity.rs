@@ -7,8 +7,8 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    http::HeaderMap,
+    response::Response,
     Json,
 };
 use gvm_gateway_app::GatewayService;
@@ -24,17 +24,16 @@ use uuid::Uuid;
 
 use crate::{
     dto::{
-        created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse,
+        datetime_schema, parse_uuid, password_schema, PaginationResponse, ResourceCreatedResponse,
         ResourceRefResponse,
     },
-    error::RestError,
-    open_enum::open_string_enum,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc},
-    query::{
-        parse_collection_query, parse_delete_resource_query, parse_filter_only_query,
-        DeleteResourceQueryParams,
+    handler::{
+        create_resource, delete_resource, get_resource, list_resource, update_resource,
+        ValidateInto,
     },
-    router::bearer_token,
+    open_enum::open_string_enum,
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc},
+    query::{parse_collection_query, parse_filter_only_query, DeleteResourceQueryParams},
     targets::validate_uuid,
 };
 
@@ -287,6 +286,168 @@ impl From<UserSettingList> for UserSettingListResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "IdentityResourceBase")]
+struct IdentityResourceBaseDoc {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner: Option<ResourceRefResponse>,
+    #[serde(rename = "creationTime", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    creation_time: Option<String>,
+    #[serde(rename = "modificationTime", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    modification_time: Option<String>,
+    writable: bool,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct UserDoc;
+
+impl JsonSchema for UserDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("User")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<IdentityResourceBaseDoc>();
+        serde_json::from_value(serde_json::json!({
+            "allOf": [
+                { "$ref": "#/components/schemas/IdentityResourceBase" },
+                {
+                    "type": "object",
+                    "properties": {
+                        "roles": {
+                            "type": "array",
+                            "items": { "$ref": "#/components/schemas/ResourceRef" }
+                        },
+                        "groups": {
+                            "type": "array",
+                            "items": { "$ref": "#/components/schemas/ResourceRef" }
+                        },
+                        "hostsAllow": { "type": "boolean" },
+                        "hosts": { "type": "string" },
+                        "authenticationType": {
+                            "$ref": "#/components/schemas/AuthenticationType"
+                        }
+                    }
+                }
+            ]
+        }))
+        .expect("static User schema is valid")
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct GroupDoc;
+
+impl JsonSchema for GroupDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Group")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<IdentityResourceBaseDoc>();
+        identity_users_schema()
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct RoleDoc;
+
+impl JsonSchema for RoleDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Role")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<IdentityResourceBaseDoc>();
+        identity_users_schema()
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct PermissionDoc;
+
+impl JsonSchema for PermissionDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Permission")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<IdentityResourceBaseDoc>();
+        serde_json::from_value(serde_json::json!({
+            "allOf": [
+                { "$ref": "#/components/schemas/IdentityResourceBase" },
+                {
+                    "type": "object",
+                    "properties": {
+                        "subjectType": {
+                            "type": "string",
+                            "enum": ["user", "group", "role"]
+                        },
+                        "subject": { "$ref": "#/components/schemas/ResourceRef" },
+                        "resourceType": { "type": "string" },
+                        "resource": { "$ref": "#/components/schemas/ResourceRef" }
+                    }
+                }
+            ]
+        }))
+        .expect("static Permission schema is valid")
+    }
+}
+
+fn identity_users_schema() -> schemars::Schema {
+    serde_json::from_value(serde_json::json!({
+        "allOf": [
+            { "$ref": "#/components/schemas/IdentityResourceBase" },
+            {
+                "type": "object",
+                "properties": {
+                    "users": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
+                }
+            }
+        ]
+    }))
+    .expect("static identity extension schema is valid")
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "UserList")]
+struct UserListDoc {
+    data: Vec<UserDoc>,
+    pagination: PaginationResponse,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "GroupList")]
+struct GroupListDoc {
+    data: Vec<GroupDoc>,
+    pagination: PaginationResponse,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "RoleList")]
+struct RoleListDoc {
+    data: Vec<RoleDoc>,
+    pagination: PaginationResponse,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "PermissionList")]
+struct PermissionListDoc {
+    data: Vec<PermissionDoc>,
+    pagination: PaginationResponse,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 struct IdentityListQueryDoc {
     filter: Option<String>,
@@ -319,16 +480,6 @@ fn default_per_page() -> Option<u32> {
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum AuthenticationTypeDoc {
-    #[serde(rename = "file")]
-    File,
-    #[serde(rename = "ldap_connect")]
-    LdapConnect,
-    #[serde(rename = "radius_connect")]
-    RadiusConnect,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 enum PermissionSubjectTypeDoc {
     #[serde(rename = "user")]
     User,
@@ -343,24 +494,26 @@ enum PermissionSubjectTypeDoc {
 struct CreateUserDoc {
     name: String,
     comment: Option<String>,
+    #[schemars(schema_with = "password_schema")]
     password: Option<String>,
     hosts: Option<String>,
     roles: Option<Vec<Uuid>>,
     #[serde(rename = "authenticationType")]
-    authentication_type: Option<AuthenticationTypeDoc>,
+    authentication_type: Option<AuthenticationType>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyUser")]
 struct ModifyUserDoc {
     comment: Option<String>,
+    #[schemars(schema_with = "password_schema")]
     password: Option<String>,
     hosts: Option<String>,
     /// Assigned role identifiers. Omitted, null, or empty arrays leave existing
     /// roles unchanged; clearing all roles is not supported by this request shape.
     roles: Option<Vec<Uuid>>,
     #[serde(rename = "authenticationType")]
-    authentication_type: Option<AuthenticationTypeDoc>,
+    authentication_type: Option<AuthenticationType>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -683,19 +836,15 @@ pub async fn list_users(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match IdentityListQuery::try_from_query_string(uri.query().unwrap_or_default()) {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_users(&session, query).await {
-        Ok(page) => (StatusCode::OK, Json(UserListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| IdentityListQuery::try_from_query_string(query).map(IdentityListQuery::into_domain),
+        |service, session, query| async move { service.list_users(&session, query).await },
+        UserListResponse::from,
+    )
+    .await
 }
 
 /// Creates a user.
@@ -710,7 +859,6 @@ pub async fn create_user(
         headers,
         uri,
         body,
-        "/api/v1/users",
         |service, session, input| async move { service.create_user(&session, input).await },
     )
     .await
@@ -778,19 +926,15 @@ pub async fn list_groups(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match IdentityListQuery::try_from_query_string(uri.query().unwrap_or_default()) {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_groups(&session, query).await {
-        Ok(page) => (StatusCode::OK, Json(GroupListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| IdentityListQuery::try_from_query_string(query).map(IdentityListQuery::into_domain),
+        |service, session, query| async move { service.list_groups(&session, query).await },
+        GroupListResponse::from,
+    )
+    .await
 }
 
 /// Creates a group.
@@ -805,7 +949,6 @@ pub async fn create_group(
         headers,
         uri,
         body,
-        "/api/v1/groups",
         |service, session, input| async move { service.create_group(&session, input).await },
     )
     .await
@@ -873,19 +1016,15 @@ pub async fn list_roles(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match IdentityListQuery::try_from_query_string(uri.query().unwrap_or_default()) {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_roles(&session, query).await {
-        Ok(page) => (StatusCode::OK, Json(RoleListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| IdentityListQuery::try_from_query_string(query).map(IdentityListQuery::into_domain),
+        |service, session, query| async move { service.list_roles(&session, query).await },
+        RoleListResponse::from,
+    )
+    .await
 }
 
 /// Creates a role.
@@ -900,7 +1039,6 @@ pub async fn create_role(
         headers,
         uri,
         body,
-        "/api/v1/roles",
         |service, session, input| async move { service.create_role(&session, input).await },
     )
     .await
@@ -968,19 +1106,15 @@ pub async fn list_permissions(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match IdentityListQuery::try_from_query_string(uri.query().unwrap_or_default()) {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_permissions(&session, query).await {
-        Ok(page) => (StatusCode::OK, Json(PermissionListResponse::from(page))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| IdentityListQuery::try_from_query_string(query).map(IdentityListQuery::into_domain),
+        |service, session, query| async move { service.list_permissions(&session, query).await },
+        PermissionListResponse::from,
+    )
+    .await
 }
 
 /// Creates a permission.
@@ -995,7 +1129,6 @@ pub async fn create_permission(
         headers,
         uri,
         body,
-        "/api/v1/permissions",
         |service, session, input| async move { service.create_permission(&session, input).await },
     )
     .await
@@ -1079,20 +1212,18 @@ pub async fn list_user_settings(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match UserSettingsListQuery::try_from_query_string(uri.query().unwrap_or_default())
-    {
-        Ok(query) => query.into_domain(),
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_user_settings(&session, query).await {
-        Ok(list) => (StatusCode::OK, Json(UserSettingListResponse::from(list))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| {
+            UserSettingsListQuery::try_from_query_string(query)
+                .map(UserSettingsListQuery::into_domain)
+        },
+        |service, session, query| async move { service.list_user_settings(&session, query).await },
+        UserSettingListResponse::from,
+    )
+    .await
 }
 
 /// Returns one user setting by ID.
@@ -1144,159 +1275,6 @@ pub async fn update_user_setting(
         UserSettingResponse::from,
     )
     .await
-}
-
-async fn create_resource<I, Req, F, Fut>(
-    service: GatewayService,
-    headers: HeaderMap,
-    uri: OriginalUri,
-    body: Bytes,
-    collection_path: &str,
-    operation: F,
-) -> Response
-where
-    Req: for<'de> Deserialize<'de>,
-    Req: ValidateInto<I>,
-    F: FnOnce(GatewayService, String, I) -> Fut,
-    Fut: std::future::Future<Output = Result<String, GatewayError>>,
-{
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<Req>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate_into() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match operation(service, session, input).await {
-        Ok(id) => {
-            let location = created_resource_location(collection_path, &id);
-            (
-                StatusCode::CREATED,
-                [(header::LOCATION, location)],
-                Json(ResourceCreatedResponse {
-                    id: parse_uuid(&id),
-                }),
-            )
-                .into_response()
-        }
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn get_resource<T, R, F, Fut>(
-    service: GatewayService,
-    headers: HeaderMap,
-    id: String,
-    uri: OriginalUri,
-    operation: F,
-    map: fn(T) -> R,
-) -> Response
-where
-    R: Serialize,
-    F: FnOnce(GatewayService, String, String) -> Fut,
-    Fut: std::future::Future<Output = Result<T, GatewayError>>,
-{
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match operation(service, session, id).await {
-        Ok(resource) => (StatusCode::OK, Json(map(resource))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn update_resource<I, Req, T, R, F, Fut>(
-    service: GatewayService,
-    headers: HeaderMap,
-    id: String,
-    uri: OriginalUri,
-    body: Bytes,
-    operation: F,
-    map: fn(T) -> R,
-) -> Response
-where
-    Req: for<'de> Deserialize<'de>,
-    Req: ValidateInto<I>,
-    R: Serialize,
-    F: FnOnce(GatewayService, String, String, I) -> Fut,
-    Fut: std::future::Future<Output = Result<T, GatewayError>>,
-{
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<Req>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response();
-        }
-    };
-    let input = match request.validate_into() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match operation(service, session, id, input).await {
-        Ok(resource) => (StatusCode::OK, Json(map(resource))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-async fn delete_resource<F, Fut>(
-    service: GatewayService,
-    headers: HeaderMap,
-    id: String,
-    uri: OriginalUri,
-    operation: F,
-) -> Response
-where
-    F: FnOnce(GatewayService, String, String, bool) -> Fut,
-    Fut: std::future::Future<Output = Result<(), GatewayError>>,
-{
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
-        Ok(ultimate) => ultimate,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match operation(service, session, id, ultimate).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
-}
-
-trait ValidateInto<T> {
-    fn validate_into(self) -> Result<T, GatewayError>;
 }
 
 impl ValidateInto<CreateUserInput> for CreateUserRequest {
@@ -1421,7 +1399,7 @@ pub(crate) fn list_users_docs(op: TransformOperation<'_>) -> TransformOperation<
         "Returns a paginated list of users.",
     )
     .input::<axum::extract::Query<IdentityListQueryDoc>>()
-    .response_with::<200, Json<UserListResponse>, _>(ok_json("Paginated list of users"));
+    .response_with::<200, Json<UserListDoc>, _>(ok_json("Paginated list of users"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1436,7 +1414,7 @@ pub(crate) fn create_user_docs(op: TransformOperation<'_>) -> TransformOperation
         "Creates a new user.",
     )
     .input::<Json<CreateUserDoc>>()
-    .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("User created"));
+    .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("User created"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1451,7 +1429,7 @@ pub(crate) fn get_user_docs(op: TransformOperation<'_>) -> TransformOperation<'_
         "Returns one user by ID.",
     )
     .input::<Path<ResourceIdPathDoc>>()
-    .response_with::<200, Json<UserResponse>, _>(ok_json("User details"));
+    .response_with::<200, Json<UserDoc>, _>(ok_json("User details"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1467,7 +1445,7 @@ pub(crate) fn update_user_docs(op: TransformOperation<'_>) -> TransformOperation
         "Updates an existing user.",
     )
     .input::<(Path<ResourceIdPathDoc>, Json<ModifyUserDoc>)>()
-    .response_with::<200, Json<UserResponse>, _>(ok_json("User updated"));
+    .response_with::<200, Json<UserDoc>, _>(ok_json("User updated"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1499,7 +1477,7 @@ pub(crate) fn list_groups_docs(op: TransformOperation<'_>) -> TransformOperation
         "Returns a paginated list of groups.",
     )
     .input::<axum::extract::Query<IdentityListQueryDoc>>()
-    .response_with::<200, Json<GroupListResponse>, _>(ok_json("Paginated list of groups"));
+    .response_with::<200, Json<GroupListDoc>, _>(ok_json("Paginated list of groups"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1514,7 +1492,7 @@ pub(crate) fn create_group_docs(op: TransformOperation<'_>) -> TransformOperatio
         "Creates a new group.",
     )
     .input::<Json<CreateGroupDoc>>()
-    .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Group created"));
+    .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Group created"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1529,7 +1507,7 @@ pub(crate) fn get_group_docs(op: TransformOperation<'_>) -> TransformOperation<'
         "Returns one group by ID.",
     )
     .input::<Path<ResourceIdPathDoc>>()
-    .response_with::<200, Json<GroupResponse>, _>(ok_json("Group details"));
+    .response_with::<200, Json<GroupDoc>, _>(ok_json("Group details"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1545,7 +1523,7 @@ pub(crate) fn update_group_docs(op: TransformOperation<'_>) -> TransformOperatio
         "Updates an existing group.",
     )
     .input::<(Path<ResourceIdPathDoc>, Json<ModifyGroupDoc>)>()
-    .response_with::<200, Json<GroupResponse>, _>(ok_json("Group updated"));
+    .response_with::<200, Json<GroupDoc>, _>(ok_json("Group updated"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1577,7 +1555,7 @@ pub(crate) fn list_roles_docs(op: TransformOperation<'_>) -> TransformOperation<
         "Returns a paginated list of roles.",
     )
     .input::<axum::extract::Query<IdentityListQueryDoc>>()
-    .response_with::<200, Json<RoleListResponse>, _>(ok_json("Paginated list of roles"));
+    .response_with::<200, Json<RoleListDoc>, _>(ok_json("Paginated list of roles"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1592,7 +1570,7 @@ pub(crate) fn create_role_docs(op: TransformOperation<'_>) -> TransformOperation
         "Creates a new role.",
     )
     .input::<Json<CreateRoleDoc>>()
-    .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Role created"));
+    .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Role created"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1607,7 +1585,7 @@ pub(crate) fn get_role_docs(op: TransformOperation<'_>) -> TransformOperation<'_
         "Returns one role by ID.",
     )
     .input::<Path<ResourceIdPathDoc>>()
-    .response_with::<200, Json<RoleResponse>, _>(ok_json("Role details"));
+    .response_with::<200, Json<RoleDoc>, _>(ok_json("Role details"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1623,7 +1601,7 @@ pub(crate) fn update_role_docs(op: TransformOperation<'_>) -> TransformOperation
         "Updates an existing role.",
     )
     .input::<(Path<ResourceIdPathDoc>, Json<ModifyRoleDoc>)>()
-    .response_with::<200, Json<RoleResponse>, _>(ok_json("Role updated"));
+    .response_with::<200, Json<RoleDoc>, _>(ok_json("Role updated"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1655,9 +1633,7 @@ pub(crate) fn list_permissions_docs(op: TransformOperation<'_>) -> TransformOper
         "Returns a paginated list of permissions.",
     )
     .input::<axum::extract::Query<IdentityListQueryDoc>>()
-    .response_with::<200, Json<PermissionListResponse>, _>(ok_json(
-        "Paginated list of permissions",
-    ));
+    .response_with::<200, Json<PermissionListDoc>, _>(ok_json("Paginated list of permissions"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1672,7 +1648,7 @@ pub(crate) fn create_permission_docs(op: TransformOperation<'_>) -> TransformOpe
         "Creates a new permission.",
     )
     .input::<Json<CreatePermissionDoc>>()
-    .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Permission created"));
+    .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Permission created"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1687,7 +1663,7 @@ pub(crate) fn get_permission_docs(op: TransformOperation<'_>) -> TransformOperat
         "Returns one permission by ID.",
     )
     .input::<Path<ResourceIdPathDoc>>()
-    .response_with::<200, Json<PermissionResponse>, _>(ok_json("Permission details"));
+    .response_with::<200, Json<PermissionDoc>, _>(ok_json("Permission details"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1703,7 +1679,7 @@ pub(crate) fn update_permission_docs(op: TransformOperation<'_>) -> TransformOpe
         "Updates an existing permission.",
     )
     .input::<(Path<ResourceIdPathDoc>, Json<ModifyPermissionDoc>)>()
-    .response_with::<200, Json<PermissionResponse>, _>(ok_json("Permission updated"));
+    .response_with::<200, Json<PermissionDoc>, _>(ok_json("Permission updated"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1771,80 +1747,5 @@ pub(crate) fn update_user_setting_docs(op: TransformOperation<'_>) -> TransformO
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::{AuthenticationType, IdentityListQuery, UserResponse, UserSettingsListQuery};
-    use gvm_gateway_domain::{IdentityResourceMeta, User};
-
-    #[test]
-    fn identity_queries_decode_filters_and_filter_ids() {
-        let identity = IdentityListQuery::try_from_query_string(
-            "filter=name~%22ops+team%22&filterId=123e4567%2De89b%2D12d3%2Da456%2D426614174000&page=3&perPage=5",
-        )
-        .expect("identity query should parse");
-        assert_eq!(identity.filter_string.as_deref(), Some("name~\"ops team\""));
-        assert_eq!(
-            identity.filter_id.as_deref(),
-            Some("123e4567-e89b-12d3-a456-426614174000")
-        );
-        assert_eq!(identity.page, 3);
-        assert_eq!(identity.per_page, 5);
-
-        let user_settings = UserSettingsListQuery::try_from_query_string(
-            "filter=name~%22foo%20bar%22&filterId=123e4567%2De89b%2D12d3%2Da456%2D426614174000",
-        )
-        .expect("user settings query should parse");
-        assert_eq!(
-            user_settings.filter_string.as_deref(),
-            Some("name~\"foo bar\"")
-        );
-        assert_eq!(
-            user_settings.filter_id.as_deref(),
-            Some("123e4567-e89b-12d3-a456-426614174000")
-        );
-    }
-
-    fn user_with_auth_type(authentication_type: &str) -> User {
-        User {
-            meta: IdentityResourceMeta {
-                id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
-                name: "user".to_string(),
-                comment: None,
-                owner: None,
-                creation_time: None,
-                modification_time: None,
-                writable: true,
-                in_use: false,
-            },
-            roles: vec![],
-            groups: vec![],
-            hosts_allow: None,
-            hosts: None,
-            authentication_type: Some(authentication_type.to_string()),
-        }
-    }
-
-    #[test]
-    fn authentication_type_deserialization_preserves_unknown_values() {
-        // User authentication backends can grow in gvmd. The response wrapper
-        // must preserve that value even before request validation supports it.
-        let parsed: AuthenticationType =
-            serde_json::from_value(json!("oidc_connect")).expect("auth type should parse");
-
-        assert_eq!(serde_json::to_value(parsed).unwrap(), json!("oidc_connect"));
-    }
-
-    #[test]
-    fn user_response_preserves_known_and_unknown_authentication_types() {
-        // User response conversion should expose the exact backend
-        // authenticationType value without coercing unknown future backends.
-        let known = serde_json::to_value(UserResponse::from(user_with_auth_type("file")))
-            .expect("user response should serialize");
-        let unknown = serde_json::to_value(UserResponse::from(user_with_auth_type("oidc_connect")))
-            .expect("user response should serialize");
-
-        assert_eq!(known["authenticationType"], json!("file"));
-        assert_eq!(unknown["authenticationType"], json!("oidc_connect"));
-    }
-}
+#[path = "identity_test.rs"]
+mod identity_test;

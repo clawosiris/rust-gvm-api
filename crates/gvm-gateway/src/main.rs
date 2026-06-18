@@ -9,7 +9,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use clap::Parser;
-use gvm_gateway_app::{GatewayService, SessionReaper};
+use gvm_gateway_app::{GatewayPorts, GatewayService, SessionReaper};
 use gvm_gateway_domain::SessionManager;
 use gvm_gateway_gvmd::GvmdAdapter;
 use gvm_gateway_rest::{router::build_router_with_runtime_and_security, shutdown::ShutdownRuntime};
@@ -93,21 +93,23 @@ fn gateway_service(
     sessions: Arc<SessionManager>,
 ) -> GatewayService {
     GatewayService::new(
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter.clone(),
-        live_adapter,
+        GatewayPorts {
+            system: live_adapter.clone(),
+            alerts: live_adapter.clone(),
+            schedules: live_adapter.clone(),
+            credentials: live_adapter.clone(),
+            port_lists: live_adapter.clone(),
+            feeds: live_adapter.clone(),
+            identity: live_adapter.clone(),
+            targets: live_adapter.clone(),
+            tasks: live_adapter.clone(),
+            auth: live_adapter.clone(),
+            reports: live_adapter.clone(),
+            results: live_adapter.clone(),
+            scan_configs: live_adapter.clone(),
+            scanners: live_adapter.clone(),
+            supporting_resources: live_adapter,
+        },
         sessions,
     )
 }

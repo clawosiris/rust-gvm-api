@@ -9,8 +9,8 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    http::HeaderMap,
+    response::Response,
     Json,
 };
 use gvm_gateway_app::GatewayService;
@@ -20,15 +20,13 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{
-        created_resource_location, datetime_schema, parse_uuid, PaginationResponse,
-        ResourceCreatedResponse,
+    dto::{datetime_schema, parse_uuid, PaginationResponse, ResourceCreatedResponse},
+    handler::{
+        create_resource, delete_resource, get_resource, list_resource, update_resource,
+        ValidateInto,
     },
-    error::RestError,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
-    query::{parse_delete_resource_query, DeleteResourceQueryParams},
-    router::bearer_token,
-    targets::{validate_uuid, TargetListQuery},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
+    query::{CollectionListQuery, DeleteResourceQueryParams},
 };
 
 pub use gvm_gateway_domain::{
@@ -125,6 +123,12 @@ impl CreateScheduleRequest {
     }
 }
 
+impl ValidateInto<CreateScheduleInput> for CreateScheduleRequest {
+    fn validate_into(self) -> Result<CreateScheduleInput, GatewayError> {
+        self.validate()
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifySchedule")]
 pub struct ModifyScheduleRequest {
@@ -145,37 +149,38 @@ impl ModifyScheduleRequest {
     }
 }
 
+impl ValidateInto<ModifyScheduleInput> for ModifyScheduleRequest {
+    fn validate_into(self) -> Result<ModifyScheduleInput, GatewayError> {
+        Ok(self.validate())
+    }
+}
+
 pub async fn list_schedules(
     State(service): State<GatewayService>,
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match TargetListQuery::try_from_query_string(uri.query().unwrap_or("")) {
-        Ok(query) => query,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service
-        .list_schedules(
-            &session,
-            ScheduleQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
-        .await
-    {
-        Ok(schedules) => {
-            (StatusCode::OK, Json(ScheduleListResponse::from(schedules))).into_response()
-        }
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        CollectionListQuery::try_from_query_string,
+        |service, session, query| async move {
+            service
+                .list_schedules(
+                    &session,
+                    ScheduleQuery {
+                        filter_string: query.filter_string,
+                        filter_id: query.filter_id,
+                        page: query.page,
+                        per_page: query.per_page,
+                    },
+                )
+                .await
+        },
+        ScheduleListResponse::from,
+    )
+    .await
 }
 
 pub async fn create_schedule(
@@ -184,36 +189,14 @@ pub async fn create_schedule(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<CreateScheduleRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response()
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.create_schedule(&session, input).await {
-        Ok(id) => (
-            StatusCode::CREATED,
-            [(header::LOCATION, created_resource_location(&instance, &id))],
-            Json(ResourceCreatedResponse {
-                id: parse_uuid(&id),
-            }),
-        )
-            .into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    create_resource::<CreateScheduleInput, CreateScheduleRequest, _, _>(
+        service,
+        headers,
+        uri,
+        body,
+        |service, session, input| async move { service.create_schedule(&session, input).await },
+    )
+    .await
 }
 
 pub async fn get_schedule(
@@ -222,18 +205,15 @@ pub async fn get_schedule(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.get_schedule(&session, &id).await {
-        Ok(schedule) => (StatusCode::OK, Json(ScheduleResponse::from(schedule))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_schedule(&session, &id).await },
+        ScheduleResponse::from,
+    )
+    .await
 }
 
 pub async fn update_schedule(
@@ -243,31 +223,18 @@ pub async fn update_schedule(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<ModifyScheduleRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(
-                GatewayError::InvalidInput(format!("invalid JSON body: {error}")),
-                instance,
-            )
-            .into_response()
-        }
-    };
-    match service
-        .modify_schedule(&session, &id, request.validate())
-        .await
-    {
-        Ok(schedule) => (StatusCode::OK, Json(ScheduleResponse::from(schedule))).into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    update_resource::<ModifyScheduleInput, ModifyScheduleRequest, _, _, _, _>(
+        service,
+        headers,
+        id,
+        uri,
+        body,
+        |service, session, id, input| async move {
+            service.modify_schedule(&session, &id, input).await
+        },
+        ScheduleResponse::from,
+    )
+    .await
 }
 
 pub async fn delete_schedule(
@@ -276,22 +243,16 @@ pub async fn delete_schedule(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
-        Ok(ultimate) => ultimate,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.delete_schedule(&session, &id, ultimate).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id, ultimate| async move {
+            service.delete_schedule(&session, &id, ultimate).await
+        },
+    )
+    .await
 }
 
 pub(crate) fn list_schedules_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
@@ -317,7 +278,7 @@ pub(crate) fn create_schedule_docs(op: TransformOperation<'_>) -> TransformOpera
         .description("Creates a new schedule.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateScheduleRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Schedule created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Schedule created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }

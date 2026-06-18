@@ -13,6 +13,9 @@ mod error;
 mod feeds;
 mod identity;
 mod jobs;
+#[cfg(test)]
+#[path = "lib_test.rs"]
+mod lib_test;
 mod log_safety;
 mod port_lists;
 mod ports;
@@ -26,7 +29,6 @@ mod supporting_resources;
 mod system;
 mod targets;
 mod tasks;
-mod tests;
 mod time;
 
 pub use alerts::*;

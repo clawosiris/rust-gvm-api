@@ -14,7 +14,7 @@ use gvm_gateway_domain::{
     GvmdReportFormatExportRequest, JobStatus, JsonReportExportRequest, ModifyTargetInput,
     Pagination, ReadinessStatus, Report, ReportExport, ReportExportJob, ReportExportRequest,
     ReportPage, ReportPort, ReportQuery, ResourceRef, ResultPage, ResultQuery, ScanResult,
-    SessionLimits, SessionManager, SystemPort, TargetQuery, TlsCertificatePage,
+    SessionLimits, SessionManager, SessionTokenDigest, SystemPort, TargetQuery, TlsCertificatePage,
 };
 use tokio::sync::Notify;
 
@@ -28,16 +28,17 @@ fn service_health_always_returns_ok() {
     assert_eq!(health.status, "ok");
 }
 
-/// Raw-token observability paths use the documented `session:<suffix>` format
-/// without exposing the complete bearer token.
+/// Raw-token observability paths use the shared digest-based safe ID without
+/// exposing the complete bearer token or a raw token suffix.
 #[test]
-fn safe_session_id_uses_documented_token_suffix() {
+fn safe_session_id_uses_session_token_digest() {
     let token = "gvm_sess_1234567890abcdef";
 
     let session_id = safe_session_id(token);
 
-    assert_eq!(session_id, "session:90abcdef");
+    assert_eq!(session_id, SessionTokenDigest::from_token(token).safe_id());
     assert!(!session_id.contains(token));
+    assert!(!session_id.contains("90abcdef"));
 }
 
 /// Ready forwards a healthy backend readiness response unchanged.
@@ -52,27 +53,12 @@ async fn service_ready_returns_readiness() {
 /// Ready preserves a not-ready backend status and reason.
 #[tokio::test]
 async fn service_ready_returns_not_ready() {
-    let service = GatewayService::new(
-        Arc::new(MockSystemPort {
-            ready: false,
-            gmp_version: "22.7".to_string(),
-        }),
-        Arc::new(MockAlertPort),
-        Arc::new(MockSchedulePort),
-        Arc::new(MockCredentialPort),
-        Arc::new(MockPortListPort),
-        Arc::new(MockFeedPort),
-        Arc::new(MockIdentityPort),
-        Arc::new(MockTargetPort::default()),
-        Arc::new(MockTaskPort),
-        Arc::new(MockAuthPort::default()),
-        Arc::new(MockReportPort),
-        Arc::new(MockResultPort),
-        Arc::new(MockScanConfigPort),
-        Arc::new(MockScannerPort),
-        Arc::new(MockSupportingResourcePort),
-        Arc::new(SessionManager::default()),
-    );
+    let mut ports = test_ports();
+    ports.system = Arc::new(MockSystemPort {
+        ready: false,
+        gmp_version: "22.7".to_string(),
+    });
+    let service = GatewayService::new(ports, Arc::new(SessionManager::default()));
     let ready = service.ready().await.unwrap();
     assert_eq!(ready.status, "notReady");
     assert!(ready.reason.is_some());
@@ -123,24 +109,10 @@ async fn service_create_session_uses_authenticated_version_without_extra_probe()
         ..Default::default()
     });
     let disconnected = Arc::clone(&auth.disconnected);
-    let service = GatewayService::new(
-        Arc::new(FailingVersionSystemPort),
-        Arc::new(MockAlertPort),
-        Arc::new(MockSchedulePort),
-        Arc::new(MockCredentialPort),
-        Arc::new(MockPortListPort),
-        Arc::new(MockFeedPort),
-        Arc::new(MockIdentityPort),
-        Arc::new(MockTargetPort::default()),
-        Arc::new(MockTaskPort),
-        auth,
-        Arc::new(MockReportPort),
-        Arc::new(MockResultPort),
-        Arc::new(MockScanConfigPort),
-        Arc::new(MockScannerPort),
-        Arc::new(MockSupportingResourcePort),
-        Arc::clone(&sessions),
-    );
+    let mut ports = test_ports();
+    ports.system = Arc::new(FailingVersionSystemPort);
+    ports.auth = auth;
+    let service = GatewayService::new(ports, Arc::clone(&sessions));
 
     let created = service.create_session("admin", "secret").await.unwrap();
 
@@ -614,27 +586,9 @@ fn create_test_service_with_report_port_and_sessions(
     report_port: Arc<dyn ReportPort>,
     sessions: Arc<SessionManager>,
 ) -> GatewayService {
-    GatewayService::new(
-        Arc::new(MockSystemPort {
-            ready: true,
-            gmp_version: "22.7".to_string(),
-        }),
-        Arc::new(MockAlertPort),
-        Arc::new(MockSchedulePort),
-        Arc::new(MockCredentialPort),
-        Arc::new(MockPortListPort),
-        Arc::new(MockFeedPort),
-        Arc::new(MockIdentityPort),
-        Arc::new(MockTargetPort::default()),
-        Arc::new(MockTaskPort),
-        Arc::new(MockAuthPort::default()),
-        report_port,
-        Arc::new(MockResultPort),
-        Arc::new(MockScanConfigPort),
-        Arc::new(MockScannerPort),
-        Arc::new(MockSupportingResourcePort),
-        sessions,
-    )
+    let mut ports = test_ports();
+    ports.reports = report_port;
+    GatewayService::new(ports, sessions)
 }
 
 async fn wait_for_job_status(
@@ -1132,30 +1086,12 @@ async fn audit_logs_redact_sensitive_fields_and_record_session_creation_failure(
     let capture = capture_tracing();
     capture
         .run(async {
-            let service = GatewayService::new(
-                Arc::new(MockSystemPort {
-                    ready: true,
-                    gmp_version: "22.7".to_string(),
-                }),
-                Arc::new(MockAlertPort),
-                Arc::new(MockSchedulePort),
-                Arc::new(MockCredentialPort),
-                Arc::new(MockPortListPort),
-                Arc::new(MockFeedPort),
-                Arc::new(MockIdentityPort),
-                Arc::new(MockTargetPort::default()),
-                Arc::new(MockTaskPort),
-                Arc::new(MockAuthPort {
-                    should_fail: true,
-                    ..Default::default()
-                }),
-                Arc::new(MockReportPort),
-                Arc::new(MockResultPort),
-                Arc::new(MockScanConfigPort),
-                Arc::new(MockScannerPort),
-                Arc::new(MockSupportingResourcePort),
-                Arc::new(SessionManager::default()),
-            );
+            let mut ports = test_ports();
+            ports.auth = Arc::new(MockAuthPort {
+                should_fail: true,
+                ..Default::default()
+            });
+            let service = GatewayService::new(ports, Arc::new(SessionManager::default()));
 
             let _ = service
                 .create_session("admin", "super-secret-password")
@@ -1282,27 +1218,9 @@ async fn spans_are_emitted_for_session_and_command_lifecycle() {
     let capture = capture_tracing();
     capture
         .run(async {
-            let service = GatewayService::new(
-                Arc::new(MockSystemPort {
-                    ready: true,
-                    gmp_version: "22.7".to_string(),
-                }),
-                Arc::new(MockAlertPort),
-                Arc::new(MockSchedulePort),
-                Arc::new(MockCredentialPort),
-                Arc::new(MockPortListPort),
-                Arc::new(MockFeedPort),
-                Arc::new(MockIdentityPort),
-                Arc::new(MockTargetPort { should_fail: true }),
-                Arc::new(MockTaskPort),
-                Arc::new(MockAuthPort::default()),
-                Arc::new(MockReportPort),
-                Arc::new(MockResultPort),
-                Arc::new(MockScanConfigPort),
-                Arc::new(MockScannerPort),
-                Arc::new(MockSupportingResourcePort),
-                Arc::new(SessionManager::default()),
-            );
+            let mut ports = test_ports();
+            ports.targets = Arc::new(MockTargetPort { should_fail: true });
+            let service = GatewayService::new(ports, Arc::new(SessionManager::default()));
 
             let session = service.create_session("admin", "secret").await.unwrap();
             let _ = service.get_target(&session.token, "resource-123").await;

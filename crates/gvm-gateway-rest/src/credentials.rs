@@ -11,8 +11,8 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    http::HeaderMap,
+    response::Response,
     Json,
 };
 use gvm_gateway_app::GatewayService;
@@ -22,13 +22,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{created_resource_location, parse_uuid, PaginationResponse, ResourceCreatedResponse},
-    error::RestError,
+    dto::{parse_uuid, password_schema, PaginationResponse, ResourceCreatedResponse},
+    handler::{
+        authenticated_resource, create_resource_with_json_error, delete_resource, get_resource,
+        list_resource, update_resource_with_json_error, ValidateInto,
+    },
     open_enum::open_string_enum,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
-    query::{parse_delete_resource_query, DeleteResourceQueryParams},
-    router::bearer_token,
-    targets::{validate_uuid, TargetListQuery},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
+    query::{CollectionListQuery, DeleteResourceQueryParams},
 };
 
 pub use gvm_gateway_domain::{
@@ -56,6 +57,7 @@ pub(crate) struct CredentialResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    #[schemars(required)]
     credential_type: Option<CredentialType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     login: Option<String>,
@@ -117,6 +119,17 @@ pub(crate) struct CredentialStoreListResponse {
     data: Vec<CredentialStoreResponse>,
 }
 
+impl From<Vec<CredentialStore>> for CredentialStoreListResponse {
+    fn from(stores: Vec<CredentialStore>) -> Self {
+        Self {
+            data: stores
+                .into_iter()
+                .map(CredentialStoreResponse::from)
+                .collect(),
+        }
+    }
+}
+
 impl From<CredentialPage> for CredentialListResponse {
     fn from(page: CredentialPage) -> Self {
         Self {
@@ -132,23 +145,27 @@ impl From<CredentialPage> for CredentialListResponse {
 
 #[derive(Clone, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateCredential")]
-pub struct CreateCredentialRequest {
-    pub name: String,
-    pub comment: Option<String>,
+pub(crate) struct CreateCredentialRequest {
+    name: String,
+    comment: Option<String>,
     #[serde(rename = "type")]
-    pub credential_type: String,
-    pub login: Option<String>,
-    pub password: Option<String>,
+    credential_type: CredentialType,
+    login: Option<String>,
+    #[schemars(schema_with = "password_schema")]
+    password: Option<String>,
     #[serde(rename = "privateKey")]
-    pub private_key: Option<String>,
-    pub certificate: Option<String>,
-    pub community: Option<String>,
+    private_key: Option<String>,
+    certificate: Option<String>,
+    community: Option<String>,
     #[serde(rename = "authAlgorithm")]
-    pub auth_algorithm: Option<String>,
+    #[schemars(schema_with = "auth_algorithm_schema")]
+    auth_algorithm: Option<String>,
     #[serde(rename = "privacyAlgorithm")]
-    pub privacy_algorithm: Option<String>,
+    #[schemars(schema_with = "privacy_algorithm_schema")]
+    privacy_algorithm: Option<String>,
     #[serde(rename = "privacyPassword")]
-    pub privacy_password: Option<String>,
+    #[schemars(schema_with = "password_schema")]
+    privacy_password: Option<String>,
 }
 
 impl fmt::Debug for CreateCredentialRequest {
@@ -178,13 +195,13 @@ impl CreateCredentialRequest {
         if self.name.trim().is_empty() {
             return Err(GatewayError::InvalidInput("name is required".to_string()));
         }
-        if self.credential_type.trim().is_empty() {
+        if self.credential_type.as_str().trim().is_empty() {
             return Err(GatewayError::InvalidInput("type is required".to_string()));
         }
         Ok(CreateCredentialInput {
             name: self.name,
             comment: self.comment,
-            credential_type: self.credential_type,
+            credential_type: self.credential_type.as_str().to_string(),
             login: self.login,
             password: self.password,
             private_key: self.private_key,
@@ -197,23 +214,47 @@ impl CreateCredentialRequest {
     }
 }
 
+impl ValidateInto<CreateCredentialInput> for CreateCredentialRequest {
+    fn validate_into(self) -> Result<CreateCredentialInput, GatewayError> {
+        self.validate()
+    }
+}
+
 #[derive(Clone, Default, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifyCredential")]
 pub struct ModifyCredentialRequest {
     pub name: Option<String>,
     pub comment: Option<String>,
     pub login: Option<String>,
+    #[schemars(schema_with = "password_schema")]
     pub password: Option<String>,
     #[serde(rename = "privateKey")]
     pub private_key: Option<String>,
     pub certificate: Option<String>,
     pub community: Option<String>,
     #[serde(rename = "authAlgorithm")]
+    #[schemars(schema_with = "auth_algorithm_schema")]
     pub auth_algorithm: Option<String>,
     #[serde(rename = "privacyAlgorithm")]
+    #[schemars(schema_with = "privacy_algorithm_schema")]
     pub privacy_algorithm: Option<String>,
     #[serde(rename = "privacyPassword")]
+    #[schemars(schema_with = "password_schema")]
     pub privacy_password: Option<String>,
+}
+
+fn auth_algorithm_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "string",
+        "enum": ["md5", "sha1"]
+    })
+}
+
+fn privacy_algorithm_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "string",
+        "enum": ["aes", "des"]
+    })
 }
 
 impl fmt::Debug for ModifyCredentialRequest {
@@ -254,6 +295,12 @@ impl ModifyCredentialRequest {
     }
 }
 
+impl ValidateInto<ModifyCredentialInput> for ModifyCredentialRequest {
+    fn validate_into(self) -> Result<ModifyCredentialInput, GatewayError> {
+        Ok(self.validate())
+    }
+}
+
 fn credential_json_body_error(error: serde_json::Error) -> GatewayError {
     GatewayError::InvalidInput(format!(
         "invalid JSON body at line {}, column {}",
@@ -267,34 +314,27 @@ pub async fn list_credentials(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let query = match TargetListQuery::try_from_query_string(uri.query().unwrap_or("")) {
-        Ok(query) => query,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service
-        .list_credentials(
-            &session,
-            CredentialQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
-        .await
-    {
-        Ok(credentials) => (
-            StatusCode::OK,
-            Json(CredentialListResponse::from(credentials)),
-        )
-            .into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    list_resource(
+        service,
+        headers,
+        uri,
+        CollectionListQuery::try_from_query_string,
+        |service, session, query| async move {
+            service
+                .list_credentials(
+                    &session,
+                    CredentialQuery {
+                        filter_string: query.filter_string,
+                        filter_id: query.filter_id,
+                        page: query.page,
+                        per_page: query.per_page,
+                    },
+                )
+                .await
+        },
+        CredentialListResponse::from,
+    )
+    .await
 }
 
 pub async fn list_credential_stores(
@@ -302,24 +342,14 @@ pub async fn list_credential_stores(
     headers: HeaderMap,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.list_credential_stores(&session).await {
-        Ok(stores) => (
-            StatusCode::OK,
-            Json(CredentialStoreListResponse {
-                data: stores
-                    .into_iter()
-                    .map(CredentialStoreResponse::from)
-                    .collect(),
-            }),
-        )
-            .into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    authenticated_resource(
+        service,
+        headers,
+        uri,
+        |service, session| async move { service.list_credential_stores(&session).await },
+        CredentialStoreListResponse::from,
+    )
+    .await
 }
 
 pub async fn create_credential(
@@ -328,33 +358,15 @@ pub async fn create_credential(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<CreateCredentialRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(credential_json_body_error(error), instance)
-                .into_response()
-        }
-    };
-    let input = match request.validate() {
-        Ok(input) => input,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.create_credential(&session, input).await {
-        Ok(id) => (
-            StatusCode::CREATED,
-            [(header::LOCATION, created_resource_location(&instance, &id))],
-            Json(ResourceCreatedResponse {
-                id: parse_uuid(&id),
-            }),
-        )
-            .into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    create_resource_with_json_error::<CreateCredentialInput, CreateCredentialRequest, _, _, _>(
+        service,
+        headers,
+        uri,
+        body,
+        |service, session, input| async move { service.create_credential(&session, input).await },
+        credential_json_body_error,
+    )
+    .await
 }
 
 pub async fn get_credential(
@@ -363,20 +375,15 @@ pub async fn get_credential(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.get_credential(&session, &id).await {
-        Ok(credential) => {
-            (StatusCode::OK, Json(CredentialResponse::from(credential))).into_response()
-        }
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_credential(&session, &id).await },
+        CredentialResponse::from,
+    )
+    .await
 }
 
 pub async fn update_credential(
@@ -386,30 +393,27 @@ pub async fn update_credential(
     uri: OriginalUri,
     body: Bytes,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let request = match serde_json::from_slice::<ModifyCredentialRequest>(&body) {
-        Ok(request) => request,
-        Err(error) => {
-            return RestError::from_gateway_error(credential_json_body_error(error), instance)
-                .into_response()
-        }
-    };
-    match service
-        .modify_credential(&session, &id, request.validate())
-        .await
-    {
-        Ok(credential) => {
-            (StatusCode::OK, Json(CredentialResponse::from(credential))).into_response()
-        }
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    update_resource_with_json_error::<
+        ModifyCredentialInput,
+        ModifyCredentialRequest,
+        _,
+        _,
+        _,
+        _,
+        _,
+    >(
+        service,
+        headers,
+        id,
+        uri,
+        body,
+        |service, session, id, input| async move {
+            service.modify_credential(&session, &id, input).await
+        },
+        CredentialResponse::from,
+        credential_json_body_error,
+    )
+    .await
 }
 
 pub async fn delete_credential(
@@ -418,22 +422,16 @@ pub async fn delete_credential(
     Path(id): Path<String>,
     uri: OriginalUri,
 ) -> Response {
-    let instance = uri.path().to_string();
-    if let Err(error) = validate_uuid("id", &id) {
-        return RestError::from_gateway_error(error, instance).into_response();
-    }
-    let session = match bearer_token(&headers) {
-        Ok(session) => session,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    let ultimate = match parse_delete_resource_query(uri.query().unwrap_or("")) {
-        Ok(ultimate) => ultimate,
-        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
-    };
-    match service.delete_credential(&session, &id, ultimate).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
-    }
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id, ultimate| async move {
+            service.delete_credential(&session, &id, ultimate).await
+        },
+    )
+    .await
 }
 
 pub(crate) fn list_credentials_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
@@ -474,7 +472,7 @@ pub(crate) fn create_credential_docs(op: TransformOperation<'_>) -> TransformOpe
         .description("Creates a new credential.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateCredentialRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Credential created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Credential created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }
@@ -522,121 +520,5 @@ pub(crate) fn delete_credential_docs(op: TransformOperation<'_>) -> TransformOpe
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::{
-        credential_json_body_error, CreateCredentialRequest, CredentialResponse, CredentialType,
-        ModifyCredentialRequest,
-    };
-    use gvm_gateway_domain::{Credential, GatewayError};
-
-    fn credential_with_type(credential_type: &str) -> Credential {
-        Credential {
-            id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
-            name: "Credential".to_string(),
-            comment: None,
-            credential_type: Some(credential_type.to_string()),
-            login: Some("user".to_string()),
-            in_use: false,
-            writable: true,
-        }
-    }
-
-    #[test]
-    fn credential_type_deserialization_preserves_unknown_values() {
-        // Backend-added credential types must survive deserialization instead
-        // of being rejected by the open-enum wrapper.
-        let parsed: CredentialType =
-            serde_json::from_value(json!("future_credential")).expect("type should parse");
-
-        assert_eq!(
-            serde_json::to_value(parsed).unwrap(),
-            json!("future_credential")
-        );
-    }
-
-    #[test]
-    fn credential_response_preserves_known_and_unknown_types() {
-        // Response conversion should expose both known rust-gvm type values and
-        // future backend values without collapsing the public `type` field.
-        let known = serde_json::to_value(CredentialResponse::from(credential_with_type("up")))
-            .expect("credential response should serialize");
-        let unknown = serde_json::to_value(CredentialResponse::from(credential_with_type(
-            "future_credential",
-        )))
-        .expect("credential response should serialize");
-
-        assert_eq!(known["type"], json!("up"));
-        assert_eq!(unknown["type"], json!("future_credential"));
-    }
-
-    #[test]
-    fn credential_request_debug_redacts_secrets() {
-        // Request DTOs carry write-only credential secrets; debug output must
-        // only expose their presence, never their submitted values.
-        let create = CreateCredentialRequest {
-            name: "Credential".to_string(),
-            comment: Some("visible comment".to_string()),
-            credential_type: "snmpv3".to_string(),
-            login: Some("visible-login".to_string()),
-            password: Some("create-password-secret".to_string()),
-            private_key: Some("create-private-key-secret".to_string()),
-            certificate: Some("public-certificate".to_string()),
-            community: Some("create-community-secret".to_string()),
-            auth_algorithm: Some("sha1".to_string()),
-            privacy_algorithm: Some("aes".to_string()),
-            privacy_password: Some("create-privacy-secret".to_string()),
-        };
-        let modify = ModifyCredentialRequest {
-            name: Some("Credential".to_string()),
-            comment: Some("visible comment".to_string()),
-            login: Some("visible-login".to_string()),
-            password: Some("modify-password-secret".to_string()),
-            private_key: Some("modify-private-key-secret".to_string()),
-            certificate: Some("public-certificate".to_string()),
-            community: Some("modify-community-secret".to_string()),
-            auth_algorithm: Some("sha1".to_string()),
-            privacy_algorithm: Some("aes".to_string()),
-            privacy_password: Some("modify-privacy-secret".to_string()),
-        };
-
-        let debug = format!("{create:?}\n{modify:?}");
-
-        assert!(debug.contains("visible-login"));
-        assert!(debug.contains("<redacted>"));
-        assert!(!debug.contains("create-password-secret"));
-        assert!(!debug.contains("create-private-key-secret"));
-        assert!(!debug.contains("create-community-secret"));
-        assert!(!debug.contains("create-privacy-secret"));
-        assert!(!debug.contains("modify-password-secret"));
-        assert!(!debug.contains("modify-private-key-secret"));
-        assert!(!debug.contains("modify-community-secret"));
-        assert!(!debug.contains("modify-privacy-secret"));
-    }
-
-    #[test]
-    fn credential_json_parse_error_detail_omits_submitted_values() {
-        // Credential parse failures become client-visible problem details, so
-        // the detail string must not reuse serde's value-bearing error text.
-        let error = serde_json::from_value::<CreateCredentialRequest>(json!({
-            "name": "Credential",
-            "type": "up",
-            "password": 123456789,
-            "privateKey": 987654321,
-            "community": 111222333,
-            "privacyPassword": 444555666
-        }))
-        .expect_err("numeric secret fields should fail string deserialization");
-
-        let GatewayError::InvalidInput(detail) = credential_json_body_error(error) else {
-            panic!("credential parse errors should map to invalid input");
-        };
-
-        assert!(detail.starts_with("invalid JSON body at line "));
-        assert!(!detail.contains("123456789"));
-        assert!(!detail.contains("987654321"));
-        assert!(!detail.contains("111222333"));
-        assert!(!detail.contains("444555666"));
-    }
-}
+#[path = "credentials_test.rs"]
+mod credentials_test;

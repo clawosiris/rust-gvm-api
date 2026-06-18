@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gvm_gateway::server;
-use gvm_gateway_app::{GatewayService, SessionReaper};
+use gvm_gateway_app::{GatewayPorts, GatewayService, SessionReaper};
 use gvm_gateway_domain::{
     AuthPort, CreateTargetInput, GatewayError, ModifyTargetInput, Pagination, SessionManager,
     Target, TargetPage, TargetPort, TargetQuery,
@@ -31,21 +31,23 @@ fn static_gateway_service(
     sessions: Arc<SessionManager>,
 ) -> GatewayService {
     GatewayService::new(
-        Arc::new(system_adapter),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        GatewayPorts {
+            system: Arc::new(system_adapter),
+            alerts: Arc::new(target_adapter.clone()),
+            schedules: Arc::new(target_adapter.clone()),
+            credentials: Arc::new(target_adapter.clone()),
+            port_lists: Arc::new(target_adapter.clone()),
+            feeds: Arc::new(target_adapter.clone()),
+            identity: Arc::new(target_adapter.clone()),
+            targets: Arc::new(target_adapter),
+            tasks: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            auth: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            reports: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            results: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            scan_configs: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            scanners: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            supporting_resources: Arc::new(StaticGvmdAdapter::ready("22.7")),
+        },
         sessions,
     )
 }
@@ -55,21 +57,23 @@ fn live_gateway_service(
     sessions: Arc<SessionManager>,
 ) -> GatewayService {
     GatewayService::new(
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter.clone()),
-        Arc::new(target_adapter),
+        GatewayPorts {
+            system: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            alerts: Arc::new(target_adapter.clone()),
+            schedules: Arc::new(target_adapter.clone()),
+            credentials: Arc::new(target_adapter.clone()),
+            port_lists: Arc::new(target_adapter.clone()),
+            feeds: Arc::new(target_adapter.clone()),
+            identity: Arc::new(target_adapter.clone()),
+            targets: Arc::new(target_adapter.clone()),
+            tasks: Arc::new(target_adapter.clone()),
+            auth: Arc::new(target_adapter.clone()),
+            reports: Arc::new(target_adapter.clone()),
+            results: Arc::new(target_adapter.clone()),
+            scan_configs: Arc::new(target_adapter.clone()),
+            scanners: Arc::new(target_adapter.clone()),
+            supporting_resources: Arc::new(target_adapter),
+        },
         sessions,
     )
 }
@@ -79,21 +83,23 @@ fn target_port_gateway_service(
     sessions: Arc<SessionManager>,
 ) -> GatewayService {
     GatewayService::new(
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        target_adapter,
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
-        Arc::new(StaticGvmdAdapter::ready("22.7")),
+        GatewayPorts {
+            system: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            alerts: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            schedules: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            credentials: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            port_lists: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            feeds: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            identity: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            targets: target_adapter,
+            tasks: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            auth: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            reports: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            results: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            scan_configs: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            scanners: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            supporting_resources: Arc::new(StaticGvmdAdapter::ready("22.7")),
+        },
         sessions,
     )
 }

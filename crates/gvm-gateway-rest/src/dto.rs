@@ -21,12 +21,29 @@ pub(crate) fn datetime_schema(_: &mut schemars::SchemaGenerator) -> schemars::Sc
     })
 }
 
+/// Custom JSON Schema for URI-reference formatted strings.
+pub(crate) fn uri_reference_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "string",
+        "format": "uri-reference"
+    })
+}
+
+/// Custom JSON Schema for password formatted strings.
+pub(crate) fn password_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "string",
+        "format": "password"
+    })
+}
+
 /// Pagination metadata for list responses.
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "Pagination")]
 pub(crate) struct PaginationResponse {
     page: u32,
     #[serde(rename = "perPage")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: u32,
     total: u32,
     #[serde(rename = "totalPages")]
