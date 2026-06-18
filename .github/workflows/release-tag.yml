@@ -3,10 +3,11 @@ name: Create Release Tag
 on:
   pull_request:
     branches: [main]
-    types: [closed]
+    types: [closed, labeled]
 
 permissions:
   contents: write
+  issues: read
   pull-requests: read
 
 env:
@@ -15,7 +16,7 @@ env:
 jobs:
   tag:
     name: Create release tag
-    if: ${{ github.event.pull_request.merged == true }}
+    if: ${{ github.event.pull_request.merged == true && (github.event.action == 'closed' || github.event.label.name == 'release') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -26,8 +27,8 @@ jobs:
 
       - name: Create tag for labeled release PR
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_AUTH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           CURRENT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           PREVIOUS_SHA: ${{ github.event.pull_request.base.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -46,7 +47,8 @@ jobs:
             ' "$1"
           }
 
-          if [[ "${PR_LABELS}" != *"\"${RELEASE_LABEL}\""* ]]; then
+          PR_LABELS="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --jq '.[].name')"
+          if ! grep -Fxq "${RELEASE_LABEL}" <<<"${PR_LABELS}"; then
             echo "Merged PR #${PR_NUMBER} does not have label '${RELEASE_LABEL}'; skipping release tag creation"
             exit 0
           fi
