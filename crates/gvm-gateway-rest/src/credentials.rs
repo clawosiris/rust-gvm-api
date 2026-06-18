@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse},
+    dto::{parse_uuid, password_schema, PaginationResponse, ResourceCreatedResponse},
     handler::{
         authenticated_resource, create_resource_with_json_error, delete_resource, get_resource,
         list_resource, update_resource_with_json_error, ValidateInto,
@@ -150,6 +150,7 @@ pub struct CreateCredentialRequest {
     #[serde(rename = "type")]
     pub credential_type: String,
     pub login: Option<String>,
+    #[schemars(schema_with = "password_schema")]
     pub password: Option<String>,
     #[serde(rename = "privateKey")]
     pub private_key: Option<String>,
@@ -160,6 +161,7 @@ pub struct CreateCredentialRequest {
     #[serde(rename = "privacyAlgorithm")]
     pub privacy_algorithm: Option<String>,
     #[serde(rename = "privacyPassword")]
+    #[schemars(schema_with = "password_schema")]
     pub privacy_password: Option<String>,
 }
 
@@ -221,6 +223,7 @@ pub struct ModifyCredentialRequest {
     pub name: Option<String>,
     pub comment: Option<String>,
     pub login: Option<String>,
+    #[schemars(schema_with = "password_schema")]
     pub password: Option<String>,
     #[serde(rename = "privateKey")]
     pub private_key: Option<String>,
@@ -231,6 +234,7 @@ pub struct ModifyCredentialRequest {
     #[serde(rename = "privacyAlgorithm")]
     pub privacy_algorithm: Option<String>,
     #[serde(rename = "privacyPassword")]
+    #[schemars(schema_with = "password_schema")]
     pub privacy_password: Option<String>,
 }
 

@@ -130,6 +130,7 @@ impl ScanConfigListQuery {
 #[schemars(rename = "CreateScanConfig")]
 pub struct CreateScanConfigRequest {
     /// Optional name so validation can return RFC 9457 instead of extractor failures.
+    #[schemars(required)]
     pub name: Option<String>,
     /// Optional comment.
     pub comment: Option<String>,

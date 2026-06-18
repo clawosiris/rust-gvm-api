@@ -152,8 +152,11 @@ impl From<AlertPage> for AlertListResponse {
 pub struct CreateAlertRequest {
     pub name: String,
     pub comment: Option<String>,
+    #[schemars(required)]
     pub event: Option<String>,
+    #[schemars(required)]
     pub condition: Option<String>,
+    #[schemars(required)]
     pub method: Option<String>,
     #[serde(rename = "eventData", default)]
     pub event_data: HashMap<String, String>,
@@ -162,6 +165,7 @@ pub struct CreateAlertRequest {
     #[serde(rename = "methodData", default)]
     pub method_data: HashMap<String, String>,
     #[serde(rename = "filterId")]
+    #[schemars(with = "Option<Uuid>")]
     pub filter_id: Option<String>,
 }
 
@@ -208,6 +212,7 @@ pub struct ModifyAlertRequest {
     #[serde(rename = "methodData")]
     pub method_data: Option<HashMap<String, String>>,
     #[serde(rename = "filterId")]
+    #[schemars(with = "Option<Uuid>")]
     pub filter_id: Option<String>,
 }
 

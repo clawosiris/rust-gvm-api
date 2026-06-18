@@ -544,6 +544,7 @@ impl From<gvm_gateway_domain::OverridePage> for OverrideListResponse {
 #[schemars(rename = "CreateNote")]
 pub(crate) struct CreateNoteRequest {
     #[serde(rename = "nvtOid")]
+    #[schemars(required)]
     nvt_oid: Option<String>,
     text: Option<String>,
     #[serde(default)]
@@ -583,6 +584,7 @@ pub(crate) struct ModifyNoteRequest {
 #[schemars(rename = "CreateOverride")]
 pub(crate) struct CreateOverrideRequest {
     #[serde(rename = "nvtOid")]
+    #[schemars(required)]
     nvt_oid: Option<String>,
     text: Option<String>,
     #[serde(default)]

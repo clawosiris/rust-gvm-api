@@ -21,6 +21,14 @@ use crate::{
     open_enum::document_open_enum_schema,
 };
 
+fn default_page() -> Option<u32> {
+    Some(1)
+}
+
+fn default_per_page() -> Option<u32> {
+    Some(25)
+}
+
 pub(crate) fn ok_json<T>(
     description: &'static str,
 ) -> impl FnOnce(TransformResponse<T>) -> TransformResponse<T> {
@@ -107,44 +115,13 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
 
     apply_route_auth_security(&mut document);
 
-    tighten_target_query_parameters(&mut document);
-    tighten_target_payload_schemas(&mut document);
-    tighten_list_query_parameters(&mut document, "/alerts");
-    tighten_list_query_parameters(&mut document, "/schedules");
-    tighten_list_query_parameters(&mut document, "/credentials");
-    tighten_list_query_parameters(&mut document, "/port-lists");
-    tighten_alert_payload_schemas(&mut document);
-    tighten_schedule_payload_schemas(&mut document);
-    tighten_credential_payload_schemas(&mut document);
-    tighten_port_list_payload_schemas(&mut document);
     tighten_alert_enums(&mut document);
     tighten_credential_enums(&mut document);
     tighten_feed_schema(&mut document);
-    tighten_task_query_parameters(&mut document);
-    tighten_task_payload_schemas(&mut document);
-    tighten_scan_config_payload_schemas(&mut document);
-    tighten_triage_payload_schemas(&mut document);
-    tighten_list_query_parameters(&mut document, "/users");
-    tighten_list_query_parameters(&mut document, "/groups");
-    tighten_list_query_parameters(&mut document, "/roles");
-    tighten_list_query_parameters(&mut document, "/permissions");
-    tighten_list_query_parameters(&mut document, "/reports");
-    tighten_list_query_parameters(&mut document, "/results");
-    tighten_list_query_parameters(&mut document, "/reports/{id}/results");
-    tighten_list_query_parameters(&mut document, "/reports/{id}/vulnerabilities");
-    tighten_list_query_parameters(&mut document, "/reports/{id}/tls-certificates");
-    tighten_list_query_parameters(&mut document, "/reports/{id}/errors");
-    tighten_list_query_parameters(&mut document, "/reports/{id}/closed-cves");
-    tighten_list_query_parameters(&mut document, "/scan-configs");
-    tighten_list_query_parameters(&mut document, "/scanners");
-    tighten_report_get_parameters(&mut document);
-    tighten_pagination_schema(&mut document);
-    tighten_report_schema(&mut document);
     tighten_identity_schemas(&mut document);
     ensure_problem_detail_schema(&mut document);
     synchronize_report_export_job_contract(&mut document);
     normalize_problem_response_content_types(&mut document);
-    ensure_basic_auth_scheme(&mut document);
     strip_nullable_types(&mut document);
     document
 }
@@ -323,88 +300,6 @@ fn openapi_method(method_name: &str) -> Option<Method> {
     })
 }
 
-fn tighten_target_query_parameters(document: &mut Value) {
-    if let Some(parameters) = document["paths"]["/targets"]["get"]["parameters"].as_array_mut() {
-        for parameter in parameters {
-            match parameter["name"].as_str() {
-                Some("page") => {
-                    parameter["schema"]["minimum"] = json!(1);
-                    parameter["schema"]["default"] = json!(1);
-                }
-                Some("perPage") => {
-                    parameter["schema"]["minimum"] = json!(1);
-                    parameter["schema"]["maximum"] = json!(1000);
-                    parameter["schema"]["default"] = json!(25);
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-fn tighten_report_get_parameters(document: &mut Value) {
-    if let Some(parameters) = document["paths"]["/reports/{id}"]["get"]["parameters"].as_array_mut()
-    {
-        for parameter in parameters {
-            match parameter["name"].as_str() {
-                Some("page") => {
-                    parameter["schema"]["minimum"] = json!(1);
-                    parameter["schema"]["default"] = json!(1);
-                }
-                Some("perPage") => {
-                    parameter["schema"]["minimum"] = json!(1);
-                    parameter["schema"]["maximum"] = json!(1000);
-                    parameter["schema"]["default"] = json!(25);
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-fn tighten_list_query_parameters(document: &mut Value, path: &str) {
-    if let Some(parameters) = document["paths"][path]["get"]["parameters"].as_array_mut() {
-        for parameter in parameters {
-            match parameter["name"].as_str() {
-                Some("page") => {
-                    parameter["schema"]["minimum"] = json!(1);
-                    parameter["schema"]["default"] = json!(1);
-                }
-                Some("perPage") => {
-                    parameter["schema"]["minimum"] = json!(1);
-                    parameter["schema"]["maximum"] = json!(1000);
-                    parameter["schema"]["default"] = json!(25);
-                }
-                Some("filterId") => {
-                    parameter["schema"]["format"] = json!("uuid");
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-fn tighten_pagination_schema(document: &mut Value) {
-    let per_page = &mut document["components"]["schemas"]["Pagination"]["properties"]["perPage"];
-    if per_page.is_object() {
-        per_page["minimum"] = json!(1);
-        per_page["maximum"] = json!(1000);
-    }
-}
-
-fn tighten_report_schema(document: &mut Value) {
-    let results = &mut document["components"]["schemas"]["Report"]["properties"]["results"];
-    if results.is_object() {
-        results["maxItems"] = json!(1000);
-    }
-    for schema_name in ["ReportList", "ResultList", "TlsCertificateList"] {
-        let data = &mut document["components"]["schemas"][schema_name]["properties"]["data"];
-        if data.is_object() {
-            data["maxItems"] = json!(1000);
-        }
-    }
-}
-
 fn synchronize_report_export_job_contract(document: &mut Value) {
     document["components"]["headers"]["Location"] = json!({
         "description": "Canonical URI of the created resource.",
@@ -547,44 +442,6 @@ fn synchronize_report_export_job_contract(document: &mut Value) {
     });
 }
 
-fn tighten_target_payload_schemas(document: &mut Value) {
-    document["components"]["schemas"]["CreateTarget"]["properties"]["hosts"]["minItems"] = json!(1);
-}
-
-fn tighten_alert_payload_schemas(document: &mut Value) {
-    if let Some(schema) = document["components"]["schemas"].get_mut("CreateAlert") {
-        schema["required"] = json!(["name", "event", "condition", "method"]);
-        schema["properties"]["filterId"]["format"] = json!("uuid");
-    }
-    if let Some(schema) = document["components"]["schemas"].get_mut("ModifyAlert") {
-        schema["properties"]["filterId"]["format"] = json!("uuid");
-    }
-}
-
-fn tighten_schedule_payload_schemas(document: &mut Value) {
-    if let Some(schema) = document["components"]["schemas"].get_mut("CreateSchedule") {
-        schema["required"] = json!(["name", "icalendar", "timezone"]);
-    }
-}
-
-fn tighten_credential_payload_schemas(document: &mut Value) {
-    if let Some(schema) = document["components"]["schemas"].get_mut("CreateCredential") {
-        schema["required"] = json!(["name", "type"]);
-        schema["properties"]["password"]["format"] = json!("password");
-        schema["properties"]["privacyPassword"]["format"] = json!("password");
-    }
-    if let Some(schema) = document["components"]["schemas"].get_mut("ModifyCredential") {
-        schema["properties"]["password"]["format"] = json!("password");
-        schema["properties"]["privacyPassword"]["format"] = json!("password");
-    }
-}
-
-fn tighten_port_list_payload_schemas(document: &mut Value) {
-    if let Some(schema) = document["components"]["schemas"].get_mut("CreatePortList") {
-        schema["required"] = json!(["name"]);
-    }
-}
-
 fn tighten_alert_enums(document: &mut Value) {
     let event_values = json!(["task_run_status_changed", "updated_secinfo", "new_secinfo"]);
     let condition_values = json!([
@@ -650,60 +507,6 @@ fn tighten_feed_schema(document: &mut Value) {
             &mut schema["properties"]["type"],
             json!(["NVT", "CERT", "SCAP", "GVMD_DATA"]),
         );
-    }
-}
-
-fn tighten_task_query_parameters(document: &mut Value) {
-    if let Some(parameters) = document["paths"]["/tasks"]["get"]["parameters"].as_array_mut() {
-        for parameter in parameters {
-            match parameter["name"].as_str() {
-                Some("page") => {
-                    parameter["schema"]["minimum"] = json!(1);
-                    parameter["schema"]["default"] = json!(1);
-                }
-                Some("perPage") => {
-                    parameter["schema"]["minimum"] = json!(1);
-                    parameter["schema"]["maximum"] = json!(1000);
-                    parameter["schema"]["default"] = json!(25);
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-fn tighten_scan_config_payload_schemas(document: &mut Value) {
-    // `CreateScanConfigRequest.name` is `Option<String>` at runtime (for graceful validation),
-    // so schemars omits it from `required`. Inject it here to keep the contract intact.
-    if let Some(schema) = document["components"]["schemas"].get_mut("CreateScanConfig") {
-        schema["required"] = json!(["name"]);
-    }
-}
-
-fn tighten_triage_payload_schemas(document: &mut Value) {
-    // Create request DTOs keep `nvtOid` optional at runtime so validation can
-    // return RFC 9457 problem details. The public schema requires it.
-    for schema_name in ["CreateNote", "CreateOverride"] {
-        if let Some(schema) = document["components"]["schemas"].get_mut(schema_name) {
-            schema["required"] = json!(["nvtOid"]);
-        }
-    }
-}
-
-fn tighten_task_payload_schemas(document: &mut Value) {
-    let schemas = &mut document["components"]["schemas"];
-    if let Some(create_task) = schemas.get_mut("CreateTask") {
-        if let Some(props) = create_task.get_mut("properties") {
-            if let Some(target_id) = props.get_mut("targetId") {
-                target_id["format"] = json!("uuid");
-            }
-            if let Some(scan_config_id) = props.get_mut("scanConfigId") {
-                scan_config_id["format"] = json!("uuid");
-            }
-            if let Some(scanner_id) = props.get_mut("scannerId") {
-                scanner_id["format"] = json!("uuid");
-            }
-        }
     }
 }
 
@@ -976,19 +779,6 @@ fn normalize_problem_response_content_types(document: &mut Value) {
     }
 }
 
-fn ensure_basic_auth_scheme(document: &mut Value) {
-    if let Some(security_schemes) = document["components"]["securitySchemes"].as_object_mut() {
-        security_schemes.insert(
-            "basicAuth".to_string(),
-            json!({
-                "type": "http",
-                "scheme": "basic",
-                "description": "HTTP Basic credentials used either to create a persistent session or to authenticate one protected request with request-scoped backend cleanup."
-            }),
-        );
-    }
-}
-
 fn strip_nullable_types(value: &mut Value) {
     *value = normalize_nullable_schema(std::mem::take(value));
 }
@@ -1165,6 +955,17 @@ pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
                 extensions: Default::default(),
             },
         )
+        .security_scheme(
+            "basicAuth",
+            SecurityScheme::Http {
+                scheme: "basic".to_string(),
+                bearer_format: None,
+                description: Some(
+                    "HTTP Basic credentials used either to create a persistent session or to authenticate one protected request with request-scoped backend cleanup.".to_string(),
+                ),
+                extensions: Default::default(),
+            },
+        )
 }
 
 // ============================================================================
@@ -1216,8 +1017,14 @@ pub(crate) struct TargetListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
     page: Option<u32>,
     #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: Option<u32>,
 }
 
@@ -1228,6 +1035,7 @@ pub(crate) struct TargetListQueryDoc {
 pub(crate) struct CreateTargetDoc {
     name: String,
     comment: Option<String>,
+    #[schemars(length(min = 1))]
     hosts: Vec<String>,
     #[serde(rename = "excludeHosts", default)]
     exclude_hosts: Vec<String>,
@@ -1310,8 +1118,14 @@ pub(crate) struct TaskListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
     page: Option<u32>,
     #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: Option<u32>,
 }
 
@@ -1381,23 +1195,41 @@ pub(crate) struct ReportListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
     page: Option<u32>,
     #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 pub(crate) struct GetReportQueryDoc {
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
     page: Option<u32>,
     #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 pub(crate) struct ReportResultsQueryDoc {
     filter: Option<String>,
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
     page: Option<u32>,
     #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: Option<u32>,
 }
 
@@ -1406,8 +1238,14 @@ pub(crate) struct ResultListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
     page: Option<u32>,
     #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: Option<u32>,
 }
 
@@ -1418,8 +1256,14 @@ pub(crate) struct ScanConfigListQueryDoc {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
     page: Option<u32>,
     #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: Option<u32>,
 }
 

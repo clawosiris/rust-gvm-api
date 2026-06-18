@@ -117,6 +117,7 @@ impl From<gvm_gateway_domain::ScanResult> for ResultResponse {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "ResultList")]
 pub(crate) struct ResultListResponse {
+    #[schemars(length(max = 1000))]
     data: Vec<ResultResponse>,
     pagination: PaginationResponse,
 }

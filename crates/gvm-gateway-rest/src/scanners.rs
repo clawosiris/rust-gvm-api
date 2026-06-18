@@ -94,9 +94,23 @@ pub(crate) struct ScannerListQueryParams {
     filter: Option<String>,
     #[serde(rename = "filterId")]
     filter_id: Option<Uuid>,
+    #[serde(default = "default_page")]
+    #[schemars(default = "default_page")]
+    #[schemars(range(min = 1))]
     page: Option<u32>,
     #[serde(rename = "perPage")]
+    #[serde(default = "default_per_page")]
+    #[schemars(default = "default_per_page")]
+    #[schemars(range(min = 1, max = 1000))]
     per_page: Option<u32>,
+}
+
+fn default_page() -> Option<u32> {
+    Some(1)
+}
+
+fn default_per_page() -> Option<u32> {
+    Some(25)
 }
 
 /// Parsed list-scanners query from HTTP request.

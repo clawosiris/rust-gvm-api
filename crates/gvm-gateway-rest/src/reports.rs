@@ -87,6 +87,7 @@ pub(crate) struct ReportResponse {
     #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
     result_count: Option<ResultCountResponse>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schemars(length(max = 1000))]
     results: Vec<ResultResponse>,
 }
 
@@ -108,6 +109,7 @@ impl From<gvm_gateway_domain::Report> for ReportResponse {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "ReportList")]
 pub(crate) struct ReportListResponse {
+    #[schemars(length(max = 1000))]
     data: Vec<ReportResponse>,
     pagination: PaginationResponse,
 }
@@ -154,6 +156,7 @@ impl From<TlsCertificate> for TlsCertificateResponse {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "TlsCertificateList")]
 pub(crate) struct TlsCertificateListResponse {
+    #[schemars(length(max = 1000))]
     data: Vec<TlsCertificateResponse>,
     pagination: PaginationResponse,
 }
