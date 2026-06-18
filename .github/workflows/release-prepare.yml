@@ -106,13 +106,13 @@ jobs:
           This PR updates the workspace version and refreshes Cargo.lock. After
           it merges, main represents the release candidate for tag v${RELEASE_VERSION}.
 
-          Apply the \`release\` label before merging. After merge, the
+          This PR is labeled \`release\`. After merge, the
           "Create Release Tag" workflow creates tag v${RELEASE_VERSION} at the
           merge commit and the publish workflow runs from that tag.
           EOF
 
           if gh pr view "${BRANCH}" --repo "${GH_REPO}" >/dev/null 2>&1; then
-            gh pr edit "${BRANCH}" --repo "${GH_REPO}" --title "${TITLE}" --body-file release-pr-body.md
+            gh pr edit "${BRANCH}" --repo "${GH_REPO}" --title "${TITLE}" --body-file release-pr-body.md --add-label release
           else
-            gh pr create --repo "${GH_REPO}" --base main --head "${BRANCH}" --title "${TITLE}" --body-file release-pr-body.md
+            gh pr create --repo "${GH_REPO}" --base main --head "${BRANCH}" --title "${TITLE}" --body-file release-pr-body.md --label release
           fi
