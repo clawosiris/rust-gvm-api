@@ -25,7 +25,7 @@ use crate::{
         create_resource, delete_resource, get_resource, list_resource, update_resource,
         ValidateInto,
     },
-    openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
     query::{CollectionListQuery, DeleteResourceQueryParams},
 };
 
@@ -256,7 +256,7 @@ pub(crate) fn create_port_list_docs(op: TransformOperation<'_>) -> TransformOper
         .description("Creates a new port list.")
         .security_requirement("bearerAuth")
         .input::<Json<CreatePortListRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Port list created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Port list created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }

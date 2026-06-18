@@ -28,7 +28,7 @@ use crate::{
         list_resource, update_resource_with_json_error, ValidateInto,
     },
     open_enum::open_string_enum,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
     query::{CollectionListQuery, DeleteResourceQueryParams},
 };
 
@@ -57,6 +57,7 @@ pub(crate) struct CredentialResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    #[schemars(required)]
     credential_type: Option<CredentialType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     login: Option<String>,
@@ -144,25 +145,27 @@ impl From<CredentialPage> for CredentialListResponse {
 
 #[derive(Clone, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateCredential")]
-pub struct CreateCredentialRequest {
-    pub name: String,
-    pub comment: Option<String>,
+pub(crate) struct CreateCredentialRequest {
+    name: String,
+    comment: Option<String>,
     #[serde(rename = "type")]
-    pub credential_type: String,
-    pub login: Option<String>,
+    credential_type: CredentialType,
+    login: Option<String>,
     #[schemars(schema_with = "password_schema")]
-    pub password: Option<String>,
+    password: Option<String>,
     #[serde(rename = "privateKey")]
-    pub private_key: Option<String>,
-    pub certificate: Option<String>,
-    pub community: Option<String>,
+    private_key: Option<String>,
+    certificate: Option<String>,
+    community: Option<String>,
     #[serde(rename = "authAlgorithm")]
-    pub auth_algorithm: Option<String>,
+    #[schemars(schema_with = "auth_algorithm_schema")]
+    auth_algorithm: Option<String>,
     #[serde(rename = "privacyAlgorithm")]
-    pub privacy_algorithm: Option<String>,
+    #[schemars(schema_with = "privacy_algorithm_schema")]
+    privacy_algorithm: Option<String>,
     #[serde(rename = "privacyPassword")]
     #[schemars(schema_with = "password_schema")]
-    pub privacy_password: Option<String>,
+    privacy_password: Option<String>,
 }
 
 impl fmt::Debug for CreateCredentialRequest {
@@ -192,13 +195,13 @@ impl CreateCredentialRequest {
         if self.name.trim().is_empty() {
             return Err(GatewayError::InvalidInput("name is required".to_string()));
         }
-        if self.credential_type.trim().is_empty() {
+        if self.credential_type.as_str().trim().is_empty() {
             return Err(GatewayError::InvalidInput("type is required".to_string()));
         }
         Ok(CreateCredentialInput {
             name: self.name,
             comment: self.comment,
-            credential_type: self.credential_type,
+            credential_type: self.credential_type.as_str().to_string(),
             login: self.login,
             password: self.password,
             private_key: self.private_key,
@@ -230,12 +233,28 @@ pub struct ModifyCredentialRequest {
     pub certificate: Option<String>,
     pub community: Option<String>,
     #[serde(rename = "authAlgorithm")]
+    #[schemars(schema_with = "auth_algorithm_schema")]
     pub auth_algorithm: Option<String>,
     #[serde(rename = "privacyAlgorithm")]
+    #[schemars(schema_with = "privacy_algorithm_schema")]
     pub privacy_algorithm: Option<String>,
     #[serde(rename = "privacyPassword")]
     #[schemars(schema_with = "password_schema")]
     pub privacy_password: Option<String>,
+}
+
+fn auth_algorithm_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "string",
+        "enum": ["md5", "sha1"]
+    })
+}
+
+fn privacy_algorithm_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "string",
+        "enum": ["aes", "des"]
+    })
 }
 
 impl fmt::Debug for ModifyCredentialRequest {
@@ -453,7 +472,7 @@ pub(crate) fn create_credential_docs(op: TransformOperation<'_>) -> TransformOpe
         .description("Creates a new credential.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateCredentialRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Credential created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Credential created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }

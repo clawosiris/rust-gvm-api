@@ -26,8 +26,8 @@ use crate::{
     },
     open_enum::open_string_enum,
     openapi::{
-        ok_json, problem_response, CreateTargetDoc, ModifyTargetDoc, ResourceIdPathDoc,
-        TargetListQueryDoc,
+        created_json, ok_json, problem_response, CreateTargetDoc, ModifyTargetDoc,
+        ResourceIdPathDoc, TargetListQueryDoc,
     },
     query::{parse_collection_query, DeleteResourceQueryParams},
 };
@@ -447,7 +447,7 @@ pub(crate) fn create_target_docs(op: TransformOperation<'_>) -> TransformOperati
         .description("Creates a new scan target.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateTargetDoc>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Target created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Target created"));
 
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")

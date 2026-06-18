@@ -56,7 +56,8 @@ fn credential_request_debug_redacts_secrets() {
     let create = CreateCredentialRequest {
         name: "Credential".to_string(),
         comment: Some("visible comment".to_string()),
-        credential_type: "snmpv3".to_string(),
+        credential_type: serde_json::from_value(json!("snmpv3"))
+            .expect("known credential type should parse"),
         login: Some("visible-login".to_string()),
         password: Some("create-password-secret".to_string()),
         private_key: Some("create-private-key-secret".to_string()),

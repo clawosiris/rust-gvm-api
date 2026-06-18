@@ -23,13 +23,16 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
+    dto::{
+        datetime_schema, parse_uuid, password_schema, PaginationResponse, ResourceCreatedResponse,
+        ResourceRefResponse,
+    },
     handler::{
         create_resource, delete_resource, get_resource, list_resource, update_resource,
         ValidateInto,
     },
     open_enum::open_string_enum,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc},
     query::{parse_collection_query, parse_filter_only_query, DeleteResourceQueryParams},
     targets::validate_uuid,
 };
@@ -283,6 +286,168 @@ impl From<UserSettingList> for UserSettingListResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "IdentityResourceBase")]
+struct IdentityResourceBaseDoc {
+    id: Uuid,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner: Option<ResourceRefResponse>,
+    #[serde(rename = "creationTime", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    creation_time: Option<String>,
+    #[serde(rename = "modificationTime", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    modification_time: Option<String>,
+    writable: bool,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct UserDoc;
+
+impl JsonSchema for UserDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("User")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<IdentityResourceBaseDoc>();
+        serde_json::from_value(serde_json::json!({
+            "allOf": [
+                { "$ref": "#/components/schemas/IdentityResourceBase" },
+                {
+                    "type": "object",
+                    "properties": {
+                        "roles": {
+                            "type": "array",
+                            "items": { "$ref": "#/components/schemas/ResourceRef" }
+                        },
+                        "groups": {
+                            "type": "array",
+                            "items": { "$ref": "#/components/schemas/ResourceRef" }
+                        },
+                        "hostsAllow": { "type": "boolean" },
+                        "hosts": { "type": "string" },
+                        "authenticationType": {
+                            "$ref": "#/components/schemas/AuthenticationType"
+                        }
+                    }
+                }
+            ]
+        }))
+        .expect("static User schema is valid")
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct GroupDoc;
+
+impl JsonSchema for GroupDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Group")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<IdentityResourceBaseDoc>();
+        identity_users_schema()
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct RoleDoc;
+
+impl JsonSchema for RoleDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Role")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<IdentityResourceBaseDoc>();
+        identity_users_schema()
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct PermissionDoc;
+
+impl JsonSchema for PermissionDoc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Permission")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let _ = generator.subschema_for::<IdentityResourceBaseDoc>();
+        serde_json::from_value(serde_json::json!({
+            "allOf": [
+                { "$ref": "#/components/schemas/IdentityResourceBase" },
+                {
+                    "type": "object",
+                    "properties": {
+                        "subjectType": {
+                            "type": "string",
+                            "enum": ["user", "group", "role"]
+                        },
+                        "subject": { "$ref": "#/components/schemas/ResourceRef" },
+                        "resourceType": { "type": "string" },
+                        "resource": { "$ref": "#/components/schemas/ResourceRef" }
+                    }
+                }
+            ]
+        }))
+        .expect("static Permission schema is valid")
+    }
+}
+
+fn identity_users_schema() -> schemars::Schema {
+    serde_json::from_value(serde_json::json!({
+        "allOf": [
+            { "$ref": "#/components/schemas/IdentityResourceBase" },
+            {
+                "type": "object",
+                "properties": {
+                    "users": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
+                }
+            }
+        ]
+    }))
+    .expect("static identity extension schema is valid")
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "UserList")]
+struct UserListDoc {
+    data: Vec<UserDoc>,
+    pagination: PaginationResponse,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "GroupList")]
+struct GroupListDoc {
+    data: Vec<GroupDoc>,
+    pagination: PaginationResponse,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "RoleList")]
+struct RoleListDoc {
+    data: Vec<RoleDoc>,
+    pagination: PaginationResponse,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "PermissionList")]
+struct PermissionListDoc {
+    data: Vec<PermissionDoc>,
+    pagination: PaginationResponse,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 struct IdentityListQueryDoc {
     filter: Option<String>,
@@ -315,16 +480,6 @@ fn default_per_page() -> Option<u32> {
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-enum AuthenticationTypeDoc {
-    #[serde(rename = "file")]
-    File,
-    #[serde(rename = "ldap_connect")]
-    LdapConnect,
-    #[serde(rename = "radius_connect")]
-    RadiusConnect,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 enum PermissionSubjectTypeDoc {
     #[serde(rename = "user")]
     User,
@@ -339,24 +494,26 @@ enum PermissionSubjectTypeDoc {
 struct CreateUserDoc {
     name: String,
     comment: Option<String>,
+    #[schemars(schema_with = "password_schema")]
     password: Option<String>,
     hosts: Option<String>,
     roles: Option<Vec<Uuid>>,
     #[serde(rename = "authenticationType")]
-    authentication_type: Option<AuthenticationTypeDoc>,
+    authentication_type: Option<AuthenticationType>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyUser")]
 struct ModifyUserDoc {
     comment: Option<String>,
+    #[schemars(schema_with = "password_schema")]
     password: Option<String>,
     hosts: Option<String>,
     /// Assigned role identifiers. Omitted, null, or empty arrays leave existing
     /// roles unchanged; clearing all roles is not supported by this request shape.
     roles: Option<Vec<Uuid>>,
     #[serde(rename = "authenticationType")]
-    authentication_type: Option<AuthenticationTypeDoc>,
+    authentication_type: Option<AuthenticationType>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
@@ -1242,7 +1399,7 @@ pub(crate) fn list_users_docs(op: TransformOperation<'_>) -> TransformOperation<
         "Returns a paginated list of users.",
     )
     .input::<axum::extract::Query<IdentityListQueryDoc>>()
-    .response_with::<200, Json<UserListResponse>, _>(ok_json("Paginated list of users"));
+    .response_with::<200, Json<UserListDoc>, _>(ok_json("Paginated list of users"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1257,7 +1414,7 @@ pub(crate) fn create_user_docs(op: TransformOperation<'_>) -> TransformOperation
         "Creates a new user.",
     )
     .input::<Json<CreateUserDoc>>()
-    .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("User created"));
+    .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("User created"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1272,7 +1429,7 @@ pub(crate) fn get_user_docs(op: TransformOperation<'_>) -> TransformOperation<'_
         "Returns one user by ID.",
     )
     .input::<Path<ResourceIdPathDoc>>()
-    .response_with::<200, Json<UserResponse>, _>(ok_json("User details"));
+    .response_with::<200, Json<UserDoc>, _>(ok_json("User details"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1288,7 +1445,7 @@ pub(crate) fn update_user_docs(op: TransformOperation<'_>) -> TransformOperation
         "Updates an existing user.",
     )
     .input::<(Path<ResourceIdPathDoc>, Json<ModifyUserDoc>)>()
-    .response_with::<200, Json<UserResponse>, _>(ok_json("User updated"));
+    .response_with::<200, Json<UserDoc>, _>(ok_json("User updated"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1320,7 +1477,7 @@ pub(crate) fn list_groups_docs(op: TransformOperation<'_>) -> TransformOperation
         "Returns a paginated list of groups.",
     )
     .input::<axum::extract::Query<IdentityListQueryDoc>>()
-    .response_with::<200, Json<GroupListResponse>, _>(ok_json("Paginated list of groups"));
+    .response_with::<200, Json<GroupListDoc>, _>(ok_json("Paginated list of groups"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1335,7 +1492,7 @@ pub(crate) fn create_group_docs(op: TransformOperation<'_>) -> TransformOperatio
         "Creates a new group.",
     )
     .input::<Json<CreateGroupDoc>>()
-    .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Group created"));
+    .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Group created"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1350,7 +1507,7 @@ pub(crate) fn get_group_docs(op: TransformOperation<'_>) -> TransformOperation<'
         "Returns one group by ID.",
     )
     .input::<Path<ResourceIdPathDoc>>()
-    .response_with::<200, Json<GroupResponse>, _>(ok_json("Group details"));
+    .response_with::<200, Json<GroupDoc>, _>(ok_json("Group details"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1366,7 +1523,7 @@ pub(crate) fn update_group_docs(op: TransformOperation<'_>) -> TransformOperatio
         "Updates an existing group.",
     )
     .input::<(Path<ResourceIdPathDoc>, Json<ModifyGroupDoc>)>()
-    .response_with::<200, Json<GroupResponse>, _>(ok_json("Group updated"));
+    .response_with::<200, Json<GroupDoc>, _>(ok_json("Group updated"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1398,7 +1555,7 @@ pub(crate) fn list_roles_docs(op: TransformOperation<'_>) -> TransformOperation<
         "Returns a paginated list of roles.",
     )
     .input::<axum::extract::Query<IdentityListQueryDoc>>()
-    .response_with::<200, Json<RoleListResponse>, _>(ok_json("Paginated list of roles"));
+    .response_with::<200, Json<RoleListDoc>, _>(ok_json("Paginated list of roles"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1413,7 +1570,7 @@ pub(crate) fn create_role_docs(op: TransformOperation<'_>) -> TransformOperation
         "Creates a new role.",
     )
     .input::<Json<CreateRoleDoc>>()
-    .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Role created"));
+    .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Role created"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1428,7 +1585,7 @@ pub(crate) fn get_role_docs(op: TransformOperation<'_>) -> TransformOperation<'_
         "Returns one role by ID.",
     )
     .input::<Path<ResourceIdPathDoc>>()
-    .response_with::<200, Json<RoleResponse>, _>(ok_json("Role details"));
+    .response_with::<200, Json<RoleDoc>, _>(ok_json("Role details"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1444,7 +1601,7 @@ pub(crate) fn update_role_docs(op: TransformOperation<'_>) -> TransformOperation
         "Updates an existing role.",
     )
     .input::<(Path<ResourceIdPathDoc>, Json<ModifyRoleDoc>)>()
-    .response_with::<200, Json<RoleResponse>, _>(ok_json("Role updated"));
+    .response_with::<200, Json<RoleDoc>, _>(ok_json("Role updated"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1476,9 +1633,7 @@ pub(crate) fn list_permissions_docs(op: TransformOperation<'_>) -> TransformOper
         "Returns a paginated list of permissions.",
     )
     .input::<axum::extract::Query<IdentityListQueryDoc>>()
-    .response_with::<200, Json<PermissionListResponse>, _>(ok_json(
-        "Paginated list of permissions",
-    ));
+    .response_with::<200, Json<PermissionListDoc>, _>(ok_json("Paginated list of permissions"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1493,7 +1648,7 @@ pub(crate) fn create_permission_docs(op: TransformOperation<'_>) -> TransformOpe
         "Creates a new permission.",
     )
     .input::<Json<CreatePermissionDoc>>()
-    .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Permission created"));
+    .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Permission created"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<403>(op, "Forbidden")
@@ -1508,7 +1663,7 @@ pub(crate) fn get_permission_docs(op: TransformOperation<'_>) -> TransformOperat
         "Returns one permission by ID.",
     )
     .input::<Path<ResourceIdPathDoc>>()
-    .response_with::<200, Json<PermissionResponse>, _>(ok_json("Permission details"));
+    .response_with::<200, Json<PermissionDoc>, _>(ok_json("Permission details"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");
@@ -1524,7 +1679,7 @@ pub(crate) fn update_permission_docs(op: TransformOperation<'_>) -> TransformOpe
         "Updates an existing permission.",
     )
     .input::<(Path<ResourceIdPathDoc>, Json<ModifyPermissionDoc>)>()
-    .response_with::<200, Json<PermissionResponse>, _>(ok_json("Permission updated"));
+    .response_with::<200, Json<PermissionDoc>, _>(ok_json("Permission updated"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<403>(op, "Forbidden");

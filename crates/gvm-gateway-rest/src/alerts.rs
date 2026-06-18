@@ -28,7 +28,7 @@ use crate::{
         ValidateInto,
     },
     open_enum::open_string_enum,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
     query::{CollectionListQuery, DeleteResourceQueryParams},
     targets::validate_uuid,
 };
@@ -82,10 +82,13 @@ pub(crate) struct AlertResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(required)]
     event: Option<AlertEvent>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(required)]
     condition: Option<AlertCondition>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(required)]
     method: Option<AlertMethod>,
     #[serde(
         rename = "eventData",
@@ -149,24 +152,24 @@ impl From<AlertPage> for AlertListResponse {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateAlert")]
-pub struct CreateAlertRequest {
-    pub name: String,
-    pub comment: Option<String>,
+pub(crate) struct CreateAlertRequest {
+    name: String,
+    comment: Option<String>,
     #[schemars(required)]
-    pub event: Option<String>,
+    event: Option<AlertEvent>,
     #[schemars(required)]
-    pub condition: Option<String>,
+    condition: Option<AlertCondition>,
     #[schemars(required)]
-    pub method: Option<String>,
+    method: Option<AlertMethod>,
     #[serde(rename = "eventData", default)]
-    pub event_data: HashMap<String, String>,
+    event_data: HashMap<String, String>,
     #[serde(rename = "conditionData", default)]
-    pub condition_data: HashMap<String, String>,
+    condition_data: HashMap<String, String>,
     #[serde(rename = "methodData", default)]
-    pub method_data: HashMap<String, String>,
+    method_data: HashMap<String, String>,
     #[serde(rename = "filterId")]
     #[schemars(with = "Option<Uuid>")]
-    pub filter_id: Option<String>,
+    filter_id: Option<String>,
 }
 
 impl CreateAlertRequest {
@@ -180,9 +183,11 @@ impl CreateAlertRequest {
         Ok(CreateAlertInput {
             name: self.name,
             comment: self.comment,
-            event: self.event,
-            condition: self.condition,
-            method: self.method,
+            event: self.event.map(|event| event.as_str().to_string()),
+            condition: self
+                .condition
+                .map(|condition| condition.as_str().to_string()),
+            method: self.method.map(|method| method.as_str().to_string()),
             event_data: self.event_data,
             condition_data: self.condition_data,
             method_data: self.method_data,
@@ -362,7 +367,7 @@ pub(crate) fn create_alert_docs(op: TransformOperation<'_>) -> TransformOperatio
         .description("Creates a new alert.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateAlertRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Alert created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Alert created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }

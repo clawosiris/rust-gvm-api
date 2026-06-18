@@ -28,7 +28,7 @@ use crate::{
         ValidateInto,
     },
     open_enum::open_string_enum,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc},
     query::{parse_collection_query, DeleteResourceQueryParams},
     results::NvtRefResponse,
     router::bearer_token,
@@ -1483,7 +1483,7 @@ pub(crate) fn create_note_docs(op: TransformOperation<'_>) -> TransformOperation
         )
         .security_requirement("bearerAuth")
         .input::<Json<CreateNoteRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Note created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Note created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }
@@ -1559,7 +1559,7 @@ pub(crate) fn create_override_docs(op: TransformOperation<'_>) -> TransformOpera
         )
         .security_requirement("bearerAuth")
         .input::<Json<CreateOverrideRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Override created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Override created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }

@@ -4,30 +4,26 @@
 //! OpenAPI generation helpers for the REST adapter.
 
 use aide::{
-    openapi::{License, SecurityScheme, Server},
+    openapi::{Header, License, ReferenceOr, SecurityScheme, Server, StatusCode},
     transform::{TransformOpenApi, TransformOperation, TransformResponse},
 };
 use axum::http::Method;
 use axum::Json;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use uuid::Uuid;
 
 // Runtime DTO imports are no longer needed centrally — OpenAPI transforms
 // now live alongside their handlers in each module.
-use crate::{
-    auth_policy::{classify_runtime_route, runtime_path_from_openapi_path, RestRouteAuthPolicy},
-    open_enum::document_open_enum_schema,
+use crate::auth_policy::{
+    classify_runtime_route, runtime_path_from_openapi_path, RestRouteAuthPolicy,
 };
 
-fn default_page() -> Option<u32> {
-    Some(1)
-}
+mod doc;
 
-fn default_per_page() -> Option<u32> {
-    Some(25)
-}
+pub(crate) use doc::{
+    CreateTargetDoc, CreateTaskDoc, GetReportQueryDoc, ModifyTargetDoc, ModifyTaskDoc,
+    ProblemDetailDoc, ReportListQueryDoc, ReportResultsQueryDoc, ResourceIdPathDoc,
+    ResultListQueryDoc, ScanConfigListQueryDoc, TargetListQueryDoc, TaskListQueryDoc,
+};
 
 pub(crate) fn ok_json<T>(
     description: &'static str,
@@ -35,15 +31,94 @@ pub(crate) fn ok_json<T>(
     move |response| response.description(description)
 }
 
+pub(crate) fn created_json<T>(
+    description: &'static str,
+) -> impl FnOnce(TransformResponse<T>) -> TransformResponse<T> {
+    move |mut response| {
+        add_location_header(response.inner());
+        response.description(description)
+    }
+}
+
+pub(crate) fn accepted_job_json<T>(
+    description: &'static str,
+) -> impl FnOnce(TransformResponse<T>) -> TransformResponse<T> {
+    move |mut response| {
+        add_location_header(response.inner());
+        add_retry_after_header(
+            response.inner(),
+            "Suggested seconds to wait before polling the job.",
+        );
+        response.description(description)
+    }
+}
+
 pub(crate) fn problem_response<'a, const N: u16>(
     op: TransformOperation<'a>,
     description: &'static str,
 ) -> TransformOperation<'a> {
-    op.response_with::<N, Json<ProblemDetailDoc>, _>(|response| {
-        response
+    op.response_with::<N, Json<ProblemDetailDoc>, _>(|mut response| {
+        response = response
             .description(description)
-            .example(ProblemDetailDoc::example())
+            .example(ProblemDetailDoc::example());
+        if let Some(problem_json) = response.inner().content.shift_remove("application/json") {
+            response
+                .inner()
+                .content
+                .insert("application/problem+json".to_string(), problem_json);
+        }
+        response
     })
+}
+
+pub(crate) fn response_with_retry_after<'a, const N: u16>(
+    mut op: TransformOperation<'a>,
+    description: &'static str,
+) -> TransformOperation<'a> {
+    if let Some(response) = op
+        .inner_mut()
+        .responses
+        .as_mut()
+        .and_then(|responses| responses.responses.get_mut(&StatusCode::Code(N)))
+        .and_then(ReferenceOr::as_item_mut)
+    {
+        add_retry_after_header(response, description);
+    }
+    op
+}
+
+fn add_location_header(response: &mut aide::openapi::Response) {
+    response
+        .headers
+        .insert("Location".to_string(), location_header());
+}
+
+fn add_retry_after_header(response: &mut aide::openapi::Response, description: &'static str) {
+    response
+        .headers
+        .insert("Retry-After".to_string(), retry_after_header(description));
+}
+
+fn location_header() -> ReferenceOr<Header> {
+    serde_json::from_value(json!({
+        "description": "Canonical URI of the created resource.",
+        "schema": {
+            "type": "string",
+            "format": "uri-reference"
+        }
+    }))
+    .expect("static Location header schema is valid")
+}
+
+fn retry_after_header(description: &'static str) -> ReferenceOr<Header> {
+    serde_json::from_value(json!({
+        "description": description,
+        "schema": {
+            "type": "integer",
+            "minimum": 1
+        }
+    }))
+    .expect("static Retry-After header schema is valid")
 }
 
 /// Finalize the generated OpenAPI document so its served contract shape matches
@@ -93,35 +168,12 @@ pub(crate) fn finalize_document(mut document: Value) -> Value {
         }),
     );
 
-    for path in [
-        "/session",
-        "/targets",
-        "/alerts",
-        "/schedules",
-        "/credentials",
-        "/port-lists",
-        "/tasks",
-        "/scan-configs",
-        "/notes",
-        "/overrides",
-    ] {
-        add_location_header_to_created_response(&mut normalized_paths, path);
-    }
-    add_retry_after_header_to_too_many_requests_response(&mut normalized_paths, "/session");
-
     document_backend_unavailable_responses(&mut normalized_paths);
 
     document["paths"] = Value::Object(normalized_paths);
 
     apply_route_auth_security(&mut document);
 
-    tighten_alert_enums(&mut document);
-    tighten_credential_enums(&mut document);
-    tighten_feed_schema(&mut document);
-    tighten_identity_schemas(&mut document);
-    ensure_problem_detail_schema(&mut document);
-    synchronize_report_export_job_contract(&mut document);
-    normalize_problem_response_content_types(&mut document);
     strip_nullable_types(&mut document);
     document
 }
@@ -300,404 +352,6 @@ fn openapi_method(method_name: &str) -> Option<Method> {
     })
 }
 
-fn synchronize_report_export_job_contract(document: &mut Value) {
-    document["components"]["headers"]["Location"] = json!({
-        "description": "Canonical URI of the created resource.",
-        "schema": {
-            "type": "string",
-            "format": "uri-reference"
-        }
-    });
-
-    let components = &mut document["components"]["schemas"];
-    components["CreateReportExportRequest"] = json!({
-        "oneOf": [
-            { "$ref": "#/components/schemas/GvmdReportFormatExportRequest" },
-            { "$ref": "#/components/schemas/JsonReportExportRequest" }
-        ]
-    });
-    components["GvmdReportFormatExportRequest"] = json!({
-        "type": "object",
-        "required": ["reportFormatId"],
-        "additionalProperties": false,
-        "properties": {
-            "reportFormatId": { "type": "string", "format": "uuid" },
-            "reportConfigId": { "type": "string", "format": "uuid" },
-            "filter": { "type": "string" },
-            "filterId": { "type": "string", "format": "uuid" }
-        }
-    });
-    components["JsonReportExportRequest"] = json!({
-        "type": "object",
-        "required": ["format"],
-        "additionalProperties": false,
-        "properties": {
-            "format": { "type": "string", "enum": ["json"] },
-            "filter": { "type": "string" },
-            "filterId": { "type": "string", "format": "uuid" }
-        }
-    });
-    components["Job"] = json!({
-        "type": "object",
-        "required": ["id", "kind", "status", "createdAt"],
-        "properties": {
-            "id": { "type": "string", "format": "uuid" },
-            "kind": { "type": "string", "enum": ["report_export"] },
-            "status": {
-                "type": "string",
-                "enum": ["queued", "running", "succeeded", "failed", "cancelling", "cancelled", "expired"]
-            },
-            "progress": {
-                "type": "object",
-                "properties": {
-                    "percent": { "type": "integer", "minimum": 0, "maximum": 100 },
-                    "message": { "type": "string" }
-                }
-            },
-            "createdAt": { "type": "string", "format": "date-time" },
-            "startedAt": { "type": "string", "format": "date-time" },
-            "completedAt": { "type": "string", "format": "date-time" },
-            "expiresAt": { "type": "string", "format": "date-time" },
-            "resultLocation": { "type": "string", "format": "uri-reference" },
-            "error": { "$ref": "#/components/schemas/ProblemDetail" }
-        }
-    });
-    components["JobResult"] = json!({
-        "type": "object",
-        "properties": {
-            "contentType": { "type": "string" },
-            "filename": { "type": "string" },
-            "size": { "type": "integer", "minimum": 0 },
-            "location": { "type": "string", "format": "uri-reference" }
-        }
-    });
-    components["ReportExportJob"] = json!({
-        "allOf": [
-            { "$ref": "#/components/schemas/Job" },
-            {
-                "type": "object",
-                "required": ["report", "format"],
-                "properties": {
-                    "report": { "$ref": "#/components/schemas/ResourceRef" },
-                    "format": {
-                        "type": "string",
-                        "enum": ["gvmd_report_format", "json"]
-                    },
-                    "reportFormatId": { "type": "string", "format": "uuid" },
-                    "result": { "$ref": "#/components/schemas/JobResult" }
-                }
-            }
-        ]
-    });
-    components["ReportJsonExport"] = json!({
-        "type": "object",
-        "required": ["report", "results"],
-        "properties": {
-            "report": { "$ref": "#/components/schemas/Report" },
-            "results": {
-                "type": "array",
-                "items": { "$ref": "#/components/schemas/Result" }
-            },
-            "generatedAt": { "type": "string", "format": "date-time" }
-        }
-    });
-
-    let paths = &mut document["paths"];
-    paths["/reports/{id}/exports"]["post"]["requestBody"]["content"]["application/json"]
-        ["schema"] = json!({ "$ref": "#/components/schemas/CreateReportExportRequest" });
-    paths["/reports/{id}/exports"]["post"]["responses"]["202"] = json!({
-        "description": "Report export job accepted",
-        "headers": {
-            "Location": { "$ref": "#/components/headers/Location" },
-            "Retry-After": {
-                "schema": { "type": "integer", "minimum": 1 },
-                "description": "Suggested seconds to wait before polling the job."
-            }
-        },
-        "content": {
-            "application/json": {
-                "schema": { "$ref": "#/components/schemas/ReportExportJob" }
-            }
-        }
-    });
-    paths["/jobs/{id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"] =
-        json!({ "$ref": "#/components/schemas/ReportExportJob" });
-    paths["/jobs/{id}/result"]["get"]["responses"]["200"] = json!({
-        "description": "Rendered report artifact",
-        "headers": {
-            "Content-Disposition": {
-                "description": "Attachment-style filename for the rendered artifact.",
-                "schema": { "type": "string" }
-            }
-        },
-        "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/ReportJsonExport" } },
-            "application/pdf": { "schema": { "type": "string", "format": "binary" } },
-            "application/xml": { "schema": { "type": "string", "format": "binary" } },
-            "text/csv": { "schema": { "type": "string", "format": "binary" } },
-            "text/plain": { "schema": { "type": "string", "format": "binary" } },
-            "image/svg+xml": { "schema": { "type": "string", "format": "binary" } },
-            "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
-        }
-    });
-}
-
-fn tighten_alert_enums(document: &mut Value) {
-    let event_values = json!(["task_run_status_changed", "updated_secinfo", "new_secinfo"]);
-    let condition_values = json!([
-        "always",
-        "filter_count_at_least",
-        "filter_count_changed",
-        "severity_at_least",
-        "severity_changed"
-    ]);
-    let method_values = json!([
-        "email",
-        "http_get",
-        "scp",
-        "send_email",
-        "smb",
-        "snmp",
-        "sourcefire_connector",
-        "start_task",
-        "syslog",
-        "tippingpoint",
-        "verinice_ce",
-        "verinice_net",
-        "alemba"
-    ]);
-    for schema_name in ["Alert", "CreateAlert"] {
-        if let Some(schema) = document["components"]["schemas"].get_mut(schema_name) {
-            set_open_enum_values(&mut schema["properties"]["event"], event_values.clone());
-            set_open_enum_values(
-                &mut schema["properties"]["condition"],
-                condition_values.clone(),
-            );
-            set_open_enum_values(&mut schema["properties"]["method"], method_values.clone());
-        }
-    }
-    if let Some(schema) = document["components"]["schemas"].get_mut("Alert") {
-        schema["required"] = json!(["id", "name", "event", "condition", "method"]);
-    }
-}
-
-fn tighten_credential_enums(document: &mut Value) {
-    let credential_types = json!(["cc", "pw", "snmp", "snmpv3", "up", "usk"]);
-    let auth_algorithms = json!(["md5", "sha1"]);
-    let privacy_algorithms = json!(["aes", "des"]);
-    if let Some(schema) = document["components"]["schemas"].get_mut("Credential") {
-        set_open_enum_values(&mut schema["properties"]["type"], credential_types.clone());
-        schema["required"] = json!(["id", "name", "type"]);
-    }
-    if let Some(schema) = document["components"]["schemas"].get_mut("CreateCredential") {
-        set_open_enum_values(&mut schema["properties"]["type"], credential_types);
-        schema["properties"]["authAlgorithm"]["enum"] = auth_algorithms.clone();
-        schema["properties"]["privacyAlgorithm"]["enum"] = privacy_algorithms.clone();
-    }
-    if let Some(schema) = document["components"]["schemas"].get_mut("ModifyCredential") {
-        schema["properties"]["authAlgorithm"]["enum"] = auth_algorithms;
-        schema["properties"]["privacyAlgorithm"]["enum"] = privacy_algorithms;
-    }
-}
-
-fn tighten_feed_schema(document: &mut Value) {
-    if let Some(schema) = document["components"]["schemas"].get_mut("Feed") {
-        schema["required"] = json!(["type", "name", "version"]);
-        set_open_enum_values(
-            &mut schema["properties"]["type"],
-            json!(["NVT", "CERT", "SCAP", "GVMD_DATA"]),
-        );
-    }
-}
-
-fn tighten_identity_schemas(document: &mut Value) {
-    let schemas = &mut document["components"]["schemas"];
-    schemas["IdentityResourceBase"] = json!({
-        "type": "object",
-        "required": ["id", "name", "writable", "inUse"],
-        "properties": {
-            "id": {
-                "type": "string",
-                "format": "uuid"
-            },
-            "name": {
-                "type": "string"
-            },
-            "comment": {
-                "type": "string"
-            },
-            "owner": {
-                "$ref": "#/components/schemas/ResourceRef"
-            },
-            "creationTime": {
-                "type": "string",
-                "format": "date-time"
-            },
-            "modificationTime": {
-                "type": "string",
-                "format": "date-time"
-            },
-            "writable": {
-                "type": "boolean"
-            },
-            "inUse": {
-                "type": "boolean"
-            }
-        }
-    });
-
-    schemas["User"] = json!({
-        "allOf": [
-            {
-                "$ref": "#/components/schemas/IdentityResourceBase"
-            },
-            {
-                "type": "object",
-                "properties": {
-                    "roles": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/ResourceRef"
-                        }
-                    },
-                    "groups": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/ResourceRef"
-                        }
-                    },
-                    "hostsAllow": {
-                        "type": "boolean"
-                    },
-                    "hosts": {
-                        "type": "string"
-                    },
-                    "authenticationType": {
-                        "type": "string",
-                        "enum": ["file", "ldap_connect", "radius_connect"]
-                    }
-                }
-            }
-        ]
-    });
-    document_open_enum_schema(&mut schemas["User"]["allOf"][1]["properties"]["authenticationType"]);
-
-    schemas["Group"] = json!({
-        "allOf": [
-            {
-                "$ref": "#/components/schemas/IdentityResourceBase"
-            },
-            {
-                "type": "object",
-                "properties": {
-                    "users": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        ]
-    });
-
-    schemas["Role"] = json!({
-        "allOf": [
-            {
-                "$ref": "#/components/schemas/IdentityResourceBase"
-            },
-            {
-                "type": "object",
-                "properties": {
-                    "users": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        ]
-    });
-
-    schemas["Permission"] = json!({
-        "allOf": [
-            {
-                "$ref": "#/components/schemas/IdentityResourceBase"
-            },
-            {
-                "type": "object",
-                "properties": {
-                    "subjectType": {
-                        "type": "string",
-                        "enum": ["user", "group", "role"]
-                    },
-                    "subject": {
-                        "$ref": "#/components/schemas/ResourceRef"
-                    },
-                    "resourceType": {
-                        "type": "string"
-                    },
-                    "resource": {
-                        "$ref": "#/components/schemas/ResourceRef"
-                    }
-                }
-            }
-        ]
-    });
-
-    if let Some(schema) = schemas.get_mut("UserSetting") {
-        schema["required"] = json!(["id", "name"]);
-    }
-    if let Some(schema) = schemas.get_mut("CreateUser") {
-        schema["properties"]["password"]["format"] = json!("password");
-    }
-    if let Some(schema) = schemas.get_mut("ModifyUser") {
-        schema["properties"]["password"]["format"] = json!("password");
-    }
-}
-
-fn set_open_enum_values(schema: &mut Value, values: Value) {
-    schema["enum"] = values;
-    document_open_enum_schema(schema);
-}
-
-fn ensure_problem_detail_schema(document: &mut Value) {
-    let schemas = document["components"]["schemas"]
-        .as_object_mut()
-        .expect("generated OpenAPI document must contain components.schemas");
-
-    schemas.insert(
-        "ProblemDetail".to_string(),
-        json!({
-            "type": "object",
-            "required": ["type", "code", "title", "status"],
-            "properties": {
-                "type": {
-                    "type": "string",
-                    "format": "uri"
-                },
-                "code": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "integer"
-                },
-                "detail": {
-                    "type": "string"
-                },
-                "instance": {
-                    "type": "string",
-                    "format": "uri-reference"
-                }
-            }
-        }),
-    );
-}
-
 fn document_backend_unavailable_responses(paths: &mut Map<String, Value>) {
     for (path, methods) in paths {
         let Some(methods) = methods.as_object_mut() else {
@@ -707,7 +361,7 @@ fn document_backend_unavailable_responses(paths: &mut Map<String, Value>) {
             if openapi_method(method_name).is_none() {
                 continue;
             }
-            if !operation_can_proxy_to_backend(path, method_name, operation) {
+            if !operation_can_proxy_to_backend(path, method_name) {
                 continue;
             }
             let Some(responses) = operation["responses"].as_object_mut() else {
@@ -720,12 +374,19 @@ fn document_backend_unavailable_responses(paths: &mut Map<String, Value>) {
     }
 }
 
-fn operation_can_proxy_to_backend(path: &str, method_name: &str, operation: &Value) -> bool {
-    if matches!((path, method_name), ("/session", "get" | "delete")) {
+fn operation_can_proxy_to_backend(path: &str, method_name: &str) -> bool {
+    let Some(method) = openapi_method(method_name) else {
         return false;
-    }
+    };
+    let runtime_path = runtime_path_from_openapi_path(path);
 
-    path == "/ready" || operation["responses"].get("401").is_some()
+    match classify_runtime_route(&method, &runtime_path) {
+        Some(RestRouteAuthPolicy::Protected | RestRouteAuthPolicy::SessionCreate) => true,
+        Some(RestRouteAuthPolicy::Public) => {
+            matches!(runtime_path.as_str(), "/ready" | "/api/v1/version")
+        }
+        Some(RestRouteAuthPolicy::SessionCurrent) | None => false,
+    }
 }
 
 fn bad_gateway_response() -> Value {
@@ -740,43 +401,6 @@ fn bad_gateway_response() -> Value {
             }
         }
     })
-}
-
-fn normalize_problem_response_content_types(document: &mut Value) {
-    let Some(paths) = document["paths"].as_object_mut() else {
-        return;
-    };
-
-    for methods in paths.values_mut() {
-        let Some(methods) = methods.as_object_mut() else {
-            continue;
-        };
-        for (method_name, operation) in methods {
-            if openapi_method(method_name).is_none() {
-                continue;
-            }
-            let Some(responses) = operation["responses"].as_object_mut() else {
-                continue;
-            };
-            for response in responses.values_mut() {
-                let Some(content) = response["content"].as_object_mut() else {
-                    continue;
-                };
-                let Some(problem_json) = content.remove("application/json") else {
-                    continue;
-                };
-                let Some(schema_ref) = problem_json["schema"]["$ref"].as_str() else {
-                    content.insert("application/json".to_string(), problem_json);
-                    continue;
-                };
-                if schema_ref.ends_with("/ProblemDetail") {
-                    content.insert("application/problem+json".to_string(), problem_json);
-                } else {
-                    content.insert("application/json".to_string(), problem_json);
-                }
-            }
-        }
-    }
 }
 
 fn strip_nullable_types(value: &mut Value) {
@@ -891,42 +515,6 @@ fn add_probe_server_overrides(normalized_paths: &mut Map<String, Value>) {
     }
 }
 
-fn add_location_header_to_created_response(normalized_paths: &mut Map<String, Value>, path: &str) {
-    if let Some(response) = normalized_paths
-        .get_mut(path)
-        .and_then(|path_item| path_item.get_mut("post"))
-        .and_then(|operation| operation.get_mut("responses"))
-        .and_then(|responses| responses.get_mut("201"))
-    {
-        response["headers"]["Location"] = json!({
-            "description": "Canonical URI of the created resource.",
-            "schema": {
-                "type": "string",
-                "format": "uri-reference"
-            }
-        });
-    }
-}
-
-fn add_retry_after_header_to_too_many_requests_response(
-    normalized_paths: &mut Map<String, Value>,
-    path: &str,
-) {
-    if let Some(response) = normalized_paths
-        .get_mut(path)
-        .and_then(|path_item| path_item.get_mut("post"))
-        .and_then(|operation| operation.get_mut("responses"))
-        .and_then(|responses| responses.get_mut("429"))
-    {
-        response["headers"]["Retry-After"] = json!({
-            "description": "Seconds to wait before retrying",
-            "schema": {
-                "type": "integer"
-            }
-        });
-    }
-}
-
 /// Configure the top-level generated OpenAPI document.
 pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
     api.title("GVM REST API")
@@ -966,305 +554,6 @@ pub(crate) fn configure(api: TransformOpenApi<'_>) -> TransformOpenApi<'_> {
                 extensions: Default::default(),
             },
         )
-}
-
-// ============================================================================
-// OpenAPI document-only schema types
-//
-// These types exist solely for OpenAPI schema generation.  They are NOT used
-// at runtime for serialisation — see the handler modules for runtime DTOs.
-// They are kept because their field shapes intentionally differ from the
-// runtime request/query types (e.g. required vs optional fields, Uuid vs
-// String for IDs).
-// ============================================================================
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ProblemDetail")]
-pub(crate) struct ProblemDetailDoc {
-    #[serde(rename = "type")]
-    r#type: String,
-    code: String,
-    title: String,
-    status: u16,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    detail: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    instance: Option<String>,
-}
-
-impl ProblemDetailDoc {
-    fn example() -> Self {
-        Self {
-            r#type: "https://gvm-gateway.greenbone.net/errors/bad-request".to_string(),
-            code: "bad_request".to_string(),
-            title: "Bad Request".to_string(),
-            status: 400,
-            detail: Some("request validation failed".to_string()),
-            instance: Some("/api/v1/targets".to_string()),
-        }
-    }
-}
-
-// -- Shared path/query parameter schemas -------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct ResourceIdPathDoc {
-    id: Uuid,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct TargetListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    #[serde(default = "default_page")]
-    #[schemars(default = "default_page")]
-    #[schemars(range(min = 1))]
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    #[serde(default = "default_per_page")]
-    #[schemars(default = "default_per_page")]
-    #[schemars(range(min = 1, max = 1000))]
-    per_page: Option<u32>,
-}
-
-// -- Target request body schemas ---------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "CreateTarget")]
-pub(crate) struct CreateTargetDoc {
-    name: String,
-    comment: Option<String>,
-    #[schemars(length(min = 1))]
-    hosts: Vec<String>,
-    #[serde(rename = "excludeHosts", default)]
-    exclude_hosts: Vec<String>,
-    #[serde(rename = "aliveTest")]
-    alive_test: Option<AliveTestDoc>,
-    #[serde(rename = "portListId")]
-    port_list_id: Option<Uuid>,
-    #[serde(rename = "reverseLookupOnly")]
-    reverse_lookup_only: Option<bool>,
-    #[serde(rename = "reverseLookupUnify")]
-    reverse_lookup_unify: Option<bool>,
-    #[serde(rename = "sshCredentialId")]
-    ssh_credential_id: Option<Uuid>,
-    #[serde(rename = "smbCredentialId")]
-    smb_credential_id: Option<Uuid>,
-    #[serde(rename = "esxiCredentialId")]
-    esxi_credential_id: Option<Uuid>,
-    #[serde(rename = "snmpCredentialId")]
-    snmp_credential_id: Option<Uuid>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ModifyTarget")]
-pub(crate) struct ModifyTargetDoc {
-    name: Option<String>,
-    comment: Option<String>,
-    hosts: Option<Vec<String>>,
-    #[serde(rename = "excludeHosts")]
-    exclude_hosts: Option<Vec<String>>,
-    #[serde(rename = "aliveTest")]
-    alive_test: Option<AliveTestDoc>,
-    #[serde(rename = "portListId")]
-    port_list_id: Option<Uuid>,
-    /// SSH credential binding. Omitted or null leaves the binding unchanged;
-    /// clearing credential bindings is not supported by this request shape.
-    #[serde(rename = "sshCredentialId")]
-    ssh_credential_id: Option<Uuid>,
-    /// SMB credential binding. Omitted or null leaves the binding unchanged;
-    /// clearing credential bindings is not supported by this request shape.
-    #[serde(rename = "smbCredentialId")]
-    smb_credential_id: Option<Uuid>,
-    /// ESXi credential binding. Omitted or null leaves the binding unchanged;
-    /// clearing credential bindings is not supported by this request shape.
-    #[serde(rename = "esxiCredentialId")]
-    esxi_credential_id: Option<Uuid>,
-    /// SNMP credential binding. Omitted or null leaves the binding unchanged;
-    /// clearing credential bindings is not supported by this request shape.
-    #[serde(rename = "snmpCredentialId")]
-    snmp_credential_id: Option<Uuid>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-pub(crate) enum AliveTestDoc {
-    #[serde(rename = "Scan Config Default")]
-    ScanConfigDefault,
-    #[serde(rename = "ICMP Ping")]
-    IcmpPing,
-    #[serde(rename = "TCP-ACK Service Ping")]
-    TcpAckServicePing,
-    #[serde(rename = "TCP-SYN Service Ping")]
-    TcpSynServicePing,
-    #[serde(rename = "ARP Ping")]
-    ArpPing,
-    #[serde(rename = "ICMP, TCP-ACK Service Ping")]
-    IcmpTcpAckServicePing,
-    #[serde(rename = "ICMP, ARP Ping")]
-    IcmpArpPing,
-    #[serde(rename = "TCP-ACK Service, ARP Ping")]
-    TcpAckServiceArpPing,
-    #[serde(rename = "ICMP, TCP-ACK Service, ARP Ping")]
-    IcmpTcpAckServiceArpPing,
-    #[serde(rename = "Consider Alive")]
-    ConsiderAlive,
-}
-
-// -- Task request body / query schemas ---------------------------------------
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct TaskListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    #[serde(default = "default_page")]
-    #[schemars(default = "default_page")]
-    #[schemars(range(min = 1))]
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    #[serde(default = "default_per_page")]
-    #[schemars(default = "default_per_page")]
-    #[schemars(range(min = 1, max = 1000))]
-    per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "CreateTask")]
-pub(crate) struct CreateTaskDoc {
-    name: String,
-    comment: Option<String>,
-    #[serde(rename = "targetId")]
-    target_id: Uuid,
-    #[serde(rename = "scanConfigId")]
-    scan_config_id: Uuid,
-    #[serde(rename = "scannerId")]
-    scanner_id: Uuid,
-    #[serde(rename = "scheduleId")]
-    schedule_id: Option<Uuid>,
-    #[serde(rename = "alertIds")]
-    alert_ids: Option<Vec<Uuid>>,
-    alterable: Option<bool>,
-    #[serde(rename = "hostsOrdering")]
-    hosts_ordering: Option<HostsOrderingDoc>,
-    observers: Option<Vec<String>>,
-    #[serde(rename = "schedulePeriods")]
-    schedule_periods: Option<u32>,
-    preferences: Option<std::collections::HashMap<String, String>>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "ModifyTask")]
-pub(crate) struct ModifyTaskDoc {
-    name: Option<String>,
-    comment: Option<String>,
-    #[serde(rename = "targetId")]
-    target_id: Option<Uuid>,
-    #[serde(rename = "scanConfigId")]
-    scan_config_id: Option<Uuid>,
-    #[serde(rename = "scannerId")]
-    scanner_id: Option<Uuid>,
-    #[serde(rename = "scheduleId")]
-    schedule_id: Option<Uuid>,
-    #[serde(rename = "alertIds")]
-    alert_ids: Option<Vec<Uuid>>,
-    #[serde(rename = "hostsOrdering")]
-    hosts_ordering: Option<HostsOrderingDoc>,
-    observers: Option<Vec<String>>,
-    #[serde(rename = "schedulePeriods")]
-    schedule_periods: Option<u32>,
-    /// Key-value scan preferences. Omitted or empty objects leave preferences
-    /// unchanged; clearing preferences is not supported by this request shape.
-    preferences: Option<std::collections::HashMap<String, String>>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
-pub(crate) enum HostsOrderingDoc {
-    #[serde(rename = "sequential")]
-    Sequential,
-    #[serde(rename = "random")]
-    Random,
-    #[serde(rename = "reverse")]
-    Reverse,
-}
-
-// -- Report / result query schemas -------------------------------------------
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct ReportListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    #[serde(default = "default_page")]
-    #[schemars(default = "default_page")]
-    #[schemars(range(min = 1))]
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    #[serde(default = "default_per_page")]
-    #[schemars(default = "default_per_page")]
-    #[schemars(range(min = 1, max = 1000))]
-    per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct GetReportQueryDoc {
-    #[serde(default = "default_page")]
-    #[schemars(default = "default_page")]
-    #[schemars(range(min = 1))]
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    #[serde(default = "default_per_page")]
-    #[schemars(default = "default_per_page")]
-    #[schemars(range(min = 1, max = 1000))]
-    per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct ReportResultsQueryDoc {
-    filter: Option<String>,
-    #[serde(default = "default_page")]
-    #[schemars(default = "default_page")]
-    #[schemars(range(min = 1))]
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    #[serde(default = "default_per_page")]
-    #[schemars(default = "default_per_page")]
-    #[schemars(range(min = 1, max = 1000))]
-    per_page: Option<u32>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct ResultListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    #[serde(default = "default_page")]
-    #[schemars(default = "default_page")]
-    #[schemars(range(min = 1))]
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    #[serde(default = "default_per_page")]
-    #[schemars(default = "default_per_page")]
-    #[schemars(range(min = 1, max = 1000))]
-    per_page: Option<u32>,
-}
-
-// -- Scan config query schema ------------------------------------------------
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub(crate) struct ScanConfigListQueryDoc {
-    filter: Option<String>,
-    #[serde(rename = "filterId")]
-    filter_id: Option<Uuid>,
-    #[serde(default = "default_page")]
-    #[schemars(default = "default_page")]
-    #[schemars(range(min = 1))]
-    page: Option<u32>,
-    #[serde(rename = "perPage")]
-    #[serde(default = "default_per_page")]
-    #[schemars(default = "default_per_page")]
-    #[schemars(range(min = 1, max = 1000))]
-    per_page: Option<u32>,
 }
 
 // ============================================================================

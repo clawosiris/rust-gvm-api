@@ -19,7 +19,7 @@ use serde::Serialize;
 use crate::{
     dto::datetime_schema,
     error::RestError,
-    openapi::{ok_json, problem_response},
+    openapi::{created_json, ok_json, problem_response, response_with_retry_after},
     router::bearer_token,
 };
 
@@ -209,10 +209,11 @@ pub(crate) fn create_session_docs(op: TransformOperation<'_>) -> TransformOperat
              session token. Include the token as a Bearer token on all subsequent requests.",
         )
         .security_requirement("basicAuth")
-        .response_with::<201, Json<SessionCreatedResponse>, _>(ok_json("Session created"));
+        .response_with::<201, Json<SessionCreatedResponse>, _>(created_json("Session created"));
 
     let op = problem_response::<401>(op, "Authentication failed");
     let op = problem_response::<429>(op, "Session limit or rate limit exceeded");
+    let op = response_with_retry_after::<429>(op, "Seconds to wait before retrying");
     problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 

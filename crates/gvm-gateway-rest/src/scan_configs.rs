@@ -26,7 +26,7 @@ use crate::{
         ValidateInto,
     },
     open_enum::open_u32_enum,
-    openapi::{ok_json, problem_response, ResourceIdPathDoc, ScanConfigListQueryDoc},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc, ScanConfigListQueryDoc},
     query::{parse_collection_query, DeleteResourceQueryParams},
     targets::validate_uuid,
 };
@@ -325,7 +325,9 @@ pub(crate) fn create_scan_config_docs(op: TransformOperation<'_>) -> TransformOp
         .description("Creates a new scan configuration.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateScanConfigRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Scan config created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json(
+            "Scan config created",
+        ));
 
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")

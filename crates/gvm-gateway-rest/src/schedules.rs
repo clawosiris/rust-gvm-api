@@ -9,8 +9,8 @@ use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{OriginalUri, Path, Query, State},
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    http::HeaderMap,
+    response::Response,
     Json,
 };
 use gvm_gateway_app::GatewayService;
@@ -21,14 +21,12 @@ use uuid::Uuid;
 
 use crate::{
     dto::{datetime_schema, parse_uuid, PaginationResponse, ResourceCreatedResponse},
-    error::RestError,
     handler::{
         create_resource, delete_resource, get_resource, list_resource, update_resource,
         ValidateInto,
     },
-    openapi::{ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
+    openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc, TargetListQueryDoc},
     query::{CollectionListQuery, DeleteResourceQueryParams},
-    router::bearer_token,
 };
 
 pub use gvm_gateway_domain::{
@@ -280,7 +278,7 @@ pub(crate) fn create_schedule_docs(op: TransformOperation<'_>) -> TransformOpera
         .description("Creates a new schedule.")
         .security_requirement("bearerAuth")
         .input::<Json<CreateScheduleRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(ok_json("Schedule created"));
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Schedule created"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }

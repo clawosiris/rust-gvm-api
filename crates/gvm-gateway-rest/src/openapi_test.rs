@@ -132,57 +132,31 @@ fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
     // Open enums deliberately keep OpenAPI enum lists for docs/codegen while
     // their descriptions define the non-exhaustive runtime contract.
     assert_open_enum_schema(
+        schemas,
         &schemas["CredentialType"],
         json!(["cc", "pw", "snmp", "snmpv3", "up", "usk"]),
         "CredentialType",
     );
     assert_open_enum_schema(
+        schemas,
         &schemas["FeedType"],
         json!(["NVT", "CERT", "SCAP", "GVMD_DATA"]),
         "FeedType",
     );
     assert_open_enum_schema(
-        &schemas["AlertEvent"],
-        json!(["task_run_status_changed", "updated_secinfo", "new_secinfo"]),
-        "AlertEvent",
-    );
-    assert_open_enum_schema(
-        &schemas["AlertCondition"],
-        json!([
-            "always",
-            "filter_count_at_least",
-            "filter_count_changed",
-            "severity_at_least",
-            "severity_changed"
-        ]),
-        "AlertCondition",
-    );
-    assert_open_enum_schema(
-        &schemas["AlertMethod"],
-        json!([
-            "email",
-            "http_get",
-            "scp",
-            "send_email",
-            "smb",
-            "snmp",
-            "sourcefire_connector",
-            "start_task",
-            "syslog",
-            "tippingpoint",
-            "verinice_ce",
-            "verinice_net",
-            "alemba"
-        ]),
-        "AlertMethod",
-    );
-    assert_open_enum_schema(
+        schemas,
         &schemas["AuthenticationType"],
         json!(["file", "ldap_connect", "radius_connect"]),
         "AuthenticationType",
     );
-    assert_open_enum_schema(&schemas["ScanConfigType"], json!([0, 1]), "ScanConfigType");
     assert_open_enum_schema(
+        schemas,
+        &schemas["ScanConfigType"],
+        json!([0, 1]),
+        "ScanConfigType",
+    );
+    assert_open_enum_schema(
+        schemas,
         &schemas["TicketStatus"],
         json!(["Open", "Fixed", "Closed"]),
         "TicketStatus",
@@ -190,11 +164,13 @@ fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
 
     let alert_props = &schemas["Alert"]["properties"];
     assert_open_enum_schema(
+        schemas,
         &alert_props["event"],
         json!(["task_run_status_changed", "updated_secinfo", "new_secinfo"]),
         "Alert.event",
     );
     assert_open_enum_schema(
+        schemas,
         &alert_props["condition"],
         json!([
             "always",
@@ -206,6 +182,7 @@ fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
         "Alert.condition",
     );
     assert_open_enum_schema(
+        schemas,
         &alert_props["method"],
         json!([
             "email",
@@ -227,11 +204,13 @@ fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
 
     let create_alert_props = &schemas["CreateAlert"]["properties"];
     assert_open_enum_schema(
+        schemas,
         &create_alert_props["event"],
         json!(["task_run_status_changed", "updated_secinfo", "new_secinfo"]),
         "CreateAlert.event",
     );
     assert_open_enum_schema(
+        schemas,
         &create_alert_props["condition"],
         json!([
             "always",
@@ -243,6 +222,7 @@ fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
         "CreateAlert.condition",
     );
     assert_open_enum_schema(
+        schemas,
         &create_alert_props["method"],
         json!([
             "email",
@@ -263,21 +243,25 @@ fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
     );
 
     assert_open_enum_schema(
+        schemas,
         &schemas["Credential"]["properties"]["type"],
         json!(["cc", "pw", "snmp", "snmpv3", "up", "usk"]),
         "Credential.type",
     );
     assert_open_enum_schema(
+        schemas,
         &schemas["CreateCredential"]["properties"]["type"],
         json!(["cc", "pw", "snmp", "snmpv3", "up", "usk"]),
         "CreateCredential.type",
     );
     assert_open_enum_schema(
+        schemas,
         &schemas["Feed"]["properties"]["type"],
         json!(["NVT", "CERT", "SCAP", "GVMD_DATA"]),
         "Feed.type",
     );
     assert_open_enum_schema(
+        schemas,
         &schemas["User"]["allOf"][1]["properties"]["authenticationType"],
         json!(["file", "ldap_connect", "radius_connect"]),
         "User.authenticationType",
@@ -541,7 +525,9 @@ fn response_statuses(operation: &Value) -> BTreeSet<&str> {
         .collect()
 }
 
-fn assert_open_enum_schema(schema: &Value, expected_values: Value, context: &str) {
+fn assert_open_enum_schema(schemas: &Value, schema: &Value, expected_values: Value, context: &str) {
+    let schema = resolve_local_schema_ref(schemas, schema);
+
     assert_eq!(
         schema["enum"], expected_values,
         "{context} should list known values for OpenAPI docs and client generation"
@@ -562,6 +548,16 @@ fn assert_open_enum_schema(schema: &Value, expected_values: Value, context: &str
         description.contains("clients must preserve them"),
         "{context} should document client preservation of unknown values"
     );
+}
+
+fn resolve_local_schema_ref<'a>(schemas: &'a Value, schema: &'a Value) -> &'a Value {
+    let Some(reference) = schema["$ref"].as_str() else {
+        return schema;
+    };
+    let Some(name) = reference.strip_prefix("#/components/schemas/") else {
+        return schema;
+    };
+    &schemas[name]
 }
 
 fn assert_empty_array_modify_limitation(schema: &Value, context: &str, clear_phrase: &str) {

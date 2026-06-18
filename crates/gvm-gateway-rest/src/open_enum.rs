@@ -39,29 +39,6 @@ pub(crate) fn open_u32_enum_schema(name: &str, known_values: &[u32]) -> schemars
     schema
 }
 
-pub(crate) fn document_open_enum_schema(schema: &mut serde_json::Value) {
-    let Some(object) = schema.as_object_mut() else {
-        return;
-    };
-
-    let description = match object
-        .get("description")
-        .and_then(serde_json::Value::as_str)
-        .filter(|description| !description.trim().is_empty())
-    {
-        Some(description) if description.contains("This list is not exhaustive") => {
-            description.to_string()
-        }
-        Some(description) => format!("{description} {OPEN_ENUM_DESCRIPTION}"),
-        None => OPEN_ENUM_DESCRIPTION.to_string(),
-    };
-
-    object.insert(
-        "description".to_string(),
-        serde_json::Value::String(description),
-    );
-}
-
 macro_rules! open_string_enum {
     (
         $(#[$meta:meta])*
