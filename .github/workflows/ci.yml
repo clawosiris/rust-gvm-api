@@ -86,6 +86,30 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - run: cargo doc --workspace --all-features --no-deps
 
+  docs-package:
+    name: User Docs Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Build user docs package
+        run: ./scripts/build-docs-package.sh --version "$(./scripts/workspace-version.sh)" --output-dir dist/docs
+      - name: Verify user docs package structure
+        run: |
+          shopt -s nullglob
+          docs_archives=(dist/docs/rust-gvm-api-docs-*.tar.gz)
+          if (( ${#docs_archives[@]} != 1 )); then
+            echo "Expected exactly one docs archive, found ${#docs_archives[@]}" >&2
+            exit 1
+          fi
+          archive="${docs_archives[0]}"
+          [[ -f "${archive}.sha256" ]] || { echo "Missing checksum for ${archive}" >&2; exit 1; }
+          tar tzf "${archive}" | grep -q '/README.md$'
+          tar tzf "${archive}" | grep -q '/usage.md$'
+          tar tzf "${archive}" | grep -q '/examples.md$'
+          tar tzf "${archive}" | grep -q '/container-config.example.toml$'
+          tar tzf "${archive}" | grep -q '/package-config.example.toml$'
+          tar tzf "${archive}" | grep -q '/api/rest/openapi.yaml$'
+
   deny:
     name: Cargo Deny
     runs-on: ubuntu-latest
@@ -208,7 +232,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [fmt, clippy, test, test-features, doc, deny, coverage, msrv, package, container]
+    needs: [fmt, clippy, test, test-features, doc, docs-package, deny, coverage, msrv, package, container]
     runs-on: ubuntu-latest
     steps:
       - name: Check upstream job results
