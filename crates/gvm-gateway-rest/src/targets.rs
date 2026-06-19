@@ -257,6 +257,12 @@ pub struct ModifyTargetRequest {
     /// Optional port list identifier.
     #[serde(rename = "portListId")]
     pub port_list_id: Option<String>,
+    /// Optional reverse lookup only.
+    #[serde(rename = "reverseLookupOnly")]
+    pub reverse_lookup_only: Option<bool>,
+    /// Optional reverse lookup unify.
+    #[serde(rename = "reverseLookupUnify")]
+    pub reverse_lookup_unify: Option<bool>,
     /// Optional SSH credential identifier.
     #[serde(rename = "sshCredentialId")]
     pub ssh_credential_id: Option<String>,
@@ -287,6 +293,8 @@ impl ModifyTargetRequest {
             exclude_hosts: self.exclude_hosts,
             alive_test: self.alive_test,
             port_list_id: self.port_list_id,
+            reverse_lookup_only: self.reverse_lookup_only,
+            reverse_lookup_unify: self.reverse_lookup_unify,
             ssh_credential_id: self.ssh_credential_id,
             smb_credential_id: self.smb_credential_id,
             esxi_credential_id: self.esxi_credential_id,

@@ -866,6 +866,8 @@ fn uuid_validation() {
         exclude_hosts: None,
         alive_test: None,
         port_list_id: Some("still-not-a-uuid".to_string()),
+        reverse_lookup_only: None,
+        reverse_lookup_unify: None,
         ssh_credential_id: None,
         smb_credential_id: None,
         esxi_credential_id: None,
@@ -880,6 +882,8 @@ fn uuid_validation() {
         exclude_hosts: None,
         alive_test: None,
         port_list_id: None,
+        reverse_lookup_only: None,
+        reverse_lookup_unify: None,
         ssh_credential_id: Some("not-a-uuid".to_string()),
         smb_credential_id: None,
         esxi_credential_id: None,
@@ -898,6 +902,8 @@ fn modify_requests_map_mutable_fields() {
         exclude_hosts: None,
         alive_test: None,
         port_list_id: None,
+        reverse_lookup_only: Some(true),
+        reverse_lookup_unify: Some(false),
         ssh_credential_id: Some("550e8400-e29b-41d4-a716-446655440001".to_string()),
         smb_credential_id: Some("550e8400-e29b-41d4-a716-446655440002".to_string()),
         esxi_credential_id: Some("550e8400-e29b-41d4-a716-446655440003".to_string()),
@@ -921,6 +927,8 @@ fn modify_requests_map_mutable_fields() {
         target_input.snmp_credential_id.as_deref(),
         Some("550e8400-e29b-41d4-a716-446655440004")
     );
+    assert_eq!(target_input.reverse_lookup_only, Some(true));
+    assert_eq!(target_input.reverse_lookup_unify, Some(false));
 
     let task_input =
         serde_json::from_value::<gvm_gateway_rest::tasks::ModifyTaskRequest>(serde_json::json!({

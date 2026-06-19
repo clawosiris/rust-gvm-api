@@ -230,6 +230,10 @@ components:
         portListId:
           type: string
           format: uuid
+        reverseLookupOnly:
+          type: boolean
+        reverseLookupUnify:
+          type: boolean
         sshCredentialId:
           type: string
           format: uuid

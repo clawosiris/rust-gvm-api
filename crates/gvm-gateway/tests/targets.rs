@@ -88,8 +88,8 @@ impl TargetPort for CredentialReadbackTargetAdapter {
                 id,
                 name: Some("Port List".to_string()),
             }),
-            reverse_lookup_only: false,
-            reverse_lookup_unify: false,
+            reverse_lookup_only: input.reverse_lookup_only.unwrap_or(false),
+            reverse_lookup_unify: input.reverse_lookup_unify.unwrap_or(false),
             ssh_credential: credential_ref(input.ssh_credential_id, "SSH Login"),
             smb_credential: credential_ref(input.smb_credential_id, "SMB Login"),
             esxi_credential: credential_ref(input.esxi_credential_id, "ESXi Login"),
@@ -418,6 +418,40 @@ async fn update_target_response_includes_credential_refs() {
             "name": "SNMP Login"
         })
     );
+
+    harness.handle.abort();
+}
+
+#[tokio::test]
+async fn update_target_accepts_reverse_lookup_flags() {
+    // Regression coverage for issue #309: reverse lookup flags are mutable
+    // target settings, so PUT must deserialize and pass them through.
+    let harness = graceful_shutdown_harness(
+        Arc::new(CredentialReadbackTargetAdapter),
+        Duration::from_secs(1),
+    )
+    .await;
+    let target_id = "550e8400-e29b-41d4-a716-446655440000";
+
+    let response = harness
+        .client
+        .put(format!(
+            "http://{}/api/v1/targets/{target_id}",
+            harness.addr
+        ))
+        .bearer_auth(&harness.token)
+        .json(&serde_json::json!({
+            "reverseLookupOnly": true,
+            "reverseLookupUnify": false
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["reverseLookupOnly"], true);
+    assert_eq!(json["reverseLookupUnify"], false);
 
     harness.handle.abort();
 }

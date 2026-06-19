@@ -123,6 +123,10 @@ pub struct ModifyTargetInput {
     pub alive_test: Option<String>,
     /// Optional port list identifier.
     pub port_list_id: Option<String>,
+    /// Optional reverse lookup only.
+    pub reverse_lookup_only: Option<bool>,
+    /// Optional reverse lookup unify.
+    pub reverse_lookup_unify: Option<bool>,
     /// Optional SSH credential identifier.
     pub ssh_credential_id: Option<String>,
     /// Optional SMB credential identifier.
