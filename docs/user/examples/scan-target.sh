@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: docs/examples/scan-target.sh <target-host>
+Usage: scan-target.sh <target-host>
 
 Runs a one-shot scan through the REST gateway: creates a target, creates and
 starts a task, waits for the scan to finish, writes all report results as JSON,

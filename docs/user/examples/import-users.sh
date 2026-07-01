@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: docs/examples/import-users.sh <users.csv>
+Usage: import-users.sh <users.csv>
 
 Imports users from a simple CSV file with the columns:
   login,roles
