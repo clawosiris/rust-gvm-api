@@ -46,12 +46,13 @@ staging_root="${repo_root}/dist/docs-package"
 package_root="${staging_root}/${package_name}"
 
 rm -rf "${package_root}"
-mkdir -p "${package_root}/api/rest"
+mkdir -p "${package_root}/api/rest" "${package_root}/examples"
 mkdir -p "${output_dir}"
 
 cp "${repo_root}/docs/user/index.md" "${package_root}/README.md"
 cp "${repo_root}/docs/user/usage.md" "${package_root}/usage.md"
 cp "${repo_root}/docs/user/examples.md" "${package_root}/examples.md"
+cp -R "${repo_root}/docs/user/examples/." "${package_root}/examples/"
 cp "${repo_root}/packaging/gvm-gateway.toml" "${package_root}/package-config.example.toml"
 cp "${repo_root}/packaging/gvm-gateway.container.toml" "${package_root}/container-config.example.toml"
 find "${repo_root}/spec/rest-api" -maxdepth 1 -type f -name '*.yaml' -exec cp {} "${package_root}/api/rest/" \;

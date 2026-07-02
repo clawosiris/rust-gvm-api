@@ -727,6 +727,16 @@ async fn assert_report_format_export_job(
         "report export {expected_extension} returned unexpected content disposition {content_disposition}"
     );
 
+    // Regression coverage for gvmd PDF exports that include metadata before the
+    // base64 payload: the REST download contract must expose decoded PDF bytes.
+    if expected_content_type == "application/pdf" {
+        assert!(
+            body.starts_with(b"%PDF"),
+            "PDF report export returned non-PDF bytes; payload starts with {:?}",
+            &body[..body.len().min(32)]
+        );
+    }
+
     Ok(())
 }
 

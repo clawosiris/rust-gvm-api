@@ -1,0 +1,3 @@
+login,roles
+alice,User
+bob,User|Observer
