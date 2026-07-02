@@ -76,7 +76,8 @@ The Jira user configured in `.env` must be able to:
 - Create issues.
 - Edit issues.
 - Add comments.
-- Transition closed issues back to an active status.
+- Transition closed issues back to an active status when a newer scan observes
+  the finding after the issue was closed.
 
 The script uses the Python Jira SDK with Jira Cloud API token authentication:
 
@@ -122,7 +123,13 @@ missing `nvt.oid`, `host`, or `port`, the script stops with an error.
 For each finding, the script searches Jira by the configured
 `GreenboneFindingKey` custom field. It creates a `Task` when no issue exists,
 adds a comment when the issue already exists, restores configured labels when
-needed, and reopens closed issues with `JIRA_REOPEN_TRANSITION_NAME`.
+needed, and reopens closed issues with `JIRA_REOPEN_TRANSITION_NAME` only when
+the finding's latest scan timestamp is newer than Jira's
+`statuscategorychangedate` for the issue.
+
+If you close an issue after the latest scan that observed the finding, the next
+run leaves the issue closed. A later scan must observe the same finding before
+the script reopens it.
 
 The script does not close Jira issues when a finding disappears from the
 selected report window.
@@ -139,6 +146,9 @@ selected report window.
   user can browse the project.
 - Reopen fails: verify `JIRA_REOPEN_TRANSITION_NAME` exactly matches a
   transition available to the configured Jira user on closed issues.
+- Closed issues reopen unexpectedly: verify that Jira returns
+  `statuscategorychangedate`; the script only reopens when a scan observed the
+  finding after that timestamp.
 - GVM authentication fails: verify the gateway URL and GVM credentials.
 
 ## Error Handling

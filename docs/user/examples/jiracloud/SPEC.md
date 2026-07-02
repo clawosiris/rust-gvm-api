@@ -182,8 +182,9 @@ Use JQL shaped like:
 project = "<JIRA_PROJECT_KEY>" AND "<JIRA_FINDING_KEY_FIELD>" = "<stable_finding_key>" ORDER BY updated DESC
 ```
 
-Request only the fields needed by the script, such as `key`, `status`, `labels`,
-`summary`, the configured finding-key custom field, and optionally `priority`.
+Request only the fields needed by the script, such as `key`, `status`,
+`statuscategorychangedate`, `labels`, `summary`, the configured finding-key
+custom field, and optionally `priority`.
 
 If no issue matches the finding key, create a new issue. If exactly one issue
 matches, update that issue. If more than one issue matches, stop with an
@@ -242,15 +243,24 @@ For each finding:
      `issue.update(...)` when they were removed.
    - Ensure the resolved finding-key custom field still equals the stable
      finding key.
-   - If the issue is closed, fetch available transitions with
+   - If the issue is closed, compare the finding's latest-seen timestamp with
+     Jira's `statuscategorychangedate` value for the issue.
+   - If the finding's latest-seen timestamp is newer than
+     `statuscategorychangedate`, fetch available transitions with
      `jira.transitions(...)`, select `JIRA_REOPEN_TRANSITION_NAME` by exact
      name, and call `jira.transition_issue(...)`.
+   - If the issue was closed at or after the finding's latest-seen timestamp,
+     leave it closed. A later scan must observe the same finding before the
+     example reopens the issue.
+   - If the issue is closed but Jira does not return `statuscategorychangedate`,
+     print an actionable error and stop the script with a non-zero exit code.
    - If the issue is closed and no matching reopen transition is available,
      print an actionable error and stop the script with a non-zero exit code.
 
 Do not close Jira issues when a finding is absent from the selected report
 window. This example only creates issues, updates issues, comments on recurring
-findings, and reopens closed issues when the finding is seen again.
+findings, and reopens closed issues when the finding is seen in a newer scan
+after the issue was closed.
 
 ## Jira Issue Content
 

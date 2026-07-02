@@ -81,15 +81,17 @@ class FakeIssue:
         labels: list[str] | None = None,
         finding_key: str = "1.2.3|192.0.2.10|80/tcp",
         status: dict[str, Any] | None = None,
+        statuscategorychangedate: str | None = "2026-07-01T10:00:00.000+0000",
     ) -> None:
         self.key = key
-        self.raw = {
-            "fields": {
-                "labels": labels or [],
-                "customfield_10042": finding_key,
-                "status": status or {"name": "Done", "statusCategory": {"name": "Done"}},
-            }
+        fields = {
+            "labels": labels or [],
+            "customfield_10042": finding_key,
+            "status": status or {"name": "Done", "statusCategory": {"name": "Done"}},
         }
+        if statuscategorychangedate is not None:
+            fields["statuscategorychangedate"] = statuscategorychangedate
+        self.raw = {"fields": fields}
         self.updated_fields: list[dict[str, Any]] = []
 
     def get_field(self, name: str) -> Any:
@@ -182,6 +184,12 @@ class ConfigTests(unittest.TestCase):
 
         with self.assertRaisesRegex(utils.ExampleError, "must not include /rest/api/3"):
             utils.Config.load(write_env(self, base_env(JIRA_SITE_URL="https://jira.example/rest/api/3")))
+
+    def test_parse_datetime_accepts_jira_timezone_offset(self) -> None:
+        """Jira Cloud timestamps use +0000 offsets, which must compare with scan times."""
+        parsed = utils.parse_datetime("2026-07-01T10:00:00.000+0000", "Jira timestamp")
+
+        self.assertEqual(datetime(2026, 7, 1, 10, 0, 0, tzinfo=timezone.utc), parsed)
 
 
 class GvmClientTests(unittest.TestCase):
@@ -368,10 +376,25 @@ class JiraClientTests(unittest.TestCase):
         self.assertIn("Finding key: 1.2.3|192.0.2.10|80/tcp", fake_jira.created_fields["description"])
         self.assertNotIn("Greenbone finding observed by GVM REST API.", fake_jira.created_fields["description"])
 
-    def test_sync_finding_updates_and_reopens_closed_issue(self) -> None:
-        """Recurring findings add evidence and reopen closed Jira issues."""
+    def test_sync_finding_does_not_reopen_when_issue_was_closed_after_latest_scan(self) -> None:
+        """Manual closure after the last scan suppresses reopening until a newer scan sees it."""
         fake_jira = FakeJira()
-        closed_issue = FakeIssue(labels=["greenbone"])
+        closed_issue = FakeIssue(labels=["greenbone"], statuscategorychangedate="2026-07-01T12:00:00.000+0000")
+        fake_jira.search_results = [closed_issue]
+        client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
+        client.preflight()
+
+        issue_key = client.sync_finding(sample_finding())
+
+        self.assertEqual("SEC-1", issue_key)
+        self.assertEqual(1, len(fake_jira.comments))
+        self.assertEqual([], fake_jira.transitioned)
+        self.assertIn({"labels": ["greenbone", "gvm"]}, closed_issue.updated_fields)
+
+    def test_sync_finding_reopens_when_latest_scan_is_newer_than_close_time(self) -> None:
+        """Closed issues reopen only when a later scan observes the same finding again."""
+        fake_jira = FakeJira()
+        closed_issue = FakeIssue(labels=["greenbone"], statuscategorychangedate="2026-07-01T10:00:00.000+0000")
         fake_jira.search_results = [closed_issue]
         client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
         client.preflight()
@@ -382,6 +405,16 @@ class JiraClientTests(unittest.TestCase):
         self.assertEqual(1, len(fake_jira.comments))
         self.assertEqual([("SEC-1", "31")], [(issue.key, transition_id) for issue, transition_id in fake_jira.transitioned])
         self.assertIn({"labels": ["greenbone", "gvm"]}, closed_issue.updated_fields)
+
+    def test_sync_finding_fails_when_closed_issue_has_no_close_timestamp(self) -> None:
+        """Without a Jira close time the example cannot safely decide whether to reopen."""
+        fake_jira = FakeJira()
+        fake_jira.search_results = [FakeIssue(statuscategorychangedate=None)]
+        client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
+        client.preflight()
+
+        with self.assertRaisesRegex(utils.ExampleError, "statuscategorychangedate"):
+            client.sync_finding(sample_finding())
 
     def test_sync_finding_fails_when_multiple_issues_match_key(self) -> None:
         """Finding identity must remain one-to-one with Jira issues."""

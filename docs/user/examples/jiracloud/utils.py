@@ -247,6 +247,9 @@ def require_text(data: dict[str, Any], key: str, context: str) -> str:
 
 def parse_datetime(value: str, context: str) -> datetime:
     normalized = value.replace("Z", "+00:00")
+    timezone_suffix = normalized[-5:]
+    if len(timezone_suffix) == 5 and timezone_suffix[0] in {"+", "-"} and timezone_suffix[1:].isdigit():
+        normalized = f"{normalized[:-5]}{timezone_suffix[:3]}:{timezone_suffix[3:]}"
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from typing import Any
 
-from utils import Config, ExampleError
+from utils import Config, ExampleError, parse_datetime
 
 
 MAX_EVIDENCE_ROWS = 10
@@ -173,7 +174,7 @@ class JiraIssueClient:
         key_value = escape_jql_value(finding_key)
         project = escape_jql_value(self.config.jira_project_key)
         jql = f'project = "{project}" AND "{field_name}" = "{key_value}" ORDER BY updated DESC'
-        fields = ["key", "status", "labels", "summary", self.finding_field_id]
+        fields = ["key", "status", "statuscategorychangedate", "labels", "summary", self.finding_field_id]
         if self.config.jira_priority:
             fields.append("priority")
         return self.search_issues(jql, max_results=2, fields=",".join(fields), context="Jira finding search")
@@ -206,7 +207,7 @@ class JiraIssueClient:
         if updates:
             self._call("Jira issue update", issue.update, fields=updates)
 
-        if self.is_closed(issue):
+        if self.is_closed(issue) and finding.latest_seen > self.closed_at(issue):
             self.reopen_issue(issue)
 
     def issue_field_updates(self, issue: Any, finding: Any) -> dict[str, Any]:
@@ -228,6 +229,15 @@ class JiraIssueClient:
             bool(status_name and status_name in self.config.jira_closed_status_names)
             or bool(category_name and category_name in self.config.jira_closed_status_categories)
         )
+
+    def closed_at(self, issue: Any) -> datetime:
+        value = get_issue_field(issue, "statuscategorychangedate")
+        if value is None or str(value) == "":
+            raise ExampleError(
+                f"Jira issue {issue_key(issue)} is closed, but statuscategorychangedate was not returned. "
+                "Jira must return this field so the example can compare the close time with the latest scan time."
+            )
+        return parse_datetime(str(value), f"Jira issue {issue_key(issue)} statuscategorychangedate")
 
     def reopen_issue(self, issue: Any) -> None:
         transitions = self._call("Jira transition lookup", self.jira.transitions, issue)
