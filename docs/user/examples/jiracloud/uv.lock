@@ -157,10 +157,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "jira" },
+    { name = "requests" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "jira", specifier = ">=3.10,<4" }]
+requires-dist = [
+    { name = "jira", specifier = ">=3.10,<4" },
+    { name = "requests", specifier = ">=2.32,<3" },
+]
 
 [[package]]
 name = "oauthlib"

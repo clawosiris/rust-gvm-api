@@ -4,7 +4,7 @@ import sys
 from datetime import datetime
 from typing import Any
 
-from utils import Config, ExampleError, parse_datetime
+from utils import Config, IntegrationError, parse_datetime
 
 
 MAX_EVIDENCE_ROWS = 10
@@ -23,7 +23,7 @@ class JiraIssueClient:
         try:
             from jira import JIRA
         except ImportError as exc:
-            raise ExampleError("Missing Python dependency 'jira'. Run `uv sync` or `uv run python main.py`.") from exc
+            raise IntegrationError("Missing Python dependency 'jira'. Run `uv sync` or `uv run python main.py`.") from exc
         jira = JIRA(server=config.jira_site_url, basic_auth=(config.jira_email, config.jira_api_token))
         return cls(config, jira)
 
@@ -42,7 +42,7 @@ class JiraIssueClient:
     def resolve_field(self, configured_field: str) -> tuple[str, str]:
         fields = self._call("Jira field discovery", self.jira.fields)
         if not isinstance(fields, list):
-            raise ExampleError("Jira field discovery did not return a field list.")
+            raise IntegrationError("Jira field discovery did not return a field list.")
         matches = [
             field
             for field in fields
@@ -59,7 +59,7 @@ class JiraIssueClient:
             matches = self.search_configured_field(configured_field)
         if not matches:
             visible_custom_fields = format_visible_custom_fields(fields)
-            raise ExampleError(
+            raise IntegrationError(
                 f"Jira custom field {configured_field!r} was not found in fields visible to "
                 f"{self.config.jira_email} and was not found by Jira field search. Set JIRA_FINDING_KEY_FIELD "
                 f"to the Jira field's exact display name or id, for example Greenbone Finding Key or customfield_10042. "
@@ -67,16 +67,16 @@ class JiraIssueClient:
             )
         if len(matches) > 1:
             matched = ", ".join(format_field(match) for match in matches)
-            raise ExampleError(
+            raise IntegrationError(
                 f"Jira returned multiple fields matching {configured_field!r}: {matched}. "
                 "Set JIRA_FINDING_KEY_FIELD to the exact customfield_* id."
             )
         resolved_id = field_id(matches[0])
         resolved_name = field_name(matches[0])
         if not resolved_id:
-            raise ExampleError(f"Jira field {configured_field!r} did not expose a usable field id.")
+            raise IntegrationError(f"Jira field {configured_field!r} did not expose a usable field id.")
         if not resolved_name:
-            raise ExampleError(f"Jira field {configured_field!r} did not expose a usable field name.")
+            raise IntegrationError(f"Jira field {configured_field!r} did not expose a usable field name.")
         return resolved_id, resolved_name
 
     def search_configured_field(self, configured_field: str) -> list[Any]:
@@ -109,12 +109,12 @@ class JiraIssueClient:
             if self.config.jira_issue_type in {issue_type_id, issue_type_name}:
                 matches.append(issue_type)
         if not matches:
-            raise ExampleError(
+            raise IntegrationError(
                 f"Jira issue type {self.config.jira_issue_type!r} was not found for project "
                 f"{self.config.jira_project_key!r}."
             )
         if len(matches) > 1:
-            raise ExampleError(f"Jira returned multiple issue types matching {self.config.jira_issue_type!r}.")
+            raise IntegrationError(f"Jira returned multiple issue types matching {self.config.jira_issue_type!r}.")
         issue_type_id = value_from(matches[0], "id")
         return str(issue_type_id) if issue_type_id is not None else None
 
@@ -127,7 +127,7 @@ class JiraIssueClient:
         )
         issue_types = createmeta_issue_types(metadata)
         if not issue_types:
-            raise ExampleError(
+            raise IntegrationError(
                 f"Jira create metadata did not return issue types for project {self.config.jira_project_key!r}."
             )
         return issue_types
@@ -141,7 +141,7 @@ class JiraIssueClient:
         missing = sorted(required - available)
         if missing:
             joined = ", ".join(missing)
-            raise ExampleError(
+            raise IntegrationError(
                 f"Jira create screen for project {self.config.jira_project_key!r} and issue type "
                 f"{self.config.jira_issue_type!r} is missing required field(s): {joined}."
             )
@@ -161,7 +161,7 @@ class JiraIssueClient:
     def sync_finding(self, finding: Any) -> str:
         matches = self.search_by_finding_key(finding.key)
         if len(matches) > 1:
-            raise ExampleError(f"Jira returned multiple issues for finding key {finding.key}.")
+            raise IntegrationError(f"Jira returned multiple issues for finding key {finding.key}.")
         if not matches:
             issue = self.create_issue(finding)
             return issue_key(issue)
@@ -233,7 +233,7 @@ class JiraIssueClient:
     def closed_at(self, issue: Any) -> datetime:
         value = get_issue_field(issue, "statuscategorychangedate")
         if value is None or str(value) == "":
-            raise ExampleError(
+            raise IntegrationError(
                 f"Jira issue {issue_key(issue)} is closed, but statuscategorychangedate was not returned. "
                 "Jira must return this field so the example can compare the close time with the latest scan time."
             )
@@ -247,13 +247,13 @@ class JiraIssueClient:
             if isinstance(transition, dict) and transition.get("name") == self.config.jira_reopen_transition_name
         ]
         if not matching:
-            raise ExampleError(
+            raise IntegrationError(
                 f"Jira issue {issue_key(issue)} is closed, but transition "
                 f"{self.config.jira_reopen_transition_name!r} is not available."
             )
         transition_id = matching[0].get("id")
         if not transition_id:
-            raise ExampleError(
+            raise IntegrationError(
                 f"Jira transition {self.config.jira_reopen_transition_name!r} for issue "
                 f"{issue_key(issue)} did not expose an id."
             )
@@ -262,22 +262,22 @@ class JiraIssueClient:
     @property
     def finding_field_id(self) -> str:
         if self.finding_key_field_id is None:
-            raise ExampleError("Jira finding key field id has not been resolved.")
+            raise IntegrationError("Jira finding key field id has not been resolved.")
         return self.finding_key_field_id
 
     @property
     def finding_field_name(self) -> str:
         if self.finding_key_field_name is None:
-            raise ExampleError("Jira finding key field name has not been resolved.")
+            raise IntegrationError("Jira finding key field name has not been resolved.")
         return self.finding_key_field_name
 
     def _call(self, context: str, func: Any, *args: Any, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)
-        except ExampleError:
+        except IntegrationError:
             raise
         except Exception as exc:
-            raise ExampleError(f"{context} failed: {exc}") from exc
+            raise IntegrationError(f"{context} failed: {exc}") from exc
 
 
 def finding_text(finding: Any) -> tuple[str, bool]:

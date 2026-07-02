@@ -7,10 +7,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib import error, parse, request
+from urllib import parse
+
+import requests
 
 
-class ExampleError(Exception):
+class IntegrationError(Exception):
     """Fatal example error that should be printed for the user."""
 
 
@@ -55,23 +57,26 @@ class Config:
         missing = [key for key in REQUIRED_CONFIG_KEYS if not values.get(key, "").strip()]
         if missing:
             joined = ", ".join(missing)
-            raise ExampleError(f"Missing required configuration value(s): {joined}. Check {env_path}.")
+            raise IntegrationError(f"Missing required configuration value(s): {joined}. Check {env_path}.")
 
         gvm_gateway_base_url = values["GVM_GATEWAY_BASE_URL"].rstrip("/")
         if gvm_gateway_base_url.endswith("/api/v1"):
-            raise ExampleError("GVM_GATEWAY_BASE_URL must not include /api/v1; use the gateway root URL.")
+            raise IntegrationError("GVM_GATEWAY_BASE_URL must not include /api/v1; use the gateway root URL.")
+        validate_http_url(gvm_gateway_base_url, "GVM_GATEWAY_BASE_URL")
+        otobo_base_url = values["OTOBO_BASE_URL"].rstrip("/")
+        validate_http_url(otobo_base_url, "OTOBO_BASE_URL")
 
         closed_states = tuple(
             state.strip() for state in values["OTOBO_CLOSED_STATES"].split(",") if state.strip()
         )
         if not closed_states:
-            raise ExampleError("OTOBO_CLOSED_STATES must contain at least one closed ticket state.")
+            raise IntegrationError("OTOBO_CLOSED_STATES must contain at least one closed ticket state.")
 
         return cls(
             gvm_gateway_base_url=gvm_gateway_base_url,
             gvm_username=values["GVM_GATEWAY_USERNAME"],
             gvm_password=values["GVM_GATEWAY_PASSWORD"],
-            otobo_base_url=values["OTOBO_BASE_URL"].rstrip("/"),
+            otobo_base_url=otobo_base_url,
             otobo_web_service=values["OTOBO_WEB_SERVICE"].strip("/"),
             otobo_username=values["OTOBO_USERNAME"],
             otobo_password=values["OTOBO_PASSWORD"],
@@ -136,7 +141,7 @@ REQUIRED_CONFIG_KEYS = (
 
 def read_env_file(path: Path) -> dict[str, str]:
     if not path.exists():
-        raise ExampleError(f"Configuration file {path} does not exist. Copy .env.example to .env first.")
+        raise IntegrationError(f"Configuration file {path} does not exist. Copy .env.example to .env first.")
 
     values: dict[str, str] = {}
     for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -146,12 +151,12 @@ def read_env_file(path: Path) -> dict[str, str]:
         if line.startswith("export "):
             line = line[len("export ") :].strip()
         if "=" not in line:
-            raise ExampleError(f"Invalid .env line {line_number}: expected KEY=VALUE.")
+            raise IntegrationError(f"Invalid .env line {line_number}: expected KEY=VALUE.")
         key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip()
         if not key:
-            raise ExampleError(f"Invalid .env line {line_number}: key is empty.")
+            raise IntegrationError(f"Invalid .env line {line_number}: key is empty.")
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         values[key] = value
@@ -178,6 +183,12 @@ def format_http_failure(context: str, url: str, status: int, detail: str) -> str
     return message
 
 
+def validate_http_url(url: str, name: str) -> None:
+    parsed = parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise IntegrationError(f"{name} must be an HTTP or HTTPS URL.")
+
+
 class HttpJsonClient:
     def __init__(self, timeout: int = 30) -> None:
         self.timeout = timeout
@@ -197,9 +208,11 @@ class HttpJsonClient:
         if headers:
             request_headers.update(headers)
 
-        body: bytes | None = None
+        validate_http_url(url, "request URL")
+
+        body: str | None = None
         if payload is not None:
-            body = json.dumps(payload).encode("utf-8")
+            body = json.dumps(payload)
             request_headers["Content-Type"] = "application/json"
 
         if basic_auth is not None:
@@ -207,60 +220,55 @@ class HttpJsonClient:
             token = base64.b64encode(credentials).decode("ascii")
             request_headers["Authorization"] = f"Basic {token}"
 
-        req = request.Request(url=url, data=body, headers=request_headers, method=method)
         try:
-            with request.urlopen(req, timeout=self.timeout) as response:
-                status = response.status
-                response_body = response.read()
-        except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise ExampleError(format_http_failure(context, exc.url, exc.code, detail)) from exc
-        except TimeoutError as exc:
-            raise ExampleError(
+            response = requests.request(method, url, data=body, headers=request_headers, timeout=self.timeout)
+        except requests.Timeout as exc:
+            raise IntegrationError(
                 f"{context} timed out after {self.timeout} seconds while waiting for {url}. "
                 "Check that the configured service is running and can reach its backend."
             ) from exc
-        except error.URLError as exc:
-            raise ExampleError(f"{context} failed: {exc.reason}") from exc
+        except requests.RequestException as exc:
+            raise IntegrationError(f"{context} failed: {exc}") from exc
 
-        if status not in expected_statuses:
-            detail = response_body.decode("utf-8", errors="replace")
-            raise ExampleError(format_http_failure(context, url, status, detail))
-        if status == 204 or not response_body:
+        if response.status_code not in expected_statuses:
+            detail = response.text
+            response_url = response.url or url
+            raise IntegrationError(format_http_failure(context, response_url, response.status_code, detail))
+        if response.status_code == 204 or not response.content:
             return {}
         try:
-            parsed = json.loads(response_body.decode("utf-8"))
-        except json.JSONDecodeError as exc:
-            raise ExampleError(f"{context} returned invalid JSON.") from exc
+            parsed = response.json()
+        except ValueError as exc:
+            raise IntegrationError(f"{context} returned invalid JSON.") from exc
         if not isinstance(parsed, dict):
-            raise ExampleError(f"{context} returned JSON that is not an object.")
+            raise IntegrationError(f"{context} returned JSON that is not an object.")
         return parsed
 
 
 def parse_pagination(value: Any, context: str, page: int) -> dict[str, int]:
     if not isinstance(value, dict):
-        raise ExampleError(f"{context} page {page} did not return a pagination object.")
+        raise IntegrationError(f"{context} page {page} did not return a pagination object.")
     parsed: dict[str, int] = {}
     for key in ("page", "perPage", "total", "totalPages"):
         if key not in value:
-            raise ExampleError(f"{context} page {page} pagination is missing required field {key}.")
+            raise IntegrationError(f"{context} page {page} pagination is missing required field {key}.")
         parsed[key] = require_int(value[key], f"{context} page {page} pagination.{key}")
     return parsed
 
 
 def require_int(value: Any, context: str) -> int:
     if isinstance(value, bool):
-        raise ExampleError(f"{context} must be an integer.")
+        raise IntegrationError(f"{context} must be an integer.")
     try:
         return int(value)
     except (TypeError, ValueError) as exc:
-        raise ExampleError(f"{context} must be an integer.") from exc
+        raise IntegrationError(f"{context} must be an integer.") from exc
 
 
 def require_text(data: dict[str, Any], key: str, context: str) -> str:
     value = data.get(key)
     if value is None or str(value) == "":
-        raise ExampleError(f"{context} is missing required field {key}.")
+        raise IntegrationError(f"{context} is missing required field {key}.")
     return str(value)
 
 
@@ -269,9 +277,9 @@ def parse_datetime(value: str, context: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
-        raise ExampleError(f"Invalid {context} timestamp {value!r}.") from exc
+        raise IntegrationError(f"Invalid {context} timestamp {value!r}.") from exc
     if parsed.tzinfo is None:
-        raise ExampleError(f"Invalid {context} timestamp {value!r}: timezone is required.")
+        raise IntegrationError(f"Invalid {context} timestamp {value!r}: timezone is required.")
     return parsed.astimezone(timezone.utc)
 
 

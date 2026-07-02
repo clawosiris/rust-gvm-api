@@ -7,7 +7,7 @@ from typing import Any
 
 from gateway import GvmClient
 from otobo import OtoboClient, require_ticket_state
-from utils import Config, ExampleError, HttpJsonClient, parse_datetime, require_text
+from utils import Config, IntegrationError, HttpJsonClient, parse_datetime, require_text
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ def run(config: Config) -> None:
     otobo.preflight()
     gvm.create_session()
 
-    sync_error: ExampleError | None = None
+    sync_error: IntegrationError | None = None
     try:
         hosts = gvm.get_hosts()
         synced_hosts = sync_cmdb_hosts(otobo, hosts)
@@ -62,13 +62,13 @@ def run(config: Config) -> None:
             f"{len(hosts)} host(s), {len(reports)} report(s), {len(findings)} finding(s), "
             f"{unlinked_findings} without CMDB link."
         )
-    except ExampleError as exc:
+    except IntegrationError as exc:
         sync_error = exc
         raise
     finally:
         try:
             gvm.close_session()
-        except ExampleError as cleanup_error:
+        except IntegrationError as cleanup_error:
             if sync_error is None:
                 raise
             print(f"Warning: {cleanup_error}", file=sys.stderr)
@@ -80,7 +80,7 @@ def sync_cmdb_hosts(otobo: OtoboClient, hosts: list[dict[str, Any]]) -> list[Syn
         host_id = require_text(host, "id", "GVM host")
         config_item_ids = otobo.config_item_search(host_id)
         if len(config_item_ids) > 1:
-            raise ExampleError(f"OTOBO returned multiple config items for GVM host id {host_id}.")
+            raise IntegrationError(f"OTOBO returned multiple config items for GVM host id {host_id}.")
         existing_config_item_id = config_item_ids[0] if config_item_ids else None
         config_item_id = otobo.config_item_upsert(host, existing_config_item_id)
         synced.append(SyncedConfigItem(id=config_item_id, host=host))
@@ -97,7 +97,7 @@ def build_host_lookup(synced_hosts: list[SyncedConfigItem]) -> dict[str, str]:
             key = str(value)
             existing = lookup.get(key)
             if existing is not None and existing != synced.id:
-                raise ExampleError(
+                raise IntegrationError(
                     f"Host lookup value {key!r} matches multiple OTOBO config items "
                     f"({existing} and {synced.id}). Make host inventory values unique."
                 )
@@ -134,7 +134,7 @@ def aggregate_findings(report_results: list[tuple[dict[str, Any], dict[str, Any]
         scan_start = parse_datetime(require_text(report, "scanStart", f"GVM report {report_id}"), "report scanStart")
         nvt = result.get("nvt")
         if not isinstance(nvt, dict):
-            raise ExampleError(f"Severity-eligible result {result.get('id')} is missing nvt data.")
+            raise IntegrationError(f"Severity-eligible result {result.get('id')} is missing nvt data.")
         nvt_oid = require_text(nvt, "oid", f"severity-eligible result {result.get('id')} nvt")
         host = require_text(result, "host", f"severity-eligible result {result.get('id')}")
         port = require_text(result, "port", f"severity-eligible result {result.get('id')}")
@@ -160,7 +160,7 @@ def aggregate_findings(report_results: list[tuple[dict[str, Any], dict[str, Any]
 def sync_ticket(otobo: OtoboClient, config: Config, finding: Finding, config_item_id: str | None) -> None:
     ticket_ids = otobo.ticket_search_by_finding_key(finding.key)
     if len(ticket_ids) > 1:
-        raise ExampleError(f"OTOBO returned multiple tickets for finding key {finding.key}.")
+        raise IntegrationError(f"OTOBO returned multiple tickets for finding key {finding.key}.")
     if not ticket_ids:
         otobo.ticket_create(finding, config_item_id)
         return

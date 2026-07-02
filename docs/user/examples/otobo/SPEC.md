@@ -218,3 +218,4 @@ local compensation logic.
 
 - Python 3
 - uv
+- `requests` for GVM REST API and OTOBO Generic Interface HTTP calls

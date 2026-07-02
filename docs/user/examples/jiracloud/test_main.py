@@ -179,11 +179,19 @@ class ConfigTests(unittest.TestCase):
 
     def test_config_load_rejects_versioned_urls(self) -> None:
         """Users configure service roots; the clients append API paths internally."""
-        with self.assertRaisesRegex(utils.ExampleError, "must not include /api/v1"):
+        with self.assertRaisesRegex(utils.IntegrationError, "must not include /api/v1"):
             utils.Config.load(write_env(self, base_env(GVM_GATEWAY_BASE_URL="http://gvm.example/api/v1")))
 
-        with self.assertRaisesRegex(utils.ExampleError, "must not include /rest/api/3"):
+        with self.assertRaisesRegex(utils.IntegrationError, "must not include /rest/api/3"):
             utils.Config.load(write_env(self, base_env(JIRA_SITE_URL="https://jira.example/rest/api/3")))
+
+    def test_config_load_rejects_non_http_urls(self) -> None:
+        """Configured service roots must be network URLs accepted by the HTTP client."""
+        with self.assertRaisesRegex(utils.IntegrationError, "GVM_GATEWAY_BASE_URL must be an HTTP or HTTPS URL"):
+            utils.Config.load(write_env(self, base_env(GVM_GATEWAY_BASE_URL="file:///tmp/gvm")))
+
+        with self.assertRaisesRegex(utils.IntegrationError, "JIRA_SITE_URL must be an HTTP or HTTPS URL"):
+            utils.Config.load(write_env(self, base_env(JIRA_SITE_URL="file:///tmp/jira")))
 
     def test_parse_datetime_accepts_jira_timezone_offset(self) -> None:
         """Jira Cloud timestamps use +0000 offsets, which must compare with scan times."""
@@ -259,7 +267,7 @@ class FindingAggregationTests(unittest.TestCase):
         report = {"id": "report-1", "scanStart": "2026-07-01T11:00:00Z"}
         result = {"id": "result-1", "host": "192.0.2.10", "nvt": {"oid": "1.2.3"}}
 
-        with self.assertRaisesRegex(utils.ExampleError, "missing required field port"):
+        with self.assertRaisesRegex(utils.IntegrationError, "missing required field port"):
             workflow.aggregate_findings([(report, result)])
 
 
@@ -344,7 +352,7 @@ class JiraClientTests(unittest.TestCase):
         config = utils.Config.load(write_env(self, base_env(JIRA_FINDING_KEY_FIELD="customfield_10073")))
         client = jira_client.JiraIssueClient(config, fake_jira)
 
-        with self.assertRaisesRegex(utils.ExampleError, "create screen.*customfield_10073"):
+        with self.assertRaisesRegex(utils.IntegrationError, "create screen.*customfield_10073"):
             client.preflight()
 
     def test_preflight_fails_when_custom_field_name_is_duplicated(self) -> None:
@@ -356,7 +364,7 @@ class JiraClientTests(unittest.TestCase):
         ]
         client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
 
-        with self.assertRaisesRegex(utils.ExampleError, "multiple fields"):
+        with self.assertRaisesRegex(utils.IntegrationError, "multiple fields"):
             client.preflight()
 
     def test_sync_finding_creates_issue_when_no_match_exists(self) -> None:
@@ -413,7 +421,7 @@ class JiraClientTests(unittest.TestCase):
         client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
         client.preflight()
 
-        with self.assertRaisesRegex(utils.ExampleError, "statuscategorychangedate"):
+        with self.assertRaisesRegex(utils.IntegrationError, "statuscategorychangedate"):
             client.sync_finding(sample_finding())
 
     def test_sync_finding_fails_when_multiple_issues_match_key(self) -> None:
@@ -423,7 +431,7 @@ class JiraClientTests(unittest.TestCase):
         client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
         client.preflight()
 
-        with self.assertRaisesRegex(utils.ExampleError, "multiple issues"):
+        with self.assertRaisesRegex(utils.IntegrationError, "multiple issues"):
             client.sync_finding(sample_finding())
 
     def test_finding_text_truncates_large_evidence_sets(self) -> None:

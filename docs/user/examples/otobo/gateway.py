@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from urllib import parse
 
-from utils import Config, ExampleError, HttpJsonClient, format_rfc3339, parse_datetime, parse_pagination, require_text
+from utils import Config, IntegrationError, HttpJsonClient, format_rfc3339, parse_datetime, parse_pagination, require_text
 
 
 PER_PAGE = 1000
@@ -27,7 +27,7 @@ class GvmClient:
         )
         token = response.get("sessionToken")
         if not isinstance(token, str) or not token:
-            raise ExampleError("GVM create session response did not contain sessionToken.")
+            raise IntegrationError("GVM create session response did not contain sessionToken.")
         self.session_token = token
 
     def close_session(self) -> None:
@@ -89,10 +89,10 @@ class GvmClient:
             )
             data = response.get("data")
             if not isinstance(data, list):
-                raise ExampleError(f"{context} page {page} did not return a data array.")
+                raise IntegrationError(f"{context} page {page} did not return a data array.")
             for index, item in enumerate(data):
                 if not isinstance(item, dict):
-                    raise ExampleError(
+                    raise IntegrationError(
                         f"{context} page {page} returned malformed data item at index {index}: "
                         "expected an object."
                     )
@@ -108,7 +108,7 @@ class GvmClient:
 
     def auth_headers(self) -> dict[str, str]:
         if self.session_token is None:
-            raise ExampleError("GVM session has not been created.")
+            raise IntegrationError("GVM session has not been created.")
         return {"Authorization": f"Bearer {self.session_token}"}
 
     def url(self, path: str, params: dict[str, str] | None = None) -> str:
@@ -125,4 +125,4 @@ def result_severity(result: dict[str, Any]) -> float:
     try:
         return float(severity)
     except (TypeError, ValueError):
-        raise ExampleError(f"Result {result.get('id')} has non-numeric severity {severity!r}.")
+        raise IntegrationError(f"Result {result.get('id')} has non-numeric severity {severity!r}.")

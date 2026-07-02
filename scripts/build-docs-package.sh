@@ -52,7 +52,7 @@ mkdir -p "${output_dir}"
 cp "${repo_root}/docs/user/index.md" "${package_root}/README.md"
 cp "${repo_root}/docs/user/usage.md" "${package_root}/usage.md"
 cp "${repo_root}/docs/user/examples.md" "${package_root}/examples.md"
-cp "${repo_root}/docs/user/examples/"* "${package_root}/examples/"
+cp -R "${repo_root}/docs/user/examples/." "${package_root}/examples/"
 cp "${repo_root}/packaging/gvm-gateway.toml" "${package_root}/package-config.example.toml"
 cp "${repo_root}/packaging/gvm-gateway.container.toml" "${package_root}/container-config.example.toml"
 find "${repo_root}/spec/rest-api" -maxdepth 1 -type f -name '*.yaml' -exec cp {} "${package_root}/api/rest/" \;

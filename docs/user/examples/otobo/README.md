@@ -149,6 +149,14 @@ Successful output looks like this:
 Synchronization complete: <host-count> host(s), <report-count> report(s), <finding-count> finding(s), <unlinked-count> without CMDB link.
 ```
 
+## 7. Test
+
+Run the unit tests from this directory:
+
+```sh
+uv run python -m unittest
+```
+
 ## What Gets Synchronized
 
 The script reads reports started in the last 24 hours:

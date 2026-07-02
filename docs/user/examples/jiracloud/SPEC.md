@@ -299,5 +299,5 @@ backoff behavior in this example.
 
 - Python 3
 - uv
-- Direct HTTP client calls to the GVM REST API
+- `requests` for GVM REST API calls
 - Python Jira SDK package `jira` for Jira Cloud operations

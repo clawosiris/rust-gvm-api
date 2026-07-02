@@ -7,7 +7,7 @@ from typing import Any
 
 from gateway import GvmClient
 from jira_client import JiraIssueClient
-from utils import Config, ExampleError, HttpJsonClient, parse_datetime, require_text
+from utils import Config, IntegrationError, HttpJsonClient, parse_datetime, require_text
 
 
 @dataclass
@@ -35,7 +35,7 @@ def run(config: Config) -> None:
     jira.preflight()
     gvm.create_session()
 
-    sync_error: ExampleError | None = None
+    sync_error: IntegrationError | None = None
     try:
         reports = gvm.get_recent_reports(datetime.now(timezone.utc))
         report_results = []
@@ -49,13 +49,13 @@ def run(config: Config) -> None:
             jira.sync_finding(finding)
 
         print(f"Synchronization complete: {len(reports)} report(s), {len(findings)} finding(s).")
-    except ExampleError as exc:
+    except IntegrationError as exc:
         sync_error = exc
         raise
     finally:
         try:
             gvm.close_session()
-        except ExampleError as cleanup_error:
+        except IntegrationError as cleanup_error:
             if sync_error is None:
                 raise
             print(f"Warning: {cleanup_error}", file=sys.stderr)
@@ -68,7 +68,7 @@ def aggregate_findings(report_results: list[tuple[dict[str, Any], dict[str, Any]
         scan_start = parse_datetime(require_text(report, "scanStart", f"GVM report {report_id}"), "report scanStart")
         nvt = result.get("nvt")
         if not isinstance(nvt, dict):
-            raise ExampleError(f"Severity-eligible result {result.get('id')} is missing nvt data.")
+            raise IntegrationError(f"Severity-eligible result {result.get('id')} is missing nvt data.")
         nvt_oid = require_text(nvt, "oid", f"severity-eligible result {result.get('id')} nvt")
         host = require_text(result, "host", f"severity-eligible result {result.get('id')}")
         port = require_text(result, "port", f"severity-eligible result {result.get('id')}")

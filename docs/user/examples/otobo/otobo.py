@@ -4,7 +4,7 @@ import json
 from typing import Any
 from urllib import parse
 
-from utils import Config, ExampleError, HttpJsonClient, first_present, format_rfc3339, indent_text, quote_path, require_text
+from utils import Config, IntegrationError, HttpJsonClient, first_present, format_rfc3339, indent_text, quote_path, require_text
 
 
 class OtoboClient:
@@ -52,7 +52,7 @@ class OtoboClient:
         response = self.call(self.config.op_ticket_create, payload, "OTOBO TicketCreate")
         ticket_ids = extract_required_id_list(response, ("TicketID", "TicketNumber"), "OTOBO TicketCreate")
         if not ticket_ids:
-            raise ExampleError("OTOBO TicketCreate response did not contain a ticket identifier.")
+            raise IntegrationError("OTOBO TicketCreate response did not contain a ticket identifier.")
         return ticket_ids[0]
 
     def ticket_update(self, ticket_id: str, finding: Any, reopen: bool, config_item_id: str | None) -> None:
@@ -105,7 +105,7 @@ class OtoboClient:
             f"OTOBO ConfigItemUpsert host {host.get('id')}",
         )
         if not config_item_ids:
-            raise ExampleError("OTOBO ConfigItemUpsert response did not contain a config item identifier.")
+            raise IntegrationError("OTOBO ConfigItemUpsert response did not contain a config item identifier.")
         return config_item_ids[0]
 
     def config_item_payload(self, host: dict[str, Any]) -> dict[str, Any]:
@@ -183,7 +183,7 @@ def extract_ticket_state(response: dict[str, Any]) -> str | None:
 def require_ticket_state(response: dict[str, Any], ticket_id: str) -> str:
     state = extract_ticket_state(response)
     if state is None:
-        raise ExampleError(
+        raise IntegrationError(
             f"OTOBO TicketGet {ticket_id} response did not expose a ticket state. "
             "Check that the TicketGet Generic Interface operation returns the State field."
         )
@@ -216,7 +216,7 @@ def extract_id_list(response: dict[str, Any], keys: tuple[str, ...]) -> list[str
 def extract_required_id_list(response: dict[str, Any], keys: tuple[str, ...], context: str) -> list[str]:
     if not any(key in response for key in keys):
         expected = ", ".join(keys)
-        raise ExampleError(
+        raise IntegrationError(
             f"{context} response is missing expected response field(s): {expected}. "
             "Check the OTOBO Generic Interface operation mapping and permissions."
         )
@@ -231,11 +231,11 @@ def extract_search_id_list(response: dict[str, Any], keys: tuple[str, ...], cont
 
 def validate_otobo_response(response: dict[str, Any], context: str) -> None:
     if "Success" in response and not is_success_marker(response["Success"]):
-        raise ExampleError(f"{context} was rejected by OTOBO: Success={response['Success']!r}.")
+        raise IntegrationError(f"{context} was rejected by OTOBO: Success={response['Success']!r}.")
 
     error_value = first_present(response, ("Error", "ErrorMessage", "ErrorCode", "Fault", "FaultString"))
     if error_value is not None:
-        raise ExampleError(f"{context} was rejected by OTOBO: {format_otobo_error(error_value)}")
+        raise IntegrationError(f"{context} was rejected by OTOBO: {format_otobo_error(error_value)}")
 
 
 def validate_recognized_response(response: dict[str, Any], keys: tuple[str, ...], context: str) -> None:
@@ -245,7 +245,7 @@ def validate_recognized_response(response: dict[str, Any], keys: tuple[str, ...]
         return
     expected = ", ".join(keys)
     detail = json.dumps(response, sort_keys=True)
-    raise ExampleError(
+    raise IntegrationError(
         f"{context} response is missing expected success field(s): {expected}. "
         f"Response: {detail}"
     )

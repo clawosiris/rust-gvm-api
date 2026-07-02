@@ -100,6 +100,14 @@ Successful output looks like this:
 Synchronization complete: <report-count> report(s), <finding-count> finding(s).
 ```
 
+## 5. Test
+
+Run the unit tests from this directory:
+
+```sh
+uv run python -m unittest
+```
+
 ## What Gets Synchronized
 
 The script reads reports started in the configured lookback window:
