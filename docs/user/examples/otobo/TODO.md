@@ -26,7 +26,7 @@ Acceptance criteria:
 - [x] Define a typed configuration object that reads every setting documented
   in `.env.example`.
 - [x] Validate required settings at startup:
-  - GVM API URL, username, and password.
+  - GVM gateway base URL, username, and password.
   - OTOBO base URL, web service, username, and password.
   - OTOBO Generic Interface operation path names.
   - Ticket defaults and lifecycle state settings.
@@ -86,8 +86,7 @@ Acceptance criteria:
   - `TicketCreate`
   - `TicketUpdate`
   - `ConfigItemSearch`
-  - `ConfigItemCreate`
-  - `ConfigItemUpdate`
+  - `ConfigItemUpsert`
 - [x] Do not create an OTOBO session.
 - [x] Do not use the GVM REST API `/api/v1/tickets` endpoints for OTOBO ticket
   work.
@@ -121,15 +120,14 @@ Acceptance criteria:
   names:
   - `id` -> external key attribute.
   - `name` -> name attribute.
-  - `ip` -> IP address attribute.
+  - `ip` -> optional IP address attribute, only when configured.
   - `hostname` -> hostname attribute.
   - `os` -> operating system attribute.
-  - `severity` -> Greenbone severity attribute.
 - [x] For each host, search by configured class and external key attribute.
-- [x] Create missing config items.
-- [x] Update existing config items.
+- [x] Create missing config items with `ConfigItemUpsert`.
+- [x] Update existing config items with `ConfigItemUpsert`.
 - [x] Include configured class, deployment state, incident state, and version
-  data in create/update payloads.
+  data in upsert payloads.
 - [x] Build an in-memory lookup from synchronized host inventory values to
   config item identifiers:
   - `ip`
@@ -137,12 +135,15 @@ Acceptance criteria:
   - `hostname`
 - [x] Stop if duplicate host lookup keys would make finding-to-CI linking
   ambiguous.
+- [x] If a finding host is not present in synced GVM host assets yet, create or
+  update the ticket without a CMDB link and warn that a later run will add the
+  link once the host asset is available.
 
 Acceptance criteria:
 
 - CMDB sync runs before finding ticket processing.
-- Every finding result host can be matched to a synchronized config item or the
-  script stops with the unmatched host value and suggested CMDB mapping checks.
+- Every finding result host is linked to a synchronized config item when one is
+  available. Missing host assets do not block ticket synchronization.
 
 ## 7. Finding Aggregation
 
@@ -335,14 +336,13 @@ against `SPEC.md`.
       field exposure/configuration.
 
 - [x] Expand OTOBO operation response validation beyond search preflight.
-  - Finding: `TicketUpdate` and `ConfigItemUpdate` currently accept any HTTP
-    200 JSON object that does not contain a recognized error field.
+  - Finding: update-style operations must not accept any HTTP 200 JSON object
+    that does not contain a recognized success field.
   - Spec alignment: `SPEC.md` says any OTOBO API request failure must stop the
     script with a clear message.
   - Tasks:
     - Define minimal expected success response shapes for `TicketGet`,
-      `TicketCreate`, `TicketUpdate`, `ConfigItemCreate`, and
-      `ConfigItemUpdate`.
+      `TicketCreate`, `TicketUpdate`, and `ConfigItemUpsert`.
     - Validate those shapes after each operation and fail with operation name
       plus response detail when unrecognized.
     - Add regression tests for unrecognized 200 responses from update
@@ -378,6 +378,29 @@ against `SPEC.md`.
       response depends on OTOBO Generic Interface route configuration.
 
 - [x] Rerun verification after closing the above tasks:
+  - `uv run python -m unittest discover -p '*_test.py'`
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+
+## 15. OTOBO 11 CMDB Mapping Runtime Fixes
+
+- [x] Do not send the built-in config item `Name` field as a Dynamic Field.
+  - OTOBO expects `Name` as a built-in config item property.
+  - Other configured CMDB attribute mappings are sent as
+    `DynamicField_<attribute>`.
+- [x] Make `OTOBO_CONFIG_ITEM_IP_ATTRIBUTE` optional.
+  - The imported OTOBO `Computer` class stores IP addresses under the nested
+    `Computer-NIC` set, not as a top-level Dynamic Field.
+  - Sending nested field names such as `Computer-NICIPAddress` as top-level
+    Dynamic Fields causes `ConfigItemUpsert` to fail with
+    `DynamicField->Name parameter is invalid`.
+- [x] Keep host severity out of CMDB config item payloads.
+  - Result severity remains used for finding filtering and ticket article
+    evidence.
+- [x] Update `.env.example`, `README.md`, `SPEC.md`, and regression tests to
+  reflect the supported default `Computer` class mapping.
+- [x] Rerun verification:
+  - `python3 -m unittest discover -s docs/user/examples/otobo -p '*_test.py'`
   - `uv run python -m unittest discover -p '*_test.py'`
   - `cargo fmt --all -- --check`
   - `cargo clippy --workspace --all-targets --all-features -- -D warnings`

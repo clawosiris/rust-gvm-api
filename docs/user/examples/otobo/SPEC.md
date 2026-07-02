@@ -38,8 +38,10 @@ Use the versioned GVM REST API base path `/api/v1`.
 2. Use the returned `sessionToken` as `Authorization: Bearer <sessionToken>` for
    all subsequent GVM requests.
 3. Fetch discovered hosts/assets with `GET /api/v1/hosts`.
-   - Use host `id`, `name`, `ip`, `hostname`, `os`, and `severity` for OTOBO
-     CMDB synchronization.
+   - Use host `id`, `name`, `hostname`, and `os` for OTOBO CMDB
+     synchronization.
+   - Optionally use host `ip` when the configured OTOBO CMDB class exposes a
+     top-level IP address Dynamic Field.
    - Read all pages.
 4. Fetch reports with `GET /api/v1/reports`.
    - Select reports whose public `scanStart` is within the last 24 hours.
@@ -103,8 +105,7 @@ The `<OPERATION>` path names are configured in `.env`. Provide defaults for:
 - `TicketCreate`
 - `TicketUpdate`
 - `ConfigItemSearch`
-- `ConfigItemCreate`
-- `ConfigItemUpdate`
+- `ConfigItemUpsert`
 
 Do not hard-code operation path names in the script because OTOBO web service
 route names are configured by the administrator.
@@ -145,11 +146,14 @@ For each finding:
    - Set `GreenboneFindingKey` to the stable finding key.
    - Use configured ticket defaults from `.env`.
    - Add an article containing the current scan evidence.
-   - Link the matching CMDB config item.
+   - Link the matching CMDB config item when one is available.
 3. If a ticket exists, update it:
    - Always add a new internal article containing the current scan evidence.
    - If the ticket state is in `OTOBO_CLOSED_STATES`, set the ticket state to
      `OTOBO_REOPEN_STATE`.
+   - Link the matching CMDB config item when one is available. This lets a
+     later run attach the CMDB link after GVM host inventory catches up with
+     report results.
 
 ## OTOBO CMDB
 
@@ -161,15 +165,20 @@ Sync GVM hosts to OTOBO config items before processing findings:
 1. Build an external CI key from the Greenbone host UUID returned by
    `GET /api/v1/hosts`.
 2. Search for a config item by the configured class and external key attribute.
-3. If missing, create the config item.
-4. If present, update the config item.
-5. Build a lookup from synchronized CMDB host data so findings can be linked to
+3. Upsert the config item with `ConfigItem::ConfigItemUpsert`.
+   - If the search found an existing config item, pass its `ConfigItemID` to
+     update it.
+   - If the search found no existing config item, omit `ConfigItemID` so OTOBO
+     creates it.
+4. Build a lookup from synchronized CMDB host data so findings can be linked to
    config items by matching each result's `host` value against host inventory
    values used for CMDB sync, especially host `ip`, `name`, and `hostname`.
-6. If a finding cannot be matched to a synchronized config item, print an
-   actionable error and stop the script.
+5. If a finding cannot be matched to a synchronized config item, still create
+   or update the OTOBO ticket without a CMDB link and print a warning. This can
+   happen while a scan is still completing and report results are visible before
+   the matching host asset appears in `GET /api/v1/hosts`.
 
-Config item create/update payloads must include the configured:
+Config item upsert payloads must include the configured:
 
 - Config item class.
 - Deployment state.
@@ -180,10 +189,18 @@ Map GVM host fields into configured OTOBO config item attributes:
 
 - Greenbone host `id` -> configured external key attribute.
 - Greenbone host `name` -> configured name attribute.
-- Greenbone host `ip` -> configured IP address attribute.
 - Greenbone host `hostname` -> configured hostname attribute.
 - Greenbone host `os` -> configured operating system attribute.
-- Greenbone host `severity` -> configured Greenbone severity attribute.
+- Greenbone host `ip` -> optional configured IP address attribute, when set.
+
+Except for the built-in config item `Name` field, the configured attribute
+names are OTOBO ITSM config item Dynamic Field names without the
+`DynamicField_` prefix. The script adds that prefix when calling
+`ConfigItemSearch` and `ConfigItemUpsert`.
+
+Custom mapped fields, such as the default Greenbone host ID attribute, must
+exist as ITSM config item Dynamic Fields and be part of the configured CMDB
+class definition.
 
 ## Error Handling
 

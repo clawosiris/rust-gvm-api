@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
 from unittest import mock
@@ -12,9 +13,9 @@ import main as otobo
 
 def base_env(**overrides: str) -> dict[str, str]:
     values = {
-        "GVM_API_URL": "http://gvm.example/api/v1",
-        "GVM_USERNAME": "admin",
-        "GVM_PASSWORD": "secret",
+        "GVM_GATEWAY_BASE_URL": "http://gvm.example",
+        "GVM_GATEWAY_USERNAME": "admin",
+        "GVM_GATEWAY_PASSWORD": "secret",
         "OTOBO_BASE_URL": "http://otobo.example/otobo/nph-genericinterface.pl/Webservice",
         "OTOBO_WEB_SERVICE": "Greenbone",
         "OTOBO_USERNAME": "root@localhost",
@@ -24,8 +25,7 @@ def base_env(**overrides: str) -> dict[str, str]:
         "OTOBO_OPERATION_TICKET_CREATE": "TicketCreate",
         "OTOBO_OPERATION_TICKET_UPDATE": "TicketUpdate",
         "OTOBO_OPERATION_CONFIG_ITEM_SEARCH": "ConfigItemSearch",
-        "OTOBO_OPERATION_CONFIG_ITEM_CREATE": "ConfigItemCreate",
-        "OTOBO_OPERATION_CONFIG_ITEM_UPDATE": "ConfigItemUpdate",
+        "OTOBO_OPERATION_CONFIG_ITEM_UPSERT": "ConfigItemUpsert",
         "OTOBO_FINDING_KEY_FIELD": "GreenboneFindingKey",
         "OTOBO_TICKET_QUEUE": "Raw",
         "OTOBO_TICKET_CUSTOMER_USER": "greenbone@example.com",
@@ -40,10 +40,8 @@ def base_env(**overrides: str) -> dict[str, str]:
         "OTOBO_CONFIG_ITEM_INCIDENT_STATE": "Operational",
         "OTOBO_CONFIG_ITEM_EXTERNAL_KEY_ATTRIBUTE": "GreenboneHostID",
         "OTOBO_CONFIG_ITEM_NAME_ATTRIBUTE": "Name",
-        "OTOBO_CONFIG_ITEM_IP_ATTRIBUTE": "IPAddress",
-        "OTOBO_CONFIG_ITEM_HOSTNAME_ATTRIBUTE": "Hostname",
-        "OTOBO_CONFIG_ITEM_OS_ATTRIBUTE": "OperatingSystem",
-        "OTOBO_CONFIG_ITEM_SEVERITY_ATTRIBUTE": "GreenboneSeverity",
+        "OTOBO_CONFIG_ITEM_HOSTNAME_ATTRIBUTE": "Computer-FQDN",
+        "OTOBO_CONFIG_ITEM_OS_ATTRIBUTE": "Computer-OperatingSystem",
     }
     values.update(overrides)
     return values
@@ -109,11 +107,11 @@ class ConfigTests(IsolatedEnvTest):
 
         self.assertEqual(("closed successful", "closed unsuccessful"), config.closed_states)
 
-    def test_config_load_requires_versioned_gvm_api_base_path(self) -> None:
-        """The example must use the public /api/v1 REST base path from the spec."""
-        path = write_env(self, base_env(GVM_API_URL="http://gvm.example"))
+    def test_config_load_rejects_gateway_base_url_with_versioned_api_path(self) -> None:
+        """Gateway env vars match shell examples, so /api/v1 is appended by the script."""
+        path = write_env(self, base_env(GVM_GATEWAY_BASE_URL="http://gvm.example/api/v1"))
 
-        with self.assertRaisesRegex(otobo.ExampleError, "/api/v1"):
+        with self.assertRaisesRegex(otobo.ExampleError, "must not include /api/v1"):
             otobo.Config.load(path)
 
     def test_config_load_does_not_require_unused_ticket_open_state(self) -> None:
@@ -125,6 +123,42 @@ class ConfigTests(IsolatedEnvTest):
         config = otobo.Config.load(path)
 
         self.assertEqual("open", config.reopen_state)
+
+
+class HttpErrorFormattingTests(IsolatedEnvTest):
+    def test_empty_otobo_http_error_names_url_and_troubleshooting_hint(self) -> None:
+        """Empty OTOBO 500 responses still need enough context to fix the setup."""
+        message = otobo.format_http_failure(
+            "OTOBO TicketSearch",
+            "http://otobo.example/otobo/nph-genericinterface.pl/Webservice/Greenbone/TicketSearch",
+            500,
+            "",
+        )
+
+        self.assertIn("OTOBO TicketSearch failed with HTTP 500", message)
+        self.assertIn("http://otobo.example/otobo/nph-genericinterface.pl/Webservice/Greenbone/TicketSearch", message)
+        self.assertIn("empty response body", message)
+        self.assertIn("Generic Interface web service route", message)
+        self.assertNotIn("HTTP 500:", message)
+
+    def test_non_empty_http_error_keeps_response_body(self) -> None:
+        """When the server does explain the failure, preserve that detail in the error."""
+        message = otobo.format_http_failure(
+            "GVM GET /api/v1/hosts page 1",
+            "http://gvm.example/api/v1/hosts?page=1&perPage=1000",
+            502,
+            '{"detail":"backend unavailable"}',
+        )
+
+        self.assertIn('Response body: {"detail":"backend unavailable"}', message)
+
+    def test_request_timeout_is_reported_without_traceback(self) -> None:
+        """Socket timeouts should become actionable example errors, not raw tracebacks."""
+        client = otobo.HttpJsonClient(timeout=1)
+
+        with mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+            with self.assertRaisesRegex(otobo.ExampleError, "timed out after 1 seconds"):
+                client.request_json("GET", "http://gvm.example/api/v1/hosts", context="GVM hosts")
 
 
 class GvmClientTests(IsolatedEnvTest):
@@ -256,13 +290,22 @@ class OtoboClientTests(IsolatedEnvTest):
         self.assertEqual("otobo-secret", payload["Password"])
         self.assertIn("DynamicField_GreenboneFindingKey", payload)
 
-    def test_preflight_rejects_unrecognized_ticket_search_response_shape(self) -> None:
-        """Preflight must prove the Dynamic Field search operation worked, not just got HTTP 200."""
+    def test_ticket_search_treats_empty_otobo_response_as_no_match(self) -> None:
+        """OTOBO TicketSearch may map a valid no-match response to an empty JSON object."""
         config = otobo.Config.load(write_env(self, base_env()))
         client = otobo.OtoboClient(config, FakeHttp([{}]))  # type: ignore[arg-type]
 
+        ticket_ids = client.ticket_search_by_finding_key("oid|host|port")
+
+        self.assertEqual([], ticket_ids)
+
+    def test_ticket_search_rejects_non_empty_unrecognized_response_shape(self) -> None:
+        """A non-empty search response without ticket identifiers is an unsafe mapping shape."""
+        config = otobo.Config.load(write_env(self, base_env()))
+        client = otobo.OtoboClient(config, FakeHttp([{"Unexpected": []}]))  # type: ignore[arg-type]
+
         with self.assertRaisesRegex(otobo.ExampleError, "missing expected response field"):
-            client.preflight()
+            client.ticket_search_by_finding_key("oid|host|port")
 
     def test_preflight_rejects_otobo_error_payloads(self) -> None:
         """OTOBO can report setup failures inside JSON bodies, so those must be fatal."""
@@ -278,17 +321,28 @@ class OtoboClientTests(IsolatedEnvTest):
     def test_preflight_rejects_unrecognized_config_item_search_response_shape(self) -> None:
         """The CMDB smoke check must validate the config item operation response shape."""
         config = otobo.Config.load(write_env(self, base_env()))
-        client = otobo.OtoboClient(config, FakeHttp([{"TicketID": []}, {}]))  # type: ignore[arg-type]
+        client = otobo.OtoboClient(config, FakeHttp([{"TicketID": []}, {"Unexpected": []}]))  # type: ignore[arg-type]
 
         with self.assertRaisesRegex(otobo.ExampleError, "ConfigItemSearch response is missing"):
             client.preflight()
 
     def test_preflight_accepts_empty_no_match_search_responses(self) -> None:
-        """Valid harmless preflight searches may return recognized empty result lists."""
+        """Valid harmless preflight searches may return empty objects or empty result lists."""
         config = otobo.Config.load(write_env(self, base_env()))
-        client = otobo.OtoboClient(config, FakeHttp([{"TicketID": []}, {"ConfigItemID": []}]))  # type: ignore[arg-type]
+        client = otobo.OtoboClient(config, FakeHttp([{}, {}]))  # type: ignore[arg-type]
 
         client.preflight()
+
+    def test_config_item_search_uses_dynamic_field_search_parameter(self) -> None:
+        """OTOBO 11 ConfigItemSearch expects DynamicField_<name>, not a CIXMLData wrapper."""
+        config = otobo.Config.load(write_env(self, base_env()))
+        client = otobo.OtoboClient(config, FakeHttp([{}]))  # type: ignore[arg-type]
+
+        client.config_item_search("host-1")
+
+        payload = client.http.calls[0]["payload"]
+        self.assertEqual({"Equals": "host-1"}, payload["DynamicField_GreenboneHostID"])
+        self.assertNotIn("CIXMLData", payload)
 
     def test_ticket_update_rejects_unrecognized_success_response(self) -> None:
         """TicketUpdate must not treat arbitrary 200 JSON as a successful OTOBO update."""
@@ -307,13 +361,108 @@ class OtoboClientTests(IsolatedEnvTest):
         with self.assertRaisesRegex(otobo.ExampleError, "TicketUpdate 42 response is missing"):
             otobo.sync_ticket(client, config, sample_finding(), "ci-1")
 
-    def test_config_item_update_rejects_unrecognized_success_response(self) -> None:
-        """ConfigItemUpdate must expose a recognizable success marker or identifier."""
+    def test_sync_ticket_creates_ticket_without_link_when_config_item_is_missing(self) -> None:
+        """Findings are still ticketed while scans are waiting for host assets to appear."""
+        config = otobo.Config.load(write_env(self, base_env()))
+        client = otobo.OtoboClient(config, FakeHttp([{}, {"TicketID": ["43"]}]))  # type: ignore[arg-type]
+
+        otobo.sync_ticket(client, config, sample_finding(), None)
+
+        create_payload = client.http.calls[1]["payload"]
+        self.assertNotIn("Link", create_payload)
+        self.assertEqual("1.2.3|192.0.2.10|80/tcp", create_payload["DynamicField"][0]["Value"])
+
+    def test_sync_ticket_updates_existing_ticket_with_link_when_config_item_exists_now(self) -> None:
+        """A later run should attach the CMDB link once the host asset can be matched."""
+        config = otobo.Config.load(write_env(self, base_env()))
+        client = otobo.OtoboClient(
+            config,
+            FakeHttp([{"TicketID": ["42"]}, {"Ticket": {"State": "open"}}, {"Success": True}]),
+        )  # type: ignore[arg-type]
+
+        otobo.sync_ticket(client, config, sample_finding(), "ci-1")
+
+        update_payload = client.http.calls[2]["payload"]
+        self.assertEqual([otobo.config_item_link("ci-1")], update_payload["Link"])
+
+    def test_sync_ticket_updates_existing_ticket_without_link_when_config_item_is_still_missing(self) -> None:
+        """Unmatched findings still get an update article even when no CMDB link is possible yet."""
+        config = otobo.Config.load(write_env(self, base_env()))
+        client = otobo.OtoboClient(
+            config,
+            FakeHttp([{"TicketID": ["42"]}, {"Ticket": {"State": "open"}}, {"Success": True}]),
+        )  # type: ignore[arg-type]
+
+        otobo.sync_ticket(client, config, sample_finding(), None)
+
+        update_payload = client.http.calls[2]["payload"]
+        self.assertIn("Article", update_payload)
+        self.assertNotIn("Link", update_payload)
+
+    def test_sync_findings_warns_and_counts_findings_without_config_item_match(self) -> None:
+        """Missing host assets are expected during active scans and should not stop ticket sync."""
+        config = otobo.Config.load(write_env(self, base_env()))
+        client = otobo.OtoboClient(config, FakeHttp([{}, {"TicketID": ["43"]}]))  # type: ignore[arg-type]
+        stderr = io.StringIO()
+
+        with mock.patch("sys.stderr", new=stderr):
+            unlinked = otobo.sync_findings(client, config, [sample_finding()], {})
+
+        self.assertEqual(1, unlinked)
+        self.assertIn("without a CMDB link", stderr.getvalue())
+        self.assertNotIn("Link", client.http.calls[1]["payload"])
+
+    def test_config_item_upsert_rejects_unrecognized_success_response(self) -> None:
+        """ConfigItemUpsert must expose the config item identifier needed for finding links."""
         config = otobo.Config.load(write_env(self, base_env()))
         client = otobo.OtoboClient(config, FakeHttp([{"ConfigItemID": ["ci-1"]}, {}]))  # type: ignore[arg-type]
 
-        with self.assertRaisesRegex(otobo.ExampleError, "ConfigItemUpdate ci-1 response is missing"):
+        with self.assertRaisesRegex(otobo.ExampleError, "ConfigItemUpsert host host-1 response is missing"):
             otobo.sync_cmdb_hosts(client, [{"id": "host-1", "name": "web-1"}])
+
+    def test_sync_cmdb_hosts_upserts_existing_config_item_with_id(self) -> None:
+        """Existing host CIs are updated by passing ConfigItemID to ConfigItemUpsert."""
+        config = otobo.Config.load(write_env(self, base_env()))
+        client = otobo.OtoboClient(
+            config,
+            FakeHttp([{"ConfigItemID": ["ci-1"]}, {"ConfigItem": [{"ConfigItemID": "ci-1"}]}]),
+        )  # type: ignore[arg-type]
+
+        synced = otobo.sync_cmdb_hosts(client, [{"id": "host-1", "name": "web-1", "ip": "192.0.2.10"}])
+
+        self.assertEqual("ci-1", synced[0].id)
+        upsert_call = client.http.calls[1]
+        self.assertTrue(upsert_call["url"].endswith("/ConfigItemUpsert"))
+        self.assertEqual("ci-1", upsert_call["payload"]["ConfigItem"]["ConfigItemID"])
+        self.assertEqual("Production", upsert_call["payload"]["ConfigItem"]["DeploymentState"])
+        self.assertEqual("Operational", upsert_call["payload"]["ConfigItem"]["IncidentState"])
+        self.assertEqual("web-1", upsert_call["payload"]["ConfigItem"]["Name"])
+        self.assertEqual("host-1", upsert_call["payload"]["ConfigItem"]["DynamicField_GreenboneHostID"])
+        self.assertNotIn("DynamicField_Computer-NICIPAddress", upsert_call["payload"]["ConfigItem"])
+        self.assertNotIn("DynamicField_Name", upsert_call["payload"]["ConfigItem"])
+        self.assertNotIn("DynamicField_GreenboneSeverity", upsert_call["payload"]["ConfigItem"])
+
+    def test_sync_cmdb_hosts_upserts_new_config_item_without_id(self) -> None:
+        """Missing host CIs are created by ConfigItemUpsert without a ConfigItemID."""
+        config = otobo.Config.load(write_env(self, base_env()))
+        client = otobo.OtoboClient(
+            config,
+            FakeHttp([{}, {"ConfigItem": [{"ConfigItemID": "ci-2"}]}]),
+        )  # type: ignore[arg-type]
+
+        synced = otobo.sync_cmdb_hosts(client, [{"id": "host-2", "name": "web-2"}])
+
+        self.assertEqual("ci-2", synced[0].id)
+        self.assertNotIn("ConfigItemID", client.http.calls[1]["payload"]["ConfigItem"])
+
+    def test_config_item_payload_uses_optional_ip_mapping_when_configured(self) -> None:
+        """Deployments with a top-level IP dynamic field can opt into syncing host IPs."""
+        config = otobo.Config.load(write_env(self, base_env(OTOBO_CONFIG_ITEM_IP_ATTRIBUTE="GreenboneIPAddress")))
+        client = otobo.OtoboClient(config, FakeHttp([]))  # type: ignore[arg-type]
+
+        payload = client.config_item_payload({"id": "host-1", "name": "web-1", "ip": "192.0.2.10"})
+
+        self.assertEqual("192.0.2.10", payload["ConfigItem"]["DynamicField_GreenboneIPAddress"])
 
     def test_sync_ticket_reopens_when_ticket_get_exposes_closed_state(self) -> None:
         """Closed OTOBO tickets are reopened using the configured reopen state."""
@@ -333,6 +482,7 @@ class OtoboClientTests(IsolatedEnvTest):
 
         update_payload = client.http.calls[2]["payload"]
         self.assertEqual({"State": "open"}, update_payload["Ticket"])
+        self.assertEqual([otobo.config_item_link("ci-1")], update_payload["Link"])
 
     def test_sync_ticket_fails_when_ticket_get_omits_state(self) -> None:
         """Without a ticket state, the example cannot decide whether reopening is required."""

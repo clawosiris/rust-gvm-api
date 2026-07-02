@@ -1,136 +1,192 @@
 # OTOBO Integration Example
 
-This Python 3 example synchronizes recent Greenbone scan findings into OTOBO:
+This Python 3 example synchronizes recent Greenbone scan findings into OTOBO.
+It syncs GVM hosts to OTOBO CMDB config items, groups report results into stable
+findings, and creates or updates one OTOBO ticket per finding.
 
-- GVM hosts are synchronized to OTOBO CMDB config items.
-- Results from reports started in the last 24 hours are aggregated into stable
-  findings.
-- Each finding creates or updates one OTOBO ticket through the OTOBO Generic
-  Interface.
+The example is intentionally small and fail-fast. It does not implement retries,
+background recovery, or production sync state.
 
-The example is intentionally small and fail-fast. It is not production-ready
-and does not implement retries, background recovery, partial continuation, or
-local compensation logic.
+## 1. Create `.env`
 
-## Run
-
-Copy the example configuration and adjust it for your GVM REST API and OTOBO
-instance:
+The script reads configuration from `.env` in this directory. Start from the
+template:
 
 ```sh
 cp .env.example .env
-uv run python main.py
 ```
 
-The script uses only the Python standard library. The `.env` file contains
-credentials and must not be committed.
+Do not commit `.env`; it contains credentials.
 
-## Configuration
+Set these groups of values:
 
-`GVM_API_URL` must include the versioned REST API base path:
+- GVM access: `GVM_GATEWAY_BASE_URL`, `GVM_GATEWAY_USERNAME`,
+  `GVM_GATEWAY_PASSWORD`.
+- OTOBO access: `OTOBO_BASE_URL`, `OTOBO_WEB_SERVICE`, `OTOBO_USERNAME`,
+  `OTOBO_PASSWORD`.
+- OTOBO routes: all `OTOBO_OPERATION_*` values.
+- Ticket defaults: queue, customer user, states, priority, article sender type,
+  and article type.
+- CMDB mapping: class, deployment state, incident state, and config item
+  attribute names.
+
+`GVM_GATEWAY_BASE_URL` is the gateway root URL without `/api/v1`, for example:
 
 ```text
-http://localhost:8080/api/v1
+GVM_GATEWAY_BASE_URL=http://127.0.0.1:8080
 ```
 
-OTOBO operation path names are configurable because Generic Interface routes
-are chosen by the OTOBO administrator. The script builds OTOBO URLs from:
+The script appends `/api/v1` internally.
+
+## 2. Prepare GVM Access
+
+The GVM user configured in `.env` must be able to create sessions and read the
+data being synchronized:
+
+- `POST /api/v1/session`
+- `DELETE /api/v1/session`
+- `GET /api/v1/hosts`
+- `GET /api/v1/reports`
+- `GET /api/v1/reports/{id}/results`
+
+The script fetches reports visible to that GVM user. It does not bypass GVM
+permissions.
+
+## 3. Prepare OTOBO Ticket Data
+
+Create a ticket Dynamic Field:
+
+- Object type: `Ticket`
+- Field type: `Text`
+- Name: `GreenboneFindingKey`
+- Label: `Greenbone Finding Key`
+
+Set `OTOBO_FINDING_KEY_FIELD=GreenboneFindingKey`.
+
+The ticket defaults in `.env` must name existing OTOBO values:
+
+- `OTOBO_TICKET_QUEUE`
+- `OTOBO_TICKET_CUSTOMER_USER`
+- `OTOBO_TICKET_STATE_NEW`
+- `OTOBO_TICKET_PRIORITY`
+- `OTOBO_TICKET_ARTICLE_SENDER_TYPE`
+- `OTOBO_TICKET_ARTICLE_TYPE`
+- `OTOBO_CLOSED_STATES`
+- `OTOBO_REOPEN_STATE`
+
+`OTOBO_TICKET_CUSTOMER_USER` must be an existing OTOBO customer user. Otherwise
+`TicketCreate` is rejected by OTOBO.
+
+## 4. Prepare OTOBO CMDB
+
+Install and enable the OTOBO ITSM Configuration Management / CMDB add-on. The
+default `.env.example` uses the `Computer` config item class.
+
+For the default mapping:
+
+- Use `OTOBO_CONFIG_ITEM_CLASS=Computer`.
+- Use `OTOBO_CONFIG_ITEM_NAME_ATTRIBUTE=Name`.
+- Use `OTOBO_CONFIG_ITEM_HOSTNAME_ATTRIBUTE=Computer-FQDN`.
+- Use `OTOBO_CONFIG_ITEM_OS_ATTRIBUTE=Computer-OperatingSystem`.
+- Create a top-level ITSM config item Dynamic Field named `GreenboneHostID`.
+- Add `GreenboneHostID` to the `Computer` class definition.
+- Set `OTOBO_CONFIG_ITEM_EXTERNAL_KEY_ATTRIBUTE=GreenboneHostID`.
+
+`Name` is a built-in config item field. Other CMDB mappings are Dynamic Field
+names without the `DynamicField_` prefix; the script adds that prefix when it
+calls OTOBO.
+
+`OTOBO_CONFIG_ITEM_IP_ATTRIBUTE` is optional. Only set it when your class has a
+top-level IP address Dynamic Field. The imported `Computer` class stores IPs in
+the nested `Computer-NIC` set, so do not use `Computer-NICIPAddress` as a
+top-level mapping.
+
+## 5. Configure OTOBO Generic Interface
+
+Create an OTOBO Generic Interface web service with HTTP::REST provider routes.
+The script builds each OTOBO URL like this:
 
 ```text
 OTOBO_BASE_URL / OTOBO_WEB_SERVICE / OTOBO_OPERATION_*
 ```
 
-Every OTOBO request sends `UserLogin` and `Password` in the JSON payload. The
-example does not create an OTOBO session.
+With the default `.env.example`, the route mapping must include these `POST`
+routes:
 
-## OTOBO Prerequisites
+| Route | Provider operation |
+| --- | --- |
+| `/TicketSearch` | `Ticket::TicketSearch` |
+| `/TicketGet` | `Ticket::TicketGet` |
+| `/TicketCreate` | `Ticket::TicketCreate` |
+| `/TicketUpdate` | `Ticket::TicketUpdate` |
+| `/ConfigItemSearch` | `ConfigItem::ConfigItemSearch` |
+| `/ConfigItemUpsert` | `ConfigItem::ConfigItemUpsert` |
 
-Create one ticket Dynamic Field before running the example. The example uses
-this field to correlate Greenbone findings with existing OTOBO tickets.
+The operations must allow the fields used by the script:
 
-1. Sign in to OTOBO as an administrator.
-2. Open the admin area and go to the Dynamic Fields configuration.
-3. Create a new ticket Dynamic Field with these settings:
-   - Object type: `Ticket`
-   - Field type: `Text`
-   - Name: `GreenboneFindingKey`
-   - Label: `Greenbone Finding Key`
-4. Save the field and make sure it is active.
-5. Include `GreenboneFindingKey` in the OTOBO Generic Interface web service
-   operations used by this example, especially `TicketSearch`, `TicketGet`,
-   `TicketCreate`, and `TicketUpdate`.
+- `TicketSearch`: search by `DynamicField_GreenboneFindingKey`.
+- `TicketGet`: return the ticket state.
+- `TicketCreate` and `TicketUpdate`: accept `GreenboneFindingKey` and CMDB
+  links.
+- `ConfigItemSearch`: search by `DynamicField_GreenboneHostID`.
+- `ConfigItemUpsert`: accept `Class`, `DeploymentState`, `IncidentState`,
+  built-in `Name`, and the configured top-level CMDB Dynamic Fields.
 
-Install and configure the OTOBO ITSM Configuration Management / CMDB add-on.
-The configured Generic Interface operations must allow:
+Use an OTOBO user that can search, create, and update tickets and config items.
+The script sends that user as `UserLogin` and `Password` in every OTOBO request.
 
-- `ConfigItemSearch`
-- `ConfigItemCreate`
-- `ConfigItemUpdate`
+## 6. Run
 
-The configured CMDB class must expose attributes matching these `.env`
-settings:
+Run from this directory:
 
-- `OTOBO_CONFIG_ITEM_EXTERNAL_KEY_ATTRIBUTE`
-- `OTOBO_CONFIG_ITEM_NAME_ATTRIBUTE`
-- `OTOBO_CONFIG_ITEM_IP_ATTRIBUTE`
-- `OTOBO_CONFIG_ITEM_HOSTNAME_ATTRIBUTE`
-- `OTOBO_CONFIG_ITEM_OS_ATTRIBUTE`
-- `OTOBO_CONFIG_ITEM_SEVERITY_ATTRIBUTE`
-
-The script verifies the ticket Dynamic Field and CMDB search setup during
-preflight. It does not create or modify OTOBO administrative configuration.
-For the harmless no-match preflight searches, the script accepts empty
-recognized search result fields such as `TicketID: []` for `TicketSearch` and
-`ConfigItemID: []` for `ConfigItemSearch`. If a valid OTOBO setup uses
-different no-match field names, adjust the example's accepted response shapes
-or the Generic Interface operation mapping before using it.
-
-## GVM Data Flow
-
-The example uses the GVM session flow:
-
-1. `POST /api/v1/session` with HTTP Basic credentials.
-2. Subsequent GVM requests use `Authorization: Bearer <sessionToken>`.
-3. `GET /api/v1/hosts` reads all pages for CMDB synchronization.
-4. `GET /api/v1/reports` reads all pages with a report filter for scans started
-   in the last 24 hours.
-5. `GET /api/v1/reports/{id}/results` reads all pages for each selected report.
-6. `DELETE /api/v1/session` closes the session when the run finishes.
-
-The report filter has this shape:
-
-```text
-scan_start>{cutoff_utc}
+```sh
+uv run python main.py
 ```
 
-For example:
+Successful output looks like this:
 
 ```text
-GET /api/v1/reports?filter=scan_start>2026-07-01T10:00:00Z&perPage=1000
+Synchronization complete: <host-count> host(s), <report-count> report(s), <finding-count> finding(s), <unlinked-count> without CMDB link.
 ```
 
-The script still checks every returned report's public `scanStart` value
-client-side and ignores reports outside the 24-hour window.
+## What Gets Synchronized
 
-## Finding Correlation
+The script reads reports started in the last 24 hours:
 
-Only report results with `severity > 4.0` are synchronized. Results are grouped
-into findings by this stable key:
+```text
+GET /api/v1/reports?filter=scan_start>{cutoff_utc}&perPage=1000
+```
+
+It reads all pages, fetches results for each selected report, and keeps only
+results with `severity > 4.0`.
+
+Findings are grouped by:
 
 ```text
 nvt_oid|result.host|result.port
 ```
 
-`result.port` is treated as an opaque value. The script does not parse it to
-derive protocol information.
+`result.port` is treated as an opaque value. If a severity-eligible result is
+missing `nvt.oid`, `host`, or `port`, the script stops with an error.
 
-If a severity-eligible result is missing `nvt.oid`, `host`, or `port`, the
-script exits with an error. Optional fields such as CVEs and descriptions are
-included in ticket articles when available and omitted when absent.
+If a finding host is not available in `GET /api/v1/hosts` yet, the ticket is
+created or updated without a CMDB link. A later run adds the link once the host
+asset appears.
+
+## Troubleshooting
+
+- `RouteOperationMapping`: check the HTTP::REST route names and provider
+  operations in the OTOBO web service.
+- `Ticket->CustomerUser parameter is invalid`: fix
+  `OTOBO_TICKET_CUSTOMER_USER`.
+- `DynamicField->Name parameter is invalid`: remove invalid CMDB Dynamic Field
+  mappings, especially nested fields such as `Computer-NICIPAddress`.
+- Missing ticket state: make `TicketGet` return `State`.
+- Empty search responses: valid no-match searches may return `{}` or empty ID
+  lists. Other shapes usually mean the operation mapping needs adjustment.
 
 ## Error Handling
 
-The example stops on the first unrecoverable failure. Configuration errors,
-preflight failures, GVM request failures, OTOBO request failures, ambiguous
-CMDB host lookup values, and missing finding key fields all produce a clear
-message on stderr and a non-zero exit code.
+The example stops on the first unrecoverable configuration, GVM, OTOBO, or data
+mapping error and prints the failing operation plus response details when
+available.

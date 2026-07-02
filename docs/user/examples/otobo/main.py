@@ -21,7 +21,7 @@ class ExampleError(Exception):
 
 @dataclass(frozen=True)
 class Config:
-    gvm_api_url: str
+    gvm_gateway_base_url: str
     gvm_username: str
     gvm_password: str
     otobo_base_url: str
@@ -33,8 +33,7 @@ class Config:
     op_ticket_create: str
     op_ticket_update: str
     op_config_item_search: str
-    op_config_item_create: str
-    op_config_item_update: str
+    op_config_item_upsert: str
     finding_key_field: str
     ticket_queue: str
     ticket_customer_user: str
@@ -49,10 +48,9 @@ class Config:
     config_item_incident_state: str
     attr_external_key: str
     attr_name: str
-    attr_ip: str
+    attr_ip: str | None
     attr_hostname: str
     attr_os: str
-    attr_severity: str
 
     @classmethod
     def load(cls, env_path: Path) -> Config:
@@ -64,9 +62,9 @@ class Config:
             joined = ", ".join(missing)
             raise ExampleError(f"Missing required configuration value(s): {joined}. Check {env_path}.")
 
-        gvm_api_url = values["GVM_API_URL"].rstrip("/")
-        if not gvm_api_url.endswith("/api/v1"):
-            raise ExampleError("GVM_API_URL must include the versioned base path /api/v1.")
+        gvm_gateway_base_url = values["GVM_GATEWAY_BASE_URL"].rstrip("/")
+        if gvm_gateway_base_url.endswith("/api/v1"):
+            raise ExampleError("GVM_GATEWAY_BASE_URL must not include /api/v1; use the gateway root URL.")
 
         closed_states = tuple(
             state.strip() for state in values["OTOBO_CLOSED_STATES"].split(",") if state.strip()
@@ -75,9 +73,9 @@ class Config:
             raise ExampleError("OTOBO_CLOSED_STATES must contain at least one closed ticket state.")
 
         return cls(
-            gvm_api_url=gvm_api_url,
-            gvm_username=values["GVM_USERNAME"],
-            gvm_password=values["GVM_PASSWORD"],
+            gvm_gateway_base_url=gvm_gateway_base_url,
+            gvm_username=values["GVM_GATEWAY_USERNAME"],
+            gvm_password=values["GVM_GATEWAY_PASSWORD"],
             otobo_base_url=values["OTOBO_BASE_URL"].rstrip("/"),
             otobo_web_service=values["OTOBO_WEB_SERVICE"].strip("/"),
             otobo_username=values["OTOBO_USERNAME"],
@@ -87,8 +85,7 @@ class Config:
             op_ticket_create=values["OTOBO_OPERATION_TICKET_CREATE"].strip("/"),
             op_ticket_update=values["OTOBO_OPERATION_TICKET_UPDATE"].strip("/"),
             op_config_item_search=values["OTOBO_OPERATION_CONFIG_ITEM_SEARCH"].strip("/"),
-            op_config_item_create=values["OTOBO_OPERATION_CONFIG_ITEM_CREATE"].strip("/"),
-            op_config_item_update=values["OTOBO_OPERATION_CONFIG_ITEM_UPDATE"].strip("/"),
+            op_config_item_upsert=values["OTOBO_OPERATION_CONFIG_ITEM_UPSERT"].strip("/"),
             finding_key_field=values["OTOBO_FINDING_KEY_FIELD"],
             ticket_queue=values["OTOBO_TICKET_QUEUE"],
             ticket_customer_user=values["OTOBO_TICKET_CUSTOMER_USER"],
@@ -103,17 +100,16 @@ class Config:
             config_item_incident_state=values["OTOBO_CONFIG_ITEM_INCIDENT_STATE"],
             attr_external_key=values["OTOBO_CONFIG_ITEM_EXTERNAL_KEY_ATTRIBUTE"],
             attr_name=values["OTOBO_CONFIG_ITEM_NAME_ATTRIBUTE"],
-            attr_ip=values["OTOBO_CONFIG_ITEM_IP_ATTRIBUTE"],
+            attr_ip=optional_config_value(values, "OTOBO_CONFIG_ITEM_IP_ATTRIBUTE"),
             attr_hostname=values["OTOBO_CONFIG_ITEM_HOSTNAME_ATTRIBUTE"],
             attr_os=values["OTOBO_CONFIG_ITEM_OS_ATTRIBUTE"],
-            attr_severity=values["OTOBO_CONFIG_ITEM_SEVERITY_ATTRIBUTE"],
         )
 
 
 REQUIRED_CONFIG_KEYS = (
-    "GVM_API_URL",
-    "GVM_USERNAME",
-    "GVM_PASSWORD",
+    "GVM_GATEWAY_BASE_URL",
+    "GVM_GATEWAY_USERNAME",
+    "GVM_GATEWAY_PASSWORD",
     "OTOBO_BASE_URL",
     "OTOBO_WEB_SERVICE",
     "OTOBO_USERNAME",
@@ -123,8 +119,7 @@ REQUIRED_CONFIG_KEYS = (
     "OTOBO_OPERATION_TICKET_CREATE",
     "OTOBO_OPERATION_TICKET_UPDATE",
     "OTOBO_OPERATION_CONFIG_ITEM_SEARCH",
-    "OTOBO_OPERATION_CONFIG_ITEM_CREATE",
-    "OTOBO_OPERATION_CONFIG_ITEM_UPDATE",
+    "OTOBO_OPERATION_CONFIG_ITEM_UPSERT",
     "OTOBO_FINDING_KEY_FIELD",
     "OTOBO_TICKET_QUEUE",
     "OTOBO_TICKET_CUSTOMER_USER",
@@ -139,10 +134,8 @@ REQUIRED_CONFIG_KEYS = (
     "OTOBO_CONFIG_ITEM_INCIDENT_STATE",
     "OTOBO_CONFIG_ITEM_EXTERNAL_KEY_ATTRIBUTE",
     "OTOBO_CONFIG_ITEM_NAME_ATTRIBUTE",
-    "OTOBO_CONFIG_ITEM_IP_ATTRIBUTE",
     "OTOBO_CONFIG_ITEM_HOSTNAME_ATTRIBUTE",
     "OTOBO_CONFIG_ITEM_OS_ATTRIBUTE",
-    "OTOBO_CONFIG_ITEM_SEVERITY_ATTRIBUTE",
 )
 
 
@@ -168,6 +161,26 @@ def read_env_file(path: Path) -> dict[str, str]:
             value = value[1:-1]
         values[key] = value
     return values
+
+
+def optional_config_value(values: dict[str, str], key: str) -> str | None:
+    value = values.get(key, "").strip()
+    return value or None
+
+
+def format_http_failure(context: str, url: str, status: int, detail: str) -> str:
+    body = detail.strip()
+    message = f"{context} failed with HTTP {status} at {url}."
+    if body:
+        message = f"{message} Response body: {body}"
+    else:
+        message = f"{message} The server returned an empty response body."
+    if context.startswith("OTOBO "):
+        message = (
+            f"{message} Check the OTOBO Generic Interface web service route, "
+            "operation mapping, credentials, and OTOBO server logs for the backend error."
+        )
+    return message
 
 
 class HttpJsonClient:
@@ -206,13 +219,18 @@ class HttpJsonClient:
                 response_body = response.read()
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise ExampleError(f"{context} failed with HTTP {exc.code}: {detail}") from exc
+            raise ExampleError(format_http_failure(context, exc.url, exc.code, detail)) from exc
+        except TimeoutError as exc:
+            raise ExampleError(
+                f"{context} timed out after {self.timeout} seconds while waiting for {url}. "
+                "Check that the configured service is running and can reach its backend."
+            ) from exc
         except error.URLError as exc:
             raise ExampleError(f"{context} failed: {exc.reason}") from exc
 
         if status not in expected_statuses:
             detail = response_body.decode("utf-8", errors="replace")
-            raise ExampleError(f"{context} failed with HTTP {status}: {detail}")
+            raise ExampleError(format_http_failure(context, url, status, detail))
         if status == 204 or not response_body:
             return {}
         try:
@@ -325,7 +343,7 @@ class GvmClient:
         return {"Authorization": f"Bearer {self.session_token}"}
 
     def url(self, path: str, params: dict[str, str] | None = None) -> str:
-        url = f"{self.config.gvm_api_url}/{path.lstrip('/')}"
+        url = f"{self.config.gvm_gateway_base_url}/api/v1/{path.lstrip('/')}"
         if params:
             url = f"{url}?{parse.urlencode(params)}"
         return url
@@ -345,7 +363,7 @@ class OtoboClient:
             dynamic_field_search_key(self.config.finding_key_field): {"Equals": finding_key},
         }
         response = self.call(self.config.op_ticket_search, payload, "OTOBO TicketSearch")
-        return extract_required_id_list(
+        return extract_search_id_list(
             response,
             ("TicketID", "TicketIDs", "Ticket"),
             "OTOBO TicketSearch",
@@ -357,7 +375,7 @@ class OtoboClient:
         validate_recognized_response(response, ("Ticket", "TicketID", "State"), f"OTOBO TicketGet {ticket_id}")
         return response
 
-    def ticket_create(self, finding: Finding, config_item_id: str) -> str:
+    def ticket_create(self, finding: Finding, config_item_id: str | None) -> str:
         payload = {
             "Ticket": {
                 "Queue": self.config.ticket_queue,
@@ -370,15 +388,16 @@ class OtoboClient:
             "DynamicField": [
                 {"Name": self.config.finding_key_field, "Value": finding.key},
             ],
-            "Link": [config_item_link(config_item_id)],
         }
+        if config_item_id is not None:
+            payload["Link"] = [config_item_link(config_item_id)]
         response = self.call(self.config.op_ticket_create, payload, "OTOBO TicketCreate")
         ticket_ids = extract_required_id_list(response, ("TicketID", "TicketNumber"), "OTOBO TicketCreate")
         if not ticket_ids:
             raise ExampleError("OTOBO TicketCreate response did not contain a ticket identifier.")
         return ticket_ids[0]
 
-    def ticket_update(self, ticket_id: str, finding: Finding, reopen: bool) -> None:
+    def ticket_update(self, ticket_id: str, finding: Finding, reopen: bool, config_item_id: str | None) -> None:
         payload: dict[str, Any] = {
             "TicketID": ticket_id,
             "Article": self.article_payload(finding),
@@ -388,6 +407,8 @@ class OtoboClient:
         }
         if reopen:
             payload["Ticket"] = {"State": self.config.reopen_state}
+        if config_item_id is not None:
+            payload["Link"] = [config_item_link(config_item_id)]
         response = self.call(self.config.op_ticket_update, payload, f"OTOBO TicketUpdate {ticket_id}")
         validate_recognized_response(
             response,
@@ -398,69 +419,54 @@ class OtoboClient:
     def config_item_search(self, external_key: str) -> list[str]:
         payload = {
             "Class": self.config.config_item_class,
-            "CIXMLData": {
-                self.config.attr_external_key: {"Equals": external_key},
-            },
+            config_item_dynamic_field_key(self.config.attr_external_key): {"Equals": external_key},
         }
         response = self.call(
             self.config.op_config_item_search,
             payload,
             "OTOBO ConfigItemSearch",
         )
-        return extract_required_id_list(
+        return extract_search_id_list(
             response,
             ("ConfigItemID", "ConfigItemIDs", "ConfigItem"),
             "OTOBO ConfigItemSearch",
         )
 
-    def config_item_create(self, host: dict[str, Any]) -> str:
+    def config_item_upsert(self, host: dict[str, Any], config_item_id: str | None = None) -> str:
         payload = self.config_item_payload(host)
+        if config_item_id is not None:
+            payload["ConfigItem"]["ConfigItemID"] = config_item_id
         response = self.call(
-            self.config.op_config_item_create,
+            self.config.op_config_item_upsert,
             payload,
-            f"OTOBO ConfigItemCreate host {host.get('id')}",
+            f"OTOBO ConfigItemUpsert host {host.get('id')}",
         )
         config_item_ids = extract_required_id_list(
             response,
-            ("ConfigItemID", "ConfigItemNumber"),
-            f"OTOBO ConfigItemCreate host {host.get('id')}",
+            ("ConfigItemID", "ConfigItemNumber", "ConfigItem"),
+            f"OTOBO ConfigItemUpsert host {host.get('id')}",
         )
         if not config_item_ids:
-            raise ExampleError("OTOBO ConfigItemCreate response did not contain a config item identifier.")
+            raise ExampleError("OTOBO ConfigItemUpsert response did not contain a config item identifier.")
         return config_item_ids[0]
-
-    def config_item_update(self, config_item_id: str, host: dict[str, Any]) -> None:
-        payload = self.config_item_payload(host)
-        payload["ConfigItemID"] = config_item_id
-        response = self.call(
-            self.config.op_config_item_update,
-            payload,
-            f"OTOBO ConfigItemUpdate {config_item_id}",
-        )
-        validate_recognized_response(
-            response,
-            ("ConfigItemID", "ConfigItemNumber", "ConfigItem"),
-            f"OTOBO ConfigItemUpdate {config_item_id}",
-        )
 
     def config_item_payload(self, host: dict[str, Any]) -> dict[str, Any]:
         host_id = require_text(host, "id", "GVM host")
         name = str(host.get("name") or host_id)
+        config_item = {
+            "Class": self.config.config_item_class,
+            "DeploymentState": self.config.config_item_deployment_state,
+            "IncidentState": self.config.config_item_incident_state,
+            "Name": name,
+        }
+        add_config_item_dynamic_field(config_item, self.config.attr_external_key, host_id)
+        add_config_item_dynamic_field(config_item, self.config.attr_name, host.get("name") or "")
+        if self.config.attr_ip is not None:
+            add_config_item_dynamic_field(config_item, self.config.attr_ip, host.get("ip") or "")
+        add_config_item_dynamic_field(config_item, self.config.attr_hostname, host.get("hostname") or "")
+        add_config_item_dynamic_field(config_item, self.config.attr_os, host.get("os") or "")
         return {
-            "ConfigItem": {
-                "Class": self.config.config_item_class,
-                "Name": name,
-                "DeplState": self.config.config_item_deployment_state,
-                "InciState": self.config.config_item_incident_state,
-            },
-            "ConfigItemVersion": {
-                self.config.attr_external_key: host_id,
-                self.config.attr_name: host.get("name") or "",
-                self.config.attr_ip: host.get("ip") or "",
-                self.config.attr_hostname: host.get("hostname") or "",
-                self.config.attr_os: host.get("os") or "",
-                self.config.attr_severity: host.get("severity") or "",
-            },
+            "ConfigItem": config_item,
         }
 
     def article_payload(self, finding: Finding) -> dict[str, str]:
@@ -539,19 +545,12 @@ def run(config: Config) -> None:
                 report_results.append((report, result))
 
         findings = aggregate_findings(report_results)
-        for finding in findings:
-            config_item_id = host_lookup.get(finding.host)
-            if config_item_id is None:
-                raise ExampleError(
-                    "Could not match finding host "
-                    f"{finding.host!r} to a synchronized OTOBO config item. "
-                    "Check host ip/name/hostname values and CMDB attribute mappings."
-                )
-            sync_ticket(otobo, config, finding, config_item_id)
+        unlinked_findings = sync_findings(otobo, config, findings, host_lookup)
 
         print(
             "Synchronization complete: "
-            f"{len(hosts)} host(s), {len(reports)} report(s), {len(findings)} finding(s)."
+            f"{len(hosts)} host(s), {len(reports)} report(s), {len(findings)} finding(s), "
+            f"{unlinked_findings} without CMDB link."
         )
     except ExampleError as exc:
         sync_error = exc
@@ -572,11 +571,8 @@ def sync_cmdb_hosts(otobo: OtoboClient, hosts: list[dict[str, Any]]) -> list[Syn
         config_item_ids = otobo.config_item_search(host_id)
         if len(config_item_ids) > 1:
             raise ExampleError(f"OTOBO returned multiple config items for GVM host id {host_id}.")
-        if config_item_ids:
-            config_item_id = config_item_ids[0]
-            otobo.config_item_update(config_item_id, host)
-        else:
-            config_item_id = otobo.config_item_create(host)
+        existing_config_item_id = config_item_ids[0] if config_item_ids else None
+        config_item_id = otobo.config_item_upsert(host, existing_config_item_id)
         synced.append(SyncedConfigItem(id=config_item_id, host=host))
     return synced
 
@@ -597,6 +593,28 @@ def build_host_lookup(synced_hosts: list[SyncedConfigItem]) -> dict[str, str]:
                 )
             lookup[key] = synced.id
     return lookup
+
+
+def sync_findings(
+    otobo: OtoboClient,
+    config: Config,
+    findings: list[Finding],
+    host_lookup: dict[str, str],
+) -> int:
+    unlinked_findings = 0
+    for finding in findings:
+        config_item_id = host_lookup.get(finding.host)
+        if config_item_id is None:
+            unlinked_findings += 1
+            print(
+                "Warning: syncing finding "
+                f"{finding.key!r} without a CMDB link because host {finding.host!r} "
+                "is not present in synced GVM hosts yet. A later run will add the link "
+                "when the host asset is available.",
+                file=sys.stderr,
+            )
+        sync_ticket(otobo, config, finding, config_item_id)
+    return unlinked_findings
 
 
 def aggregate_findings(report_results: list[tuple[dict[str, Any], dict[str, Any]]]) -> list[Finding]:
@@ -629,7 +647,7 @@ def aggregate_findings(report_results: list[tuple[dict[str, Any], dict[str, Any]
     return list(findings.values())
 
 
-def sync_ticket(otobo: OtoboClient, config: Config, finding: Finding, config_item_id: str) -> None:
+def sync_ticket(otobo: OtoboClient, config: Config, finding: Finding, config_item_id: str | None) -> None:
     ticket_ids = otobo.ticket_search_by_finding_key(finding.key)
     if len(ticket_ids) > 1:
         raise ExampleError(f"OTOBO returned multiple tickets for finding key {finding.key}.")
@@ -641,7 +659,7 @@ def sync_ticket(otobo: OtoboClient, config: Config, finding: Finding, config_ite
     ticket = otobo.ticket_get(ticket_id)
     state = require_ticket_state(ticket, ticket_id)
     reopen = state in config.closed_states
-    otobo.ticket_update(ticket_id, finding, reopen)
+    otobo.ticket_update(ticket_id, finding, reopen, config_item_id)
 
 
 def format_article_body(finding: Finding) -> str:
@@ -759,6 +777,12 @@ def extract_required_id_list(response: dict[str, Any], keys: tuple[str, ...], co
     return extract_id_list(response, keys)
 
 
+def extract_search_id_list(response: dict[str, Any], keys: tuple[str, ...], context: str) -> list[str]:
+    if not response:
+        return []
+    return extract_required_id_list(response, keys, context)
+
+
 def validate_otobo_response(response: dict[str, Any], context: str) -> None:
     if "Success" in response and not is_success_marker(response["Success"]):
         raise ExampleError(f"{context} was rejected by OTOBO: Success={response['Success']!r}.")
@@ -864,6 +888,18 @@ def format_rfc3339(value: datetime) -> str:
 
 def dynamic_field_search_key(field_name: str) -> str:
     return f"DynamicField_{field_name}"
+
+
+def config_item_dynamic_field_key(field_name: str) -> str:
+    if field_name.startswith("DynamicField_"):
+        return field_name
+    return f"DynamicField_{field_name}"
+
+
+def add_config_item_dynamic_field(config_item: dict[str, Any], field_name: str, value: Any) -> None:
+    if field_name == "Name":
+        return
+    config_item[config_item_dynamic_field_key(field_name)] = value
 
 
 def quote_path(path: str) -> str:
