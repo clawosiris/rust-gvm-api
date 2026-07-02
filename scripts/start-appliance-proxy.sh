@@ -13,6 +13,11 @@ Environment:
   GVM_GATEWAY_BIND               Default: 127.0.0.1:18080
   GVM_APPLIANCE_GVMD_SOCKET      Default: /usr/share/gvm/gsad/web/gvmd.sock
   GVM_GATEWAY_LOCAL_GVMD_SOCKET  Default: /tmp/rust-gvm-api-gvmd-<user>-<ip>.sock
+
+Accepted input characters:
+  <ssh-user>                    [A-Za-z_][A-Za-z0-9_.-]*
+  <ip-address>                  [A-Za-z0-9][A-Za-z0-9.-]*
+  socket paths                  absolute paths containing only /A-Za-z0-9._-
 EOF
 }
 
@@ -20,6 +25,36 @@ require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "missing required command: $1" >&2
     exit 1
+  fi
+}
+
+invalid_value() {
+  local name="$1"
+  local expected="$2"
+  local value="$3"
+  echo "invalid ${name}: expected ${expected}, got ${value@Q}" >&2
+  exit 1
+}
+
+validate_ssh_user() {
+  local value="$1"
+  if [[ ! "${value}" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]]; then
+    invalid_value "ssh user" "[A-Za-z_][A-Za-z0-9_.-]*" "${value}"
+  fi
+}
+
+validate_appliance_host() {
+  local value="$1"
+  if [[ ! "${value}" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then
+    invalid_value "appliance host" "[A-Za-z0-9][A-Za-z0-9.-]*" "${value}"
+  fi
+}
+
+validate_socket_path() {
+  local name="$1"
+  local value="$2"
+  if [[ ! "${value}" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+    invalid_value "${name}" "an absolute path containing only /A-Za-z0-9._-" "${value}"
   fi
 }
 
@@ -36,6 +71,11 @@ REMOTE_SOCKET="${GVM_APPLIANCE_GVMD_SOCKET:-/usr/share/gvm/gsad/web/gvmd.sock}"
 SAFE_IP="${APPLIANCE_IP//[^A-Za-z0-9_.-]/_}"
 SAFE_USER="${SSH_USER//[^A-Za-z0-9_.-]/_}"
 LOCAL_SOCKET="${GVM_GATEWAY_LOCAL_GVMD_SOCKET:-/tmp/rust-gvm-api-gvmd-${SAFE_USER}-${SAFE_IP}.sock}"
+
+validate_appliance_host "${APPLIANCE_IP}"
+validate_ssh_user "${SSH_USER}"
+validate_socket_path "GVM_APPLIANCE_GVMD_SOCKET" "${REMOTE_SOCKET}"
+validate_socket_path "GVM_GATEWAY_LOCAL_GVMD_SOCKET" "${LOCAL_SOCKET}"
 
 BRIDGE_PID=""
 GATEWAY_PID=""
