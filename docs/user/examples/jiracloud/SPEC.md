@@ -139,7 +139,7 @@ operations:
 - Issue lookup: `jira.search_issues(...)`.
 - Issue creation: `jira.create_issue(...)`.
 - Issue update: `issue.update(...)`.
-- Issue comments: `jira.add_comment(...)`.
+- Issue comments: `jira.comments(...)` and `jira.add_comment(...)`.
 - Transitions: `jira.transitions(...)` and `jira.transition_issue(...)`.
 
 Use plain text strings for Jira issue descriptions and comments. The Python
@@ -183,8 +183,8 @@ project = "<JIRA_PROJECT_KEY>" AND "<JIRA_FINDING_KEY_FIELD>" = "<stable_finding
 ```
 
 Request only the fields needed by the script, such as `key`, `status`,
-`statuscategorychangedate`, `labels`, `summary`, the configured finding-key
-custom field, and optionally `priority`.
+`statuscategorychangedate`, `labels`, `summary`, `description`, the configured
+finding-key custom field, and optionally `priority`.
 
 If no issue matches the finding key, create a new issue. If exactly one issue
 matches, update that issue. If more than one issue matches, stop with an
@@ -237,8 +237,12 @@ For each finding:
    - Set `labels` to any configured static labels.
    - Set `priority` only when configured and accepted by the project screen.
 3. If an issue exists, update it.
-   - Add a new comment with `jira.add_comment(...)` containing the current
-     scan evidence as plain text.
+   - Read the issue description and existing comments.
+   - Add a new comment with `jira.add_comment(...)` only when the current scan
+     includes evidence rows that are not already present in the issue
+     description or previous comments.
+   - Keep update comments brief: state that the finding is still present and
+     list only the newly observed evidence rows.
    - Ensure the configured static labels are still present with
      `issue.update(...)` when they were removed.
    - Ensure the resolved finding-key custom field still equals the stable
@@ -264,7 +268,7 @@ after the issue was closed.
 
 ## Jira Issue Content
 
-Create issue descriptions and update comments with compact plain text that
+Create issue descriptions with compact plain text that
 contains:
 
 - Stable finding key.
@@ -276,6 +280,12 @@ contains:
 - Result IDs for grouped evidence.
 - CVEs when present.
 - Description text when present.
+
+Create update comments only for evidence rows not already visible in the issue
+description or previous comments. Update comments must be brief and contain:
+
+- A short statement that the finding is still present.
+- Report IDs, result IDs, and scan start timestamps for the new evidence.
 
 Keep generated Jira content concise. If grouped evidence is large, include a
 bounded number of result rows and print a warning that the Jira issue content

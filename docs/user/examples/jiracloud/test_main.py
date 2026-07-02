@@ -82,12 +82,14 @@ class FakeIssue:
         finding_key: str = "1.2.3|192.0.2.10|80/tcp",
         status: dict[str, Any] | None = None,
         statuscategorychangedate: str | None = "2026-07-01T10:00:00.000+0000",
+        description: str = "",
     ) -> None:
         self.key = key
         fields = {
             "labels": labels or [],
             "customfield_10042": finding_key,
             "status": status or {"name": "Done", "statusCategory": {"name": "Done"}},
+            "description": description,
         }
         if statuscategorychangedate is not None:
             fields["statuscategorychangedate"] = statuscategorychangedate
@@ -102,11 +104,17 @@ class FakeIssue:
         self.raw["fields"].update(fields)
 
 
+class FakeComment:
+    def __init__(self, body: str) -> None:
+        self.body = body
+
+
 class FakeJira:
     def __init__(self) -> None:
         self.search_results: list[Any] = []
         self.created_fields: dict[str, Any] | None = None
-        self.comments: list[tuple[Any, Any]] = []
+        self.added_comments: list[tuple[Any, Any]] = []
+        self.issue_comments: dict[str, list[FakeComment]] = {}
         self.transitioned: list[tuple[Any, str]] = []
         self.searches: list[dict[str, Any]] = []
         self.transition_values = [{"id": "31", "name": "Reopen"}]
@@ -156,7 +164,10 @@ class FakeJira:
         return FakeIssue()
 
     def add_comment(self, issue: Any, comment: Any) -> None:
-        self.comments.append((issue, comment))
+        self.added_comments.append((issue, comment))
+
+    def comments(self, issue: Any) -> list[FakeComment]:
+        return self.issue_comments.get(issue.key, [])
 
     def transitions(self, issue: Any) -> list[dict[str, str]]:
         return self.transition_values
@@ -395,9 +406,85 @@ class JiraClientTests(unittest.TestCase):
         issue_key = client.sync_finding(sample_finding())
 
         self.assertEqual("SEC-1", issue_key)
-        self.assertEqual(1, len(fake_jira.comments))
+        self.assertEqual(1, len(fake_jira.added_comments))
         self.assertEqual([], fake_jira.transitioned)
         self.assertIn({"labels": ["greenbone", "gvm"]}, closed_issue.updated_fields)
+
+    def test_sync_finding_skips_comment_when_description_already_contains_evidence(self) -> None:
+        """Repeat runs should not comment when the current evidence is already in the description."""
+        finding = sample_finding()
+        fake_jira = FakeJira()
+        issue = FakeIssue(
+            labels=["greenbone", "gvm"],
+            status={"name": "In Progress", "statusCategory": {"name": "In Progress"}},
+            description=jira_client.evidence_marker(finding.evidence[0]),
+        )
+        fake_jira.search_results = [issue]
+        client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
+        client.preflight()
+
+        client.sync_finding(finding)
+
+        self.assertEqual([], fake_jira.added_comments)
+
+    def test_sync_finding_skips_comment_when_prior_comment_already_contains_evidence(self) -> None:
+        """Evidence recorded in an earlier comment should not create duplicate comments."""
+        finding = sample_finding()
+        fake_jira = FakeJira()
+        issue = FakeIssue(
+            labels=["greenbone", "gvm"],
+            status={"name": "In Progress", "statusCategory": {"name": "In Progress"}},
+        )
+        fake_jira.search_results = [issue]
+        fake_jira.issue_comments[issue.key] = [FakeComment(jira_client.evidence_marker(finding.evidence[0]))]
+        client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
+        client.preflight()
+
+        client.sync_finding(finding)
+
+        self.assertEqual([], fake_jira.added_comments)
+
+    def test_sync_finding_comments_only_new_evidence(self) -> None:
+        """Update comments stay brief and mention only evidence not already on the issue."""
+        finding = sample_finding(evidence_count=2)
+        fake_jira = FakeJira()
+        issue = FakeIssue(
+            labels=["greenbone", "gvm"],
+            status={"name": "In Progress", "statusCategory": {"name": "In Progress"}},
+            description=jira_client.evidence_marker(finding.evidence[0]),
+        )
+        fake_jira.search_results = [issue]
+        client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
+        client.preflight()
+
+        client.sync_finding(finding)
+
+        self.assertEqual(1, len(fake_jira.added_comments))
+        comment = fake_jira.added_comments[0][1]
+        self.assertIn("Finding still present.", comment)
+        self.assertIn("New evidence:", comment)
+        self.assertIn("report report-1, result result-1", comment)
+        self.assertNotIn("report report-0, result result-0", comment)
+        self.assertNotIn("Severity:", comment)
+        self.assertNotIn("Description:", comment)
+
+    def test_sync_finding_updates_labels_when_comment_is_skipped(self) -> None:
+        """Field maintenance still runs when all current evidence was already recorded."""
+        finding = sample_finding()
+        fake_jira = FakeJira()
+        issue = FakeIssue(
+            labels=["greenbone"],
+            status={"name": "In Progress", "statusCategory": {"name": "In Progress"}},
+            description=jira_client.evidence_marker(finding.evidence[0]),
+        )
+        fake_jira.search_results = [issue]
+        client = jira_client.JiraIssueClient(utils.Config.load(write_env(self, base_env())), fake_jira)
+        client.preflight()
+
+        client.sync_finding(finding)
+
+        self.assertEqual([], fake_jira.added_comments)
+        self.assertIn({"labels": ["greenbone", "gvm"]}, issue.updated_fields)
 
     def test_sync_finding_reopens_when_latest_scan_is_newer_than_close_time(self) -> None:
         """Closed issues reopen only when a later scan observes the same finding again."""
@@ -410,7 +497,7 @@ class JiraClientTests(unittest.TestCase):
         issue_key = client.sync_finding(sample_finding())
 
         self.assertEqual("SEC-1", issue_key)
-        self.assertEqual(1, len(fake_jira.comments))
+        self.assertEqual(1, len(fake_jira.added_comments))
         self.assertEqual([("SEC-1", "31")], [(issue.key, transition_id) for issue, transition_id in fake_jira.transitioned])
         self.assertIn({"labels": ["greenbone", "gvm"]}, closed_issue.updated_fields)
 

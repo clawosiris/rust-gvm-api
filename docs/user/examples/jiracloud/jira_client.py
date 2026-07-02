@@ -174,7 +174,15 @@ class JiraIssueClient:
         key_value = escape_jql_value(finding_key)
         project = escape_jql_value(self.config.jira_project_key)
         jql = f'project = "{project}" AND "{field_name}" = "{key_value}" ORDER BY updated DESC'
-        fields = ["key", "status", "statuscategorychangedate", "labels", "summary", self.finding_field_id]
+        fields = [
+            "key",
+            "status",
+            "statuscategorychangedate",
+            "labels",
+            "summary",
+            "description",
+            self.finding_field_id,
+        ]
         if self.config.jira_priority:
             fields.append("priority")
         return self.search_issues(jql, max_results=2, fields=",".join(fields), context="Jira finding search")
@@ -199,9 +207,12 @@ class JiraIssueClient:
         return self._call("Jira issue create", self.jira.create_issue, fields=fields)
 
     def update_issue(self, issue: Any, finding: Any) -> None:
-        comment, truncated = finding_text(finding)
-        warn_if_truncated(finding, truncated)
-        self._call("Jira issue comment", self.jira.add_comment, issue, comment)
+        existing_text = self.issue_text(issue)
+        new_evidence = unseen_evidence(finding.evidence, existing_text)
+        if new_evidence:
+            comment, truncated = update_comment_text(new_evidence)
+            warn_if_truncated(finding, truncated)
+            self._call("Jira issue comment", self.jira.add_comment, issue, comment)
 
         updates = self.issue_field_updates(issue, finding)
         if updates:
@@ -209,6 +220,13 @@ class JiraIssueClient:
 
         if self.is_closed(issue) and finding.latest_seen > self.closed_at(issue):
             self.reopen_issue(issue)
+
+    def issue_text(self, issue: Any) -> str:
+        text_parts = [str(get_issue_field(issue, "description") or "")]
+        comments = self._call("Jira comment lookup", self.jira.comments, issue)
+        for comment in comments:
+            text_parts.append(comment_body(comment))
+        return "\n".join(part for part in text_parts if part)
 
     def issue_field_updates(self, issue: Any, finding: Any) -> dict[str, Any]:
         updates: dict[str, Any] = {}
@@ -303,15 +321,31 @@ def finding_text(finding: Any) -> tuple[str, bool]:
     evidence_items = []
     truncated = len(finding.evidence) > MAX_EVIDENCE_ROWS
     for index, evidence in enumerate(finding.evidence[:MAX_EVIDENCE_ROWS], start=1):
-        result = evidence.result
         evidence_items.append(
-            f"#{index}: report {evidence.report_id}, result {result.get('id') or 'n/a'}, "
-            f"scan start {evidence.scan_start.isoformat()}, severity {result.get('severity', 'n/a')}"
+            f"#{index}: {evidence_marker(evidence)}, severity {evidence.result.get('severity', 'n/a')}"
         )
     if truncated:
         evidence_items.append(f"Evidence truncated to {MAX_EVIDENCE_ROWS} of {len(finding.evidence)} result rows.")
     lines.extend(f"- {item}" for item in evidence_items)
     return "\n".join(lines), truncated
+
+
+def update_comment_text(evidence: list[Any]) -> tuple[str, bool]:
+    truncated = len(evidence) > MAX_EVIDENCE_ROWS
+    lines = ["Finding still present.", "", "New evidence:"]
+    lines.extend(f"- {evidence_marker(item)}" for item in evidence[:MAX_EVIDENCE_ROWS])
+    if truncated:
+        lines.append(f"- Evidence truncated to {MAX_EVIDENCE_ROWS} of {len(evidence)} new result rows.")
+    return "\n".join(lines), truncated
+
+
+def unseen_evidence(evidence: list[Any], existing_text: str) -> list[Any]:
+    return [item for item in evidence if evidence_marker(item) not in existing_text]
+
+
+def evidence_marker(evidence: Any) -> str:
+    result_id = evidence.result.get("id") or "n/a"
+    return f"report {evidence.report_id}, result {result_id}, scan start {evidence.scan_start.isoformat()}"
 
 
 def warn_if_truncated(finding: Any, truncated: bool) -> None:
@@ -423,6 +457,17 @@ def get_issue_field(issue: Any, name: str) -> Any:
         if isinstance(raw_fields, dict):
             return raw_fields.get(name)
     return None
+
+
+def comment_body(comment: Any) -> str:
+    body = value_from(comment, "body")
+    if body is None:
+        raw = getattr(comment, "raw", None)
+        if isinstance(raw, dict):
+            body = raw.get("body")
+    if body is None:
+        return ""
+    return str(body)
 
 
 def issue_key(issue: Any) -> str:

@@ -130,10 +130,11 @@ missing `nvt.oid`, `host`, or `port`, the script stops with an error.
 
 For each finding, the script searches Jira by the configured
 `GreenboneFindingKey` custom field. It creates a `Task` when no issue exists,
-adds a comment when the issue already exists, restores configured labels when
-needed, and reopens closed issues with `JIRA_REOPEN_TRANSITION_NAME` only when
-the finding's latest scan timestamp is newer than Jira's
-`statuscategorychangedate` for the issue.
+adds a brief comment only for evidence not already present in the issue
+description or previous comments, restores configured labels when needed, and
+reopens closed issues with `JIRA_REOPEN_TRANSITION_NAME` only when the
+finding's latest scan timestamp is newer than Jira's `statuscategorychangedate`
+for the issue.
 
 If you close an issue after the latest scan that observed the finding, the next
 run leaves the issue closed. A later scan must observe the same finding before
