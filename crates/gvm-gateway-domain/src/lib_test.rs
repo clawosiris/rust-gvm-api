@@ -203,6 +203,8 @@ fn modify_target_input_default() {
     assert!(input.name.is_none());
     assert!(input.comment.is_none());
     assert!(input.hosts.is_none());
+    assert!(input.reverse_lookup_only.is_none());
+    assert!(input.reverse_lookup_unify.is_none());
     assert!(input.ssh_credential_id.is_none());
     assert!(input.smb_credential_id.is_none());
     assert!(input.esxi_credential_id.is_none());

@@ -180,8 +180,8 @@ impl TargetPort for GvmdAdapter {
                         comment: input.comment,
                         hosts: input.hosts.unwrap_or_default(),
                         exclude_hosts: input.exclude_hosts.unwrap_or_default(),
-                        reverse_lookup_only: None,
-                        reverse_lookup_unify: None,
+                        reverse_lookup_only: input.reverse_lookup_only,
+                        reverse_lookup_unify: input.reverse_lookup_unify,
                         alive_test: input
                             .alive_test
                             .as_deref()

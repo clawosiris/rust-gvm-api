@@ -111,6 +111,10 @@ pub(crate) struct ModifyTargetDoc {
     alive_test: Option<AliveTestDoc>,
     #[serde(rename = "portListId")]
     port_list_id: Option<Uuid>,
+    #[serde(rename = "reverseLookupOnly")]
+    reverse_lookup_only: Option<bool>,
+    #[serde(rename = "reverseLookupUnify")]
+    reverse_lookup_unify: Option<bool>,
     /// SSH credential binding. Omitted or null leaves the binding unchanged;
     /// clearing credential bindings is not supported by this request shape.
     #[serde(rename = "sshCredentialId")]

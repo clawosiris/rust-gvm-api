@@ -353,7 +353,7 @@ async fn gvmd_adapter_create_target() {
 async fn gvmd_adapter_get_target() {
     let (adapter, server, token) = create_mock_adapter().await;
 
-    // Create a target first
+    // Create a target first so get can read an existing target path.
     let input = CreateTargetInput {
         name: "Get Me".to_string(),
         comment: None,
@@ -413,8 +413,10 @@ async fn gvmd_adapter_modify_target() {
         snmp_credential_id: None,
     };
     let id = adapter.create_target(&token, input).await.unwrap();
+    server.clear_history();
 
-    // Modify the target
+    // Regression coverage for issue #309: reverse lookup flags supplied on
+    // modify must reach rust-gvm's typed modify_target builder.
     let modify_input = ModifyTargetInput {
         name: Some("After Modify".to_string()),
         comment: Some("Updated".to_string()),
@@ -422,6 +424,8 @@ async fn gvmd_adapter_modify_target() {
         exclude_hosts: None,
         alive_test: None,
         port_list_id: None,
+        reverse_lookup_only: Some(true),
+        reverse_lookup_unify: Some(false),
         ssh_credential_id: None,
         smb_credential_id: None,
         esxi_credential_id: None,
@@ -432,6 +436,14 @@ async fn gvmd_adapter_modify_target() {
     assert!(result.is_ok());
     let target = result.unwrap();
     assert_eq!(target.name, "After Modify");
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "modify_target")
+        .expect("modify_target command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<reverse_lookup_only>1</reverse_lookup_only>"));
+    assert!(xml.contains("<reverse_lookup_unify>0</reverse_lookup_unify>"));
 
     server.shutdown().await;
 }

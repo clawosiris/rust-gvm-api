@@ -78,6 +78,8 @@ fn generated_openapi_preserves_key_schema_fields() {
     assert!(create_target_required.contains("hosts"));
 
     let modify_target_props = &generated["components"]["schemas"]["ModifyTarget"]["properties"];
+    assert!(modify_target_props.get("reverseLookupOnly").is_some());
+    assert!(modify_target_props.get("reverseLookupUnify").is_some());
     assert!(modify_target_props.get("sshCredentialId").is_some());
     assert!(modify_target_props.get("smbCredentialId").is_some());
     assert!(modify_target_props.get("esxiCredentialId").is_some());
