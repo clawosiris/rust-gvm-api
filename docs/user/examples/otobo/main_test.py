@@ -2,13 +2,38 @@ from __future__ import annotations
 
 import io
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import main as otobo
+import gateway
+import otobo as otobo_client
+import utils
+import workflow
+
+
+otobo = SimpleNamespace(
+    Config=utils.Config,
+    Evidence=workflow.Evidence,
+    ExampleError=utils.ExampleError,
+    Finding=workflow.Finding,
+    GvmClient=gateway.GvmClient,
+    HttpJsonClient=utils.HttpJsonClient,
+    OtoboClient=otobo_client.OtoboClient,
+    SyncedConfigItem=workflow.SyncedConfigItem,
+    aggregate_findings=workflow.aggregate_findings,
+    build_host_lookup=workflow.build_host_lookup,
+    config_item_link=otobo_client.config_item_link,
+    format_article_body=otobo_client.format_article_body,
+    format_http_failure=utils.format_http_failure,
+    format_rfc3339=utils.format_rfc3339,
+    sync_cmdb_hosts=workflow.sync_cmdb_hosts,
+    sync_findings=workflow.sync_findings,
+    sync_ticket=workflow.sync_ticket,
+)
 
 
 def base_env(**overrides: str) -> dict[str, str]:
