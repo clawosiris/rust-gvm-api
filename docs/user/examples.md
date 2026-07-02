@@ -58,6 +58,21 @@ Sample input for `import-users.sh`.
 The file contains `login,roles` rows and demonstrates assigning one role
 (`alice,User`) and multiple roles (`bob,User|Observer`).
 
+### `otobo/`
+
+Synchronizes recent Greenbone scan findings into OTOBO.
+
+The Python example reads GVM hosts, recent reports, and report results through
+the REST API, syncs hosts to OTOBO CMDB config items, and creates or updates one
+OTOBO ticket per stable finding key. It requires OTOBO Generic Interface and
+CMDB setup; see `examples/otobo/README.md` for the required `.env` values and
+OTOBO configuration.
+
+```bash
+cd examples/otobo
+uv run python main.py
+```
+
 ## 1. Create a session
 
 Authenticate with HTTP Basic credentials and capture the returned bearer token:
