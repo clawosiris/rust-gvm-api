@@ -73,6 +73,22 @@ cd examples/otobo
 uv run python main.py
 ```
 
+### `jiracloud/`
+
+Synchronizes recent Greenbone scan findings into Jira Cloud.
+
+The Python example reads recent reports and report results through the REST
+API, groups results into stable finding keys, and creates or updates one Jira
+Cloud issue per finding. It uses the Python Jira SDK, requires a Jira custom
+field for `GreenboneFindingKey`, and does not use Jira Assets or CMDB
+integration; see `examples/jiracloud/README.md` for the required `.env` values
+and Jira Cloud setup.
+
+```bash
+cd examples/jiracloud
+uv run python main.py
+```
+
 ## 1. Create a session
 
 Authenticate with HTTP Basic credentials and capture the returned bearer token:

@@ -1,0 +1,9 @@
+[project]
+name = "jiracloud"
+version = "0.1.0"
+description = "Synchronize Greenbone findings into Jira Cloud issues"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "jira>=3.10,<4",
+]
