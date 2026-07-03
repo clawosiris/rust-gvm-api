@@ -77,7 +77,7 @@ That session/connection model is shared architecture for REST today and planned 
 
 ### Prerequisites
 
-- Rust 1.75.0+ (see `rust-toolchain.toml`)
+- Rust 1.88.0+ (see `rust-toolchain.toml`)
 - A running GVM/gvmd instance (for integration testing)
 - [rust-gvm](https://github.com/clawosiris/rust-gvm) (pulled as a git dependency)
 
