@@ -151,6 +151,46 @@ async fn draining_router_keeps_readiness_probe_available() {
 }
 
 #[tokio::test]
+async fn reserved_current_gvmd_routes_still_require_authentication() {
+    // Current-GVMD route placeholders are protected API surface, not public
+    // discovery endpoints, even while response typing is still blocked upstream.
+    let app = build_router(static_gateway_service());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/oci-image-targets")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn reserved_current_gvmd_routes_explain_typed_response_gap() {
+    // Until rust-gvm exposes typed response models for these new resources, the
+    // gateway must return an explicit capability error instead of parsing raw
+    // GMP XML locally.
+    let app = build_router(static_gateway_service());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/reports/123e4567-e89b-12d3-a456-426614174000/hosts")
+                .header("authorization", "Bearer placeholder")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+}
+
+#[tokio::test]
 async fn request_trace_context_returns_trace_headers_without_echoing_baggage() {
     let _trace_lock = lock_tracing().await;
     let logs = capture_tracing();
