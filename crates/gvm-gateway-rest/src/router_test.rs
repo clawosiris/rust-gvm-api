@@ -9,7 +9,7 @@ use std::{
 
 use axum::{
     body::Body,
-    http::{Request, StatusCode},
+    http::{header::CONTENT_TYPE, Request, StatusCode},
 };
 use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use tower::ServiceExt;
@@ -188,6 +188,27 @@ async fn reserved_current_gvmd_routes_explain_typed_response_gap() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(
+        response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("application/problem+json")
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let problem: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(problem["code"], serde_json::json!("not_implemented"));
+    assert_eq!(problem["status"], serde_json::json!(501));
+    assert_eq!(
+        problem["detail"],
+        serde_json::json!(
+            "This route is reserved for the current GVMD typed surface, but rust-gvm does not yet provide the typed response model required by rust-gvm-api's no-raw-GMP-XML policy."
+        )
+    );
 }
 
 #[tokio::test]

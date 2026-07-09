@@ -7,32 +7,46 @@ paths:
   /agents:
     get: { operationId: getAgents, tags: [Agents], summary: List agents, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /agents/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getAgent, tags: [Agents], summary: Get an agent, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    put: { operationId: modifyAgent, tags: [Agents], summary: Modify agents, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    delete: { operationId: deleteAgent, tags: [Agents], summary: Delete agents, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    put: { operationId: modifyAgent, tags: [Agents], summary: Modify an agent, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    delete: { operationId: deleteAgent, tags: [Agents], summary: Delete an agent, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /agents/sync:
     post: { operationId: syncAgents, tags: [Agents], summary: Synchronize agents, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /agents/{id}/support-bundle:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getAgentSupportBundle, tags: [Agents], summary: Get an agent support bundle, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /agent-control-scan-configs/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     put: { operationId: modifyAgentControlScanConfig, tags: [Agents], summary: Modify agent-control scan config defaults, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /scanners/{id}/agent-installer-instruction:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getAgentInstallerInstruction, tags: [Agents], summary: Get agent installer instructions, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
 
   /agent-groups:
     get: { operationId: getAgentGroups, tags: [Agent Groups], summary: List agent groups, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     post: { operationId: createAgentGroup, tags: [Agent Groups], summary: Create an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /agent-groups/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getAgentGroup, tags: [Agent Groups], summary: Get an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     put: { operationId: modifyAgentGroup, tags: [Agent Groups], summary: Modify an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     delete: { operationId: deleteAgentGroup, tags: [Agent Groups], summary: Delete an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /agent-groups/{id}/clone:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     post: { operationId: cloneAgentGroup, tags: [Agent Groups], summary: Clone an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
 
   /assets:
     get: { operationId: getAssets, tags: [Assets], summary: List generic assets, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     post: { operationId: createAsset, tags: [Assets], summary: Create a generic asset, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /assets/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getAsset, tags: [Assets], summary: Get a generic asset, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     put: { operationId: modifyAsset, tags: [Assets], summary: Modify a generic asset, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     delete: { operationId: deleteAsset, tags: [Assets], summary: Delete a generic asset, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
@@ -41,46 +55,70 @@ paths:
     get: { operationId: getConfigs, tags: [Configs], summary: List generic configs, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     post: { operationId: createConfig, tags: [Configs], summary: Create a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /configs/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getConfig, tags: [Configs], summary: Get a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     put: { operationId: modifyConfig, tags: [Configs], summary: Modify a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     delete: { operationId: deleteConfig, tags: [Configs], summary: Delete a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /configs/{id}/clone:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     post: { operationId: cloneConfig, tags: [Configs], summary: Clone a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
 
   /oci-image-targets:
     get: { operationId: getOciImageTargets, tags: [OCI Image Targets], summary: List OCI image targets, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     post: { operationId: createOciImageTarget, tags: [OCI Image Targets], summary: Create an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /oci-image-targets/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getOciImageTarget, tags: [OCI Image Targets], summary: Get an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     put: { operationId: modifyOciImageTarget, tags: [OCI Image Targets], summary: Modify an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     delete: { operationId: deleteOciImageTarget, tags: [OCI Image Targets], summary: Delete an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /oci-image-targets/{id}/clone:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     post: { operationId: cloneOciImageTarget, tags: [OCI Image Targets], summary: Clone an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
 
   /web-application-targets:
     get: { operationId: getWebApplicationTargets, tags: [Web Application Targets], summary: List web application targets, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     post: { operationId: createWebApplicationTarget, tags: [Web Application Targets], summary: Create a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /web-application-targets/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getWebApplicationTarget, tags: [Web Application Targets], summary: Get a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     put: { operationId: modifyWebApplicationTarget, tags: [Web Application Targets], summary: Modify a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     delete: { operationId: deleteWebApplicationTarget, tags: [Web Application Targets], summary: Delete a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /web-application-targets/{id}/clone:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     post: { operationId: cloneWebApplicationTarget, tags: [Web Application Targets], summary: Clone a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
 
   /reports/{id}/hosts:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getReportHosts, tags: [Reports], summary: Get report hosts, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /reports/{id}/ports:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getReportPorts, tags: [Reports], summary: Get report ports, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /reports/{id}/applications:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getReportApplications, tags: [Reports], summary: Get report applications, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /reports/{id}/operating-systems:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getReportOperatingSystems, tags: [Reports], summary: Get report operating systems, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /reports/{id}/cves:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getReportCves, tags: [Reports], summary: Get report CVEs, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
 
   /operating-systems:
     get: { operationId: getOperatingSystems, tags: [Operating Systems], summary: List operating systems, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
   /operating-systems/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
     get: { operationId: getOperatingSystem, tags: [Operating Systems], summary: Get an operating system, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     put: { operationId: modifyOperatingSystem, tags: [Operating Systems], summary: Modify an operating system, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     delete: { operationId: deleteOperatingSystem, tags: [Operating Systems], summary: Delete an operating system, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
