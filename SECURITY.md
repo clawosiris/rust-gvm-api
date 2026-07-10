@@ -55,7 +55,7 @@ Instead, use **GitHub Private Vulnerability Reporting**:
 
 - `cargo clippy` with `-D warnings` in CI
 - `#[deny(unsafe_code)]` — no unsafe blocks in any crate
-- MSRV tested (currently Rust 1.75.0)
+- MSRV tested (currently Rust 1.88.0)
 - SBOM (CycloneDX) generated on every release and nightly build
 
 ## Changelog
