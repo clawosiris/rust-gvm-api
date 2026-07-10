@@ -57,6 +57,18 @@ tags:
     description: Session lifecycle (create, inspect, destroy)
   - name: Targets
     description: Scan target management
+  - name: Agents
+    description: Current GVMD agent management
+  - name: Agent Groups
+    description: Current GVMD agent-group management
+  - name: Assets
+    description: Generic current GVMD asset management
+  - name: Configs
+    description: Generic current GVMD config management
+  - name: OCI Image Targets
+    description: OCI image target management
+  - name: Web Application Targets
+    description: Web application target management
   - name: Tasks
     description: Scan task management and control
   - name: Reports
@@ -71,6 +83,8 @@ tags:
     description: Scan configuration management
   - name: Scanners
     description: Scanner information
+  - name: Operating Systems
+    description: Operating-system asset management
   - name: Alerts
     description: Alert management
   - name: Schedules
@@ -119,6 +133,46 @@ paths:
     $ref: './targets.yaml#/paths/~1targets'
   /targets/{id}:
     $ref: './targets.yaml#/paths/~1targets~1{id}'
+  /agents:
+    $ref: './emerging.yaml#/paths/~1agents'
+  /agents/{id}:
+    $ref: './emerging.yaml#/paths/~1agents~1{id}'
+  /agents/sync:
+    $ref: './emerging.yaml#/paths/~1agents~1sync'
+  /agents/{id}/support-bundle:
+    $ref: './emerging.yaml#/paths/~1agents~1{id}~1support-bundle'
+  /agent-control-scan-configs/{id}:
+    $ref: './emerging.yaml#/paths/~1agent-control-scan-configs~1{id}'
+  /scanners/{id}/agent-installer-instruction:
+    $ref: './emerging.yaml#/paths/~1scanners~1{id}~1agent-installer-instruction'
+  /agent-groups:
+    $ref: './emerging.yaml#/paths/~1agent-groups'
+  /agent-groups/{id}:
+    $ref: './emerging.yaml#/paths/~1agent-groups~1{id}'
+  /agent-groups/{id}/clone:
+    $ref: './emerging.yaml#/paths/~1agent-groups~1{id}~1clone'
+  /assets:
+    $ref: './emerging.yaml#/paths/~1assets'
+  /assets/{id}:
+    $ref: './emerging.yaml#/paths/~1assets~1{id}'
+  /configs:
+    $ref: './emerging.yaml#/paths/~1configs'
+  /configs/{id}:
+    $ref: './emerging.yaml#/paths/~1configs~1{id}'
+  /configs/{id}/clone:
+    $ref: './emerging.yaml#/paths/~1configs~1{id}~1clone'
+  /oci-image-targets:
+    $ref: './emerging.yaml#/paths/~1oci-image-targets'
+  /oci-image-targets/{id}:
+    $ref: './emerging.yaml#/paths/~1oci-image-targets~1{id}'
+  /oci-image-targets/{id}/clone:
+    $ref: './emerging.yaml#/paths/~1oci-image-targets~1{id}~1clone'
+  /web-application-targets:
+    $ref: './emerging.yaml#/paths/~1web-application-targets'
+  /web-application-targets/{id}:
+    $ref: './emerging.yaml#/paths/~1web-application-targets~1{id}'
+  /web-application-targets/{id}/clone:
+    $ref: './emerging.yaml#/paths/~1web-application-targets~1{id}~1clone'
   /tasks:
     $ref: './tasks.yaml#/paths/~1tasks'
   /tasks/{id}:
@@ -145,6 +199,16 @@ paths:
     $ref: './reports.yaml#/paths/~1reports~1{id}~1errors'
   /reports/{id}/closed-cves:
     $ref: './reports.yaml#/paths/~1reports~1{id}~1closed-cves'
+  /reports/{id}/hosts:
+    $ref: './emerging.yaml#/paths/~1reports~1{id}~1hosts'
+  /reports/{id}/ports:
+    $ref: './emerging.yaml#/paths/~1reports~1{id}~1ports'
+  /reports/{id}/applications:
+    $ref: './emerging.yaml#/paths/~1reports~1{id}~1applications'
+  /reports/{id}/operating-systems:
+    $ref: './emerging.yaml#/paths/~1reports~1{id}~1operating-systems'
+  /reports/{id}/cves:
+    $ref: './emerging.yaml#/paths/~1reports~1{id}~1cves'
   /results:
     $ref: './results.yaml#/paths/~1results'
   /results/{id}:
@@ -161,6 +225,10 @@ paths:
     $ref: './scanners.yaml#/paths/~1scanners'
   /scanners/{id}:
     $ref: './scanners.yaml#/paths/~1scanners~1{id}'
+  /operating-systems:
+    $ref: './emerging.yaml#/paths/~1operating-systems'
+  /operating-systems/{id}:
+    $ref: './emerging.yaml#/paths/~1operating-systems~1{id}'
   /alerts:
     $ref: './alerts.yaml#/paths/~1alerts'
   /alerts/{id}:
