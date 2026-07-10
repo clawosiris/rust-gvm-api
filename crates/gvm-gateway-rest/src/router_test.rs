@@ -9,7 +9,7 @@ use std::{
 
 use axum::{
     body::Body,
-    http::{Request, StatusCode},
+    http::{header::CONTENT_TYPE, Request, StatusCode},
 };
 use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use tower::ServiceExt;
@@ -148,6 +148,67 @@ async fn draining_router_keeps_readiness_probe_available() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn reserved_current_gvmd_routes_still_require_authentication() {
+    // Current-GVMD route placeholders are protected API surface, not public
+    // discovery endpoints, even while response typing is still blocked upstream.
+    let app = build_router(static_gateway_service());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/oci-image-targets")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn reserved_current_gvmd_routes_explain_typed_response_gap() {
+    // Until rust-gvm exposes typed response models for these new resources, the
+    // gateway must return an explicit capability error instead of parsing raw
+    // GMP XML locally.
+    let app = build_router(static_gateway_service());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/reports/123e4567-e89b-12d3-a456-426614174000/hosts")
+                .header("authorization", "Bearer placeholder")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(
+        response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("application/problem+json")
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let problem: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(problem["code"], serde_json::json!("not_implemented"));
+    assert_eq!(problem["status"], serde_json::json!(501));
+    assert_eq!(
+        problem["detail"],
+        serde_json::json!(
+            "This route is reserved for the current GVMD typed surface, but rust-gvm does not yet provide the typed response model required by rust-gvm-api's no-raw-GMP-XML policy."
+        )
+    );
 }
 
 #[tokio::test]
