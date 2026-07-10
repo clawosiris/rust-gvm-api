@@ -10,6 +10,7 @@ pub mod alerts;
 pub(crate) mod auth_policy;
 pub mod credentials;
 pub(crate) mod dto;
+pub mod emerging;
 pub mod error;
 pub mod feeds;
 pub(crate) mod handler;
