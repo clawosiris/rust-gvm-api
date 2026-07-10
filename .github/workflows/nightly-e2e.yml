@@ -5,9 +5,9 @@ on:
   schedule:
     - cron: "0 3 * * *"
   push:
-    branches: [main]
+    branches: [main, devel]
   pull_request:
-    branches: [main]
+    branches: [main, devel]
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
