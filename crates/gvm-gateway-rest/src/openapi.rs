@@ -189,6 +189,30 @@ fn openapi_tags() -> Value {
             "description": "Scan target management"
         },
         {
+            "name": "Agents",
+            "description": "Current GVMD agent management"
+        },
+        {
+            "name": "Agent Groups",
+            "description": "Current GVMD agent-group management"
+        },
+        {
+            "name": "Assets",
+            "description": "Generic current GVMD asset management"
+        },
+        {
+            "name": "Configs",
+            "description": "Generic current GVMD config management"
+        },
+        {
+            "name": "OCI Image Targets",
+            "description": "OCI image target management"
+        },
+        {
+            "name": "Web Application Targets",
+            "description": "Web application target management"
+        },
+        {
             "name": "Alerts",
             "description": "Alert management"
         },
@@ -291,6 +315,10 @@ fn openapi_tags() -> Value {
         {
             "name": "Scanners",
             "description": "Scanner information"
+        },
+        {
+            "name": "Operating Systems",
+            "description": "Operating-system asset management"
         },
         {
             "name": "System",
