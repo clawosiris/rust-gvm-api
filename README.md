@@ -60,7 +60,7 @@ See [Gateway Architecture](docs/gateway-architecture.md) for the authoritative a
 
 ## Status
 
-The repository now contains a working REST gateway baseline in the `gvm-gateway*` workspace crates, including container/runtime packaging, shutdown control, transport-security modes, and tracing. gRPC and MCP remain planned surfaces; their specs and analysis docs should be read as forward-looking design material rather than shipped runtime behavior.
+The repository now contains a working REST gateway baseline in the `gvm-gateway*` workspace crates, including container/runtime packaging, shutdown control, transport-security modes, and tracing. gRPC and MCP remain planned surfaces; their specs and roadmap should be read as forward-looking design material rather than shipped runtime behavior.
 
 ## Shared Session Model
 
@@ -220,7 +220,6 @@ Useful follow-up commands:
 - [Gateway Architecture](docs/gateway-architecture.md)
 - [GMP API Proxy Analysis](docs/gmp-api-proxy-analysis.md)
 - [Proxy Access Control Analysis](docs/proxy-access-control-analysis.md)
-- [MCP Gateway Surface Analysis](docs/mcp-gateway-surface-analysis.md)
 - [MCP Implementation Roadmap](docs/mcp-implementation-roadmap.md)
 
 ## License

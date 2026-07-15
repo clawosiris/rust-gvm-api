@@ -104,7 +104,7 @@ The shared core owns:
 - error normalization
 - audit events
 
-See [MCP Gateway Surface Analysis](mcp-gateway-surface-analysis.md) for the explicit parity rule across public surfaces.
+See [MCP Implementation Roadmap](mcp-implementation-roadmap.md) for the explicit MCP parity rule and implementation sequence.
 
 ## 6. Session and Connection Model
 
