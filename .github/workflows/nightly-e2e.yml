@@ -5,9 +5,9 @@ on:
   schedule:
     - cron: "0 3 * * *"
   push:
-    branches: [main]
+    branches: [main, devel]
   pull_request:
-    branches: [main]
+    branches: [main, devel]
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
@@ -29,8 +29,31 @@ env:
   GVM_GATEWAY_E2E_POLL_INTERVAL_SECS: "10"
 
 jobs:
+  classify-changes:
+    name: Classify Changes
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      e2e_required: ${{ steps.classify.outputs.e2e_required }}
+      target_branch: ${{ steps.classify.outputs.target_branch }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Classify changed files
+        id: classify
+        env:
+          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: .github/scripts/classify-ci-changes.sh
+
   rest-discovery-scan:
     name: REST Discovery Scan E2E
+    needs: classify-changes
+    if: needs.classify-changes.outputs.e2e_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
@@ -58,3 +81,69 @@ jobs:
       - name: Tear down compose stack
         if: always()
         run: ./scripts/compose-dev.sh down -v
+
+  rest-discovery-scan-main-gate:
+    name: REST Discovery Scan E2E (main)
+    if: >-
+      always() &&
+      ((github.event_name == 'pull_request' && github.base_ref == 'main') ||
+       (github.event_name != 'pull_request' && github.ref_name == 'main'))
+    needs: [classify-changes, rest-discovery-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate main E2E gate
+        run: |
+          echo "docs_only=${{ needs.classify-changes.outputs.docs_only }}"
+          echo "e2e_required=${{ needs.classify-changes.outputs.e2e_required }}"
+          echo "scan_result=${{ needs.rest-discovery-scan.result }}"
+
+          if [[ "${{ needs.classify-changes.result }}" != "success" ]]; then
+            echo "Change classification failed; failing closed." >&2
+            exit 1
+          fi
+
+          if [[ "${{ needs.classify-changes.outputs.e2e_required }}" != "true" ]]; then
+            echo "Docs-only change; expensive E2E scan is not required."
+            exit 0
+          fi
+
+          if [[ "${{ needs.rest-discovery-scan.result }}" == "success" ]]; then
+            echo "Main E2E scan passed."
+            exit 0
+          fi
+
+          echo "Main E2E scan did not pass." >&2
+          exit 1
+
+  rest-discovery-scan-devel-gate:
+    name: REST Discovery Scan E2E (devel)
+    if: >-
+      always() &&
+      ((github.event_name == 'pull_request' && github.base_ref == 'devel') ||
+       (github.event_name != 'pull_request' && github.ref_name == 'devel'))
+    needs: [classify-changes, rest-discovery-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate devel E2E gate
+        run: |
+          echo "docs_only=${{ needs.classify-changes.outputs.docs_only }}"
+          echo "e2e_required=${{ needs.classify-changes.outputs.e2e_required }}"
+          echo "scan_result=${{ needs.rest-discovery-scan.result }}"
+
+          if [[ "${{ needs.classify-changes.result }}" != "success" ]]; then
+            echo "Change classification failed; failing closed." >&2
+            exit 1
+          fi
+
+          if [[ "${{ needs.classify-changes.outputs.e2e_required }}" != "true" ]]; then
+            echo "Docs-only change; expensive E2E scan is not required."
+            exit 0
+          fi
+
+          if [[ "${{ needs.rest-discovery-scan.result }}" == "success" ]]; then
+            echo "Devel E2E scan passed."
+            exit 0
+          fi
+
+          echo "Devel E2E scan did not pass." >&2
+          exit 1

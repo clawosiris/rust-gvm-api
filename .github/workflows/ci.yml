@@ -2,27 +2,40 @@ name: CI
 
 on:
   push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
-      - '.github/ISSUE_TEMPLATE/**'
+    branches: [main, devel]
   pull_request:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
-      - '.github/ISSUE_TEMPLATE/**'
+    branches: [main, devel]
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
+  classify-changes:
+    name: Classify Changes
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      ci_required: ${{ steps.classify.outputs.ci_required }}
+      target_branch: ${{ steps.classify.outputs.target_branch }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Classify changed files
+        id: classify
+        env:
+          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: .github/scripts/classify-ci-changes.sh
+
   fmt:
     name: Format
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -33,6 +46,8 @@ jobs:
 
   clippy:
     name: Clippy
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -48,6 +63,8 @@ jobs:
 
   test:
     name: Test (${{ matrix.rust }})
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -64,6 +81,8 @@ jobs:
 
   test-features:
     name: Test (all features)
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -75,6 +94,8 @@ jobs:
 
   doc:
     name: Documentation
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     env:
       RUSTDOCFLAGS: "-Dwarnings"
@@ -88,6 +109,8 @@ jobs:
 
   docs-package:
     name: User Docs Package
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -115,6 +138,8 @@ jobs:
 
   deny:
     name: Cargo Deny
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -130,6 +155,8 @@ jobs:
 
   coverage:
     name: Coverage
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -148,6 +175,8 @@ jobs:
 
   msrv:
     name: MSRV Check
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -161,6 +190,8 @@ jobs:
 
   package:
     name: Package (${{ matrix.packager }}, ${{ matrix.package_arch }})
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -196,6 +227,8 @@ jobs:
 
   container:
     name: Container
+    needs: classify-changes
+    if: needs.classify-changes.outputs.ci_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -235,9 +268,14 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [fmt, clippy, test, test-features, doc, docs-package, deny, coverage, msrv, package, container]
+    needs: [classify-changes, fmt, clippy, test, test-features, doc, docs-package, deny, coverage, msrv, package, container]
     runs-on: ubuntu-latest
     steps:
+      - name: Summarize docs-only decision
+        run: |
+          echo "docs_only=${{ needs.classify-changes.outputs.docs_only }}"
+          echo "ci_required=${{ needs.classify-changes.outputs.ci_required }}"
+          echo "target_branch=${{ needs.classify-changes.outputs.target_branch }}"
       - name: Check upstream job results
         run: |
           if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ||
