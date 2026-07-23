@@ -86,6 +86,21 @@ paths:
               schema:
                 type: object
 
+  /docs:
+    get:
+      operationId: getApiDocumentation
+      tags: [System]
+      summary: Browse interactive API documentation
+      description: Returns a Redoc browser UI that loads the generated contract from `/api/v1/openapi.json`.
+      security: []
+      responses:
+        "200":
+          description: Interactive API documentation
+          content:
+            text/html:
+              schema:
+                type: string
+
 components:
   schemas:
     HealthStatus:

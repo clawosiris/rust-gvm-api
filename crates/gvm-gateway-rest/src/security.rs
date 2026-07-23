@@ -224,6 +224,14 @@ pub(crate) fn apply_security_headers(
         HeaderName::from_static("referrer-policy"),
         HeaderValue::from_static("no-referrer"),
     );
+    if path == "/api/v1/docs" {
+        headers.insert(
+            HeaderName::from_static("content-security-policy"),
+            HeaderValue::from_static(
+                "default-src 'none'; base-uri 'none'; script-src https://cdn.redoc.ly; connect-src 'self'; style-src 'unsafe-inline'; img-src data: https:; font-src data:; frame-ancestors 'none'; form-action 'none'",
+            ),
+        );
+    }
     if path.starts_with("/api/") {
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }

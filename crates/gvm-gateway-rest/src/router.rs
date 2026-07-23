@@ -40,6 +40,7 @@ use crate::{
         get_credential, get_credential_docs, list_credential_stores, list_credential_stores_docs,
         list_credentials, list_credentials_docs, update_credential, update_credential_docs,
     },
+    docs::{api_docs, api_docs_docs},
     emerging::{
         clone_agent_group_docs, clone_config_docs, clone_oci_image_target_docs,
         clone_web_application_target_docs, create_agent_group_docs, create_asset_docs,
@@ -199,6 +200,7 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route("/health", get_with(health, health_docs))
         .api_route("/ready", get_with(ready, ready_docs))
         .api_route("/api/v1/version", get_with(version, version_docs))
+        .api_route("/api/v1/docs", get_with(api_docs, api_docs_docs))
         // Session lifecycle
         .api_route(
             "/api/v1/session",

@@ -24,7 +24,10 @@ pub(crate) fn classify_runtime_route(method: &Method, path: &str) -> Option<Rest
         return Some(RestRouteAuthPolicy::Public);
     }
 
-    if matches!(path, "/api/v1/version" | "/api/v1/openapi.json") {
+    if matches!(
+        path,
+        "/api/v1/version" | "/api/v1/openapi.json" | "/api/v1/docs"
+    ) {
         return Some(RestRouteAuthPolicy::Public);
     }
 
@@ -49,6 +52,7 @@ pub(crate) fn runtime_path_from_openapi_path(path: &str) -> String {
         "/health" | "/ready" => path.to_string(),
         "/version" => "/api/v1/version".to_string(),
         "/openapi.json" => "/api/v1/openapi.json".to_string(),
+        "/docs" => "/api/v1/docs".to_string(),
         _ => format!("/api/v1{path}"),
     }
 }

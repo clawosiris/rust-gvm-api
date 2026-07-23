@@ -170,6 +170,41 @@ async fn reserved_current_gvmd_routes_still_require_authentication() {
 }
 
 #[tokio::test]
+async fn public_api_docs_return_html_for_the_generated_openapi_contract() {
+    // The browser entry point is deliberately public like its OpenAPI source;
+    // this also guards against accidentally embedding a second contract.
+    let app = build_router(static_gateway_service());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/docs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(CONTENT_TYPE).unwrap(),
+        "text/html; charset=utf-8"
+    );
+    assert_eq!(
+        response.headers().get("content-security-policy").unwrap(),
+        "default-src 'none'; base-uri 'none'; script-src https://cdn.redoc.ly; connect-src 'self'; style-src 'unsafe-inline'; img-src data: https:; font-src data:; frame-ancestors 'none'; form-action 'none'"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("spec-url=\"/api/v1/openapi.json\""));
+    assert!(html.contains("redoc/v2.5.3/bundles/redoc.standalone.js"));
+    assert!(html.contains("integrity=\"sha512-"));
+}
+
+#[tokio::test]
 async fn reserved_current_gvmd_routes_explain_typed_response_gap() {
     // Until rust-gvm exposes typed response models for these new resources, the
     // gateway must return an explicit capability error instead of parsing raw

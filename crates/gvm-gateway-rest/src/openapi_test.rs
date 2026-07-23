@@ -393,6 +393,20 @@ fn generated_openapi_applies_route_auth_policy_consistently() {
 }
 
 #[test]
+fn generated_openapi_documents_the_public_browser_docs_route() {
+    // Route parity must include the HTML documentation entry point and retain
+    // its public policy independently of the contract-wide auth defaults.
+    let generated = build_openapi();
+    let operation = op(&generated, "/docs", "get");
+
+    assert_eq!(operation["operationId"], json!("getApiDocumentation"));
+    assert_eq!(operation["security"], json!([]));
+    assert!(operation["responses"]["200"]["content"]
+        .get("text/html")
+        .is_some());
+}
+
+#[test]
 fn normalize_paths_strips_runtime_api_prefix() {
     let source_paths = serde_json::from_value::<Map<String, Value>>(serde_json::json!({
         "/health": { "get": {} },

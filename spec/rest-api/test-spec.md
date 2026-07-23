@@ -217,6 +217,7 @@ async fn test_server() -> TestServer {
 | `openapi_spec_valid` | `GET /api/v1/openapi.json` validates against OpenAPI 3.1 schema |
 | `all_routes_documented` | Every registered route appears in the spec |
 | `response_matches_schema` | Actual responses validate against declared schemas |
+| `public_api_docs_use_generated_openapi_contract` | `GET /api/v1/docs` needs no auth, returns HTML, and references `/api/v1/openapi.json` |
 
 ### 3.8 REST Level 2 Conformance
 
@@ -243,6 +244,7 @@ async fn test_server() -> TestServer {
 | `content_type_json` | Success responses → `Content-Type: application/json` |
 | `content_type_problem_json` | Problem responses → `Content-Type: application/problem+json` |
 | `security_headers_present` | API success and problem responses include baseline security headers |
+| `api_docs_content_security_policy_restricts_redoc` | Documentation HTML permits only the pinned Redoc origin and same-origin contract loading |
 | `audit_log_redacts_session_token` | Audit/log capture contains safe session IDs but no raw tokens or passwords |
 | `method_not_allowed` | `PATCH /api/v1/targets` → 405 |
 | `not_found_route` | `GET /api/v1/nonexistent` → 404 |

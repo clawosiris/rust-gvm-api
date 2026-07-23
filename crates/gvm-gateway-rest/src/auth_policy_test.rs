@@ -22,6 +22,10 @@ fn classifies_public_routes() {
         classify_runtime_route(&Method::GET, "/api/v1/openapi.json"),
         Some(RestRouteAuthPolicy::Public)
     );
+    assert_eq!(
+        classify_runtime_route(&Method::GET, "/api/v1/docs"),
+        Some(RestRouteAuthPolicy::Public)
+    );
 }
 
 #[test]
@@ -55,6 +59,7 @@ fn maps_openapi_paths_back_to_runtime_paths() {
         runtime_path_from_openapi_path("/version"),
         "/api/v1/version"
     );
+    assert_eq!(runtime_path_from_openapi_path("/docs"), "/api/v1/docs");
     assert_eq!(
         runtime_path_from_openapi_path("/reports/{id}/exports"),
         "/api/v1/reports/{id}/exports"

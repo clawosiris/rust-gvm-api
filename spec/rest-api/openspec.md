@@ -312,8 +312,9 @@ Protected routes accept either an existing Bearer session token or request-scope
 | `GET` | `/ready` | Readiness probe (checks gvmd connectivity) |
 | `GET` | `/api/v1/version` | GMP protocol version reported by the proxied gvmd; `apiVersion` is the REST API contract version, not the proxy binary version |
 | `GET` | `/api/v1/openapi.json` | OpenAPI 3.1 spec |
+| `GET` | `/api/v1/docs` | Public Redoc browser UI backed by the generated OpenAPI spec |
 
-Swagger/ReDoc endpoints are not part of the current published contract.
+The documentation UI loads `/api/v1/openapi.json` as its source of truth.
 
 ### Request/Response Conventions
 

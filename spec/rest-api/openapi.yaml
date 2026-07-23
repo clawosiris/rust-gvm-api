@@ -129,6 +129,8 @@ tags:
 paths:
   /session:
     $ref: './sessions.yaml#/paths/~1session'
+  /docs:
+    $ref: './system.yaml#/paths/~1docs'
   /targets:
     $ref: './targets.yaml#/paths/~1targets'
   /targets/{id}:

@@ -135,3 +135,15 @@ Versioned REST API:
 OpenAPI document exposed by the running service:
 
 - `GET /api/v1/openapi.json`
+
+Browser documentation:
+
+- `GET /api/v1/docs`
+
+The public browser route uses the generated `/api/v1/openapi.json` document as
+its source of truth. It loads Redoc 2.5.3 from Redocly's versioned CDN URL with
+a pinned SHA-512 integrity check. Browsers therefore need outbound access to
+`https://cdn.redoc.ly`; deployments without that access can continue to use the
+OpenAPI JSON directly. The route's Content Security Policy allows scripts only
+from that Redocly origin and permits contract requests only to the gateway
+itself.
