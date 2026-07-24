@@ -228,7 +228,7 @@ pub(crate) fn apply_security_headers(
         headers.insert(
             HeaderName::from_static("content-security-policy"),
             HeaderValue::from_static(
-                "default-src 'none'; base-uri 'none'; script-src https://cdn.redoc.ly; connect-src 'self'; style-src 'unsafe-inline'; img-src data: https:; font-src data:; frame-ancestors 'none'; form-action 'none'",
+                "default-src 'none'; base-uri 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src data: https:; font-src data:; frame-ancestors 'none'; form-action 'none'",
             ),
         );
     }

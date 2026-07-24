@@ -3,12 +3,15 @@
 
 //! Browser documentation for the generated REST contract.
 
-use aide::transform::TransformOperation;
-use axum::response::Html;
+use axum::{
+    http::header,
+    response::{Html, IntoResponse, Response},
+};
 
-/// Redoc is pinned and integrity-checked so the UI cannot drift independently
-/// of a gateway release. The contract itself remains the runtime-generated
-/// document served by this gateway.
+/// Redoc is pinned and bundled so the UI does not depend on a third-party CDN.
+const REDOC_JS: &[u8] = include_bytes!("../assets/redoc.standalone.js");
+
+/// The contract remains the runtime-generated document served by this gateway.
 const REDOC_HTML: &str = r#"<!doctype html>
 <html lang="en">
 <head>
@@ -18,7 +21,7 @@ const REDOC_HTML: &str = r#"<!doctype html>
 </head>
 <body>
   <redoc spec-url="/api/v1/openapi.json"></redoc>
-  <script src="https://cdn.redoc.ly/redoc/v2.5.3/bundles/redoc.standalone.js" integrity="sha512-qvBFYTqc2cW6IcK+smxCrHVwP6q9c6rXOWWadH5be4qs1lXPHoZ24xTdY6rk6Kf5Wu+L/xoP6VbkJoPP+KyHEQ==" crossorigin="anonymous"></script>
+  <script src="/api/v1/docs/redoc.standalone.js" integrity="sha512-qvBFYTqc2cW6IcK+smxCrHVwP6q9c6rXOWWadH5be4qs1lXPHoZ24xTdY6rk6Kf5Wu+L/xoP6VbkJoPP+KyHEQ=="></script>
 </body>
 </html>
 "#;
@@ -28,15 +31,11 @@ pub(crate) async fn api_docs() -> Html<&'static str> {
     Html(REDOC_HTML)
 }
 
-/// OpenAPI transform for `GET /api/v1/docs`.
-pub(crate) fn api_docs_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("getApiDocumentation")
-        .tag("System")
-        .summary("Browse interactive API documentation")
-        .description(
-            "Returns a Redoc browser UI that loads the generated contract from `/api/v1/openapi.json`.",
-        )
-        .response_with::<200, Html<&'static str>, _>(|response| {
-            response.description("Interactive API documentation")
-        })
+/// Serves the repository-bundled Redoc JavaScript asset.
+pub(crate) async fn redoc_js() -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        REDOC_JS,
+    )
+        .into_response()
 }
