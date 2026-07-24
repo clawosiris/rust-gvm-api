@@ -393,6 +393,18 @@ fn generated_openapi_applies_route_auth_policy_consistently() {
 }
 
 #[test]
+fn generated_openapi_excludes_the_browser_docs_ui() {
+    // The browser UI is an operational convenience, not part of the client API
+    // contract, so generating the contract must never publish it as an API path.
+    let generated = build_openapi();
+
+    assert!(generated["paths"].get("/docs").is_none());
+    assert!(generated["paths"]
+        .get("/docs/redoc.standalone.js")
+        .is_none());
+}
+
+#[test]
 fn normalize_paths_strips_runtime_api_prefix() {
     let source_paths = serde_json::from_value::<Map<String, Value>>(serde_json::json!({
         "/health": { "get": {} },
