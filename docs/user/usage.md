@@ -135,3 +135,13 @@ Versioned REST API:
 OpenAPI document exposed by the running service:
 
 - `GET /api/v1/openapi.json`
+
+Browser documentation:
+
+- `GET /api/v1/docs`
+
+This operational UI is outside the REST API contract. It uses the generated
+`/api/v1/openapi.json` document as its source of truth and loads the
+repository-bundled Redoc 2.5.3 asset from the gateway. The route's Content
+Security Policy permits scripts and contract requests only from the gateway
+itself, so browsers do not need outbound network access to render it.

@@ -22,6 +22,14 @@ fn classifies_public_routes() {
         classify_runtime_route(&Method::GET, "/api/v1/openapi.json"),
         Some(RestRouteAuthPolicy::Public)
     );
+    assert_eq!(
+        classify_runtime_route(&Method::GET, "/api/v1/docs"),
+        Some(RestRouteAuthPolicy::Public)
+    );
+    assert_eq!(
+        classify_runtime_route(&Method::GET, "/api/v1/docs/redoc.standalone.js"),
+        Some(RestRouteAuthPolicy::Public)
+    );
 }
 
 #[test]

@@ -313,7 +313,9 @@ Protected routes accept either an existing Bearer session token or request-scope
 | `GET` | `/api/v1/version` | GMP protocol version reported by the proxied gvmd; `apiVersion` is the REST API contract version, not the proxy binary version |
 | `GET` | `/api/v1/openapi.json` | OpenAPI 3.1 spec |
 
-Swagger/ReDoc endpoints are not part of the current published contract.
+The gateway also serves a browser documentation UI backed by
+`/api/v1/openapi.json`. That operational UI is intentionally outside the API
+contract.
 
 ### Request/Response Conventions
 

@@ -24,7 +24,13 @@ pub(crate) fn classify_runtime_route(method: &Method, path: &str) -> Option<Rest
         return Some(RestRouteAuthPolicy::Public);
     }
 
-    if matches!(path, "/api/v1/version" | "/api/v1/openapi.json") {
+    if matches!(
+        path,
+        "/api/v1/version"
+            | "/api/v1/openapi.json"
+            | "/api/v1/docs"
+            | "/api/v1/docs/redoc.standalone.js"
+    ) {
         return Some(RestRouteAuthPolicy::Public);
     }
 
