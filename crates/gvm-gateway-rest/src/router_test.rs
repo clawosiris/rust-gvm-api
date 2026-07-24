@@ -170,6 +170,66 @@ async fn reserved_current_gvmd_routes_still_require_authentication() {
 }
 
 #[tokio::test]
+async fn browser_docs_use_repository_bundled_redoc() {
+    // The browser UI is public but outside the API contract. It must load the
+    // generated contract and repository-bundled Redoc asset without a CDN.
+    let app = build_router(static_gateway_service());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/docs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(CONTENT_TYPE).unwrap(),
+        "text/html; charset=utf-8"
+    );
+    assert_eq!(
+        response.headers().get("content-security-policy").unwrap(),
+        "default-src 'none'; base-uri 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; img-src data: https:; font-src data:; frame-ancestors 'none'; form-action 'none'"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("spec-url=\"/api/v1/openapi.json\""));
+    assert!(html.contains("src=\"/api/v1/docs/redoc.standalone.js\""));
+    assert!(html.contains("integrity=\"sha512-"));
+    assert!(!html.contains("cdn.redoc.ly"));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/docs/redoc.standalone.js")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(CONTENT_TYPE).unwrap(),
+        "text/javascript; charset=utf-8"
+    );
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(body.len() > 1_000_000);
+    assert!(body
+        .windows(b"Redoc".len())
+        .any(|window| window == b"Redoc"));
+}
+
+#[tokio::test]
 async fn reserved_current_gvmd_routes_explain_typed_response_gap() {
     // Until rust-gvm exposes typed response models for these new resources, the
     // gateway must return an explicit capability error instead of parsing raw
