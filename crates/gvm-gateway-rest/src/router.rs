@@ -40,6 +40,7 @@ use crate::{
         get_credential, get_credential_docs, list_credential_stores, list_credential_stores_docs,
         list_credentials, list_credentials_docs, update_credential, update_credential_docs,
     },
+    docs::{api_docs, redoc_js},
     emerging::{
         clone_agent_group_docs, clone_config_docs, clone_oci_image_target_docs,
         clone_web_application_target_docs, create_agent_group_docs, create_asset_docs,
@@ -159,6 +160,10 @@ pub fn build_router_with_runtime_and_security(
     let request_scoped_auth_state = state.clone();
     let security_state = Arc::new(SecurityRuntime::new(security));
     let router: Router<GatewayService> = documented_router()
+        // Browser documentation is operational UI, not part of the REST API
+        // contract generated from `ApiRouter`.
+        .route("/api/v1/docs", get(api_docs))
+        .route("/api/v1/docs/redoc.standalone.js", get(redoc_js))
         .route("/api/v1/openapi.json", get(serve_openapi))
         .fallback(not_found)
         .into();

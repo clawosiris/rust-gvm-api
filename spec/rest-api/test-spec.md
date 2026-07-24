@@ -243,6 +243,7 @@ async fn test_server() -> TestServer {
 | `content_type_json` | Success responses → `Content-Type: application/json` |
 | `content_type_problem_json` | Problem responses → `Content-Type: application/problem+json` |
 | `security_headers_present` | API success and problem responses include baseline security headers |
+| `browser_docs_use_bundled_redoc_with_same_origin_csp` | Documentation UI outside the API contract serves the repository-bundled Redoc asset with same-origin-only script and contract loading |
 | `audit_log_redacts_session_token` | Audit/log capture contains safe session IDs but no raw tokens or passwords |
 | `method_not_allowed` | `PATCH /api/v1/targets` → 405 |
 | `not_found_route` | `GET /api/v1/nonexistent` → 404 |
