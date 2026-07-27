@@ -10,7 +10,7 @@
 > publish workflow builds Debian, Arch Linux, OCI, user-documentation, and SBOM
 > release artifacts.
 
-Gateway API surfaces for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm). REST is implemented on `main`; gRPC and MCP remain planned peer adapters over the same shared core.
+Gateway API surfaces for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm). REST is implemented on `main`; gRPC remains a planned peer adapter over the same shared core.
 
 ## Overview
 
@@ -31,14 +31,12 @@ This project provides a modern gateway on top of the Greenbone Management Protoc
 ```
 Clients
   ├─ REST
-  ├─ gRPC (planned)
-  └─ MCP  (planned)
+  └─ gRPC (planned)
          │
          ▼
 Incoming adapters
   ├─ gvm-gateway-rest
-  ├─ gvm-gateway-grpc (planned)
-  └─ gvm-gateway-mcp  (planned)
+  └─ gvm-gateway-grpc (planned)
          │
          ▼
 Application core
@@ -60,7 +58,7 @@ See [Gateway Architecture](docs/gateway-architecture.md) for the authoritative a
 
 ## Status
 
-The repository now contains a working REST gateway baseline in the `gvm-gateway*` workspace crates, including container/runtime packaging, shutdown control, transport-security modes, and tracing. gRPC and MCP remain planned surfaces; their specs and roadmap should be read as forward-looking design material rather than shipped runtime behavior.
+The repository now contains a working REST gateway baseline in the `gvm-gateway*` workspace crates, including container/runtime packaging, shutdown control, transport-security modes, and tracing. gRPC remains a planned surface; its specs should be read as forward-looking design material rather than shipped runtime behavior. MCP support lives outside this repository as a standalone MCP server consuming the REST API ([openvas-mcp-server](https://github.com/clawosiris/openvas-mcp-server)).
 
 ## Shared Session Model
 
@@ -220,7 +218,6 @@ Useful follow-up commands:
 - [Gateway Architecture](docs/gateway-architecture.md)
 - [GMP API Proxy Analysis](docs/gmp-api-proxy-analysis.md)
 - [Proxy Access Control Analysis](docs/proxy-access-control-analysis.md)
-- [MCP Implementation Roadmap](docs/mcp-implementation-roadmap.md)
 
 ## License
 

@@ -9,7 +9,7 @@ It extends the basic gateway model with:
 - client authentication
 - endpoint authorization
 - operation-level policy
-- auditability across REST, gRPC, and MCP
+- auditability across REST and gRPC
 
 ## 2. Core Design
 
@@ -36,25 +36,7 @@ Client Identity
 └──────────────┘
 ```
 
-## 3. Why MCP Matters Here
-
-MCP changes the public surface shape, but it should not change the underlying security model.
-
-The same policy engine should govern:
-
-- REST endpoints
-- gRPC methods
-- MCP tools/resources
-
-That means:
-
-- a capability allowed through REST must carry the same authorization semantics through MCP
-- audit logs must record which surface invoked the operation
-- rate limits and endpoint bindings must apply uniformly
-
-If MCP is treated as a sidecar REST client instead of a native gateway surface, policy parity becomes accidental. That is the failure mode this design avoids.
-
-## 4. Entity Model
+## 3. Entity Model
 
 The gateway needs three first-class entities:
 
@@ -81,7 +63,7 @@ The gateway needs three first-class entities:
 - denied operations
 - optional schedule/limit constraints
 
-## 5. Authorization Model
+## 4. Authorization Model
 
 Start with RBAC, not ABAC.
 
@@ -106,51 +88,50 @@ Example role mapping:
 
 Fine-grained command or operation-id permissions can sit beneath these categories when needed.
 
-## 6. Request Flow
+## 5. Request Flow
 
 1. client authenticates to the gateway
 2. gateway resolves identity and roles
-3. client invokes a canonical operation through REST, gRPC, or MCP
+3. client invokes a canonical operation through REST or gRPC
 4. policy engine evaluates endpoint access, operation permission, and any limits
 5. gateway routes the operation to the correct authenticated backend session
 6. audit event records actor, endpoint, operation, surface, and result
 
 The surface-specific adapter should be thin. Authorization belongs below the adapter boundary.
 
-## 7. Multi-Surface Parity Rule
+## 6. Multi-Surface Parity Rule
 
 Every shipped public surface must respect the same policy semantics.
 
 Examples:
 
-| Canonical operation | REST surface | gRPC surface | MCP surface | Policy category |
-| --- | --- | --- | --- | --- |
-| `targets.list` | `GET /api/v1/targets` | `ListTargets` | `targets.list` | `read` |
-| `tasks.start` | `POST /api/v1/tasks/{id}/start` | `StartTask` | `tasks.start` | `scan` |
-| `reports.get` | `GET /api/v1/reports/{id}` | `GetReport` | `reports.get` | `report` |
+| Canonical operation | REST surface | gRPC surface | Policy category |
+| --- | --- | --- | --- |
+| `targets.list` | `GET /api/v1/targets` | `ListTargets` | `read` |
+| `tasks.start` | `POST /api/v1/tasks/{id}/start` | `StartTask` | `scan` |
+| `reports.get` | `GET /api/v1/reports/{id}` | `GetReport` | `report` |
 
-If a role may start tasks through REST, it should not be silently denied through MCP for the same canonical operation.
+If a role may start tasks through REST, it should not be silently denied through gRPC for the same canonical operation.
 
-## 8. Audit Requirements
+## 7. Audit Requirements
 
 Every operation should emit an audit event that includes:
 
 - actor identity
 - target endpoint
 - canonical operation id
-- public surface: `rest`, `grpc`, or `mcp`
+- public surface: `rest` or `grpc`
 - allow/deny outcome
 - backend result status
 
-This matters especially for MCP because agent activity needs to be distinguishable from browser or service activity without changing the underlying authorization rules.
+Agent activity arriving through the standalone [openvas-mcp-server](https://github.com/clawosiris/openvas-mcp-server) reaches the gateway as regular REST client traffic and is audited as such.
 
-## 9. Delivery Phases
+## 8. Delivery Phases
 
 ### Phase 1
 
 - single-endpoint gateway
 - REST adapter
-- MCP adapter for the same initial operation set
 - API-key or equivalent simple auth
 - operation-level RBAC
 - audit logging
@@ -167,17 +148,15 @@ This matters especially for MCP because agent activity needs to be distinguishab
 - OIDC/enterprise identity integration
 - richer policy model if needed
 - gRPC surface expansion
-- conformance tests that verify policy parity across REST/gRPC/MCP
+- conformance tests that verify policy parity across REST/gRPC
 
-## 10. Summary
+## 9. Summary
 
-The access-control design should treat MCP as a native public surface, not a downstream client exception.
-
-That keeps the system coherent:
+The access-control design keeps the system coherent:
 
 - one identity model
 - one authorization model
 - one audit model
-- three peer public surfaces
+- two peer public surfaces
 
 With that structure, `rust-gvm-api` can own gateway security semantics cleanly while `rust-gvm` remains focused on backend execution.

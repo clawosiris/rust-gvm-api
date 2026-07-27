@@ -10,7 +10,7 @@ It reflects the design intent captured in [issue #26](https://github.com/clawosi
   All GMP XML parsing and protocol-shape handling belong in `rust-gvm`; the gateway consumes typed models and protocol APIs from `rust-gvm`.
 - `rust-gvm-api` must not locally construct GMP command XML or normalize GMP wire/display values.
   If a gateway change needs that behavior, the implementation stops and the missing typed support is reported against [`clawosiris/rust-gvm`](https://github.com/clawosiris/rust-gvm) instead.
-- REST, gRPC, and future MCP are peer incoming adapters over one shared execution core.
+- REST and gRPC are peer incoming adapters over one shared execution core.
 - The domain layer owns session lifecycle rules and invariants, but does not hold live I/O handles.
 - The gvmd outgoing adapter owns live backend connections, session-bound command serialization, and transport concerns.
 - The current deployment target is a single gateway instance with in-memory session and connection state.
@@ -41,21 +41,19 @@ Their responsibilities are:
 
 - REST is the implemented public adapter on `main`.
 - gRPC remains a planned adapter and contract surface; its spec should align to this architecture, but it is not wired into the default workspace build today.
-- MCP is planned as another peer adapter over the same application core; it is not yet implemented.
+- MCP is served by a standalone MCP server outside this repository ([openvas-mcp-server](https://github.com/clawosiris/openvas-mcp-server)) that consumes the REST API; it is not a gateway adapter.
 
 ## High-Level Structure
 
 ```text
 Clients
   ├─ REST
-  ├─ gRPC (planned)
-  └─ MCP  (planned)
+  └─ gRPC (planned)
          │
          ▼
 Incoming adapters
   ├─ gvm-gateway-rest
-  ├─ gvm-gateway-grpc (planned)
-  └─ gvm-gateway-mcp  (planned)
+  └─ gvm-gateway-grpc (planned)
          │
          ▼
 Application core
