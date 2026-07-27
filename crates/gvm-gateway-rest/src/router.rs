@@ -40,6 +40,25 @@ use crate::{
         get_credential, get_credential_docs, list_credential_stores, list_credential_stores_docs,
         list_credentials, list_credentials_docs, update_credential, update_credential_docs,
     },
+    docs::{api_docs, redoc_js},
+    emerging::{
+        clone_agent_group_docs, clone_config_docs, clone_oci_image_target_docs,
+        clone_web_application_target_docs, create_agent_group_docs, create_asset_docs,
+        create_config_docs, create_oci_image_target_docs, create_web_application_target_docs,
+        delete_agent_docs, delete_agent_group_docs, delete_asset_docs, delete_config_docs,
+        delete_oci_image_target_docs, delete_operating_system_docs,
+        delete_web_application_target_docs, get_agent_docs, get_agent_group_docs,
+        get_agent_installer_instruction_docs, get_agent_support_bundle_docs, get_asset_docs,
+        get_config_docs, get_oci_image_target_docs, get_operating_system_docs,
+        get_report_applications_docs, get_report_cves_docs, get_report_hosts_docs,
+        get_report_operating_systems_docs, get_report_ports_docs, get_web_application_target_docs,
+        list_agent_groups_docs, list_agents_docs, list_assets_docs, list_configs_docs,
+        list_oci_image_targets_docs, list_operating_systems_docs,
+        list_web_application_targets_docs, modify_agent_control_scan_config_docs,
+        modify_agent_docs, modify_agent_group_docs, modify_asset_docs, modify_config_docs,
+        modify_oci_image_target_docs, modify_operating_system_docs,
+        modify_web_application_target_docs, not_implemented, sync_agents_docs,
+    },
     error::RestError,
     feeds::{list_feeds, list_feeds_docs},
     identity::{
@@ -141,6 +160,10 @@ pub fn build_router_with_runtime_and_security(
     let request_scoped_auth_state = state.clone();
     let security_state = Arc::new(SecurityRuntime::new(security));
     let router: Router<GatewayService> = documented_router()
+        // Browser documentation is operational UI, not part of the REST API
+        // contract generated from `ApiRouter`.
+        .route("/api/v1/docs", get(api_docs))
+        .route("/api/v1/docs/redoc.standalone.js", get(redoc_js))
         .route("/api/v1/openapi.json", get(serve_openapi))
         .fallback(not_found)
         .into();
@@ -208,6 +231,157 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/targets/{id}",
             delete_with(delete_target, delete_target_docs),
+        )
+        // Current-GVMD agent management reserved until rust-gvm exposes typed responses
+        .api_route(
+            "/api/v1/agents",
+            get_with(not_implemented, list_agents_docs),
+        )
+        .api_route(
+            "/api/v1/agents/{id}",
+            get_with(not_implemented, get_agent_docs),
+        )
+        .api_route(
+            "/api/v1/agents/{id}",
+            put_with(not_implemented, modify_agent_docs),
+        )
+        .api_route(
+            "/api/v1/agents/{id}",
+            delete_with(not_implemented, delete_agent_docs),
+        )
+        .api_route(
+            "/api/v1/agents/sync",
+            post_with(not_implemented, sync_agents_docs),
+        )
+        .api_route(
+            "/api/v1/agents/{id}/support-bundle",
+            get_with(not_implemented, get_agent_support_bundle_docs),
+        )
+        .api_route(
+            "/api/v1/agent-control-scan-configs/{id}",
+            put_with(not_implemented, modify_agent_control_scan_config_docs),
+        )
+        .api_route(
+            "/api/v1/scanners/{id}/agent-installer-instruction",
+            get_with(not_implemented, get_agent_installer_instruction_docs),
+        )
+        .api_route(
+            "/api/v1/agent-groups",
+            get_with(not_implemented, list_agent_groups_docs),
+        )
+        .api_route(
+            "/api/v1/agent-groups",
+            post_with(not_implemented, create_agent_group_docs),
+        )
+        .api_route(
+            "/api/v1/agent-groups/{id}",
+            get_with(not_implemented, get_agent_group_docs),
+        )
+        .api_route(
+            "/api/v1/agent-groups/{id}",
+            put_with(not_implemented, modify_agent_group_docs),
+        )
+        .api_route(
+            "/api/v1/agent-groups/{id}",
+            delete_with(not_implemented, delete_agent_group_docs),
+        )
+        .api_route(
+            "/api/v1/agent-groups/{id}/clone",
+            post_with(not_implemented, clone_agent_group_docs),
+        )
+        // Generic assets/configs reserved without changing specific hosts/scan-configs contracts
+        .api_route(
+            "/api/v1/assets",
+            get_with(not_implemented, list_assets_docs),
+        )
+        .api_route(
+            "/api/v1/assets",
+            post_with(not_implemented, create_asset_docs),
+        )
+        .api_route(
+            "/api/v1/assets/{id}",
+            get_with(not_implemented, get_asset_docs),
+        )
+        .api_route(
+            "/api/v1/assets/{id}",
+            put_with(not_implemented, modify_asset_docs),
+        )
+        .api_route(
+            "/api/v1/assets/{id}",
+            delete_with(not_implemented, delete_asset_docs),
+        )
+        .api_route(
+            "/api/v1/configs",
+            get_with(not_implemented, list_configs_docs),
+        )
+        .api_route(
+            "/api/v1/configs",
+            post_with(not_implemented, create_config_docs),
+        )
+        .api_route(
+            "/api/v1/configs/{id}",
+            get_with(not_implemented, get_config_docs),
+        )
+        .api_route(
+            "/api/v1/configs/{id}",
+            put_with(not_implemented, modify_config_docs),
+        )
+        .api_route(
+            "/api/v1/configs/{id}",
+            delete_with(not_implemented, delete_config_docs),
+        )
+        .api_route(
+            "/api/v1/configs/{id}/clone",
+            post_with(not_implemented, clone_config_docs),
+        )
+        // New target families from current GVMD
+        .api_route(
+            "/api/v1/oci-image-targets",
+            get_with(not_implemented, list_oci_image_targets_docs),
+        )
+        .api_route(
+            "/api/v1/oci-image-targets",
+            post_with(not_implemented, create_oci_image_target_docs),
+        )
+        .api_route(
+            "/api/v1/oci-image-targets/{id}",
+            get_with(not_implemented, get_oci_image_target_docs),
+        )
+        .api_route(
+            "/api/v1/oci-image-targets/{id}",
+            put_with(not_implemented, modify_oci_image_target_docs),
+        )
+        .api_route(
+            "/api/v1/oci-image-targets/{id}",
+            delete_with(not_implemented, delete_oci_image_target_docs),
+        )
+        .api_route(
+            "/api/v1/oci-image-targets/{id}/clone",
+            post_with(not_implemented, clone_oci_image_target_docs),
+        )
+        .api_route(
+            "/api/v1/web-application-targets",
+            get_with(not_implemented, list_web_application_targets_docs),
+        )
+        .api_route(
+            "/api/v1/web-application-targets",
+            post_with(not_implemented, create_web_application_target_docs),
+        )
+        .api_route(
+            "/api/v1/web-application-targets/{id}",
+            get_with(not_implemented, get_web_application_target_docs),
+        )
+        .api_route(
+            "/api/v1/web-application-targets/{id}",
+            put_with(not_implemented, modify_web_application_target_docs),
+        )
+        .api_route(
+            "/api/v1/web-application-targets/{id}",
+            delete_with(not_implemented, delete_web_application_target_docs),
+        )
+        .api_route(
+            "/api/v1/web-application-targets/{id}/clone",
+            post_with(not_implemented, clone_web_application_target_docs),
         )
         // Alerts
         .api_route("/api/v1/alerts", get_with(list_alerts, list_alerts_docs))
@@ -477,6 +651,26 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/reports/{id}/closed-cves",
             get_with(get_report_closed_cves, get_report_closed_cves_docs),
         )
+        .api_route(
+            "/api/v1/reports/{id}/hosts",
+            get_with(not_implemented, get_report_hosts_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/ports",
+            get_with(not_implemented, get_report_ports_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/applications",
+            get_with(not_implemented, get_report_applications_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/operating-systems",
+            get_with(not_implemented, get_report_operating_systems_docs),
+        )
+        .api_route(
+            "/api/v1/reports/{id}/cves",
+            get_with(not_implemented, get_report_cves_docs),
+        )
         // Jobs
         .api_route("/api/v1/jobs/{id}", get_with(get_job, get_job_docs))
         .api_route(
@@ -522,6 +716,22 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/scanners/{id}",
             get_with(get_scanner, get_scanner_docs),
+        )
+        .api_route(
+            "/api/v1/operating-systems",
+            get_with(not_implemented, list_operating_systems_docs),
+        )
+        .api_route(
+            "/api/v1/operating-systems/{id}",
+            get_with(not_implemented, get_operating_system_docs),
+        )
+        .api_route(
+            "/api/v1/operating-systems/{id}",
+            put_with(not_implemented, modify_operating_system_docs),
+        )
+        .api_route(
+            "/api/v1/operating-systems/{id}",
+            delete_with(not_implemented, delete_operating_system_docs),
         )
 }
 
