@@ -1,7 +1,7 @@
 # rust-gvm-api
 
-[![CI](https://github.com/clawosiris/rust-gvm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/clawosiris/rust-gvm-api/actions/workflows/ci.yml)
-[![Security](https://github.com/clawosiris/rust-gvm-api/actions/workflows/security.yml/badge.svg)](https://github.com/clawosiris/rust-gvm-api/actions/workflows/security.yml)
+[![CI](https://github.com/greenbone-hive/rust-gvm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/greenbone-hive/rust-gvm-api/actions/workflows/ci.yml)
+[![Security](https://github.com/greenbone-hive/rust-gvm-api/actions/workflows/security.yml/badge.svg)](https://github.com/greenbone-hive/rust-gvm-api/actions/workflows/security.yml)
 
 > [!NOTE]
 > **Releases** use a PR-gated GitHub Actions flow. Run the "Prepare Release"
@@ -10,7 +10,7 @@
 > publish workflow builds Debian, Arch Linux, OCI, user-documentation, and SBOM
 > release artifacts.
 
-Gateway API surfaces for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/clawosiris/rust-gvm). REST is implemented on `main`; gRPC and MCP remain planned peer adapters over the same shared core.
+Gateway API surfaces for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/greenbone-hive/rust-gvm). REST is implemented on `main`; gRPC and MCP remain planned peer adapters over the same shared core.
 
 ## Overview
 
@@ -79,7 +79,7 @@ That session/connection model is shared architecture for REST today and planned 
 
 - Rust 1.88.0+ (see `rust-toolchain.toml`)
 - A running GVM/gvmd instance (for integration testing)
-- [rust-gvm](https://github.com/clawosiris/rust-gvm) (pulled as a git dependency)
+- [rust-gvm](https://github.com/greenbone-hive/rust-gvm) (pulled as a git dependency)
 
 ### Build
 

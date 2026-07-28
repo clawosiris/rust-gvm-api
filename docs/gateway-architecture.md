@@ -1,7 +1,7 @@
 # Gateway Architecture
 
 This document is the repository-local architecture reference for `rust-gvm-api`.
-It reflects the design intent captured in [issue #26](https://github.com/clawosiris/rust-gvm-api/issues/26), the shared session/connection model from [issue #27](https://github.com/clawosiris/rust-gvm-api/issues/27), and the current repository shape on `main`.
+It reflects the design intent captured in [issue #26](https://github.com/greenbone-hive/rust-gvm-api/issues/26), the shared session/connection model from [issue #27](https://github.com/greenbone-hive/rust-gvm-api/issues/27), and the current repository shape on `main`.
 
 ## Core Rules
 
@@ -9,7 +9,7 @@ It reflects the design intent captured in [issue #26](https://github.com/clawosi
 - `rust-gvm-api` must not parse raw GMP XML directly.
   All GMP XML parsing and protocol-shape handling belong in `rust-gvm`; the gateway consumes typed models and protocol APIs from `rust-gvm`.
 - `rust-gvm-api` must not locally construct GMP command XML or normalize GMP wire/display values.
-  If a gateway change needs that behavior, the implementation stops and the missing typed support is reported against [`clawosiris/rust-gvm`](https://github.com/clawosiris/rust-gvm) instead.
+  If a gateway change needs that behavior, the implementation stops and the missing typed support is reported against [`greenbone-hive/rust-gvm`](https://github.com/greenbone-hive/rust-gvm) instead.
 - REST, gRPC, and future MCP are peer incoming adapters over one shared execution core.
 - The domain layer owns session lifecycle rules and invariants, but does not hold live I/O handles.
 - The gvmd outgoing adapter owns live backend connections, session-bound command serialization, and transport concerns.

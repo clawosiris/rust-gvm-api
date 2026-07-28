@@ -27,7 +27,7 @@ ARG GVM_GATEWAY_GID=65532
 
 LABEL org.opencontainers.image.title="gvm-gateway" \
       org.opencontainers.image.description="Unified REST and gRPC gateway for Greenbone Vulnerability Management" \
-      org.opencontainers.image.source="https://github.com/clawosiris/rust-gvm-api" \
+      org.opencontainers.image.source="https://github.com/greenbone-hive/rust-gvm-api" \
       org.opencontainers.image.version="${GVM_GATEWAY_VERSION}" \
       org.opencontainers.image.revision="${GVM_GATEWAY_VCS_REF}" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later"
