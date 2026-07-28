@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The REST surface of the `gvm-gateway`, exposing Greenbone Vulnerability Management (GVM) operations over HTTP/JSON. Built on [axum](https://github.com/tokio-rs/axum) and [rust-gvm](https://github.com/clawosiris/rust-gvm), providing a standards-compliant alternative to GMP's raw XML protocol.
+The REST surface of the `gvm-gateway`, exposing Greenbone Vulnerability Management (GVM) operations over HTTP/JSON. Built on [axum](https://github.com/tokio-rs/axum) and [rust-gvm](https://github.com/greenbone-hive/rust-gvm), providing a standards-compliant alternative to GMP's raw XML protocol.
 
 ### Goals
 
@@ -461,8 +461,8 @@ This explicit mode contract supersedes the earlier TLS-only ingress assumption f
 
 This plan is aligned with:
 
-- General architecture proposal: https://github.com/clawosiris/rust-gvm-api/issues/26
-- Connection pooling + session handling proposal: https://github.com/clawosiris/rust-gvm-api/issues/27
+- General architecture proposal: https://github.com/greenbone-hive/rust-gvm-api/issues/26
+- Connection pooling + session handling proposal: https://github.com/greenbone-hive/rust-gvm-api/issues/27
 
 Scope of this plan is **REST API only** (implementation of the proposed OpenAPI spec under `spec/rest-api/`).
 **gRPC is explicitly deferred to a later iteration.**

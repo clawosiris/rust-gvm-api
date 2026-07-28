@@ -9,7 +9,7 @@ maintainer: clawosiris <clawosiris@users.noreply.github.com>
 description: |
   Unified REST and gRPC gateway for Greenbone Vulnerability Management.
 vendor: clawosiris
-homepage: https://github.com/clawosiris/rust-gvm-api
+homepage: https://github.com/greenbone-hive/rust-gvm-api
 license: AGPL-3.0-or-later
 contents:
   - src: ./dist/package-root/usr/bin/gvm-gateway

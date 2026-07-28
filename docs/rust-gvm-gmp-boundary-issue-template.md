@@ -2,7 +2,7 @@
 
 Use this template when a `rust-gvm-api` change would require local GMP command
 construction, response parsing, or wire/display-name normalization. File the
-issue against `clawosiris/rust-gvm`.
+issue against `greenbone-hive/rust-gvm`.
 
 ## Title
 

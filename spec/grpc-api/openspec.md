@@ -38,8 +38,8 @@ Current mandatory coverage (from `rust-gvm` PR #68):
 
 ## 2. Architecture
 
-The gRPC adapter should follow the shared gateway architecture from [issue #26](https://github.com/clawosiris/rust-gvm-api/issues/26): peer incoming adapters over one application core, one domain layer, and one gvmd outgoing adapter.
-It should also follow the shared session/connection execution model from [issue #27](https://github.com/clawosiris/rust-gvm-api/issues/27): both REST and gRPC resolve session tokens through the same `SessionManager` and the same gvmd connection store.
+The gRPC adapter should follow the shared gateway architecture from [issue #26](https://github.com/greenbone-hive/rust-gvm-api/issues/26): peer incoming adapters over one application core, one domain layer, and one gvmd outgoing adapter.
+It should also follow the shared session/connection execution model from [issue #27](https://github.com/greenbone-hive/rust-gvm-api/issues/27): both REST and gRPC resolve session tokens through the same `SessionManager` and the same gvmd connection store.
 
 Current repository status:
 

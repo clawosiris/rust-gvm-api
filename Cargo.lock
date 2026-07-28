@@ -630,7 +630,7 @@ dependencies = [
 [[package]]
 name = "gvm-client"
 version = "0.3.3"
-source = "git+https://github.com/clawosiris/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
 dependencies = [
  "async-trait",
  "gvm-connection",
@@ -643,7 +643,7 @@ dependencies = [
 [[package]]
 name = "gvm-connection"
 version = "0.3.3"
-source = "git+https://github.com/clawosiris/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
 dependencies = [
  "async-trait",
  "gvm-protocol",
@@ -778,7 +778,7 @@ dependencies = [
 [[package]]
 name = "gvm-gmp"
 version = "0.3.3"
-source = "git+https://github.com/clawosiris/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
 dependencies = [
  "base64 0.22.1",
  "gvm-protocol",
@@ -790,7 +790,7 @@ dependencies = [
 [[package]]
 name = "gvm-mock-server"
 version = "0.3.3"
-source = "git+https://github.com/clawosiris/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
 dependencies = [
  "clap",
  "getrandom 0.4.3",
@@ -806,7 +806,7 @@ dependencies = [
 [[package]]
 name = "gvm-protocol"
 version = "0.3.3"
-source = "git+https://github.com/clawosiris/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=main#e39f3a412c9752b7972fee714da5976b4ebd1341"
 dependencies = [
  "quick-xml",
  "thiserror",

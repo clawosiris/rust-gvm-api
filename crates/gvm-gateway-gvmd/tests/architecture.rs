@@ -17,82 +17,82 @@ struct Finding {
 const FORBIDDEN_MARKERS: &[(&str, &str)] = &[
     (
         "quick_xml::",
-        "raw GMP XML parsing belongs in clawosiris/rust-gvm",
+        "raw GMP XML parsing belongs in greenbone-hive/rust-gvm",
     ),
     (
         "roxmltree::",
-        "raw GMP XML parsing belongs in clawosiris/rust-gvm",
+        "raw GMP XML parsing belongs in greenbone-hive/rust-gvm",
     ),
     (
         "xmltree::",
-        "raw GMP XML parsing belongs in clawosiris/rust-gvm",
+        "raw GMP XML parsing belongs in greenbone-hive/rust-gvm",
     ),
     (
         "serde_xml_rs::",
-        "raw GMP XML parsing belongs in clawosiris/rust-gvm",
+        "raw GMP XML parsing belongs in greenbone-hive/rust-gvm",
     ),
     (
         "Response::from(",
-        "raw GMP XML response fixture parsing belongs in clawosiris/rust-gvm tests",
+        "raw GMP XML response fixture parsing belongs in greenbone-hive/rust-gvm tests",
     ),
     (
         "XmlCommand",
-        "local GMP XML command construction belongs in clawosiris/rust-gvm",
+        "local GMP XML command construction belongs in greenbone-hive/rust-gvm",
     ),
     (
         ".to_bytes()",
-        "GMP command serialization assertions belong in clawosiris/rust-gvm",
+        "GMP command serialization assertions belong in greenbone-hive/rust-gvm",
     ),
     (
         "_gvmd_name",
-        "GMP wire/display-name translation belongs in clawosiris/rust-gvm",
+        "GMP wire/display-name translation belongs in greenbone-hive/rust-gvm",
     ),
     (
         "normalize_alert_",
-        "GMP response value normalization belongs in clawosiris/rust-gvm",
+        "GMP response value normalization belongs in greenbone-hive/rust-gvm",
     ),
     (
         "same XML structure",
-        "GMP response shape aliases belong in clawosiris/rust-gvm",
+        "GMP response shape aliases belong in greenbone-hive/rust-gvm",
     ),
     (
         "Task run status changed",
-        "gvmd alert display names belong in clawosiris/rust-gvm",
+        "gvmd alert display names belong in greenbone-hive/rust-gvm",
     ),
     (
         "Updated SecInfo arrived",
-        "gvmd alert display names belong in clawosiris/rust-gvm",
+        "gvmd alert display names belong in greenbone-hive/rust-gvm",
     ),
     (
         "New SecInfo arrived",
-        "gvmd alert display names belong in clawosiris/rust-gvm",
+        "gvmd alert display names belong in greenbone-hive/rust-gvm",
     ),
     (
         "SysLog",
-        "gvmd alert display names belong in clawosiris/rust-gvm",
+        "gvmd alert display names belong in greenbone-hive/rust-gvm",
     ),
     (
         "Syslog",
-        "gvmd alert display names belong in clawosiris/rust-gvm",
+        "gvmd alert display names belong in greenbone-hive/rust-gvm",
     ),
 ];
 
 const FORBIDDEN_DIRECT_DEPS: &[(&str, &str)] = &[
     (
         "quick-xml",
-        "direct XML parser dependencies belong in clawosiris/rust-gvm",
+        "direct XML parser dependencies belong in greenbone-hive/rust-gvm",
     ),
     (
         "roxmltree",
-        "direct XML parser dependencies belong in clawosiris/rust-gvm",
+        "direct XML parser dependencies belong in greenbone-hive/rust-gvm",
     ),
     (
         "xmltree",
-        "direct XML parser dependencies belong in clawosiris/rust-gvm",
+        "direct XML parser dependencies belong in greenbone-hive/rust-gvm",
     ),
     (
         "serde-xml-rs",
-        "direct XML parser dependencies belong in clawosiris/rust-gvm",
+        "direct XML parser dependencies belong in greenbone-hive/rust-gvm",
     ),
 ];
 
@@ -101,7 +101,7 @@ fn gmp_wire_handling_stays_in_rust_gvm() {
     // This is an architecture boundary test, not a style lint. The gateway may
     // orchestrate typed rust-gvm APIs, but GMP XML command construction and GMP
     // response parsing, protocol-shape aliases, and wire/display-name parsing
-    // must be fixed upstream in clawosiris/rust-gvm. Unit-test sidecar fixtures
+    // must be fixed upstream in greenbone-hive/rust-gvm. Unit-test sidecar fixtures
     // may still contain raw XML; this test intentionally scans production
     // source.
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -116,7 +116,7 @@ fn gmp_wire_handling_stays_in_rust_gvm() {
     assert!(
         findings.is_empty(),
         "GMP command/response wire handling must be implemented in \
-         clawosiris/rust-gvm, not rust-gvm-api. Stop this change and report an \
+         greenbone-hive/rust-gvm, not rust-gvm-api. Stop this change and report an \
          upstream issue using docs/rust-gvm-gmp-boundary-issue-template.md.\n\n{}",
         format_findings(&findings.iter().collect::<Vec<_>>())
     );
