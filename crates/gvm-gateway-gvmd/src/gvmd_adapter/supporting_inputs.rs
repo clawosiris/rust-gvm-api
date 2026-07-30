@@ -2,11 +2,12 @@
 // Copyright (C) 2026 Greenbone AG
 
 use gvm_gateway_domain::{
-    CreateNoteInput, CreateOverrideInput, GatewayError, ModifyNoteInput, ModifyOverrideInput,
+    CreateNoteInput, CreateOverrideInput, CreateTicketInput, GatewayError, ModifyNoteInput,
+    ModifyOverrideInput, ModifyTicketInput,
 };
-use gvm_gmp::commands::{notes::NoteOpts, overrides::OverrideOpts};
+use gvm_gmp::commands::{notes::NoteOpts, overrides::OverrideOpts, tickets::TicketOpts};
 
-use crate::conversions::parse_entity_id;
+use crate::conversions::{parse_entity_id, parse_ticket_status};
 
 pub(super) fn note_opts_from_create_input(
     input: CreateNoteInput,
@@ -43,6 +44,40 @@ pub(super) fn note_opts_from_modify_input(
             .transpose()?,
         active: input.active,
         orphan: input.orphan,
+    })
+}
+
+pub(super) fn ticket_opts_from_create_input(
+    input: CreateTicketInput,
+) -> Result<TicketOpts, GatewayError> {
+    Ok(TicketOpts {
+        assigned_to: input.assigned_to,
+        comment: input.comment,
+        status: input
+            .status
+            .as_deref()
+            .map(parse_ticket_status)
+            .transpose()?,
+        open_note: input.open_note,
+        fixed_note: input.fixed_note,
+        closed_note: input.closed_note,
+    })
+}
+
+pub(super) fn ticket_opts_from_modify_input(
+    input: ModifyTicketInput,
+) -> Result<TicketOpts, GatewayError> {
+    Ok(TicketOpts {
+        assigned_to: input.assigned_to,
+        comment: input.comment,
+        status: input
+            .status
+            .as_deref()
+            .map(parse_ticket_status)
+            .transpose()?,
+        open_note: input.open_note,
+        fixed_note: input.fixed_note,
+        closed_note: input.closed_note,
     })
 }
 

@@ -13,8 +13,8 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    CreateNoteInput, CreateOverrideInput, GatewayError, ModifyNoteInput, ModifyOverrideInput,
-    SupportingResourceQuery,
+    CreateNoteInput, CreateOverrideInput, CreateTicketInput, GatewayError, ModifyNoteInput,
+    ModifyOverrideInput, ModifyTicketInput, SupportingResourceQuery,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -581,6 +581,41 @@ pub(crate) struct ModifyNoteRequest {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "CreateTicket")]
+pub(crate) struct CreateTicketRequest {
+    #[serde(rename = "resultId")]
+    #[schemars(required, with = "Option<Uuid>")]
+    result_id: Option<String>,
+    #[serde(rename = "assignedTo")]
+    assigned_to: Option<String>,
+    comment: Option<String>,
+    /// Ticket status: `Open`, `Fixed`, or `Closed`.
+    status: Option<String>,
+    #[serde(rename = "openNote")]
+    open_note: Option<String>,
+    #[serde(rename = "fixedNote")]
+    fixed_note: Option<String>,
+    #[serde(rename = "closedNote")]
+    closed_note: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "UpdateTicket")]
+pub(crate) struct ModifyTicketRequest {
+    #[serde(rename = "assignedTo")]
+    assigned_to: Option<String>,
+    comment: Option<String>,
+    /// Ticket status: `Open`, `Fixed`, or `Closed`.
+    status: Option<String>,
+    #[serde(rename = "openNote")]
+    open_note: Option<String>,
+    #[serde(rename = "fixedNote")]
+    fixed_note: Option<String>,
+    #[serde(rename = "closedNote")]
+    closed_note: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateOverride")]
 pub(crate) struct CreateOverrideRequest {
     #[serde(rename = "nvtOid")]
@@ -805,6 +840,51 @@ impl ModifyNoteRequest {
 
 impl ValidateInto<ModifyNoteInput> for ModifyNoteRequest {
     fn validate_into(self) -> Result<ModifyNoteInput, GatewayError> {
+        self.validate()
+    }
+}
+
+impl CreateTicketRequest {
+    fn validate(self) -> Result<CreateTicketInput, GatewayError> {
+        let result_id = self
+            .result_id
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| GatewayError::InvalidInput("resultId is required".to_string()))?;
+        validate_uuid("resultId", &result_id)?;
+
+        Ok(CreateTicketInput {
+            result_id,
+            assigned_to: self.assigned_to,
+            comment: self.comment,
+            status: self.status,
+            open_note: self.open_note,
+            fixed_note: self.fixed_note,
+            closed_note: self.closed_note,
+        })
+    }
+}
+
+impl ValidateInto<CreateTicketInput> for CreateTicketRequest {
+    fn validate_into(self) -> Result<CreateTicketInput, GatewayError> {
+        self.validate()
+    }
+}
+
+impl ModifyTicketRequest {
+    fn validate(self) -> Result<ModifyTicketInput, GatewayError> {
+        Ok(ModifyTicketInput {
+            assigned_to: self.assigned_to,
+            comment: self.comment,
+            status: self.status,
+            open_note: self.open_note,
+            fixed_note: self.fixed_note,
+            closed_note: self.closed_note,
+        })
+    }
+}
+
+impl ValidateInto<ModifyTicketInput> for ModifyTicketRequest {
+    fn validate_into(self) -> Result<ModifyTicketInput, GatewayError> {
         self.validate()
     }
 }
@@ -1118,6 +1198,64 @@ pub async fn get_note(
         uri,
         |service, session, id| async move { service.get_note(&session, &id).await },
         NoteResponse::from,
+    )
+    .await
+}
+
+/// Creates a ticket for a result.
+pub async fn create_ticket(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    create_resource::<CreateTicketInput, CreateTicketRequest, _, _>(
+        service,
+        headers,
+        uri,
+        body,
+        |service, session, input| async move { service.create_ticket(&session, input).await },
+    )
+    .await
+}
+
+/// Updates a ticket.
+pub async fn update_ticket(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    update_resource::<ModifyTicketInput, ModifyTicketRequest, _, _, _, _>(
+        service,
+        headers,
+        id,
+        uri,
+        body,
+        |service, session, id, input| async move {
+            service.modify_ticket(&session, &id, input).await
+        },
+        TicketResponse::from,
+    )
+    .await
+}
+
+/// Deletes a ticket. Set `ultimate=true` to request permanent backend deletion.
+pub async fn delete_ticket(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id, ultimate| async move {
+            service.delete_ticket(&session, &id, ultimate).await
+        },
     )
     .await
 }
@@ -1498,6 +1636,47 @@ pub(crate) fn get_ticket_docs(op: TransformOperation<'_>) -> TransformOperation<
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
         .response_with::<200, Json<TicketResponse>, _>(ok_json("Ticket details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn create_ticket_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createTicket")
+        .tag("Tickets")
+        .summary("Create a ticket")
+        .description("Creates a ticket for a result, optionally setting assignee, status, and per-state notes.")
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateTicketRequest>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Ticket created"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn update_ticket_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyTicket")
+        .tag("Tickets")
+        .summary("Modify a ticket")
+        .description("Updates a ticket's assignee, status, comment, or per-state notes.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyTicketRequest>)>()
+        .response_with::<200, Json<TicketResponse>, _>(ok_json("Ticket updated"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn delete_ticket_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteTicket")
+        .tag("Tickets")
+        .summary("Delete a ticket")
+        .description("Deletes a ticket. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
+        .response_with::<204, (), _>(|response| response.description("Ticket deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")

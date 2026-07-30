@@ -345,6 +345,62 @@ impl SupportingResourcePort for GvmdAdapter {
             .ok_or_else(|| GatewayError::NotFound(format!("ticket {id} not found")))
     }
 
+    async fn create_ticket(
+        &self,
+        session_token: &str,
+        input: CreateTicketInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let result_id = parse_entity_id(&input.result_id)?;
+        let opts = ticket_opts_from_create_input(input)?;
+        let response = client
+            .lock()
+            .await?
+            .call(create_ticket(&result_id, opts))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateTicketResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn modify_ticket(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyTicketInput,
+    ) -> Result<Ticket, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let ticket_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await?
+            .call(modify_ticket_cmd(
+                &ticket_id,
+                ticket_opts_from_modify_input(input)?,
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_ticket(session_token, id).await
+    }
+
+    async fn delete_ticket(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(delete_ticket_cmd(&parse_entity_id(id)?, ultimate))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
     async fn list_notes(
         &self,
         session_token: &str,

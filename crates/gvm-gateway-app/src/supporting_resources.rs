@@ -4,10 +4,32 @@
 //! Supporting-resource use cases.
 
 use gvm_gateway_domain::{
-    CreateNoteInput, CreateOverrideInput, Filter, FilterPage, GatewayError, Host, HostPage,
-    ModifyNoteInput, ModifyOverrideInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket,
-    TicketPage, VulnerabilityPage,
+    CreateNoteInput,
+    CreateOverrideInput,
+    Filter,
+    FilterPage,
+    GatewayError,
+    Host,
+    HostPage,
+    ModifyNoteInput,
+    ModifyOverrideInput,
+    Note,
+    NotePage,
+    Nvt,
+    NvtFamilyPage,
+    NvtPage,
+    Override,
+    OverridePage,
+    ReportFormat,
+    ReportFormatPage,
+    SupportingResourceQuery,
+    Tag,
+    TagPage,
+    Ticket,
+    TicketPage,
+    VulnerabilityPage,
+    CreateTicketInput,
+    ModifyTicketInput,
 };
 
 use crate::GatewayService;
@@ -193,6 +215,71 @@ impl GatewayService {
             |session| async move {
                 self.supporting_resources
                     .get_ticket(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Creates a ticket for an authenticated session.
+    pub async fn create_ticket(
+        &self,
+        session_token: &str,
+        input: CreateTicketInput,
+    ) -> Result<String, GatewayError> {
+        self.execute_with_resource(
+            "tickets.create",
+            session_token,
+            "create",
+            "ticket",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .create_ticket(&session.token, input)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Modifies a ticket for an authenticated session.
+    pub async fn modify_ticket(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyTicketInput,
+    ) -> Result<Ticket, GatewayError> {
+        self.execute_with_resource(
+            "tickets.modify",
+            session_token,
+            "modify",
+            "ticket",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .modify_ticket(&session.token, id, input)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Deletes a ticket for an authenticated session.
+    pub async fn delete_ticket(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "tickets.delete",
+            session_token,
+            "delete",
+            "ticket",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .delete_ticket(&session.token, id, ultimate)
                     .await
             },
         )

@@ -8,22 +8,78 @@ use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
     CreateGroupInput, CreateNoteInput, CreateOverrideInput, CreatePermissionInput,
     CreatePortListInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
-    CreateTargetInput, CreateTaskInput, CreateUserInput, Credential, CredentialPage,
-    CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage,
-    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
-    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
+    CreateTargetInput, CreateTaskInput, CreateTicketInput, CreateUserInput, Credential,
+    CredentialPage, CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter,
+    FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort,
+    IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
     ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    ModifyUserInput,
+    ModifyUserSettingInput,
+    Note,
+    NotePage,
+    Nvt,
+    NvtFamilyPage,
+    NvtPage,
+    Override,
+    OverridePage,
+    Permission,
+    PermissionPage,
+    PortList,
+    PortListPage,
+    PortListPort,
+    PortListQuery,
+    ReadinessStatus,
+    Report,
+    ReportExport,
+    ReportExportRequest,
+    ReportFormat,
+    ReportFormatPage,
+    ReportPage,
+    ReportPort,
+    ReportQuery,
+    ResultPage,
+    ResultPort,
+    ResultQuery,
+    Role,
+    RolePage,
+    ScanConfig,
+    ScanConfigPage,
+    ScanConfigPort,
+    ScanConfigQuery,
+    ScanResult,
+    Scanner,
+    ScannerPage,
+    ScannerPort,
+    ScannerQuery,
+    Schedule,
+    SchedulePage,
+    SchedulePort,
+    ScheduleQuery,
+    SupportingResourcePort,
+    SupportingResourceQuery,
+    SystemPort,
+    Tag,
+    TagPage,
+    Target,
+    TargetPage,
+    TargetPort,
+    TargetQuery,
+    Task,
+    TaskAction,
+    TaskPage,
+    TaskPort,
+    TaskQuery,
+    Ticket,
+    TicketPage,
+    TlsCertificatePage,
+    User,
+    UserPage,
+    UserSetting,
+    UserSettingList,
+    UserSettingQuery,
     VulnerabilityPage,
+    ModifyTicketInput,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -1011,6 +1067,23 @@ impl SupportingResourcePort for MockSupportingResourcePort {
     }
 
     async fn get_ticket(&self, _: &str, id: &str) -> Result<Ticket, GatewayError> {
+        Err(GatewayError::NotFound(format!("ticket {id} not found")))
+    }
+
+    async fn create_ticket(&self, _: &str, _: CreateTicketInput) -> Result<String, GatewayError> {
+        Ok("00000000-0000-0000-0000-000000000041".to_string())
+    }
+
+    async fn modify_ticket(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyTicketInput,
+    ) -> Result<Ticket, GatewayError> {
+        Err(GatewayError::NotFound(format!("ticket {id} not found")))
+    }
+
+    async fn delete_ticket(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("ticket {id} not found")))
     }
 

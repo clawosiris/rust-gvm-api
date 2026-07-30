@@ -9,22 +9,78 @@ use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
     CreateGroupInput, CreateNoteInput, CreateOverrideInput, CreatePermissionInput,
     CreatePortListInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
-    CreateTargetInput, CreateTaskInput, CreateUserInput, Credential, CredentialPage,
-    CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage,
-    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
-    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
+    CreateTargetInput, CreateTaskInput, CreateTicketInput, CreateUserInput, Credential,
+    CredentialPage, CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter,
+    FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort,
+    IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
     ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    ModifyUserInput,
+    ModifyUserSettingInput,
+    Note,
+    NotePage,
+    Nvt,
+    NvtFamilyPage,
+    NvtPage,
+    Override,
+    OverridePage,
+    Permission,
+    PermissionPage,
+    PortList,
+    PortListPage,
+    PortListPort,
+    PortListQuery,
+    ReadinessStatus,
+    Report,
+    ReportExport,
+    ReportExportRequest,
+    ReportFormat,
+    ReportFormatPage,
+    ReportPage,
+    ReportPort,
+    ReportQuery,
+    ResultPage,
+    ResultPort,
+    ResultQuery,
+    Role,
+    RolePage,
+    ScanConfig,
+    ScanConfigPage,
+    ScanConfigPort,
+    ScanConfigQuery,
+    ScanResult,
+    Scanner,
+    ScannerPage,
+    ScannerPort,
+    ScannerQuery,
+    Schedule,
+    SchedulePage,
+    SchedulePort,
+    ScheduleQuery,
+    SupportingResourcePort,
+    SupportingResourceQuery,
+    SystemPort,
+    Tag,
+    TagPage,
+    Target,
+    TargetPage,
+    TargetPort,
+    TargetQuery,
+    Task,
+    TaskAction,
+    TaskPage,
+    TaskPort,
+    TaskQuery,
+    Ticket,
+    TicketPage,
+    TlsCertificatePage,
+    User,
+    UserPage,
+    UserSetting,
+    UserSettingList,
+    UserSettingQuery,
     VulnerabilityPage,
+    ModifyTicketInput,
 };
 
 /// Static adapter for system readiness and version information.
@@ -693,6 +749,23 @@ impl SupportingResourcePort for StaticGvmdAdapter {
 
     async fn get_ticket(&self, _: &str, _: &str) -> Result<Ticket, GatewayError> {
         unsupported!("static adapter does not support tickets")
+    }
+
+    async fn create_ticket(&self, _: &str, _: CreateTicketInput) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support ticket mutations")
+    }
+
+    async fn modify_ticket(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyTicketInput,
+    ) -> Result<Ticket, GatewayError> {
+        unsupported!("static adapter does not support ticket mutations")
+    }
+
+    async fn delete_ticket(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support ticket mutations")
     }
 
     async fn list_notes(

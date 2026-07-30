@@ -109,6 +109,42 @@ pub struct ModifyOverrideInput {
     pub active: Option<bool>,
 }
 
+/// Ticket create command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CreateTicketInput {
+    /// Required result identifier the ticket is raised for.
+    pub result_id: String,
+    /// Optional assignee (gvmd user name).
+    pub assigned_to: Option<String>,
+    /// Optional comment.
+    pub comment: Option<String>,
+    /// Optional ticket status (`Open`, `Fixed`, or `Closed`).
+    pub status: Option<String>,
+    /// Optional note for the open state.
+    pub open_note: Option<String>,
+    /// Optional note for the fixed state.
+    pub fixed_note: Option<String>,
+    /// Optional note for the closed state.
+    pub closed_note: Option<String>,
+}
+
+/// Ticket update command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ModifyTicketInput {
+    /// Optional assignee (gvmd user name).
+    pub assigned_to: Option<String>,
+    /// Optional comment.
+    pub comment: Option<String>,
+    /// Optional ticket status (`Open`, `Fixed`, or `Closed`).
+    pub status: Option<String>,
+    /// Optional note for the open state.
+    pub open_note: Option<String>,
+    /// Optional note for the fixed state.
+    pub fixed_note: Option<String>,
+    /// Optional note for the closed state.
+    pub closed_note: Option<String>,
+}
+
 /// Common metadata shared by supporting resources.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SupportingResourceMeta {

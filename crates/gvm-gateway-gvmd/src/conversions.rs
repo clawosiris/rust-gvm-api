@@ -16,7 +16,7 @@ use gvm_gateway_domain::{
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
-    PermissionSubjectType, SnmpAuthAlgorithm, SnmpPrivacyAlgorithm, UserAuthType,
+    PermissionSubjectType, SnmpAuthAlgorithm, SnmpPrivacyAlgorithm, TicketStatus, UserAuthType,
 };
 
 // ============================================================================
@@ -546,6 +546,11 @@ pub(crate) fn parse_alert_event(value: &str) -> Result<AlertEvent, GatewayError>
 pub(crate) fn parse_alert_condition(value: &str) -> Result<AlertCondition, GatewayError> {
     AlertCondition::from_str(value)
         .map_err(|_| GatewayError::InvalidInput(format!("invalid condition: {value}")))
+}
+
+pub(crate) fn parse_ticket_status(value: &str) -> Result<TicketStatus, GatewayError> {
+    TicketStatus::from_str(value)
+        .map_err(|_| GatewayError::InvalidInput(format!("invalid ticket status: {value}")))
 }
 
 pub(crate) fn parse_alert_method(value: &str) -> Result<AlertMethod, GatewayError> {
