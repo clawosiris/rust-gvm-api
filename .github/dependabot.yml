@@ -8,8 +8,17 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 10
-    # Group minor/patch updates to reduce PR noise
+    # The rust-gvm workspace crates share one Git revision and must move
+    # together. Keep them in one PR so Cargo resolves and tests one coherent
+    # upstream snapshot.
     groups:
+      rust-gvm-components:
+        patterns:
+          - "gvm-client"
+          - "gvm-connection"
+          - "gvm-gmp"
+          - "gvm-mock-server"
+          - "gvm-protocol"
       opentelemetry:
         patterns:
           - "opentelemetry*"
@@ -18,6 +27,11 @@ updates:
         patterns:
           - "*"
         exclude-patterns:
+          - "gvm-client"
+          - "gvm-connection"
+          - "gvm-gmp"
+          - "gvm-mock-server"
+          - "gvm-protocol"
           - "opentelemetry*"
           - "tracing-opentelemetry"
         update-types:
