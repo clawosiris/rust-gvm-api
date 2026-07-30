@@ -12,7 +12,8 @@ use gvm_gateway_domain::{
     Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt,
     NvtFamily, NvtRef, Override, Permission, PortList, Report, ReportFormat, ResourceRef,
     ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
-    Target, Task, TaskObservers, Ticket, TlsCertificate, User, UserSetting, Vulnerability,
+    Target, Task, TaskObservers, Ticket, TlsCertificate, TlsCertificateAsset, User, UserSetting,
+    Vulnerability,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -420,6 +421,22 @@ pub(crate) fn host_from_gmp(host: gvm_gmp::responses::Host) -> Host {
         hostname: host.hostname,
         severity: host.severity,
         os: host.os,
+    }
+}
+
+pub(crate) fn tls_certificate_asset_from_gmp(
+    cert: gvm_gmp::responses::TlsCertificate,
+) -> TlsCertificateAsset {
+    TlsCertificateAsset {
+        meta: supporting_meta_from_gmp(cert.meta),
+        subject_dn: cert.subject_dn,
+        issuer_dn: cert.issuer_dn,
+        activation_time: cert.activation_time,
+        expiration_time: cert.expiration_time,
+        md5_fingerprint: cert.md5_fingerprint,
+        sha256_fingerprint: cert.sha256_fingerprint,
+        certificate: cert.certificate,
+        valid: cert.valid,
     }
 }
 

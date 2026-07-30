@@ -1166,6 +1166,36 @@ async fn gvmd_adapter_list_vulnerabilities_emits_get_vulns() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_list_tls_certificates_emits_backend_pagination_filter() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let result = adapter
+        .list_tls_certificates(
+            &token,
+            &SupportingResourceQuery {
+                filter_string: Some("subject~example".to_string()),
+                filter_id: None,
+                page: 2,
+                per_page: 10,
+            },
+        )
+        .await;
+
+    assert!(result.is_ok());
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "get_tls_certificates")
+        .expect("get_tls_certificates command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<get_tls_certificates"));
+    assert!(xml.contains("filter=\"subject~example first=11 rows=10\""));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_list_nvts_emits_backend_pagination_filter() {
     let (adapter, server, token) = create_mock_adapter().await;
     server.clear_history();
