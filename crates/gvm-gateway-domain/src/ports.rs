@@ -692,6 +692,9 @@ pub trait TargetPort: Send + Sync + 'static {
         input: CreateTargetInput,
     ) -> Result<String, GatewayError>;
 
+    /// Clone an existing target. Returns the identifier of the new target.
+    async fn clone_target(&self, session_token: &str, id: &str) -> Result<String, GatewayError>;
+
     /// Fetch a target by identifier.
     async fn get_target(&self, session_token: &str, id: &str) -> Result<Target, GatewayError>;
 
@@ -728,6 +731,9 @@ pub trait TaskPort: Send + Sync + 'static {
         session_token: &str,
         input: CreateTaskInput,
     ) -> Result<String, GatewayError>;
+
+    /// Clone an existing task. Returns the identifier of the new task.
+    async fn clone_task(&self, session_token: &str, id: &str) -> Result<String, GatewayError>;
 
     /// Fetch a task by identifier.
     async fn get_task(&self, session_token: &str, id: &str) -> Result<Task, GatewayError>;

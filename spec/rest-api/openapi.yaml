@@ -135,6 +135,8 @@ paths:
     $ref: './targets.yaml#/paths/~1targets'
   /targets/{id}:
     $ref: './targets.yaml#/paths/~1targets~1{id}'
+  /targets/{id}/clone:
+    $ref: './targets.yaml#/paths/~1targets~1{id}~1clone'
   /agents:
     $ref: './emerging.yaml#/paths/~1agents'
   /agents/{id}:
@@ -179,6 +181,8 @@ paths:
     $ref: './tasks.yaml#/paths/~1tasks'
   /tasks/{id}:
     $ref: './tasks.yaml#/paths/~1tasks~1{id}'
+  /tasks/{id}/clone:
+    $ref: './tasks.yaml#/paths/~1tasks~1{id}~1clone'
   /tasks/{id}/start:
     $ref: './tasks.yaml#/paths/~1tasks~1{id}~1start'
   /tasks/{id}/stop:

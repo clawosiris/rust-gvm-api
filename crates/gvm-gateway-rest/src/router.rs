@@ -122,13 +122,14 @@ use crate::{
     },
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
-        create_target, create_target_docs, delete_target, delete_target_docs, get_target,
-        get_target_docs, list_targets, list_targets_docs, update_target, update_target_docs,
+        clone_target, clone_target_docs, create_target, create_target_docs, delete_target,
+        delete_target_docs, get_target, get_target_docs, list_targets, list_targets_docs,
+        update_target, update_target_docs,
     },
     tasks::{
-        create_task, create_task_docs, delete_task, delete_task_docs, get_task, get_task_docs,
-        list_tasks, list_tasks_docs, resume_task, resume_task_docs, start_task, start_task_docs,
-        stop_task, stop_task_docs, update_task, update_task_docs,
+        clone_task, clone_task_docs, create_task, create_task_docs, delete_task, delete_task_docs,
+        get_task, get_task_docs, list_tasks, list_tasks_docs, resume_task, resume_task_docs,
+        start_task, start_task_docs, stop_task, stop_task_docs, update_task, update_task_docs,
     },
 };
 
@@ -232,6 +233,10 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/targets/{id}",
             delete_with(delete_target, delete_target_docs),
+        )
+        .api_route(
+            "/api/v1/targets/{id}/clone",
+            post_with(clone_target, clone_target_docs),
         )
         // Current-GVMD agent management reserved until rust-gvm exposes typed responses
         .api_route(
@@ -606,6 +611,10 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/tasks/{id}",
             delete_with(delete_task, delete_task_docs),
+        )
+        .api_route(
+            "/api/v1/tasks/{id}/clone",
+            post_with(clone_task, clone_task_docs),
         )
         .api_route(
             "/api/v1/tasks/{id}/start",

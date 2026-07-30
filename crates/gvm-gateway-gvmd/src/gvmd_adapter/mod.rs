@@ -83,12 +83,12 @@ use gvm_gmp::{
         system::{get_vulns, FilteredGetOpts},
         tags::{get_tag, get_tags, GetTagsOpts},
         targets::{
-            create_target, delete_target, get_target, get_targets, modify_target, CreateTargetOpts,
-            GetTargetsOpts, ModifyTargetOpts,
+            clone_target, create_target, delete_target, get_target, get_targets, modify_target,
+            CreateTargetOpts, GetTargetsOpts, ModifyTargetOpts,
         },
         tasks::{
-            create_task, delete_task as delete_task_cmd, get_task as get_task_cmd, get_tasks,
-            modify_task as modify_task_cmd, resume_task as resume_task_cmd,
+            clone_task, create_task, delete_task as delete_task_cmd, get_task as get_task_cmd,
+            get_tasks, modify_task as modify_task_cmd, resume_task as resume_task_cmd,
             start_task as start_task_cmd, stop_task as stop_task_cmd, CreateTaskOpts, GetTasksOpts,
             ModifyTaskOpts,
         },

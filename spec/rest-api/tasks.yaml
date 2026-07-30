@@ -114,6 +114,33 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /tasks/{id}/clone:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    post:
+      operationId: cloneTask
+      tags: [Tasks]
+      summary: Clone a task
+      description: Clones an existing task. Returns the identifier of the new task.
+      responses:
+        "201":
+          description: Task cloned
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
   /tasks/{id}/start:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"

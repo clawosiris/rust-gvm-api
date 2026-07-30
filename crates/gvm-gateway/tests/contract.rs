@@ -665,6 +665,12 @@ impl TaskPort for CapturingTaskPort {
         ))
     }
 
+    async fn clone_task(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        Err(GatewayError::Internal(
+            "clone_task is not used by this test port".to_string(),
+        ))
+    }
+
     async fn get_task(&self, _: &str, id: &str) -> Result<Task, GatewayError> {
         Ok(task_response(id, "Captured Task"))
     }

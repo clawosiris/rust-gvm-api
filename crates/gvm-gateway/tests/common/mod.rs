@@ -210,6 +210,12 @@ impl TargetPort for ControlledTargetAdapter {
         ))
     }
 
+    async fn clone_target(&self, _session_token: &str, _id: &str) -> Result<String, GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test adapter".to_string(),
+        ))
+    }
+
     async fn get_target(&self, _session_token: &str, _id: &str) -> Result<Target, GatewayError> {
         Err(GatewayError::Internal(
             "not implemented in test adapter".to_string(),
