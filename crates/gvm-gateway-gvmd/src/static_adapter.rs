@@ -82,6 +82,18 @@ impl SystemPort for StaticGvmdAdapter {
             ))
         }
     }
+
+    async fn restore(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support trashcan".to_string(),
+        ))
+    }
+
+    async fn empty_trashcan(&self, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support trashcan".to_string(),
+        ))
+    }
 }
 
 macro_rules! unsupported {

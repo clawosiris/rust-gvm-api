@@ -233,6 +233,10 @@ fn openapi_tags() -> Value {
             "description": "Feed status"
         },
         {
+            "name": "Trashcan",
+            "description": "Trashcan restore and empty operations"
+        },
+        {
             "name": "Hosts",
             "description": "Discovered host inventory"
         },

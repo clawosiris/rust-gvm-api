@@ -32,6 +32,12 @@ pub trait SystemPort: Send + Sync + 'static {
 
     /// Returns the GMP version string for the connected backend.
     async fn gmp_version(&self) -> Result<String, GatewayError>;
+
+    /// Restore a resource from the trashcan by identifier.
+    async fn restore(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// Empty the trashcan for the session.
+    async fn empty_trashcan(&self, session_token: &str) -> Result<(), GatewayError>;
 }
 
 /// Port for session authentication with the backend.

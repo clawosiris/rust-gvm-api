@@ -93,6 +93,7 @@ use gvm_gmp::{
             ModifyTaskOpts,
         },
         tickets::{get_ticket, get_tickets, GetTicketsOpts},
+        trashcan::{empty_trashcan, restore},
         user_settings::{
             get_user_setting, get_user_settings, modify_user_setting, GetUserSettingsOpts,
             ModifyUserSettingOpts,

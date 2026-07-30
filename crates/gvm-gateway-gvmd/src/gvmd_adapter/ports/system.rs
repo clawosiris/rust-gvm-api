@@ -20,4 +20,28 @@ impl SystemPort for GvmdAdapter {
     async fn gmp_version(&self) -> Result<String, GatewayError> {
         self.probe_version().await
     }
+
+    async fn restore(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(restore(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn empty_trashcan(&self, session_token: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(empty_trashcan())
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
 }

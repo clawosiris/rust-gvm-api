@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Greenbone AG
+openapi: 3.1.0
+info:
+  title: GVM REST API - Trashcan
+  version: 0.1.0
+paths:
+  /trashcan:
+    delete:
+      operationId: emptyTrashcan
+      tags: [Trashcan]
+      summary: Empty the trashcan
+      description: Permanently deletes all resources currently in the trashcan.
+      responses:
+        "204":
+          description: Trashcan emptied
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /trashcan/{id}/restore:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    post:
+      operationId: restoreFromTrashcan
+      tags: [Trashcan]
+      summary: Restore from trashcan
+      description: Restores a resource from the trashcan by identifier.
+      responses:
+        "204":
+          description: Resource restored
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"

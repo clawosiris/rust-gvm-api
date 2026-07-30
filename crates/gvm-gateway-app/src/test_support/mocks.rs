@@ -52,6 +52,14 @@ impl SystemPort for MockSystemPort {
     async fn gmp_version(&self) -> Result<String, GatewayError> {
         Ok(self.gmp_version.clone())
     }
+
+    async fn restore(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn empty_trashcan(&self, _: &str) -> Result<(), GatewayError> {
+        Ok(())
+    }
 }
 
 /// Mock alert port for tests that only need wiring.

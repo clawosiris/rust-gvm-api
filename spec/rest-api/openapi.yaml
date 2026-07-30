@@ -105,6 +105,8 @@ tags:
     description: Current-user preference management
   - name: Feeds
     description: Feed status
+  - name: Trashcan
+    description: Trashcan restore and empty operations
   - name: Hosts
     description: Discovered host inventory
   - name: Report Formats
@@ -275,6 +277,10 @@ paths:
     $ref: './identity.yaml#/paths/~1user-settings~1{id}'
   /feeds:
     $ref: './feeds.yaml#/paths/~1feeds'
+  /trashcan:
+    $ref: './trashcan.yaml#/paths/~1trashcan'
+  /trashcan/{id}/restore:
+    $ref: './trashcan.yaml#/paths/~1trashcan~1{id}~1restore'
   /hosts:
     $ref: './supporting-resources.yaml#/paths/~1hosts'
   /hosts/{id}:

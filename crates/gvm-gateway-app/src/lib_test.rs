@@ -90,6 +90,14 @@ impl SystemPort for FailingVersionSystemPort {
             "version probe failed".to_string(),
         ))
     }
+
+    async fn restore(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn empty_trashcan(&self, _: &str) -> Result<(), GatewayError> {
+        Ok(())
+    }
 }
 
 /// Session creation must use the version negotiated by the authenticated

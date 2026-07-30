@@ -36,3 +36,4 @@ pub mod supporting_resources;
 pub(crate) mod system;
 pub mod targets;
 pub mod tasks;
+pub(crate) mod trashcan;

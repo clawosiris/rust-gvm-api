@@ -131,6 +131,7 @@ use crate::{
         get_task, get_task_docs, list_tasks, list_tasks_docs, resume_task, resume_task_docs,
         start_task, start_task_docs, stop_task, stop_task_docs, update_task, update_task_docs,
     },
+    trashcan::{empty_trashcan, empty_trashcan_docs, restore, restore_docs},
 };
 
 pub use crate::rate_limit::RateLimitConfig;
@@ -470,6 +471,14 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         // Feeds
         .api_route("/api/v1/feeds", get_with(list_feeds, list_feeds_docs))
+        .api_route(
+            "/api/v1/trashcan",
+            delete_with(empty_trashcan, empty_trashcan_docs),
+        )
+        .api_route(
+            "/api/v1/trashcan/{id}/restore",
+            post_with(restore, restore_docs),
+        )
         // Supporting resources
         .api_route("/api/v1/hosts", get_with(list_hosts, list_hosts_docs))
         .api_route("/api/v1/hosts/{id}", get_with(get_host, get_host_docs))

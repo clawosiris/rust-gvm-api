@@ -26,4 +26,30 @@ impl GatewayService {
             gmp_version,
         })
     }
+
+    /// Restores a resource from the trashcan for an authenticated session.
+    pub async fn restore(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "trashcan.restore",
+            session_token,
+            "restore",
+            "trashcan",
+            Some(id),
+            |session| async move { self.system.restore(&session.token, id).await },
+        )
+        .await
+    }
+
+    /// Empties the trashcan for an authenticated session.
+    pub async fn empty_trashcan(&self, session_token: &str) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "trashcan.empty",
+            session_token,
+            "delete",
+            "trashcan",
+            None,
+            |session| async move { self.system.empty_trashcan(&session.token).await },
+        )
+        .await
+    }
 }

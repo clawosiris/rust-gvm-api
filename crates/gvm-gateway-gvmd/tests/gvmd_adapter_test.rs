@@ -1166,6 +1166,43 @@ async fn gvmd_adapter_list_vulnerabilities_emits_get_vulns() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_restore_emits_restore_command() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let id = "550e8400-e29b-41d4-a716-446655440060";
+    let _ = adapter.restore(&token, id).await;
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "restore")
+        .expect("restore should emit a restore command");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains(&format!("id=\"{id}\"")));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_empty_trashcan_emits_command() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let _ = adapter.empty_trashcan(&token).await;
+
+    let history = server.command_history();
+    assert!(
+        history
+            .iter()
+            .any(|record| record.command_name() == "empty_trashcan"),
+        "empty_trashcan command should be recorded"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_list_nvts_emits_backend_pagination_filter() {
     let (adapter, server, token) = create_mock_adapter().await;
     server.clear_history();
