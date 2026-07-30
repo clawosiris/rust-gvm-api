@@ -63,6 +63,10 @@ collect_changed_files() {
   esac
 
   require_commit "$base" || {
+    if [[ "$event_name" == "push" ]]; then
+      echo "Unable to inspect base commit ${base}; treating the push as code-affecting" >&2
+      return 2
+    fi
     echo "Unable to inspect base commit ${base}" >&2
     return 1
   }
@@ -93,7 +97,8 @@ collect_status=0
 changed_file_list="$(collect_changed_files)" || collect_status=$?
 
 if [[ "$collect_status" -eq 2 ]]; then
-  # Manual and scheduled runs are intentionally treated as code-affecting.
+  # Manual and scheduled runs, plus pushes whose pre-rewrite base is no longer
+  # reachable, are intentionally treated as code-affecting.
   changed_files=()
   code_count=1
 elif [[ "$collect_status" -ne 0 ]]; then
