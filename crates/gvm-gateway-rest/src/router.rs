@@ -113,11 +113,13 @@ use crate::{
         delete_note_docs, delete_override, delete_override_docs, get_filter, get_filter_docs,
         get_host, get_host_docs, get_note, get_note_docs, get_nvt, get_nvt_docs, get_override,
         get_override_docs, get_report_format, get_report_format_docs, get_tag, get_tag_docs,
-        get_ticket, get_ticket_docs, list_filters, list_filters_docs, list_hosts, list_hosts_docs,
-        list_notes, list_notes_docs, list_nvt_families, list_nvt_families_docs, list_nvts,
-        list_nvts_docs, list_overrides, list_overrides_docs, list_report_formats,
-        list_report_formats_docs, list_tags, list_tags_docs, list_tickets, list_tickets_docs,
-        update_note, update_note_docs, update_override, update_override_docs,
+        get_ticket, get_ticket_docs, get_tls_certificate, get_tls_certificate_docs, list_filters,
+        list_filters_docs, list_hosts, list_hosts_docs, list_notes, list_notes_docs,
+        list_nvt_families, list_nvt_families_docs, list_nvts, list_nvts_docs, list_overrides,
+        list_overrides_docs, list_report_formats, list_report_formats_docs, list_tags,
+        list_tags_docs, list_tickets, list_tickets_docs, list_tls_certificates,
+        list_tls_certificates_docs, update_note, update_note_docs, update_override,
+        update_override_docs,
     },
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
@@ -467,6 +469,14 @@ fn documented_router() -> ApiRouter<GatewayService> {
         // Supporting resources
         .api_route("/api/v1/hosts", get_with(list_hosts, list_hosts_docs))
         .api_route("/api/v1/hosts/{id}", get_with(get_host, get_host_docs))
+        .api_route(
+            "/api/v1/tls-certificates",
+            get_with(list_tls_certificates, list_tls_certificates_docs),
+        )
+        .api_route(
+            "/api/v1/tls-certificates/{id}",
+            get_with(get_tls_certificate, get_tls_certificate_docs),
+        )
         .api_route(
             "/api/v1/report-formats",
             get_with(list_report_formats, list_report_formats_docs),

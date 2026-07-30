@@ -237,6 +237,10 @@ fn openapi_tags() -> Value {
             "description": "Discovered host inventory"
         },
         {
+            "name": "TLS Certificates",
+            "description": "TLS certificate assets"
+        },
+        {
             "name": "Report Formats",
             "description": "Report export format discovery"
         },

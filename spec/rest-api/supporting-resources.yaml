@@ -53,6 +53,55 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /tls-certificates:
+    get:
+      operationId: getTlsCertificates
+      tags: [TLS Certificates]
+      summary: List TLS certificates
+      description: Returns a paginated list of TLS certificate assets.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of TLS certificate assets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TlsCertificateAssetList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /tls-certificates/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getTlsCertificate
+      tags: [TLS Certificates]
+      summary: Get a TLS certificate
+      description: Returns the details for a single TLS certificate asset.
+      responses:
+        "200":
+          description: TLS certificate details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TlsCertificateAsset"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
   /report-formats:
     get:
       operationId: getReportFormats
@@ -610,6 +659,60 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Host"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    TlsCertificateAsset:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+        - valid
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        subjectDn:
+          type: string
+        issuerDn:
+          type: string
+        activationTime:
+          type: string
+        expirationTime:
+          type: string
+        md5Fingerprint:
+          type: string
+        sha256Fingerprint:
+          type: string
+        certificate:
+          type: string
+        valid:
+          type: boolean
+
+    TlsCertificateAssetList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TlsCertificateAsset"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
 

@@ -107,6 +107,8 @@ tags:
     description: Feed status
   - name: Hosts
     description: Discovered host inventory
+  - name: TLS Certificates
+    description: TLS certificate assets
   - name: Report Formats
     description: Report export format discovery
   - name: Filters
@@ -273,6 +275,10 @@ paths:
     $ref: './supporting-resources.yaml#/paths/~1hosts'
   /hosts/{id}:
     $ref: './supporting-resources.yaml#/paths/~1hosts~1{id}'
+  /tls-certificates:
+    $ref: './supporting-resources.yaml#/paths/~1tls-certificates'
+  /tls-certificates/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1tls-certificates~1{id}'
   /report-formats:
     $ref: './supporting-resources.yaml#/paths/~1report-formats'
   /report-formats/{id}:

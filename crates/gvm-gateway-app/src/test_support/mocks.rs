@@ -22,7 +22,8 @@ use gvm_gateway_domain::{
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
     SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -918,6 +919,32 @@ impl SupportingResourcePort for MockSupportingResourcePort {
 
     async fn get_host(&self, _: &str, id: &str) -> Result<Host, GatewayError> {
         Err(GatewayError::NotFound(format!("host {id} not found")))
+    }
+
+    async fn list_tls_certificates(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<TlsCertificateAssetPage, GatewayError> {
+        Ok(TlsCertificateAssetPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_tls_certificate(
+        &self,
+        _: &str,
+        id: &str,
+    ) -> Result<TlsCertificateAsset, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "tls certificate {id} not found"
+        )))
     }
 
     async fn list_report_formats(
