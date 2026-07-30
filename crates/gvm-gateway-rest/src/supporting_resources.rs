@@ -14,7 +14,7 @@ use axum::{
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
     CreateNoteInput, CreateOverrideInput, GatewayError, ModifyNoteInput, ModifyOverrideInput,
-    SupportingResourceQuery,
+    SecInfoKind, SupportingResourceQuery,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -670,6 +670,42 @@ impl From<gvm_gateway_domain::NvtPage> for NvtListResponse {
 }
 
 #[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "SecInfoItem")]
+pub(crate) struct SecInfoItemResponse {
+    id: String,
+    name: String,
+}
+
+impl From<gvm_gateway_domain::SecInfoItem> for SecInfoItemResponse {
+    fn from(item: gvm_gateway_domain::SecInfoItem) -> Self {
+        Self {
+            id: item.id,
+            name: item.name,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "SecInfoItemList")]
+pub(crate) struct SecInfoItemListResponse {
+    data: Vec<SecInfoItemResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::SecInfoItemPage> for SecInfoItemListResponse {
+    fn from(page: gvm_gateway_domain::SecInfoItemPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(SecInfoItemResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "NvtFamily")]
 pub(crate) struct NvtFamilyResponse {
     name: String,
@@ -1257,6 +1293,68 @@ pub async fn list_nvts(
     }
 }
 
+/// Shared handler for the SecInfo catalog list endpoints.
+async fn list_secinfo_kind(
+    service: GatewayService,
+    headers: HeaderMap,
+    uri: OriginalUri,
+    kind: SecInfoKind,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match SupportingListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .list_secinfo(&session, kind, supporting_query(query))
+        .await
+    {
+        Ok(page) => (StatusCode::OK, Json(SecInfoItemListResponse::from(page))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Lists CVEs from the SecInfo database.
+pub async fn list_cves(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    list_secinfo_kind(service, headers, uri, SecInfoKind::Cve).await
+}
+
+/// Lists CPEs from the SecInfo database.
+pub async fn list_cpes(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    list_secinfo_kind(service, headers, uri, SecInfoKind::Cpe).await
+}
+
+/// Lists CERT-Bund advisories from the SecInfo database.
+pub async fn list_cert_bund_advisories(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    list_secinfo_kind(service, headers, uri, SecInfoKind::CertBundAdvisory).await
+}
+
+/// Lists DFN-CERT advisories from the SecInfo database.
+pub async fn list_dfn_cert_advisories(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    list_secinfo_kind(service, headers, uri, SecInfoKind::DfnCertAdvisory).await
+}
+
 /// Returns a single NVT by OID.
 pub async fn get_nvt(
     State(service): State<GatewayService>,
@@ -1605,6 +1703,60 @@ pub(crate) fn list_nvts_docs(op: TransformOperation<'_>) -> TransformOperation<'
         .response_with::<200, Json<NvtListResponse>, _>(ok_json("Paginated list of NVTs"));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
+}
+
+fn secinfo_list_docs<'a>(
+    op: TransformOperation<'a>,
+    operation_id: &'static str,
+    summary: &'static str,
+    description: &'static str,
+) -> TransformOperation<'a> {
+    let op = op
+        .id(operation_id)
+        .tag("SecInfo")
+        .summary(summary)
+        .description(description)
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<SecInfoItemListResponse>, _>(ok_json(summary));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn list_cves_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    secinfo_list_docs(
+        op,
+        "getCves",
+        "List CVEs",
+        "Returns a paginated list of CVEs from the SecInfo database.",
+    )
+}
+
+pub(crate) fn list_cpes_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    secinfo_list_docs(
+        op,
+        "getCpes",
+        "List CPEs",
+        "Returns a paginated list of CPEs from the SecInfo database.",
+    )
+}
+
+pub(crate) fn list_cert_bund_advisories_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    secinfo_list_docs(
+        op,
+        "getCertBundAdvisories",
+        "List CERT-Bund advisories",
+        "Returns a paginated list of CERT-Bund advisories from the SecInfo database.",
+    )
+}
+
+pub(crate) fn list_dfn_cert_advisories_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    secinfo_list_docs(
+        op,
+        "getDfnCertAdvisories",
+        "List DFN-CERT advisories",
+        "Returns a paginated list of DFN-CERT advisories from the SecInfo database.",
+    )
 }
 
 pub(crate) fn get_nvt_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {

@@ -489,6 +489,106 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /cves:
+    get:
+      operationId: getCves
+      tags: [SecInfo]
+      summary: List CVEs
+      description: Returns a paginated list of CVEs from the SecInfo database.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of CVEs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecInfoItemList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /cpes:
+    get:
+      operationId: getCpes
+      tags: [SecInfo]
+      summary: List CPEs
+      description: Returns a paginated list of CPEs from the SecInfo database.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of CPEs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecInfoItemList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /cert-bund-advisories:
+    get:
+      operationId: getCertBundAdvisories
+      tags: [SecInfo]
+      summary: List CERT-Bund advisories
+      description: Returns a paginated list of CERT-Bund advisories from the SecInfo database.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of CERT-Bund advisories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecInfoItemList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /dfn-cert-advisories:
+    get:
+      operationId: getDfnCertAdvisories
+      tags: [SecInfo]
+      summary: List DFN-CERT advisories
+      description: Returns a paginated list of DFN-CERT advisories from the SecInfo database.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of DFN-CERT advisories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecInfoItemList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
   /nvts:
     get:
       operationId: getNvts
@@ -1081,6 +1181,30 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Nvt"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    SecInfoItem:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    SecInfoItemList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SecInfoItem"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
 

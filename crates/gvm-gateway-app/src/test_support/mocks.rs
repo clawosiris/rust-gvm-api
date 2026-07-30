@@ -20,9 +20,10 @@ use gvm_gateway_domain::{
     ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
     ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    SecInfoItemPage, SecInfoKind, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
+    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, Ticket, TicketPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -1111,6 +1112,23 @@ impl SupportingResourcePort for MockSupportingResourcePort {
             pagination: gvm_gateway_domain::Pagination {
                 page,
                 per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn list_secinfo(
+        &self,
+        _: &str,
+        _: SecInfoKind,
+        query: &SupportingResourceQuery,
+    ) -> Result<SecInfoItemPage, GatewayError> {
+        Ok(SecInfoItemPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
                 total: 0,
                 total_pages: 0,
             },

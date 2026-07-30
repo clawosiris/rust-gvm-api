@@ -19,9 +19,9 @@ use crate::{
     ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
     ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
     ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
-    ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery,
+    ScheduleQuery, SecInfoItemPage, SecInfoKind, SupportingResourceQuery, Tag, TagPage, Target,
+    TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Port for system information needed by the gateway.
@@ -666,6 +666,14 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
         page: u32,
         per_page: u32,
     ) -> Result<NvtFamilyPage, GatewayError>;
+
+    /// List SecInfo catalog items of the given kind for the session.
+    async fn list_secinfo(
+        &self,
+        session_token: &str,
+        kind: SecInfoKind,
+        query: &SupportingResourceQuery,
+    ) -> Result<SecInfoItemPage, GatewayError>;
 }
 
 /// Port for target CRUD operations.

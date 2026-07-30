@@ -21,9 +21,10 @@ use gvm_gateway_domain::{
     ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
     ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    SecInfoItemPage, SecInfoKind, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
+    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, Ticket, TicketPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery,
 };
 
 /// Static adapter for system readiness and version information.
@@ -763,6 +764,15 @@ impl SupportingResourcePort for StaticGvmdAdapter {
         _: u32,
     ) -> Result<NvtFamilyPage, GatewayError> {
         unsupported!("static adapter does not support nvt families")
+    }
+
+    async fn list_secinfo(
+        &self,
+        _: &str,
+        _: SecInfoKind,
+        _: &SupportingResourceQuery,
+    ) -> Result<SecInfoItemPage, GatewayError> {
+        unsupported!("static adapter does not support secinfo")
     }
 }
 

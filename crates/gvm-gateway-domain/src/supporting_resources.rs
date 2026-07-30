@@ -227,6 +227,37 @@ pub struct NvtPage {
     pub pagination: Pagination,
 }
 
+/// SecInfo catalog kind selecting which security information database to query.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SecInfoKind {
+    /// Common Vulnerabilities and Exposures.
+    Cve,
+    /// Common Platform Enumeration.
+    Cpe,
+    /// CERT-Bund advisories.
+    CertBundAdvisory,
+    /// DFN-CERT advisories.
+    DfnCertAdvisory,
+}
+
+/// A SecInfo catalog item (CVE, CPE, or advisory).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SecInfoItem {
+    /// Item identifier.
+    pub id: String,
+    /// Item name.
+    pub name: String,
+}
+
+/// Paginated SecInfo item list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SecInfoItemPage {
+    /// Page items.
+    pub data: Vec<SecInfoItem>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
 /// Domain NVT family representation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct NvtFamily {

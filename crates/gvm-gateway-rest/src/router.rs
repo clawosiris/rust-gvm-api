@@ -113,9 +113,11 @@ use crate::{
         delete_note_docs, delete_override, delete_override_docs, get_filter, get_filter_docs,
         get_host, get_host_docs, get_note, get_note_docs, get_nvt, get_nvt_docs, get_override,
         get_override_docs, get_report_format, get_report_format_docs, get_tag, get_tag_docs,
-        get_ticket, get_ticket_docs, list_filters, list_filters_docs, list_hosts, list_hosts_docs,
-        list_notes, list_notes_docs, list_nvt_families, list_nvt_families_docs, list_nvts,
-        list_nvts_docs, list_overrides, list_overrides_docs, list_report_formats,
+        get_ticket, get_ticket_docs, list_cert_bund_advisories, list_cert_bund_advisories_docs,
+        list_cpes, list_cpes_docs, list_cves, list_cves_docs, list_dfn_cert_advisories,
+        list_dfn_cert_advisories_docs, list_filters, list_filters_docs, list_hosts,
+        list_hosts_docs, list_notes, list_notes_docs, list_nvt_families, list_nvt_families_docs,
+        list_nvts, list_nvts_docs, list_overrides, list_overrides_docs, list_report_formats,
         list_report_formats_docs, list_tags, list_tags_docs, list_tickets, list_tickets_docs,
         update_note, update_note_docs, update_override, update_override_docs,
     },
@@ -520,6 +522,16 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         .api_route("/api/v1/nvts", get_with(list_nvts, list_nvts_docs))
         .api_route("/api/v1/nvts/{id}", get_with(get_nvt, get_nvt_docs))
+        .api_route("/api/v1/cves", get_with(list_cves, list_cves_docs))
+        .api_route("/api/v1/cpes", get_with(list_cpes, list_cpes_docs))
+        .api_route(
+            "/api/v1/cert-bund-advisories",
+            get_with(list_cert_bund_advisories, list_cert_bund_advisories_docs),
+        )
+        .api_route(
+            "/api/v1/dfn-cert-advisories",
+            get_with(list_dfn_cert_advisories, list_dfn_cert_advisories_docs),
+        )
         .api_route(
             "/api/v1/nvt-families",
             get_with(list_nvt_families, list_nvt_families_docs),

@@ -1137,6 +1137,66 @@ async fn gvmd_adapter_list_hosts_emits_backend_pagination_filter() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_list_secinfo_cve_emits_get_cves() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let _ = adapter
+        .list_secinfo(
+            &token,
+            SecInfoKind::Cve,
+            &SupportingResourceQuery {
+                filter_string: Some("name~ssl".to_string()),
+                filter_id: None,
+                page: 2,
+                per_page: 10,
+            },
+        )
+        .await;
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "get_info")
+        .expect("list_secinfo(Cve) should emit a get_info command");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<get_info"));
+    assert!(xml.contains("type=\"cve\""));
+    assert!(xml.contains("filter=\"name~ssl first=11 rows=10\""));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_secinfo_cpe_emits_get_cpes() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let _ = adapter
+        .list_secinfo(
+            &token,
+            SecInfoKind::Cpe,
+            &SupportingResourceQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 25,
+            },
+        )
+        .await;
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "get_info")
+        .expect("list_secinfo(Cpe) should emit a get_info command");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("type=\"cpe\""));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_list_nvts_emits_backend_pagination_filter() {
     let (adapter, server, token) = create_mock_adapter().await;
     server.clear_history();

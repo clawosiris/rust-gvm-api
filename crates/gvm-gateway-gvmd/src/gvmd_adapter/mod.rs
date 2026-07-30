@@ -28,11 +28,11 @@ use gvm_gateway_domain::{
     ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
     ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
     ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SessionTokenDigest, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage,
-    Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
-    Ticket, TicketPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery,
+    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SecInfoItem,
+    SecInfoItemPage, SecInfoKind, SessionTokenDigest, SupportingResourcePort,
+    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
+    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificatePage, User,
+    UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 use gvm_gmp::{
     commands::{
@@ -80,6 +80,9 @@ use gvm_gmp::{
             create_schedule, delete_schedule, get_schedule, get_schedules, modify_schedule,
             GetSchedulesOpts, ScheduleOpts,
         },
+        secinfo::{
+            get_cert_bund_advisories, get_cpes, get_cves, get_dfn_cert_advisories, GetSecInfoOpts,
+        },
         tags::{get_tag, get_tags, GetTagsOpts},
         targets::{
             create_target, delete_target, get_target, get_targets, modify_target, CreateTargetOpts,
@@ -106,7 +109,8 @@ use gvm_gmp::{
         CreateGroupResponse, CreateNoteResponse, CreateOverrideResponse, CreatePermissionResponse,
         CreatePortListResponse, CreateRoleResponse, CreateScanConfigResponse,
         CreateScheduleResponse, CreateTargetResponse, CreateTaskResponse, CreateUserResponse,
-        GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetFiltersResponse,
+        GetAlertsResponse, GetCertBundAdvisoriesResponse, GetCpesResponse, GetCredentialsResponse,
+        GetCvesResponse, GetDfnCertAdvisoriesResponse, GetFeedsResponse, GetFiltersResponse,
         GetGroupsResponse, GetHostsResponse, GetNotesResponse, GetNvtFamiliesResponse,
         GetNvtsResponse, GetOverridesResponse, GetPermissionsResponse, GetPortListsResponse,
         GetReportFormatsResponse, GetReportsResponse, GetResultsResponse, GetRolesResponse,

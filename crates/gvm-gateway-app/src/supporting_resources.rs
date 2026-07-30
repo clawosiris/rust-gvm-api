@@ -6,8 +6,8 @@
 use gvm_gateway_domain::{
     CreateNoteInput, CreateOverrideInput, Filter, FilterPage, GatewayError, Host, HostPage,
     ModifyNoteInput, ModifyOverrideInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket,
-    TicketPage,
+    OverridePage, ReportFormat, ReportFormatPage, SecInfoItemPage, SecInfoKind,
+    SupportingResourceQuery, Tag, TagPage, Ticket, TicketPage,
 };
 
 use crate::GatewayService;
@@ -420,6 +420,28 @@ impl GatewayService {
             |session| async move {
                 self.supporting_resources
                     .list_nvts(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists SecInfo catalog items of the given kind for an authenticated session.
+    pub async fn list_secinfo(
+        &self,
+        session_token: &str,
+        kind: SecInfoKind,
+        query: SupportingResourceQuery,
+    ) -> Result<SecInfoItemPage, GatewayError> {
+        self.execute_with_resource(
+            "secinfo.list",
+            session_token,
+            "list",
+            "secinfo",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_secinfo(&session.token, kind, &query)
                     .await
             },
         )
