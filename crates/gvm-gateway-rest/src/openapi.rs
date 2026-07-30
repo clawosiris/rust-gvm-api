@@ -233,6 +233,10 @@ fn openapi_tags() -> Value {
             "description": "Feed status"
         },
         {
+            "name": "Aggregates",
+            "description": "Aggregate statistics queries"
+        },
+        {
             "name": "Hosts",
             "description": "Discovered host inventory"
         },

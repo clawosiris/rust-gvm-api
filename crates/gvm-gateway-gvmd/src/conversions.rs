@@ -9,10 +9,11 @@
 use std::str::FromStr;
 
 use gvm_gateway_domain::{
-    Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt,
-    NvtFamily, NvtRef, Override, Permission, PortList, Report, ReportFormat, ResourceRef,
-    ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
-    Target, Task, TaskObservers, Ticket, TlsCertificate, User, UserSetting,
+    AggregateGroup, AggregateStats, AggregateSubgroup, Aggregates, Alert, Credential, Feed, Filter,
+    GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt, NvtFamily, NvtRef, Override,
+    Permission, PortList, Report, ReportFormat, ResourceRef, ResultCount, Role, ScanConfig,
+    ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag, Target, Task, TaskObservers,
+    Ticket, TlsCertificate, User, UserSetting,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -103,6 +104,37 @@ pub(crate) fn port_list_from_gmp(port_list: gvm_gmp::responses::PortList) -> Por
         port_range: port_list.port_range,
         in_use: port_list.meta.in_use,
         writable: port_list.meta.writable,
+    }
+}
+
+pub(crate) fn aggregates_from_gmp(parsed: gvm_gmp::responses::GetAggregatesResponse) -> Aggregates {
+    Aggregates {
+        groups: parsed
+            .groups
+            .into_iter()
+            .map(|group| AggregateGroup {
+                value: group.value,
+                count: group.count,
+                c_count: group.c_count,
+                text: group.text,
+                subgroups: group
+                    .subgroups
+                    .into_iter()
+                    .map(|subgroup| AggregateSubgroup {
+                        value: subgroup.value,
+                        count: subgroup.count,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        column_info: parsed.column_info,
+        overall: parsed.overall.map(|stats| AggregateStats {
+            column: stats.column,
+            min: stats.min,
+            max: stats.max,
+            mean: stats.mean,
+            sum: stats.sum,
+        }),
     }
 }
 

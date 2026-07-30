@@ -1137,6 +1137,35 @@ async fn gvmd_adapter_list_hosts_emits_backend_pagination_filter() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_get_aggregates_emits_command() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let _ = adapter
+        .get_aggregates(
+            &token,
+            &AggregatesQuery {
+                resource_type: "nvt".to_string(),
+                group_column: Some("family".to_string()),
+                data_columns: None,
+                filter: None,
+            },
+        )
+        .await;
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "get_aggregates")
+        .expect("get_aggregates should emit a get_aggregates command");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<get_aggregates"));
+    assert!(xml.contains("group_column=\"family\""));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_list_nvts_emits_backend_pagination_filter() {
     let (adapter, server, token) = create_mock_adapter().await;
     server.clear_history();

@@ -90,6 +90,16 @@ impl SystemPort for FailingVersionSystemPort {
             "version probe failed".to_string(),
         ))
     }
+
+    async fn get_aggregates(
+        &self,
+        _: &str,
+        _: &gvm_gateway_domain::AggregatesQuery,
+    ) -> Result<gvm_gateway_domain::Aggregates, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "aggregates not supported".to_string(),
+        ))
+    }
 }
 
 /// Session creation must use the version negotiated by the authenticated

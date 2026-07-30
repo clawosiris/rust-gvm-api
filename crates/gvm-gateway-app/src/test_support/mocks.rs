@@ -5,24 +5,25 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use gvm_gateway_domain::{
-    Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
-    CreateGroupInput, CreateNoteInput, CreateOverrideInput, CreatePermissionInput,
-    CreatePortListInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
-    CreateTargetInput, CreateTaskInput, CreateUserInput, Credential, CredentialPage,
-    CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage,
-    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
-    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
-    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    Aggregates, AggregatesQuery, Alert, AlertPage, AlertPort, AlertQuery, AuthPort,
+    CreateAlertInput, CreateCredentialInput, CreateGroupInput, CreateNoteInput,
+    CreateOverrideInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
+    CreateScanConfigInput, CreateScheduleInput, CreateTargetInput, CreateTaskInput,
+    CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
+    Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host,
+    HostPage, IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
+    ModifyGroupInput, ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput,
+    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
+    ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Note, NotePage,
+    Nvt, NvtFamilyPage, NvtPage, Override, OverridePage, Permission, PermissionPage, PortList,
+    PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportExport,
+    ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery,
+    ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
+    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort,
+    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
+    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificatePage, User,
+    UserPage, UserSetting, UserSettingList, UserSettingQuery,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -50,6 +51,18 @@ impl SystemPort for MockSystemPort {
 
     async fn gmp_version(&self) -> Result<String, GatewayError> {
         Ok(self.gmp_version.clone())
+    }
+
+    async fn get_aggregates(
+        &self,
+        _: &str,
+        _: &AggregatesQuery,
+    ) -> Result<Aggregates, GatewayError> {
+        Ok(Aggregates {
+            groups: vec![],
+            column_info: vec![],
+            overall: None,
+        })
     }
 }
 

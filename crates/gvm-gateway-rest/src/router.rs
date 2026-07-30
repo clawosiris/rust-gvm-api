@@ -31,6 +31,7 @@ use tracing::{field, Instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
+    aggregates::{get_aggregates, get_aggregates_docs},
     alerts::{
         create_alert, create_alert_docs, delete_alert, delete_alert_docs, get_alert,
         get_alert_docs, list_alerts, list_alerts_docs, update_alert, update_alert_docs,
@@ -464,6 +465,10 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         // Feeds
         .api_route("/api/v1/feeds", get_with(list_feeds, list_feeds_docs))
+        .api_route(
+            "/api/v1/aggregates",
+            get_with(get_aggregates, get_aggregates_docs),
+        )
         // Supporting resources
         .api_route("/api/v1/hosts", get_with(list_hosts, list_hosts_docs))
         .api_route("/api/v1/hosts/{id}", get_with(get_host, get_host_docs))

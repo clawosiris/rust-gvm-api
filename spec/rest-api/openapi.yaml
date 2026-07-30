@@ -105,6 +105,8 @@ tags:
     description: Current-user preference management
   - name: Feeds
     description: Feed status
+  - name: Aggregates
+    description: Aggregate statistics queries
   - name: Hosts
     description: Discovered host inventory
   - name: Report Formats
@@ -269,6 +271,8 @@ paths:
     $ref: './identity.yaml#/paths/~1user-settings~1{id}'
   /feeds:
     $ref: './feeds.yaml#/paths/~1feeds'
+  /aggregates:
+    $ref: './aggregates.yaml#/paths/~1aggregates'
   /hosts:
     $ref: './supporting-resources.yaml#/paths/~1hosts'
   /hosts/{id}:

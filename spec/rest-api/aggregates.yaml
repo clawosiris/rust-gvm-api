@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Greenbone AG
+openapi: 3.1.0
+info:
+  title: GVM REST API - Aggregates
+  version: 0.1.0
+paths:
+  /aggregates:
+    get:
+      operationId: getAggregates
+      tags: [Aggregates]
+      summary: Run an aggregate query
+      description: >-
+        Returns grouped counts and statistics for a backend resource type.
+        Requires `resourceType`; optionally scoped by `groupColumn`, `dataColumns`, and `filter`.
+      parameters:
+        - name: resourceType
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: groupColumn
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: dataColumns
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Aggregate query result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Aggregates"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+components:
+  schemas:
+    AggregateSubgroup:
+      type: object
+      required:
+        - value
+        - count
+      properties:
+        value:
+          type: string
+        count:
+          type: integer
+
+    AggregateGroup:
+      type: object
+      required:
+        - value
+        - count
+      properties:
+        value:
+          type: string
+        count:
+          type: integer
+        cCount:
+          type: integer
+        text:
+          type: string
+        subgroups:
+          type: array
+          items:
+            $ref: "#/components/schemas/AggregateSubgroup"
+
+    AggregateStats:
+      type: object
+      required:
+        - column
+      properties:
+        column:
+          type: string
+        min:
+          type: number
+        max:
+          type: number
+        mean:
+          type: number
+        sum:
+          type: number
+
+    Aggregates:
+      type: object
+      required:
+        - groups
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/AggregateGroup"
+        columnInfo:
+          type: array
+          items:
+            type: string
+        overall:
+          $ref: "#/components/schemas/AggregateStats"

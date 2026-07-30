@@ -6,22 +6,23 @@
 use async_trait::async_trait;
 
 use crate::{
-    Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreateGroupInput,
-    CreateNoteInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
-    CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
-    CreateTaskInput, CreateUserInput, Credential, CredentialPage, CredentialQuery, CredentialStore,
-    Feed, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage,
-    IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
-    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
-    ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
-    ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery,
+    Aggregates, AggregatesQuery, Alert, AlertPage, AlertQuery, CreateAlertInput,
+    CreateCredentialInput, CreateGroupInput, CreateNoteInput, CreateOverrideInput,
+    CreatePermissionInput, CreatePortListInput, CreateRoleInput, CreateScanConfigInput,
+    CreateScheduleInput, CreateTargetInput, CreateTaskInput, CreateUserInput, Credential,
+    CredentialPage, CredentialQuery, CredentialStore, Feed, Filter, FilterPage, GatewayError,
+    GetReportOpts, Group, GroupPage, Host, HostPage, IdentityQuery, ModifyAlertInput,
+    ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput, ModifyOverrideInput,
+    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override, OverridePage,
+    Permission, PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report,
+    ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportQuery,
+    ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery,
+    ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage, ScheduleQuery,
+    SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task, TaskAction,
+    TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery,
 };
 
 /// Port for system information needed by the gateway.
@@ -32,6 +33,13 @@ pub trait SystemPort: Send + Sync + 'static {
 
     /// Returns the GMP version string for the connected backend.
     async fn gmp_version(&self) -> Result<String, GatewayError>;
+
+    /// Runs an aggregate query for the session.
+    async fn get_aggregates(
+        &self,
+        session_token: &str,
+        query: &AggregatesQuery,
+    ) -> Result<Aggregates, GatewayError>;
 }
 
 /// Port for session authentication with the backend.
