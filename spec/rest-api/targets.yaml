@@ -122,6 +122,33 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /targets/{id}/clone:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    post:
+      operationId: cloneTarget
+      tags: [Targets]
+      summary: Clone a target
+      description: Clones an existing target. Returns the identifier of the new target.
+      responses:
+        "201":
+          description: Target cloned
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
 components:
   schemas:
     Target:

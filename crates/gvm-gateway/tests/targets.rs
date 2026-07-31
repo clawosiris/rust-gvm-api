@@ -49,6 +49,12 @@ impl TargetPort for CredentialReadbackTargetAdapter {
         ))
     }
 
+    async fn clone_target(&self, _session_token: &str, _id: &str) -> Result<String, GatewayError> {
+        Err(GatewayError::Internal(
+            "clone_target is not used by this test adapter".to_string(),
+        ))
+    }
+
     async fn get_target(&self, _session_token: &str, id: &str) -> Result<Target, GatewayError> {
         Ok(Target {
             id: id.to_string(),

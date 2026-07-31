@@ -44,6 +44,19 @@ impl GatewayService {
         .await
     }
 
+    /// Clones a task for an authenticated session.
+    pub async fn clone_task(&self, session_token: &str, id: &str) -> Result<String, GatewayError> {
+        self.execute_with_resource(
+            "tasks.clone",
+            session_token,
+            "create",
+            "task",
+            Some(id),
+            |session| async move { self.tasks.clone_task(&session.token, id).await },
+        )
+        .await
+    }
+
     /// Fetches a task for an authenticated session.
     pub async fn get_task(&self, session_token: &str, id: &str) -> Result<Task, GatewayError> {
         self.execute_with_resource(

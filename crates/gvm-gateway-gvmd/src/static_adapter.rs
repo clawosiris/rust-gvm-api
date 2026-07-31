@@ -373,6 +373,12 @@ impl TargetPort for StaticGvmdAdapter {
         ))
     }
 
+    async fn clone_target(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support targets".to_string(),
+        ))
+    }
+
     async fn get_target(&self, _: &str, _: &str) -> Result<Target, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
@@ -406,6 +412,12 @@ impl TaskPort for StaticGvmdAdapter {
     }
 
     async fn create_task(&self, _: &str, _: CreateTaskInput) -> Result<String, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support tasks".to_string(),
+        ))
+    }
+
+    async fn clone_task(&self, _: &str, _: &str) -> Result<String, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support tasks".to_string(),
         ))
