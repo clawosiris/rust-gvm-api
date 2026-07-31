@@ -670,6 +670,42 @@ impl From<gvm_gateway_domain::NvtPage> for NvtListResponse {
 }
 
 #[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Vulnerability")]
+pub(crate) struct VulnerabilityResponse {
+    id: String,
+    name: String,
+}
+
+impl From<gvm_gateway_domain::Vulnerability> for VulnerabilityResponse {
+    fn from(vuln: gvm_gateway_domain::Vulnerability) -> Self {
+        Self {
+            id: vuln.id,
+            name: vuln.name,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "VulnerabilityList")]
+pub(crate) struct VulnerabilityListResponse {
+    data: Vec<VulnerabilityResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::VulnerabilityPage> for VulnerabilityListResponse {
+    fn from(page: gvm_gateway_domain::VulnerabilityPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(VulnerabilityResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "NvtFamily")]
 pub(crate) struct NvtFamilyResponse {
     name: String,
@@ -1257,6 +1293,31 @@ pub async fn list_nvts(
     }
 }
 
+/// Lists vulnerabilities (SecInfo) visible to the authenticated session.
+pub async fn list_vulnerabilities(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match SupportingListQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .list_vulnerabilities(&session, supporting_query(query))
+        .await
+    {
+        Ok(page) => (StatusCode::OK, Json(VulnerabilityListResponse::from(page))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
 /// Returns a single NVT by OID.
 pub async fn get_nvt(
     State(service): State<GatewayService>,
@@ -1603,6 +1664,21 @@ pub(crate) fn list_nvts_docs(op: TransformOperation<'_>) -> TransformOperation<'
         .security_requirement("bearerAuth")
         .input::<Query<SupportingResourceListQueryParams>>()
         .response_with::<200, Json<NvtListResponse>, _>(ok_json("Paginated list of NVTs"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn list_vulnerabilities_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getVulnerabilities")
+        .tag("Vulnerabilities")
+        .summary("List vulnerabilities")
+        .description("Returns a paginated list of vulnerabilities from the SecInfo database.")
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<VulnerabilityListResponse>, _>(ok_json(
+            "Paginated list of vulnerabilities",
+        ));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
 }

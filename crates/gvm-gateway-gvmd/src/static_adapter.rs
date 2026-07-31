@@ -24,6 +24,7 @@ use gvm_gateway_domain::{
     SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
     TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    VulnerabilityPage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -763,6 +764,14 @@ impl SupportingResourcePort for StaticGvmdAdapter {
         _: u32,
     ) -> Result<NvtFamilyPage, GatewayError> {
         unsupported!("static adapter does not support nvt families")
+    }
+
+    async fn list_vulnerabilities(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<VulnerabilityPage, GatewayError> {
+        unsupported!("static adapter does not support vulnerabilities")
     }
 }
 

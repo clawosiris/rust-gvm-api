@@ -227,6 +227,24 @@ pub struct NvtPage {
     pub pagination: Pagination,
 }
 
+/// Domain vulnerability (SecInfo) summary.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Vulnerability {
+    /// Vulnerability identifier (NVT OID).
+    pub id: String,
+    /// Vulnerability name.
+    pub name: String,
+}
+
+/// Paginated vulnerability list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct VulnerabilityPage {
+    /// Page items.
+    pub data: Vec<Vulnerability>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
 /// Domain NVT family representation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct NvtFamily {

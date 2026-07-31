@@ -121,6 +121,8 @@ tags:
     description: Override discovery
   - name: NVTs
     description: NVT catalog discovery
+  - name: Vulnerabilities
+    description: SecInfo vulnerability discovery
   - name: NVT Families
     description: NVT family discovery
   - name: System
@@ -297,6 +299,8 @@ paths:
     $ref: './supporting-resources.yaml#/paths/~1overrides'
   /overrides/{id}:
     $ref: './supporting-resources.yaml#/paths/~1overrides~1{id}'
+  /vulnerabilities:
+    $ref: './supporting-resources.yaml#/paths/~1vulnerabilities'
   /nvts:
     $ref: './supporting-resources.yaml#/paths/~1nvts'
   /nvts/{id}:
