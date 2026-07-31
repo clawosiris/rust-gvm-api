@@ -1712,3 +1712,54 @@ async fn gvmd_adapter_export_report_xml_payload() {
 
     server.shutdown().await;
 }
+
+#[tokio::test]
+async fn gvmd_adapter_clone_target() {
+    let (adapter, server, token) = create_mock_adapter().await;
+
+    let input = CreateTargetInput {
+        name: "Clone Source".to_string(),
+        comment: None,
+        hosts: vec!["10.0.0.5".to_string()],
+        exclude_hosts: vec![],
+        alive_test: None,
+        port_list_id: None,
+        reverse_lookup_only: None,
+        reverse_lookup_unify: None,
+        ssh_credential_id: None,
+        smb_credential_id: None,
+        esxi_credential_id: None,
+        snmp_credential_id: None,
+    };
+    let source_id = adapter.create_target(&token, input).await.unwrap();
+
+    let clone_id = adapter.clone_target(&token, &source_id).await.unwrap();
+
+    assert!(!clone_id.is_empty());
+    assert_ne!(clone_id, source_id);
+    // The clone is an independent, retrievable target.
+    assert!(adapter.get_target(&token, &clone_id).await.is_ok());
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_clone_task_emits_copy_command() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    // The task need not exist in the mock: cloning must emit a create_task
+    // command carrying the source id in a <copy> element.
+    let source_id = "550e8400-e29b-41d4-a716-446655440030";
+    let _ = adapter.clone_task(&token, source_id).await;
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "create_task")
+        .expect("clone_task should emit a create_task command");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains(&format!("<copy>{source_id}</copy>")));
+
+    server.shutdown().await;
+}

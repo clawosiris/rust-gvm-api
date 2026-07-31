@@ -180,6 +180,32 @@ where
     }
 }
 
+pub(crate) async fn clone_resource<F, Fut>(
+    service: GatewayService,
+    headers: HeaderMap,
+    id: String,
+    uri: OriginalUri,
+    collection_path: &'static str,
+    operation: F,
+) -> Response
+where
+    F: FnOnce(GatewayService, String, String) -> Fut,
+    Fut: Future<Output = Result<String, GatewayError>>,
+{
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return gateway_error(error, instance);
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return gateway_error(error, instance),
+    };
+    match operation(service, session, id).await {
+        Ok(new_id) => created_resource(collection_path, &new_id),
+        Err(error) => gateway_error(error, instance),
+    }
+}
+
 pub(crate) async fn get_resource<T, R, F, Fut>(
     service: GatewayService,
     headers: HeaderMap,

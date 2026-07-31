@@ -105,6 +105,18 @@ impl TaskPort for GvmdAdapter {
         Ok(parsed.id.to_string())
     }
 
+    async fn clone_task(&self, session_token: &str, id: &str) -> Result<String, GatewayError> {
+        let response = self
+            .call_with_session(
+                session_token,
+                "tasks.clone",
+                clone_task(&parse_entity_id(id)?),
+            )
+            .await?;
+        let parsed = CreateTaskResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
     async fn get_task(&self, session_token: &str, id: &str) -> Result<Task, GatewayError> {
         let response = self
             .call_with_session(
