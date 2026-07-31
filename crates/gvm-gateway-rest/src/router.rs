@@ -117,7 +117,8 @@ use crate::{
         list_notes, list_notes_docs, list_nvt_families, list_nvt_families_docs, list_nvts,
         list_nvts_docs, list_overrides, list_overrides_docs, list_report_formats,
         list_report_formats_docs, list_tags, list_tags_docs, list_tickets, list_tickets_docs,
-        update_note, update_note_docs, update_override, update_override_docs,
+        list_vulnerabilities, list_vulnerabilities_docs, update_note, update_note_docs,
+        update_override, update_override_docs,
     },
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
@@ -520,6 +521,10 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         .api_route("/api/v1/nvts", get_with(list_nvts, list_nvts_docs))
         .api_route("/api/v1/nvts/{id}", get_with(get_nvt, get_nvt_docs))
+        .api_route(
+            "/api/v1/vulnerabilities",
+            get_with(list_vulnerabilities, list_vulnerabilities_docs),
+        )
         .api_route(
             "/api/v1/nvt-families",
             get_with(list_nvt_families, list_nvt_families_docs),

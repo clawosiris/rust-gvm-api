@@ -32,7 +32,7 @@ use gvm_gateway_domain::{
     SessionTokenDigest, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage,
     Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
     Ticket, TicketPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery,
+    UserSettingQuery, VulnerabilityPage,
 };
 use gvm_gmp::{
     commands::{
@@ -80,6 +80,7 @@ use gvm_gmp::{
             create_schedule, delete_schedule, get_schedule, get_schedules, modify_schedule,
             GetSchedulesOpts, ScheduleOpts,
         },
+        system::{get_vulns, FilteredGetOpts},
         tags::{get_tag, get_tags, GetTagsOpts},
         targets::{
             create_target, delete_target, get_target, get_targets, modify_target, CreateTargetOpts,
@@ -112,8 +113,8 @@ use gvm_gmp::{
         GetReportFormatsResponse, GetReportsResponse, GetResultsResponse, GetRolesResponse,
         GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse, GetTagsResponse,
         GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetUserSettingsResponse,
-        GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse, ResumeTaskResponse,
-        StartTaskResponse, User as GmpUser,
+        GetUsersResponse, GetVersionResponse, GetVulnerabilitiesResponse,
+        ModifyUserSettingResponse, ResumeTaskResponse, StartTaskResponse, User as GmpUser,
     },
     EntityId, Pagination as GmpPagination, ScalarUpdate,
 };
@@ -142,6 +143,7 @@ use crate::conversions::{
     result_from_report_vulnerability, role_from_gmp, scan_config_from_gmp, scanner_from_gmp,
     schedule_from_gmp, tag_from_gmp, target_from_gmp, task_from_gmp, ticket_from_gmp,
     tls_certificate_from_report_tls_certificate, user_from_gmp, user_setting_from_gmp,
+    vulnerability_from_gmp,
 };
 use filters::{
     backend_ignored_pagination, composed_filter, gvmd_total, needs_client_side_pagination_fallback,

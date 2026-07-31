@@ -12,7 +12,7 @@ use gvm_gateway_domain::{
     Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt,
     NvtFamily, NvtRef, Override, Permission, PortList, Report, ReportFormat, ResourceRef,
     ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
-    Target, Task, TaskObservers, Ticket, TlsCertificate, User, UserSetting,
+    Target, Task, TaskObservers, Ticket, TlsCertificate, User, UserSetting, Vulnerability,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -488,6 +488,13 @@ pub(crate) fn override_from_gmp(override_: gvm_gmp::responses::Override) -> Over
         result: override_.result.map(resource_ref_from_named_entity),
         active: override_.active,
         end_time: override_.end_time,
+    }
+}
+
+pub(crate) fn vulnerability_from_gmp(vuln: gvm_gmp::responses::Vulnerability) -> Vulnerability {
+    Vulnerability {
+        id: vuln.id,
+        name: vuln.name,
     }
 }
 

@@ -21,7 +21,7 @@ use crate::{
     ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
     ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
     TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery,
+    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -666,6 +666,13 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
         page: u32,
         per_page: u32,
     ) -> Result<NvtFamilyPage, GatewayError>;
+
+    /// List vulnerabilities (SecInfo) for the session.
+    async fn list_vulnerabilities(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<VulnerabilityPage, GatewayError>;
 }
 
 /// Port for target CRUD operations.
