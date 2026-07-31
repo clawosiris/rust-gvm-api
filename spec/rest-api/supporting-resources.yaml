@@ -489,6 +489,31 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /vulnerabilities:
+    get:
+      operationId: getVulnerabilities
+      tags: [Vulnerabilities]
+      summary: List vulnerabilities
+      description: Returns a paginated list of vulnerabilities from the SecInfo database.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of vulnerabilities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnerabilityList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
   /nvts:
     get:
       operationId: getNvts
@@ -1081,6 +1106,30 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Nvt"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Vulnerability:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    VulnerabilityList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Vulnerability"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
 

@@ -265,6 +265,10 @@ fn openapi_tags() -> Value {
             "description": "NVT catalog discovery"
         },
         {
+            "name": "Vulnerabilities",
+            "description": "SecInfo vulnerability discovery"
+        },
+        {
             "name": "NVT Families",
             "description": "NVT family discovery"
         },

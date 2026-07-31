@@ -23,6 +23,7 @@ use gvm_gateway_domain::{
     SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
     TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    VulnerabilityPage,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -1111,6 +1112,22 @@ impl SupportingResourcePort for MockSupportingResourcePort {
             pagination: gvm_gateway_domain::Pagination {
                 page,
                 per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn list_vulnerabilities(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<VulnerabilityPage, GatewayError> {
+        Ok(VulnerabilityPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
                 total: 0,
                 total_pages: 0,
             },
