@@ -21,8 +21,8 @@ pub use crate::handler::validate_uuid;
 use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
     handler::{
-        create_resource, delete_resource, get_resource, list_resource, update_resource,
-        ValidateInto,
+        clone_resource, create_resource, delete_resource, get_resource, list_resource,
+        update_resource, ValidateInto,
     },
     open_enum::open_string_enum,
     openapi::{
@@ -355,6 +355,24 @@ pub async fn create_target(
     .await
 }
 
+/// Clone target handler.
+pub async fn clone_target(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    clone_resource(
+        service,
+        headers,
+        id,
+        uri,
+        "/api/v1/targets",
+        |service, session, id| async move { service.clone_target(&session, &id).await },
+    )
+    .await
+}
+
 /// Get target handler.
 pub async fn get_target(
     State(service): State<GatewayService>,
@@ -459,6 +477,22 @@ pub(crate) fn create_target_docs(op: TransformOperation<'_>) -> TransformOperati
 
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `POST /api/v1/targets/{id}/clone`.
+pub(crate) fn clone_target_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("cloneTarget")
+        .tag("Targets")
+        .summary("Clone a target")
+        .description("Clones an existing target. Returns the identifier of the new target.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Target cloned"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }
 
 /// OpenAPI transform for `GET /api/v1/targets/{id}`.

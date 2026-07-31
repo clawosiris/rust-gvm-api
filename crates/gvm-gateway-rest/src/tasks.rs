@@ -23,8 +23,8 @@ use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
     error::RestError,
     handler::{
-        create_resource, delete_resource, get_resource, list_resource, update_resource,
-        validate_uuid, ValidateInto,
+        clone_resource, create_resource, delete_resource, get_resource, list_resource,
+        update_resource, validate_uuid, ValidateInto,
     },
     open_enum::open_string_enum,
     openapi::{
@@ -445,6 +445,24 @@ pub async fn create_task(
     .await
 }
 
+/// Clone task handler.
+pub async fn clone_task(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    clone_resource(
+        service,
+        headers,
+        id,
+        uri,
+        "/api/v1/tasks",
+        |service, session, id| async move { service.clone_task(&session, &id).await },
+    )
+    .await
+}
+
 /// Get task handler.
 pub async fn get_task(
     State(service): State<GatewayService>,
@@ -610,6 +628,22 @@ pub(crate) fn create_task_docs(op: TransformOperation<'_>) -> TransformOperation
 
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
+}
+
+/// OpenAPI transform for `POST /api/v1/tasks/{id}/clone`.
+pub(crate) fn clone_task_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("cloneTask")
+        .tag("Tasks")
+        .summary("Clone a task")
+        .description("Clones an existing task. Returns the identifier of the new task.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Task cloned"));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }
 
 /// OpenAPI transform for `GET /api/v1/tasks/{id}`.

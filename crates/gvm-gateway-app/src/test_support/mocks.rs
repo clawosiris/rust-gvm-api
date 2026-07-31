@@ -469,6 +469,13 @@ impl TargetPort for MockTargetPort {
         Ok("mock-target-id".to_string())
     }
 
+    async fn clone_target(&self, _session_token: &str, _id: &str) -> Result<String, GatewayError> {
+        if self.should_fail {
+            return Err(GatewayError::BackendUnavailable("mock error".to_string()));
+        }
+        Ok("mock-target-clone-id".to_string())
+    }
+
     async fn get_target(&self, _session_token: &str, id: &str) -> Result<Target, GatewayError> {
         if self.should_fail {
             return Err(GatewayError::NotFound(format!("target {id} not found")));
@@ -553,6 +560,10 @@ impl TaskPort for MockTaskPort {
 
     async fn create_task(&self, _: &str, _: CreateTaskInput) -> Result<String, GatewayError> {
         Ok("00000000-0000-0000-0000-000000000001".to_string())
+    }
+
+    async fn clone_task(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        Ok("00000000-0000-0000-0000-000000000002".to_string())
     }
 
     async fn get_task(&self, _: &str, id: &str) -> Result<Task, GatewayError> {
