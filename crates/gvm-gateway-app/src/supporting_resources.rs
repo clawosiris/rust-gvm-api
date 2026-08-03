@@ -4,32 +4,10 @@
 //! Supporting-resource use cases.
 
 use gvm_gateway_domain::{
-    CreateNoteInput,
-    CreateOverrideInput,
-    Filter,
-    FilterPage,
-    GatewayError,
-    Host,
-    HostPage,
-    ModifyNoteInput,
-    ModifyOverrideInput,
-    Note,
-    NotePage,
-    Nvt,
-    NvtFamilyPage,
-    NvtPage,
-    Override,
-    OverridePage,
-    ReportFormat,
-    ReportFormatPage,
-    SupportingResourceQuery,
-    Tag,
-    TagPage,
-    Ticket,
-    TicketPage,
-    VulnerabilityPage,
-    CreateTicketInput,
-    ModifyTicketInput,
+    CreateNoteInput, CreateOverrideInput, CreateTicketInput, Filter, FilterPage, GatewayError,
+    Host, HostPage, ModifyNoteInput, ModifyOverrideInput, ModifyTicketInput, Note, NotePage, Nvt,
+    NvtFamilyPage, NvtPage, Override, OverridePage, ReportFormat, ReportFormatPage,
+    SupportingResourceQuery, Tag, TagPage, Ticket, TicketPage, VulnerabilityPage,
 };
 
 use crate::GatewayService;

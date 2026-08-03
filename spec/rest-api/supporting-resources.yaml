@@ -224,33 +224,6 @@ paths:
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "502":
           $ref: "./common.yaml#/components/responses/BadGateway"
-    post:
-      operationId: createTicket
-      tags: [Tickets]
-      summary: Create a ticket
-      description: Creates a ticket for a result, optionally setting assignee, status, and per-state notes.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateTicket"
-      responses:
-        "201":
-          description: Ticket created
-          headers:
-            Location:
-              $ref: "./common.yaml#/components/headers/Location"
-          content:
-            application/json:
-              schema:
-                $ref: "./common.yaml#/components/schemas/ResourceCreated"
-        "400":
-          $ref: "./common.yaml#/components/responses/BadRequest"
-        "401":
-          $ref: "./common.yaml#/components/responses/Unauthorized"
-        "502":
-          $ref: "./common.yaml#/components/responses/BadGateway"
 
   /tickets/{id}:
     parameters:
@@ -279,7 +252,7 @@ paths:
       operationId: modifyTicket
       tags: [Tickets]
       summary: Modify a ticket
-      description: Updates a ticket's assignee, status, comment, or per-state notes.
+      description: "Updates a ticket's status, comment, or per-state notes. Assignee mutation is not supported pending upstream rust-gvm#427."
       requestBody:
         required: true
         content:
@@ -980,33 +953,9 @@ components:
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
 
-    CreateTicket:
-      type: object
-      required:
-        - resultId
-      properties:
-        resultId:
-          type: string
-          format: uuid
-        assignedTo:
-          type: string
-        comment:
-          type: string
-        status:
-          type: string
-          description: "Ticket status: Open, Fixed, or Closed."
-        openNote:
-          type: string
-        fixedNote:
-          type: string
-        closedNote:
-          type: string
-
     UpdateTicket:
       type: object
       properties:
-        assignedTo:
-          type: string
         comment:
           type: string
         status:

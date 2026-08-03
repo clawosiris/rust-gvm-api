@@ -13,8 +13,8 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    CreateNoteInput, CreateOverrideInput, CreateTicketInput, GatewayError, ModifyNoteInput,
-    ModifyOverrideInput, ModifyTicketInput, SupportingResourceQuery,
+    CreateNoteInput, CreateOverrideInput, GatewayError, ModifyNoteInput, ModifyOverrideInput,
+    ModifyTicketInput, SupportingResourceQuery,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -581,29 +581,12 @@ pub(crate) struct ModifyNoteRequest {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-#[schemars(rename = "CreateTicket")]
-pub(crate) struct CreateTicketRequest {
-    #[serde(rename = "resultId")]
-    #[schemars(required, with = "Option<Uuid>")]
-    result_id: Option<String>,
-    #[serde(rename = "assignedTo")]
-    assigned_to: Option<String>,
-    comment: Option<String>,
-    /// Ticket status: `Open`, `Fixed`, or `Closed`.
-    status: Option<String>,
-    #[serde(rename = "openNote")]
-    open_note: Option<String>,
-    #[serde(rename = "fixedNote")]
-    fixed_note: Option<String>,
-    #[serde(rename = "closedNote")]
-    closed_note: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "UpdateTicket")]
 pub(crate) struct ModifyTicketRequest {
-    #[serde(rename = "assignedTo")]
-    assigned_to: Option<String>,
+    // Assignee mutation is intentionally not exposed: gvmd requires a nested
+    // user reference (`<assigned_to><user id="…"/></assigned_to>`) that the
+    // current rust-gvm builder does not emit. Tracked in
+    // greenbone-hive/rust-gvm#427.
     comment: Option<String>,
     /// Ticket status: `Open`, `Fixed`, or `Closed`.
     status: Option<String>,
@@ -844,36 +827,10 @@ impl ValidateInto<ModifyNoteInput> for ModifyNoteRequest {
     }
 }
 
-impl CreateTicketRequest {
-    fn validate(self) -> Result<CreateTicketInput, GatewayError> {
-        let result_id = self
-            .result_id
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| GatewayError::InvalidInput("resultId is required".to_string()))?;
-        validate_uuid("resultId", &result_id)?;
-
-        Ok(CreateTicketInput {
-            result_id,
-            assigned_to: self.assigned_to,
-            comment: self.comment,
-            status: self.status,
-            open_note: self.open_note,
-            fixed_note: self.fixed_note,
-            closed_note: self.closed_note,
-        })
-    }
-}
-
-impl ValidateInto<CreateTicketInput> for CreateTicketRequest {
-    fn validate_into(self) -> Result<CreateTicketInput, GatewayError> {
-        self.validate()
-    }
-}
-
 impl ModifyTicketRequest {
     fn validate(self) -> Result<ModifyTicketInput, GatewayError> {
         Ok(ModifyTicketInput {
-            assigned_to: self.assigned_to,
+            assigned_to: None,
             comment: self.comment,
             status: self.status,
             open_note: self.open_note,
@@ -1198,23 +1155,6 @@ pub async fn get_note(
         uri,
         |service, session, id| async move { service.get_note(&session, &id).await },
         NoteResponse::from,
-    )
-    .await
-}
-
-/// Creates a ticket for a result.
-pub async fn create_ticket(
-    State(service): State<GatewayService>,
-    headers: HeaderMap,
-    uri: OriginalUri,
-    body: Bytes,
-) -> Response {
-    create_resource::<CreateTicketInput, CreateTicketRequest, _, _>(
-        service,
-        headers,
-        uri,
-        body,
-        |service, session, input| async move { service.create_ticket(&session, input).await },
     )
     .await
 }
@@ -1641,25 +1581,12 @@ pub(crate) fn get_ticket_docs(op: TransformOperation<'_>) -> TransformOperation<
     problem_response::<404>(op, "Resource not found")
 }
 
-pub(crate) fn create_ticket_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    let op = op
-        .id("createTicket")
-        .tag("Tickets")
-        .summary("Create a ticket")
-        .description("Creates a ticket for a result, optionally setting assignee, status, and per-state notes.")
-        .security_requirement("bearerAuth")
-        .input::<Json<CreateTicketRequest>>()
-        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Ticket created"));
-    let op = problem_response::<400>(op, "Invalid request");
-    problem_response::<401>(op, "Authentication required or session expired")
-}
-
 pub(crate) fn update_ticket_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     let op = op
         .id("modifyTicket")
         .tag("Tickets")
         .summary("Modify a ticket")
-        .description("Updates a ticket's assignee, status, comment, or per-state notes.")
+        .description("Updates a ticket's status, comment, or per-state notes. Assignee mutation is not supported pending upstream rust-gvm#427.")
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Json<ModifyTicketRequest>)>()
         .response_with::<200, Json<TicketResponse>, _>(ok_json("Ticket updated"));
