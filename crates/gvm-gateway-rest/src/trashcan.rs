@@ -78,8 +78,14 @@ pub(crate) fn empty_trashcan_docs(op: TransformOperation<'_>) -> TransformOperat
         .id("emptyTrashcan")
         .tag("Trashcan")
         .summary("Empty the trashcan")
-        .description("Permanently deletes all resources currently in the trashcan.")
+        .description(
+            "Permanently deletes all resources currently in the trashcan. This is a privileged \
+             administrative operation: the proxied gvmd backend enforces the authenticated \
+             user's role and permissions and returns `403` when the session lacks the privileges \
+             required to empty the trashcan.",
+        )
         .security_requirement("bearerAuth")
         .response_with::<204, (), _>(|response| response.description("Trashcan emptied"));
-    problem_response::<401>(op, "Authentication required or session expired")
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<403>(op, "Insufficient privileges to empty the trashcan")
 }

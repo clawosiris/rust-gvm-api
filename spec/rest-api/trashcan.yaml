@@ -10,12 +10,18 @@ paths:
       operationId: emptyTrashcan
       tags: [Trashcan]
       summary: Empty the trashcan
-      description: Permanently deletes all resources currently in the trashcan.
+      description: >-
+        Permanently deletes all resources currently in the trashcan. This is a
+        privileged administrative operation: the proxied gvmd backend enforces
+        the authenticated user's role and permissions and returns `403` when the
+        session lacks the privileges required to empty the trashcan.
       responses:
         "204":
           description: Trashcan emptied
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
+        "403":
+          $ref: "./common.yaml#/components/responses/Forbidden"
         "502":
           $ref: "./common.yaml#/components/responses/BadGateway"
 
