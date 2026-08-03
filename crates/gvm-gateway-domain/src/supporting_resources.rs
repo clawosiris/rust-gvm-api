@@ -161,6 +161,46 @@ pub struct HostPage {
     pub pagination: Pagination,
 }
 
+/// Domain representation of a TLS certificate asset.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TlsCertificateAsset {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// Optional subject distinguished name.
+    #[serde(rename = "subjectDn", skip_serializing_if = "Option::is_none")]
+    pub subject_dn: Option<String>,
+    /// Optional issuer distinguished name.
+    #[serde(rename = "issuerDn", skip_serializing_if = "Option::is_none")]
+    pub issuer_dn: Option<String>,
+    /// Optional activation timestamp.
+    #[serde(rename = "activationTime", skip_serializing_if = "Option::is_none")]
+    pub activation_time: Option<String>,
+    /// Optional expiration timestamp.
+    #[serde(rename = "expirationTime", skip_serializing_if = "Option::is_none")]
+    pub expiration_time: Option<String>,
+    /// Optional MD5 fingerprint.
+    #[serde(rename = "md5Fingerprint", skip_serializing_if = "Option::is_none")]
+    pub md5_fingerprint: Option<String>,
+    /// Optional SHA-256 fingerprint.
+    #[serde(rename = "sha256Fingerprint", skip_serializing_if = "Option::is_none")]
+    pub sha256_fingerprint: Option<String>,
+    /// Optional PEM-encoded certificate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate: Option<String>,
+    /// Whether the certificate is currently valid per gvmd.
+    pub valid: bool,
+}
+
+/// Paginated TLS certificate asset list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TlsCertificateAssetPage {
+    /// Page items.
+    pub data: Vec<TlsCertificateAsset>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
 /// Domain report-format representation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReportFormat {
