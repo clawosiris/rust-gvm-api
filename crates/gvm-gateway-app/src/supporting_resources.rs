@@ -7,7 +7,7 @@ use gvm_gateway_domain::{
     CreateNoteInput, CreateOverrideInput, Filter, FilterPage, GatewayError, Host, HostPage,
     ModifyNoteInput, ModifyOverrideInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
     OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket,
-    TicketPage, VulnerabilityPage,
+    TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
 };
 
 use crate::GatewayService;
@@ -28,6 +28,48 @@ impl GatewayService {
             |session| async move {
                 self.supporting_resources
                     .list_hosts(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists TLS certificate assets for an authenticated session.
+    pub async fn list_tls_certificates(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<TlsCertificateAssetPage, GatewayError> {
+        self.execute_with_resource(
+            "tls_certificates.list",
+            session_token,
+            "list",
+            "tls_certificate",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_tls_certificates(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches a TLS certificate asset for an authenticated session.
+    pub async fn get_tls_certificate(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<TlsCertificateAsset, GatewayError> {
+        self.execute_with_resource(
+            "tls_certificates.get",
+            session_token,
+            "read",
+            "tls_certificate",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .get_tls_certificate(&session.token, id)
                     .await
             },
         )
