@@ -20,8 +20,9 @@ use crate::{
     ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
     ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
     ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
+    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
+    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery, VulnerabilityPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -538,6 +539,20 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
 
     /// Fetch a host by identifier.
     async fn get_host(&self, session_token: &str, id: &str) -> Result<Host, GatewayError>;
+
+    /// List TLS certificate assets for the session.
+    async fn list_tls_certificates(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<TlsCertificateAssetPage, GatewayError>;
+
+    /// Fetch a TLS certificate asset by identifier.
+    async fn get_tls_certificate(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<TlsCertificateAsset, GatewayError>;
 
     /// List report formats for the session.
     async fn list_report_formats(

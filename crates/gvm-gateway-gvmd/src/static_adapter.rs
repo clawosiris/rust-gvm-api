@@ -23,8 +23,8 @@ use gvm_gateway_domain::{
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
     SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
-    VulnerabilityPage,
+    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery, VulnerabilityPage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -645,6 +645,22 @@ impl SupportingResourcePort for StaticGvmdAdapter {
 
     async fn get_host(&self, _: &str, _: &str) -> Result<Host, GatewayError> {
         unsupported!("static adapter does not support hosts")
+    }
+
+    async fn list_tls_certificates(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<TlsCertificateAssetPage, GatewayError> {
+        unsupported!("static adapter does not support tls certificates")
+    }
+
+    async fn get_tls_certificate(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<TlsCertificateAsset, GatewayError> {
+        unsupported!("static adapter does not support tls certificates")
     }
 
     async fn list_report_formats(

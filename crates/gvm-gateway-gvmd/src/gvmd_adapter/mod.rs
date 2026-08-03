@@ -31,8 +31,8 @@ use gvm_gateway_domain::{
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
     SessionTokenDigest, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage,
     Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery,
-    Ticket, TicketPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery, VulnerabilityPage,
+    Ticket, TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User,
+    UserPage, UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
 };
 use gvm_gmp::{
     commands::{
@@ -93,6 +93,7 @@ use gvm_gmp::{
             ModifyTaskOpts,
         },
         tickets::{get_ticket, get_tickets, GetTicketsOpts},
+        tls_certificates::{get_tls_certificate, get_tls_certificates, GetTlsCertificatesOpts},
         user_settings::{
             get_user_setting, get_user_settings, modify_user_setting, GetUserSettingsOpts,
             ModifyUserSettingOpts,
@@ -112,8 +113,8 @@ use gvm_gmp::{
         GetNvtsResponse, GetOverridesResponse, GetPermissionsResponse, GetPortListsResponse,
         GetReportFormatsResponse, GetReportsResponse, GetResultsResponse, GetRolesResponse,
         GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse, GetTagsResponse,
-        GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetUserSettingsResponse,
-        GetUsersResponse, GetVersionResponse, GetVulnerabilitiesResponse,
+        GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetTlsCertificatesResponse,
+        GetUserSettingsResponse, GetUsersResponse, GetVersionResponse, GetVulnerabilitiesResponse,
         ModifyUserSettingResponse, ResumeTaskResponse, StartTaskResponse, User as GmpUser,
     },
     EntityId, Pagination as GmpPagination,
@@ -142,8 +143,8 @@ use crate::conversions::{
     report_from_gmp, result_from_gmp, result_from_report_closed_cve, result_from_report_error,
     result_from_report_vulnerability, role_from_gmp, scan_config_from_gmp, scanner_from_gmp,
     schedule_from_gmp, tag_from_gmp, target_from_gmp, task_from_gmp, ticket_from_gmp,
-    tls_certificate_from_report_tls_certificate, user_from_gmp, user_setting_from_gmp,
-    vulnerability_from_gmp,
+    tls_certificate_asset_from_gmp, tls_certificate_from_report_tls_certificate, user_from_gmp,
+    user_setting_from_gmp, vulnerability_from_gmp,
 };
 use filters::{
     backend_ignored_pagination, composed_filter, gvmd_total, needs_client_side_pagination_fallback,
