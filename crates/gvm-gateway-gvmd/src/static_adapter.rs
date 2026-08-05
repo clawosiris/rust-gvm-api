@@ -23,8 +23,8 @@ use gvm_gateway_domain::{
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
     SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
     TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery, VulnerabilityPage,
+    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
+    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -81,6 +81,12 @@ impl SystemPort for StaticGvmdAdapter {
                     .unwrap_or_else(|| "gvmd unavailable".to_string()),
             ))
         }
+    }
+
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support timezones".to_string(),
+        ))
     }
 }
 

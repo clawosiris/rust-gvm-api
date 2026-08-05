@@ -71,6 +71,28 @@ paths:
         "502":
           $ref: "./common.yaml#/components/responses/BadGateway"
 
+  /timezones:
+    get:
+      operationId: getTimezones
+      tags: [System]
+      summary: List backend timezones
+      description: >-
+        Returns the timezones known to the proxied gvmd backend. The catalog is
+        sourced live from gvmd (via `get_timezones`) rather than the proxy's
+        local zoneinfo, addressing the divergence that led #312 to remove the
+        earlier proxy-local timezone catalog.
+      responses:
+        "200":
+          description: Backend timezones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimezoneList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
   /openapi.json:
     get:
       operationId: getOpenApiDocument
@@ -127,3 +149,23 @@ components:
           description: GMP protocol version reported by the proxied gvmd.
           examples:
             - "22.7"
+
+    Timezone:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        offset:
+          type: string
+
+    TimezoneList:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Timezone"

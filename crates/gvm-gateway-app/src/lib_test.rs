@@ -90,6 +90,13 @@ impl SystemPort for FailingVersionSystemPort {
             "version probe failed".to_string(),
         ))
     }
+
+    async fn list_timezones(
+        &self,
+        _: &str,
+    ) -> Result<Vec<gvm_gateway_domain::Timezone>, GatewayError> {
+        Ok(vec![])
+    }
 }
 
 /// Session creation must use the version negotiated by the authenticated

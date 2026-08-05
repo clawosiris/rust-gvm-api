@@ -1786,3 +1786,23 @@ async fn gvmd_adapter_clone_task_emits_copy_command() {
 
     server.shutdown().await;
 }
+
+#[tokio::test]
+async fn gvmd_adapter_list_timezones_emits_get_timezones() {
+    // `get_timezones` is gated to GMP >= 22.8 by rust-gvm, so this exercises
+    // the newer backend fixture.
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+    server.clear_history();
+
+    let _ = adapter.list_timezones(&token).await;
+
+    let history = server.command_history();
+    assert!(
+        history
+            .iter()
+            .any(|record| record.command_name() == "get_timezones"),
+        "list_timezones should emit get_timezones"
+    );
+
+    server.shutdown().await;
+}

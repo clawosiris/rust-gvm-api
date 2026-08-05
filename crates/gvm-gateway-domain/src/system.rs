@@ -32,3 +32,13 @@ pub struct VersionInfo {
     #[serde(rename = "gmpVersion")]
     pub gmp_version: String,
 }
+
+/// Timezone entry exposed by `get_timezones`.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Timezone {
+    /// IANA timezone name.
+    pub name: String,
+    /// Optional UTC offset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<String>,
+}

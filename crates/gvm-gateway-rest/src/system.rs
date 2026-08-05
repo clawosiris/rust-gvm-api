@@ -5,8 +5,8 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    extract::{Extension, State},
-    http::StatusCode,
+    extract::{Extension, OriginalUri, State},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -14,7 +14,12 @@ use gvm_gateway_app::GatewayService;
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::{error::RestError, openapi::problem_response, shutdown::ShutdownRuntime};
+use crate::{
+    error::RestError,
+    openapi::{ok_json, problem_response},
+    router::bearer_token,
+    shutdown::ShutdownRuntime,
+};
 
 // ============================================================================
 // Response DTOs
@@ -62,6 +67,31 @@ pub(crate) struct VersionInfoResponse {
     /// GMP protocol version reported by the proxied gvmd.
     #[serde(rename = "gmpVersion")]
     gmp_version: String,
+}
+
+/// A single backend timezone.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Timezone")]
+pub(crate) struct TimezoneResponse {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    offset: Option<String>,
+}
+
+impl From<gvm_gateway_domain::Timezone> for TimezoneResponse {
+    fn from(timezone: gvm_gateway_domain::Timezone) -> Self {
+        Self {
+            name: timezone.name,
+            offset: timezone.offset,
+        }
+    }
+}
+
+/// JSON body returned by `GET /api/v1/timezones`.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TimezoneList")]
+pub(crate) struct TimezoneListResponse {
+    data: Vec<TimezoneResponse>,
 }
 
 // ============================================================================
@@ -126,6 +156,28 @@ pub(crate) async fn version(State(service): State<GatewayService>) -> Response {
     }
 }
 
+pub(crate) async fn list_timezones(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.list_timezones(&session).await {
+        Ok(timezones) => (
+            StatusCode::OK,
+            Json(TimezoneListResponse {
+                data: timezones.into_iter().map(TimezoneResponse::from).collect(),
+            }),
+        )
+            .into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
 // ============================================================================
 // OpenAPI transforms
 // ============================================================================
@@ -179,4 +231,18 @@ pub(crate) fn version_docs(op: TransformOperation<'_>) -> TransformOperation<'_>
     let op = problem_response::<400>(op, "Invalid request");
 
     problem_response::<502>(op, "Backend service unreachable or connection failed")
+}
+
+/// OpenAPI transform for `GET /api/v1/timezones`.
+pub(crate) fn list_timezones_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getTimezones")
+        .tag("System")
+        .summary("List backend timezones")
+        .description(
+            "Returns the timezones known to the proxied gvmd backend. The catalog is sourced live from gvmd (via `get_timezones`) rather than the proxy's local zoneinfo, addressing the divergence that led #312 to remove the earlier proxy-local timezone catalog.",
+        )
+        .security_requirement("bearerAuth")
+        .response_with::<200, Json<TimezoneListResponse>, _>(ok_json("Backend timezones"));
+    problem_response::<401>(op, "Authentication required or session expired")
 }

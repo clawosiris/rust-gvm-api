@@ -20,7 +20,7 @@ use crate::{
     ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
     ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
     ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
+    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
     TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
     UserSettingQuery, VulnerabilityPage,
 };
@@ -33,6 +33,9 @@ pub trait SystemPort: Send + Sync + 'static {
 
     /// Returns the GMP version string for the connected backend.
     async fn gmp_version(&self) -> Result<String, GatewayError>;
+
+    /// List backend timezones for the session.
+    async fn list_timezones(&self, session_token: &str) -> Result<Vec<Timezone>, GatewayError>;
 }
 
 /// Port for session authentication with the backend.
