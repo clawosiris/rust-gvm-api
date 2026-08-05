@@ -99,6 +99,10 @@ impl ScanConfigPort for GvmdAdapter {
             .items
             .into_iter()
             .next()
+            // A policy shares the config resource family but must not be
+            // readable through the scan-config route; treat it as absent so the
+            // discriminator holds symmetrically with `get_policy`.
+            .filter(|item| item.usage_type.as_deref() != Some("policy"))
             .map(scan_config_from_gmp)
             .ok_or_else(|| GatewayError::NotFound(format!("scan config {id} not found")))
     }
@@ -195,6 +199,32 @@ impl ScanConfigPort for GvmdAdapter {
         })
     }
 
+    async fn get_policy(&self, session_token: &str, id: &str) -> Result<ScanConfig, GatewayError> {
+        // Fetch through the policy-scoped `get_configs usage_type="policy"`
+        // command filtered to this id, so a scan-config id is not readable as a
+        // policy (and vice versa).
+        let _ = parse_entity_id(id)?;
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_policies(GetScanConfigsOpts {
+                filter_string: Some(format!("uuid={id}")),
+                filter_id: None,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetScanConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(scan_config_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("policy {id} not found")))
+    }
+
     async fn create_policy(
         &self,
         session_token: &str,
@@ -239,7 +269,7 @@ impl ScanConfigPort for GvmdAdapter {
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         drop(client);
-        self.get_scan_config(session_token, id).await
+        self.get_policy(session_token, id).await
     }
 
     async fn delete_policy(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {

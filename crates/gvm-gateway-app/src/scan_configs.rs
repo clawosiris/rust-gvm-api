@@ -135,6 +135,23 @@ impl GatewayService {
         .await
     }
 
+    /// Fetches a policy for an authenticated session.
+    pub async fn get_policy(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ScanConfig, GatewayError> {
+        self.execute_with_resource(
+            "policies.get",
+            session_token,
+            "read",
+            "policy",
+            Some(id),
+            |session| async move { self.scan_configs.get_policy(&session.token, id).await },
+        )
+        .await
+    }
+
     /// Creates a new policy (compliance scan config) for an authenticated session.
     pub async fn create_policy(
         &self,

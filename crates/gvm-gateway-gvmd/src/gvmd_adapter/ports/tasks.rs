@@ -427,7 +427,7 @@ impl TaskPort for GvmdAdapter {
             )
             .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
-        self.get_task(session_token, id).await
+        self.get_audit(session_token, id).await
     }
 
     async fn delete_audit(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
@@ -440,5 +440,82 @@ impl TaskPort for GvmdAdapter {
             .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
+    }
+
+    async fn get_audit(&self, session_token: &str, id: &str) -> Result<Task, GatewayError> {
+        // Fetch through the audit-scoped `get_tasks usage_type="audit"` command
+        // filtered to this id, so a scan-task id is not readable as an audit.
+        let _ = parse_entity_id(id)?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "audits.get",
+                get_audits(GetTasksOpts {
+                    filter_string: Some(format!("uuid={id}")),
+                    filter_id: None,
+                    trash: None,
+                    details: Some(true),
+                    schedules_only: None,
+                    ignore_pagination: Some(true),
+                }),
+            )
+            .await?;
+        let parsed = GetTasksResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(task_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("audit {id} not found")))
+    }
+
+    async fn start_audit(&self, session_token: &str, id: &str) -> Result<TaskAction, GatewayError> {
+        // Enforce the audit discriminator before acting on the resource.
+        self.get_audit(session_token, id).await?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "audits.start",
+                start_audit_cmd(&parse_entity_id(id)?),
+            )
+            .await?;
+        let parsed = StartTaskResponse::from_response(&response).map_err(map_parse_error)?;
+        let report_id = parsed.report_id.map(|id| id.to_string()).ok_or_else(|| {
+            GatewayError::BackendUnavailable("start_audit did not return a report_id".to_string())
+        })?;
+        Ok(TaskAction { report_id })
+    }
+
+    async fn stop_audit(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        self.get_audit(session_token, id).await?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "audits.stop",
+                stop_audit_cmd(&parse_entity_id(id)?),
+            )
+            .await?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn resume_audit(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<TaskAction, GatewayError> {
+        self.get_audit(session_token, id).await?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "audits.resume",
+                resume_audit_cmd(&parse_entity_id(id)?),
+            )
+            .await?;
+        let parsed = ResumeTaskResponse::from_response(&response).map_err(map_parse_error)?;
+        let report_id = parsed.report_id.map(|id| id.to_string()).ok_or_else(|| {
+            GatewayError::BackendUnavailable("resume_audit did not return a report_id".to_string())
+        })?;
+        Ok(TaskAction { report_id })
     }
 }

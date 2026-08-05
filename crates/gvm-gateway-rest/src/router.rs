@@ -93,7 +93,7 @@ use crate::{
     results::{get_result, get_result_docs, list_results, list_results_docs},
     scan_configs::{
         create_policy, create_policy_docs, create_scan_config, create_scan_config_docs,
-        delete_policy, delete_policy_docs, delete_scan_config, delete_scan_config_docs,
+        delete_policy, delete_policy_docs, delete_scan_config, delete_scan_config_docs, get_policy,
         get_policy_docs, get_scan_config, get_scan_config_docs, list_policies, list_policies_docs,
         list_scan_configs, list_scan_configs_docs, update_policy, update_policy_docs,
         update_scan_config, update_scan_config_docs,
@@ -132,10 +132,11 @@ use crate::{
     tasks::{
         clone_task, clone_task_docs, create_audit, create_audit_docs, create_task,
         create_task_docs, delete_audit, delete_audit_docs, delete_task, delete_task_docs,
-        get_audit_docs, get_task, get_task_docs, list_audits, list_audits_docs, list_tasks,
-        list_tasks_docs, resume_audit_docs, resume_task, resume_task_docs, start_audit_docs,
-        start_task, start_task_docs, stop_audit_docs, stop_task, stop_task_docs, update_audit,
-        update_audit_docs, update_task, update_task_docs,
+        get_audit, get_audit_docs, get_task, get_task_docs, list_audits, list_audits_docs,
+        list_tasks, list_tasks_docs, resume_audit, resume_audit_docs, resume_task,
+        resume_task_docs, start_audit, start_audit_docs, start_task, start_task_docs, stop_audit,
+        stop_audit_docs, stop_task, stop_task_docs, update_audit, update_audit_docs, update_task,
+        update_task_docs,
     },
 };
 
@@ -645,7 +646,7 @@ fn documented_router() -> ApiRouter<GatewayService> {
         // Audits (compliance tasks; get/start/stop/resume reuse task handlers)
         .api_route("/api/v1/audits", get_with(list_audits, list_audits_docs))
         .api_route("/api/v1/audits", post_with(create_audit, create_audit_docs))
-        .api_route("/api/v1/audits/{id}", get_with(get_task, get_audit_docs))
+        .api_route("/api/v1/audits/{id}", get_with(get_audit, get_audit_docs))
         .api_route(
             "/api/v1/audits/{id}",
             put_with(update_audit, update_audit_docs),
@@ -656,15 +657,15 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         .api_route(
             "/api/v1/audits/{id}/start",
-            post_with(start_task, start_audit_docs),
+            post_with(start_audit, start_audit_docs),
         )
         .api_route(
             "/api/v1/audits/{id}/stop",
-            post_with(stop_task, stop_audit_docs),
+            post_with(stop_audit, stop_audit_docs),
         )
         .api_route(
             "/api/v1/audits/{id}/resume",
-            post_with(resume_task, resume_audit_docs),
+            post_with(resume_audit, resume_audit_docs),
         )
         // Reports
         .api_route("/api/v1/reports", get_with(list_reports, list_reports_docs))
@@ -771,7 +772,7 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         .api_route(
             "/api/v1/policies/{id}",
-            get_with(get_scan_config, get_policy_docs),
+            get_with(get_policy, get_policy_docs),
         )
         .api_route(
             "/api/v1/policies/{id}",

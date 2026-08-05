@@ -830,6 +830,91 @@ pub async fn delete_audit(
     .await
 }
 
+/// Get audit handler. Scoped to the audit usage type so a scan task is not
+/// readable through this route.
+pub async fn get_audit(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_audit(&session, &id).await },
+        TaskResponse::from,
+    )
+    .await
+}
+
+/// Start audit handler.
+pub async fn start_audit(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.start_audit(&session, &id).await {
+        Ok(action) => (StatusCode::OK, Json(TaskActionResponse::from(action))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Stop audit handler.
+pub async fn stop_audit(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.stop_audit(&session, &id).await {
+        Ok(()) => StatusCode::OK.into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Resume audit handler.
+pub async fn resume_audit(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.resume_audit(&session, &id).await {
+        Ok(action) => (StatusCode::OK, Json(TaskActionResponse::from(action))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
 /// OpenAPI transform for `GET /api/v1/audits`.
 pub(crate) fn list_audits_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     let op = op

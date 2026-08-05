@@ -519,6 +519,9 @@ pub trait ScanConfigPort: Send + Sync + 'static {
         query: &ScanConfigQuery,
     ) -> Result<ScanConfigPage, GatewayError>;
 
+    /// Fetch a policy by identifier.
+    async fn get_policy(&self, session_token: &str, id: &str) -> Result<ScanConfig, GatewayError>;
+
     /// Create a new policy (compliance scan config).
     async fn create_policy(
         &self,
@@ -810,6 +813,9 @@ pub trait TaskPort: Send + Sync + 'static {
         query: &TaskQuery,
     ) -> Result<TaskPage, GatewayError>;
 
+    /// Fetch an audit by identifier.
+    async fn get_audit(&self, session_token: &str, id: &str) -> Result<Task, GatewayError>;
+
     /// Create a new audit (compliance task).
     async fn create_audit(
         &self,
@@ -827,4 +833,14 @@ pub trait TaskPort: Send + Sync + 'static {
 
     /// Delete an audit by identifier.
     async fn delete_audit(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// Start an audit. Returns the report identifier created by the action.
+    async fn start_audit(&self, session_token: &str, id: &str) -> Result<TaskAction, GatewayError>;
+
+    /// Stop a running audit.
+    async fn stop_audit(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// Resume a stopped audit. Returns the report identifier created by the action.
+    async fn resume_audit(&self, session_token: &str, id: &str)
+        -> Result<TaskAction, GatewayError>;
 }

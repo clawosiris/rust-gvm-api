@@ -743,6 +743,28 @@ impl TaskPort for CapturingTaskPort {
             "delete_audit is not used by this test port".to_string(),
         ))
     }
+
+    async fn get_audit(&self, _: &str, id: &str) -> Result<Task, GatewayError> {
+        Ok(task_response(id, "Captured Audit"))
+    }
+
+    async fn start_audit(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+        Err(GatewayError::Internal(
+            "start_audit is not used by this test port".to_string(),
+        ))
+    }
+
+    async fn stop_audit(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::Internal(
+            "stop_audit is not used by this test port".to_string(),
+        ))
+    }
+
+    async fn resume_audit(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+        Err(GatewayError::Internal(
+            "resume_audit is not used by this test port".to_string(),
+        ))
+    }
 }
 
 fn task_response(id: &str, name: &str) -> Task {

@@ -217,4 +217,64 @@ impl GatewayService {
         )
         .await
     }
+
+    /// Fetches an audit for an authenticated session.
+    pub async fn get_audit(&self, session_token: &str, id: &str) -> Result<Task, GatewayError> {
+        self.execute_with_resource(
+            "audits.get",
+            session_token,
+            "read",
+            "audit",
+            Some(id),
+            |session| async move { self.tasks.get_audit(&session.token, id).await },
+        )
+        .await
+    }
+
+    /// Starts an audit for an authenticated session.
+    pub async fn start_audit(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<TaskAction, GatewayError> {
+        self.execute_with_resource(
+            "audits.start",
+            session_token,
+            "start",
+            "audit",
+            Some(id),
+            |session| async move { self.tasks.start_audit(&session.token, id).await },
+        )
+        .await
+    }
+
+    /// Stops a running audit for an authenticated session.
+    pub async fn stop_audit(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "audits.stop",
+            session_token,
+            "stop",
+            "audit",
+            Some(id),
+            |session| async move { self.tasks.stop_audit(&session.token, id).await },
+        )
+        .await
+    }
+
+    /// Resumes a stopped audit for an authenticated session.
+    pub async fn resume_audit(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<TaskAction, GatewayError> {
+        self.execute_with_resource(
+            "audits.resume",
+            session_token,
+            "resume",
+            "audit",
+            Some(id),
+            |session| async move { self.tasks.resume_audit(&session.token, id).await },
+        )
+        .await
+    }
 }

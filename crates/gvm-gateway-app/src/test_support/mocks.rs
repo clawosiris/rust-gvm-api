@@ -651,6 +651,26 @@ impl TaskPort for MockTaskPort {
     async fn delete_audit(&self, _: &str, _: &str) -> Result<(), GatewayError> {
         Ok(())
     }
+
+    async fn get_audit(&self, _: &str, id: &str) -> Result<Task, GatewayError> {
+        Err(GatewayError::NotFound(format!("audit {id} not found")))
+    }
+
+    async fn start_audit(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+        Ok(TaskAction {
+            report_id: "00000000-0000-0000-0000-000000000030".to_string(),
+        })
+    }
+
+    async fn stop_audit(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn resume_audit(&self, _: &str, _: &str) -> Result<TaskAction, GatewayError> {
+        Ok(TaskAction {
+            report_id: "00000000-0000-0000-0000-000000000031".to_string(),
+        })
+    }
 }
 
 /// Mock auth port for tests that need controlled auth and disconnect outcomes.
@@ -941,6 +961,10 @@ impl ScanConfigPort for MockScanConfigPort {
     }
 
     async fn delete_policy(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("policy {id} not found")))
+    }
+
+    async fn get_policy(&self, _: &str, id: &str) -> Result<ScanConfig, GatewayError> {
         Err(GatewayError::NotFound(format!("policy {id} not found")))
     }
 }

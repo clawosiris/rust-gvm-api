@@ -429,6 +429,25 @@ pub async fn create_policy(
     .await
 }
 
+/// Get policy handler. Scoped to the policy usage type so a scan config is not
+/// readable through this route.
+pub async fn get_policy(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_policy(&session, &id).await },
+        ScanConfigResponse::from,
+    )
+    .await
+}
+
 /// Update policy handler.
 pub async fn update_policy(
     State(service): State<GatewayService>,
