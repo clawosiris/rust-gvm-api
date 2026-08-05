@@ -13,8 +13,8 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    CreateNoteInput, CreateOverrideInput, GatewayError, ModifyNoteInput, ModifyOverrideInput,
-    SupportingResourceQuery,
+    CreateNoteInput, CreateOverrideInput, CreateReportConfigInput, GatewayError, ModifyNoteInput,
+    ModifyOverrideInput, ModifyReportConfigInput, SupportingResourceQuery,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -338,6 +338,102 @@ impl From<gvm_gateway_domain::ReportFormatPage> for ReportFormatListResponse {
                 .collect(),
             pagination: PaginationResponse::from(page.pagination),
         }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportConfig")]
+pub(crate) struct ReportConfigResponse {
+    #[serde(flatten)]
+    meta: SupportingResourceMetaResponse,
+    #[serde(rename = "reportFormat", skip_serializing_if = "Option::is_none")]
+    report_format: Option<ResourceRefResponse>,
+}
+
+impl From<gvm_gateway_domain::ReportConfig> for ReportConfigResponse {
+    fn from(config: gvm_gateway_domain::ReportConfig) -> Self {
+        Self {
+            meta: SupportingResourceMetaResponse::from(config.meta),
+            report_format: config.report_format.map(ResourceRefResponse::from),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportConfigList")]
+pub(crate) struct ReportConfigListResponse {
+    data: Vec<ReportConfigResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::ReportConfigPage> for ReportConfigListResponse {
+    fn from(page: gvm_gateway_domain::ReportConfigPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ReportConfigResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "CreateReportConfig")]
+pub(crate) struct CreateReportConfigRequest {
+    #[schemars(required)]
+    name: Option<String>,
+    #[serde(rename = "reportFormatId")]
+    #[schemars(required, with = "Option<Uuid>")]
+    report_format_id: Option<String>,
+    comment: Option<String>,
+}
+
+impl CreateReportConfigRequest {
+    fn validate(self) -> Result<CreateReportConfigInput, GatewayError> {
+        let name = self
+            .name
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| GatewayError::InvalidInput("name is required".to_string()))?;
+        let report_format_id = self
+            .report_format_id
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| GatewayError::InvalidInput("reportFormatId is required".to_string()))?;
+        validate_uuid("reportFormatId", &report_format_id)?;
+        Ok(CreateReportConfigInput {
+            name,
+            report_format_id,
+            comment: self.comment,
+        })
+    }
+}
+
+impl ValidateInto<CreateReportConfigInput> for CreateReportConfigRequest {
+    fn validate_into(self) -> Result<CreateReportConfigInput, GatewayError> {
+        self.validate()
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "UpdateReportConfig")]
+pub(crate) struct ModifyReportConfigRequest {
+    name: Option<String>,
+    comment: Option<String>,
+}
+
+impl ModifyReportConfigRequest {
+    fn validate(self) -> Result<ModifyReportConfigInput, GatewayError> {
+        Ok(ModifyReportConfigInput {
+            name: self.name,
+            comment: self.comment,
+        })
+    }
+}
+
+impl ValidateInto<ModifyReportConfigInput> for ModifyReportConfigRequest {
+    fn validate_into(self) -> Result<ModifyReportConfigInput, GatewayError> {
+        self.validate()
     }
 }
 
@@ -1062,6 +1158,101 @@ pub async fn get_report_format(
     }
 }
 
+/// Lists report configurations available to the authenticated session.
+pub async fn list_report_configs(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    list_resource(
+        service,
+        headers,
+        uri,
+        |query| SupportingListQuery::try_from_query_string(query).map(supporting_query),
+        |service, session, query| async move { service.list_report_configs(&session, query).await },
+        ReportConfigListResponse::from,
+    )
+    .await
+}
+
+/// Returns a single report configuration by id.
+pub async fn get_report_config(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    get_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id| async move { service.get_report_config(&session, &id).await },
+        ReportConfigResponse::from,
+    )
+    .await
+}
+
+/// Creates a report configuration.
+pub async fn create_report_config(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    create_resource::<CreateReportConfigInput, CreateReportConfigRequest, _, _>(
+        service,
+        headers,
+        uri,
+        body,
+        |service, session, input| async move {
+            service.create_report_config(&session, input).await
+        },
+    )
+    .await
+}
+
+/// Updates a report configuration.
+pub async fn update_report_config(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    update_resource::<ModifyReportConfigInput, ModifyReportConfigRequest, _, _, _, _>(
+        service,
+        headers,
+        id,
+        uri,
+        body,
+        |service, session, id, input| async move {
+            service.modify_report_config(&session, &id, input).await
+        },
+        ReportConfigResponse::from,
+    )
+    .await
+}
+
+/// Deletes a report configuration. Set `ultimate=true` to request permanent backend deletion.
+pub async fn delete_report_config(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    delete_resource(
+        service,
+        headers,
+        id,
+        uri,
+        |service, session, id, ultimate| async move {
+            service.delete_report_config(&session, &id, ultimate).await
+        },
+    )
+    .await
+}
+
 /// Lists saved filters visible to the authenticated session.
 pub async fn list_filters(
     State(service): State<GatewayService>,
@@ -1559,6 +1750,86 @@ pub(crate) fn get_report_format_docs(op: TransformOperation<'_>) -> TransformOpe
         .security_requirement("bearerAuth")
         .input::<Path<ResourceIdPathDoc>>()
         .response_with::<200, Json<ReportFormatResponse>, _>(ok_json("Report format details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn list_report_configs_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportConfigs")
+        .tag("Report Configs")
+        .summary("List report configurations")
+        .description(
+            "Returns a paginated list of report configurations. Each configuration references a report format and carries a name and optional comment; individual parameter values are not exposed by this endpoint.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<ReportConfigListResponse>, _>(ok_json(
+            "Paginated list of report configurations",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_report_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportConfig")
+        .tag("Report Configs")
+        .summary("Get a report configuration")
+        .description("Returns the details for a single report configuration.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<200, Json<ReportConfigResponse>, _>(ok_json(
+            "Report configuration details",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn create_report_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("createReportConfig")
+        .tag("Report Configs")
+        .summary("Create a report configuration")
+        .description(
+            "Creates a report configuration bound to an existing report format, optionally with a comment.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Json<CreateReportConfigRequest>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json(
+            "Report configuration created",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn update_report_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("modifyReportConfig")
+        .tag("Report Configs")
+        .summary("Modify a report configuration")
+        .description("Updates the name or comment of a report configuration.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Json<ModifyReportConfigRequest>)>()
+        .response_with::<200, Json<ReportConfigResponse>, _>(ok_json(
+            "Report configuration updated",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn delete_report_config_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("deleteReportConfig")
+        .tag("Report Configs")
+        .summary("Delete a report configuration")
+        .description("Deletes a report configuration. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<DeleteResourceQueryParams>)>()
+        .response_with::<204, (), _>(|response| response.description("Report configuration deleted"));
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")

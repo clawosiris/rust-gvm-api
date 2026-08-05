@@ -8,19 +8,20 @@ use async_trait::async_trait;
 use crate::{
     Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreateGroupInput,
     CreateNoteInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
-    CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTargetInput,
-    CreateTaskInput, CreateUserInput, Credential, CredentialPage, CredentialQuery, CredentialStore,
-    Feed, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage,
-    IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
-    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
-    ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
-    ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
+    CreateReportConfigInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
+    CreateTargetInput, CreateTaskInput, CreateUserInput, Credential, CredentialPage,
+    CredentialQuery, CredentialStore, Feed, Filter, FilterPage, GatewayError, GetReportOpts, Group,
+    GroupPage, Host, HostPage, IdentityQuery, ModifyAlertInput, ModifyCredentialInput,
+    ModifyGroupInput, ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput,
+    ModifyPortListInput, ModifyReportConfigInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override, OverridePage,
+    Permission, PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report,
+    ReportConfig, ReportConfigPage, ReportExport, ReportExportRequest, ReportFormat,
+    ReportFormatPage, ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig,
+    ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule,
+    SchedulePage, ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage,
+    TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
     TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
     UserSettingQuery, VulnerabilityPage,
 };
@@ -567,6 +568,43 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
         session_token: &str,
         id: &str,
     ) -> Result<ReportFormat, GatewayError>;
+
+    /// List report configurations for the session.
+    async fn list_report_configs(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<ReportConfigPage, GatewayError>;
+
+    /// Fetch a report configuration by identifier.
+    async fn get_report_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ReportConfig, GatewayError>;
+
+    /// Create a report configuration.
+    async fn create_report_config(
+        &self,
+        session_token: &str,
+        input: CreateReportConfigInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Modify a report configuration by identifier.
+    async fn modify_report_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyReportConfigInput,
+    ) -> Result<ReportConfig, GatewayError>;
+
+    /// Delete a report configuration by identifier.
+    async fn delete_report_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
 
     /// List saved filters for the session.
     async fn list_filters(

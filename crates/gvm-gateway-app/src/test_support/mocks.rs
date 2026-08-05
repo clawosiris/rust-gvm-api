@@ -7,23 +7,24 @@ use async_trait::async_trait;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
     CreateGroupInput, CreateNoteInput, CreateOverrideInput, CreatePermissionInput,
-    CreatePortListInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
-    CreateTargetInput, CreateTaskInput, CreateUserInput, Credential, CredentialPage,
-    CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage,
-    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
-    ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
-    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
-    ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery, VulnerabilityPage,
+    CreatePortListInput, CreateReportConfigInput, CreateRoleInput, CreateScanConfigInput,
+    CreateScheduleInput, CreateTargetInput, CreateTaskInput, CreateUserInput, Credential,
+    CredentialPage, CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter,
+    FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort,
+    IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyGroupInput, ModifyNoteInput,
+    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyReportConfigInput,
+    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTargetInput,
+    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage,
+    NvtPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
+    PortListPort, PortListQuery, ReadinessStatus, Report, ReportConfig, ReportConfigPage,
+    ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
+    ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
+    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort,
+    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
+    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
+    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery, VulnerabilityPage,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -978,6 +979,51 @@ impl SupportingResourcePort for MockSupportingResourcePort {
         Err(GatewayError::NotFound(format!(
             "report format {id} not found"
         )))
+    }
+
+    async fn list_report_configs(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<ReportConfigPage, GatewayError> {
+        Ok(ReportConfigPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_config(&self, _: &str, id: &str) -> Result<ReportConfig, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "report config {id} not found"
+        )))
+    }
+
+    async fn create_report_config(
+        &self,
+        _: &str,
+        _: CreateReportConfigInput,
+    ) -> Result<String, GatewayError> {
+        Ok("11111111-1111-1111-1111-111111111111".to_string())
+    }
+
+    async fn modify_report_config(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyReportConfigInput,
+    ) -> Result<ReportConfig, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "report config {id} not found"
+        )))
+    }
+
+    async fn delete_report_config(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        Ok(())
     }
 
     async fn list_filters(

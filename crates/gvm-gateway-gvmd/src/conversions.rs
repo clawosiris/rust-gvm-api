@@ -10,10 +10,10 @@ use std::str::FromStr;
 
 use gvm_gateway_domain::{
     Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt,
-    NvtFamily, NvtRef, Override, Permission, PortList, Report, ReportFormat, ResourceRef,
-    ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
-    Target, Task, TaskObservers, Ticket, TlsCertificate, TlsCertificateAsset, User, UserSetting,
-    Vulnerability,
+    NvtFamily, NvtRef, Override, Permission, PortList, Report, ReportConfig, ReportFormat,
+    ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
+    SupportingResourceMeta, Tag, Target, Task, TaskObservers, Ticket, TlsCertificate,
+    TlsCertificateAsset, User, UserSetting, Vulnerability,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -411,6 +411,17 @@ pub(crate) fn report_format_from_gmp(
         trust: report_format.trust,
         active: report_format.active,
         predefined: report_format.predefined,
+    }
+}
+
+pub(crate) fn report_config_from_gmp(
+    report_config: gvm_gmp::responses::ReportConfig,
+) -> ReportConfig {
+    ReportConfig {
+        meta: supporting_meta_from_gmp(report_config.meta),
+        report_format: report_config
+            .report_format
+            .map(resource_ref_from_named_entity),
     }
 }
 

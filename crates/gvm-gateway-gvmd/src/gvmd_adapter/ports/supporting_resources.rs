@@ -219,6 +219,148 @@ impl SupportingResourcePort for GvmdAdapter {
             .ok_or_else(|| GatewayError::NotFound(format!("report format {id} not found")))
     }
 
+    async fn list_report_configs(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<ReportConfigPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_report_configs_opts(GetReportConfigsOpts {
+                filter: filter_string,
+                first: None,
+                rows: None,
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetReportConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(report_config_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+        Ok(ReportConfigPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_report_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ReportConfig, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let config_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_report_config(config_id.as_str()))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetReportConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .find(|config| config.meta.id.as_str() == config_id.as_str())
+            .map(report_config_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("report config {id} not found")))
+    }
+
+    async fn create_report_config(
+        &self,
+        session_token: &str,
+        input: CreateReportConfigInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let report_format_id = parse_entity_id(&input.report_format_id)
+            .map_err(|_| GatewayError::InvalidInput("invalid reportFormatId".to_string()))?;
+        let response = client
+            .lock()
+            .await?
+            .call(create_report_config_opts(
+                &input.name,
+                report_format_id.as_str(),
+                CreateReportConfigOpts {
+                    comment: input.comment,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed =
+            CreateReportConfigResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn modify_report_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyReportConfigInput,
+    ) -> Result<ReportConfig, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let config_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await?
+            .call(modify_report_config(
+                config_id.as_str(),
+                ModifyReportConfigOpts {
+                    name: input.name,
+                    comment: input.comment,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_report_config(session_token, id).await
+    }
+
+    async fn delete_report_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let config_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await?
+            .call(delete_report_config_opts(
+                config_id.as_str(),
+                DeleteReportConfigOpts {
+                    ultimate: Some(ultimate),
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
     async fn list_filters(
         &self,
         session_token: &str,

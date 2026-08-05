@@ -151,6 +151,126 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /report-configs:
+    get:
+      operationId: getReportConfigs
+      tags: [Report Configs]
+      summary: List report configurations
+      description: Returns a paginated list of report configurations. Each configuration references a report format and carries a name and optional comment; individual parameter values are not exposed by this endpoint.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of report configurations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportConfigList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+    post:
+      operationId: createReportConfig
+      tags: [Report Configs]
+      summary: Create a report configuration
+      description: Creates a report configuration bound to an existing report format, optionally with a comment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportConfig"
+      responses:
+        "201":
+          description: Report configuration created
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /report-configs/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportConfig
+      tags: [Report Configs]
+      summary: Get a report configuration
+      description: Returns the details for a single report configuration.
+      responses:
+        "200":
+          description: Report configuration details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportConfig"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyReportConfig
+      tags: [Report Configs]
+      summary: Modify a report configuration
+      description: Updates the name or comment of a report configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReportConfig"
+      responses:
+        "200":
+          description: Report configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportConfig"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteReportConfig
+      tags: [Report Configs]
+      summary: Delete a report configuration
+      description: Deletes a report configuration. Pass `ultimate=true` to request permanent backend deletion instead of the default non-ultimate delete.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
+      responses:
+        "204":
+          description: Report configuration deleted
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
   /filters:
     get:
       operationId: getFilters
@@ -815,6 +935,67 @@ components:
             $ref: "#/components/schemas/ReportFormat"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
+
+    ReportConfig:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        reportFormat:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+
+    ReportConfigList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportConfig"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    CreateReportConfig:
+      type: object
+      required:
+        - name
+        - reportFormatId
+      properties:
+        name:
+          type: string
+        reportFormatId:
+          type: string
+          format: uuid
+        comment:
+          type: string
+
+    UpdateReportConfig:
+      type: object
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
 
     Filter:
       type: object

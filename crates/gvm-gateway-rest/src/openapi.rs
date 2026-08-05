@@ -245,6 +245,10 @@ fn openapi_tags() -> Value {
             "description": "Report export format discovery"
         },
         {
+            "name": "Report Configs",
+            "description": "Report configuration management"
+        },
+        {
             "name": "Filters",
             "description": "Saved filter discovery"
         },

@@ -109,17 +109,20 @@ use crate::{
     },
     shutdown::ShutdownRuntime,
     supporting_resources::{
-        create_note, create_note_docs, create_override, create_override_docs, delete_note,
-        delete_note_docs, delete_override, delete_override_docs, get_filter, get_filter_docs,
-        get_host, get_host_docs, get_note, get_note_docs, get_nvt, get_nvt_docs, get_override,
-        get_override_docs, get_report_format, get_report_format_docs, get_tag, get_tag_docs,
-        get_ticket, get_ticket_docs, get_tls_certificate, get_tls_certificate_docs, list_filters,
+        create_note, create_note_docs, create_override, create_override_docs, create_report_config,
+        create_report_config_docs, delete_note, delete_note_docs, delete_override,
+        delete_override_docs, delete_report_config, delete_report_config_docs, get_filter,
+        get_filter_docs, get_host, get_host_docs, get_note, get_note_docs, get_nvt, get_nvt_docs,
+        get_override, get_override_docs, get_report_config, get_report_config_docs,
+        get_report_format, get_report_format_docs, get_tag, get_tag_docs, get_ticket,
+        get_ticket_docs, get_tls_certificate, get_tls_certificate_docs, list_filters,
         list_filters_docs, list_hosts, list_hosts_docs, list_notes, list_notes_docs,
         list_nvt_families, list_nvt_families_docs, list_nvts, list_nvts_docs, list_overrides,
-        list_overrides_docs, list_report_formats, list_report_formats_docs, list_tags,
-        list_tags_docs, list_tickets, list_tickets_docs, list_tls_certificates,
-        list_tls_certificates_docs, list_vulnerabilities, list_vulnerabilities_docs, update_note,
-        update_note_docs, update_override, update_override_docs,
+        list_overrides_docs, list_report_configs, list_report_configs_docs, list_report_formats,
+        list_report_formats_docs, list_tags, list_tags_docs, list_tickets, list_tickets_docs,
+        list_tls_certificates, list_tls_certificates_docs, list_vulnerabilities,
+        list_vulnerabilities_docs, update_note, update_note_docs, update_override,
+        update_override_docs, update_report_config, update_report_config_docs,
     },
     system::{health, health_docs, ready, ready_docs, version, version_docs},
     targets::{
@@ -489,6 +492,26 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/report-formats/{id}",
             get_with(get_report_format, get_report_format_docs),
+        )
+        .api_route(
+            "/api/v1/report-configs",
+            get_with(list_report_configs, list_report_configs_docs),
+        )
+        .api_route(
+            "/api/v1/report-configs",
+            post_with(create_report_config, create_report_config_docs),
+        )
+        .api_route(
+            "/api/v1/report-configs/{id}",
+            get_with(get_report_config, get_report_config_docs),
+        )
+        .api_route(
+            "/api/v1/report-configs/{id}",
+            put_with(update_report_config, update_report_config_docs),
+        )
+        .api_route(
+            "/api/v1/report-configs/{id}",
+            delete_with(delete_report_config, delete_report_config_docs),
         )
         .api_route("/api/v1/filters", get_with(list_filters, list_filters_docs))
         .api_route(

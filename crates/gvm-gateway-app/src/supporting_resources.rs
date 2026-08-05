@@ -4,10 +4,11 @@
 //! Supporting-resource use cases.
 
 use gvm_gateway_domain::{
-    CreateNoteInput, CreateOverrideInput, Filter, FilterPage, GatewayError, Host, HostPage,
-    ModifyNoteInput, ModifyOverrideInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket,
-    TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
+    CreateNoteInput, CreateOverrideInput, CreateReportConfigInput, Filter, FilterPage,
+    GatewayError, Host, HostPage, ModifyNoteInput, ModifyOverrideInput, ModifyReportConfigInput,
+    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override, OverridePage, ReportConfig,
+    ReportConfigPage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage,
+    Ticket, TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
 };
 
 use crate::GatewayService;
@@ -125,6 +126,113 @@ impl GatewayService {
             |session| async move {
                 self.supporting_resources
                     .get_report_format(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists report configurations for an authenticated session.
+    pub async fn list_report_configs(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<ReportConfigPage, GatewayError> {
+        self.execute_with_resource(
+            "report_configs.list",
+            session_token,
+            "list",
+            "report_config",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_report_configs(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches a report configuration for an authenticated session.
+    pub async fn get_report_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<ReportConfig, GatewayError> {
+        self.execute_with_resource(
+            "report_configs.get",
+            session_token,
+            "read",
+            "report_config",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .get_report_config(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Creates a report configuration for an authenticated session.
+    pub async fn create_report_config(
+        &self,
+        session_token: &str,
+        input: CreateReportConfigInput,
+    ) -> Result<String, GatewayError> {
+        self.execute_with_resource(
+            "report_configs.create",
+            session_token,
+            "create",
+            "report_config",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .create_report_config(&session.token, input)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Modifies a report configuration for an authenticated session.
+    pub async fn modify_report_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyReportConfigInput,
+    ) -> Result<ReportConfig, GatewayError> {
+        self.execute_with_resource(
+            "report_configs.modify",
+            session_token,
+            "modify",
+            "report_config",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .modify_report_config(&session.token, id, input)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Deletes a report configuration for an authenticated session.
+    pub async fn delete_report_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "report_configs.delete",
+            session_token,
+            "delete",
+            "report_config",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .delete_report_config(&session.token, id, ultimate)
                     .await
             },
         )

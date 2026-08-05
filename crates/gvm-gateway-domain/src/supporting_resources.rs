@@ -234,6 +234,46 @@ pub struct ReportFormatPage {
     pub pagination: Pagination,
 }
 
+/// Domain report-config representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportConfig {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// Report format the configuration applies to.
+    #[serde(rename = "reportFormat", skip_serializing_if = "Option::is_none")]
+    pub report_format: Option<ResourceRef>,
+}
+
+/// Paginated report-config list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportConfigPage {
+    /// Page items.
+    pub data: Vec<ReportConfig>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Report-config create command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CreateReportConfigInput {
+    /// Required report-config name.
+    pub name: String,
+    /// Required report format identifier.
+    pub report_format_id: String,
+    /// Optional comment.
+    pub comment: Option<String>,
+}
+
+/// Report-config update command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ModifyReportConfigInput {
+    /// Optional name.
+    pub name: Option<String>,
+    /// Optional comment.
+    pub comment: Option<String>,
+}
+
 /// Domain NVT representation.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Nvt {

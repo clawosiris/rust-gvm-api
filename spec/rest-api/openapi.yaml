@@ -111,6 +111,8 @@ tags:
     description: TLS certificate assets
   - name: Report Formats
     description: Report export format discovery
+  - name: Report Configs
+    description: Report configuration management
   - name: Filters
     description: Saved filter discovery
   - name: Tags
@@ -289,6 +291,10 @@ paths:
     $ref: './supporting-resources.yaml#/paths/~1report-formats'
   /report-formats/{id}:
     $ref: './supporting-resources.yaml#/paths/~1report-formats~1{id}'
+  /report-configs:
+    $ref: './supporting-resources.yaml#/paths/~1report-configs'
+  /report-configs/{id}:
+    $ref: './supporting-resources.yaml#/paths/~1report-configs~1{id}'
   /filters:
     $ref: './supporting-resources.yaml#/paths/~1filters'
   /filters/{id}:
