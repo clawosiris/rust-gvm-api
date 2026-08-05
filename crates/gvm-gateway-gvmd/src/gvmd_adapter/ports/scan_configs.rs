@@ -144,4 +144,113 @@ impl ScanConfigPort for GvmdAdapter {
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
     }
+
+    async fn list_policies(
+        &self,
+        session_token: &str,
+        query: &ScanConfigQuery,
+    ) -> Result<ScanConfigPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_policies(GetScanConfigsOpts {
+                filter_string,
+                filter_id: None,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetScanConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(scan_config_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        Ok(ScanConfigPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn create_policy(
+        &self,
+        session_token: &str,
+        input: CreateScanConfigInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(create_policy(
+                &input.name,
+                ConfigOpts {
+                    comment: input.comment,
+                    usage_type: None,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateScanConfigResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn modify_policy(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyScanConfigInput,
+    ) -> Result<ScanConfig, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let config_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await?
+            .call(modify_policy_cmd(
+                &config_id,
+                ConfigOpts {
+                    comment: input.comment,
+                    usage_type: None,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        drop(client);
+        self.get_scan_config(session_token, id).await
+    }
+
+    async fn delete_policy(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(delete_policy_cmd(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
 }

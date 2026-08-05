@@ -1196,6 +1196,62 @@ async fn gvmd_adapter_list_tls_certificates_emits_backend_pagination_filter() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_list_audits_scopes_usage_type_audit() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let _ = adapter
+        .list_audits(
+            &token,
+            &TaskQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 25,
+            },
+        )
+        .await;
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "get_tasks")
+        .expect("list_audits should emit a get_tasks command");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("usage_type=\"audit\""));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_policies_scopes_usage_type_policy() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let _ = adapter
+        .list_policies(
+            &token,
+            &ScanConfigQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 25,
+            },
+        )
+        .await;
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "get_configs")
+        .expect("list_policies should emit a get_configs command");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("usage_type=\"policy\""));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_list_nvts_emits_backend_pagination_filter() {
     let (adapter, server, token) = create_mock_adapter().await;
     server.clear_history();

@@ -152,4 +152,69 @@ impl GatewayService {
         )
         .await
     }
+
+    /// Lists audits (compliance tasks) for an authenticated session.
+    pub async fn list_audits(
+        &self,
+        session_token: &str,
+        query: TaskQuery,
+    ) -> Result<TaskPage, GatewayError> {
+        self.execute_with_resource(
+            "audits.list",
+            session_token,
+            "list",
+            "audit",
+            None,
+            |session| async move { self.tasks.list_audits(&session.token, &query).await },
+        )
+        .await
+    }
+
+    /// Creates a new audit (compliance task) for an authenticated session.
+    pub async fn create_audit(
+        &self,
+        session_token: &str,
+        input: CreateTaskInput,
+    ) -> Result<String, GatewayError> {
+        self.execute_with_resource(
+            "audits.create",
+            session_token,
+            "create",
+            "audit",
+            None,
+            |session| async move { self.tasks.create_audit(&session.token, input).await },
+        )
+        .await
+    }
+
+    /// Modifies an audit for an authenticated session.
+    pub async fn modify_audit(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyTaskInput,
+    ) -> Result<Task, GatewayError> {
+        self.execute_with_resource(
+            "audits.modify",
+            session_token,
+            "modify",
+            "audit",
+            Some(id),
+            |session| async move { self.tasks.modify_audit(&session.token, id, input).await },
+        )
+        .await
+    }
+
+    /// Deletes an audit for an authenticated session.
+    pub async fn delete_audit(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "audits.delete",
+            session_token,
+            "delete",
+            "audit",
+            Some(id),
+            |session| async move { self.tasks.delete_audit(&session.token, id).await },
+        )
+        .await
+    }
 }

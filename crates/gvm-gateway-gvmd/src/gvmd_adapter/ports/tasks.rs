@@ -260,4 +260,185 @@ impl TaskPort for GvmdAdapter {
         })?;
         Ok(TaskAction { report_id })
     }
+
+    async fn list_audits(
+        &self,
+        session_token: &str,
+        query: &TaskQuery,
+    ) -> Result<TaskPage, GatewayError> {
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "audits.list",
+                get_audits(GetTasksOpts {
+                    filter_string: self
+                        .paginated_filter_resolving_filter_id(
+                            session_token,
+                            None,
+                            query.filter_string.as_deref(),
+                            filter_id.as_ref(),
+                            query.page,
+                            query.per_page,
+                            &[],
+                        )
+                        .await?,
+                    filter_id: None,
+                    trash: None,
+                    details: Some(true),
+                    schedules_only: None,
+                    ignore_pagination: None,
+                }),
+            )
+            .await?;
+        let parsed = GetTasksResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(task_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        Ok(TaskPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn create_audit(
+        &self,
+        session_token: &str,
+        input: CreateTaskInput,
+    ) -> Result<String, GatewayError> {
+        let config_id = parse_entity_id(&input.scan_config_id)?;
+        let target_id = parse_entity_id(&input.target_id)?;
+        let scanner_id = parse_entity_id(&input.scanner_id)?;
+        let schedule_id = input
+            .schedule_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let alert_ids = input
+            .alert_ids
+            .iter()
+            .map(|id| parse_entity_id(id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let hosts_ordering = input
+            .hosts_ordering
+            .as_deref()
+            .map(parse_hosts_ordering)
+            .transpose()?;
+
+        let response = self
+            .call_with_session(
+                session_token,
+                "audits.create",
+                create_audit(
+                    &input.name,
+                    &config_id,
+                    &target_id,
+                    &scanner_id,
+                    CreateTaskOpts {
+                        alterable: input.alterable,
+                        hosts_ordering,
+                        schedule_id,
+                        alert_ids,
+                        comment: input.comment,
+                        schedule_periods: input.schedule_periods,
+                        observers: input.observers,
+                        preferences: input.preferences,
+                    },
+                ),
+            )
+            .await?;
+        let parsed = CreateTaskResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn modify_audit(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyTaskInput,
+    ) -> Result<Task, GatewayError> {
+        let task_id = parse_entity_id(id)?;
+        let target_id = input
+            .target_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let config_id = input
+            .scan_config_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let scanner_id = input
+            .scanner_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let schedule_id = input
+            .schedule_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let alert_ids = input
+            .alert_ids
+            .map(|ids| {
+                ids.iter()
+                    .map(|id| parse_entity_id(id))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?;
+        let hosts_ordering = input
+            .hosts_ordering
+            .as_deref()
+            .map(parse_hosts_ordering)
+            .transpose()?;
+
+        let response = self
+            .call_with_session(
+                session_token,
+                "audits.modify",
+                modify_audit_cmd(
+                    &task_id,
+                    ModifyTaskOpts {
+                        name: input.name,
+                        comment: input.comment,
+                        alterable: None,
+                        hosts_ordering,
+                        schedule_id,
+                        schedule_periods: input.schedule_periods,
+                        target_id,
+                        config_id,
+                        scanner_id,
+                        alert_ids,
+                        observers: input.observers,
+                        preferences: input.preferences,
+                    },
+                ),
+            )
+            .await?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_task(session_token, id).await
+    }
+
+    async fn delete_audit(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let response = self
+            .call_with_session(
+                session_token,
+                "audits.delete",
+                delete_audit_cmd(&parse_entity_id(id)?),
+            )
+            .await?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
 }
