@@ -57,6 +57,10 @@ pub(crate) struct ScanConfigResponse {
     nvt_count: Option<u32>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     config_type: Option<ScanConfigType>,
+    /// Backend usage-type discriminator (`scan` or `policy`), so clients can
+    /// tell compliance policies apart from scan configs in this collection.
+    #[serde(rename = "usageType", skip_serializing_if = "Option::is_none")]
+    usage_type: Option<String>,
     #[serde(rename = "inUse")]
     in_use: bool,
     writable: bool,
@@ -71,6 +75,7 @@ impl From<gvm_gateway_domain::ScanConfig> for ScanConfigResponse {
             family_count: sc.family_count,
             nvt_count: sc.nvt_count,
             config_type: sc.config_type.map(ScanConfigType::parse),
+            usage_type: sc.usage_type,
             in_use: sc.in_use,
             writable: sc.writable,
         }
