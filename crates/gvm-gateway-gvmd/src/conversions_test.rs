@@ -536,7 +536,7 @@ fn schedule_from_gmp_preserves_run_times() {
         r#"<get_schedules_response status="200" status_text="OK">
                 <schedule id="123e4567-e89b-12d3-a456-426614174007">
                     <name>Timed Schedule</name>
-                    <icalendar>BEGIN:VCALENDAR&#10;END:VCALENDAR</icalendar>
+                    <icalendar>BEGIN:VCALENDAR&#10;VERSION:2.0&#10;BEGIN:VEVENT&#10;DTSTART:20260103T000000Z&#10;RRULE:FREQ=DAILY&#10;END:VEVENT&#10;END:VCALENDAR</icalendar>
                     <timezone>UTC</timezone>
                     <first_run>2026-01-03T00:00:00Z</first_run>
                     <next_run>2026-01-04T00:00:00Z</next_run>

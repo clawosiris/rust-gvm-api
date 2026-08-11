@@ -115,7 +115,7 @@ use gvm_gmp::{
         GetUsersResponse, GetVersionResponse, ModifyUserSettingResponse, ResumeTaskResponse,
         StartTaskResponse, User as GmpUser,
     },
-    EntityId, Pagination as GmpPagination,
+    EntityId, Pagination as GmpPagination, ScalarUpdate,
 };
 use gvm_protocol::{Request, Response};
 use tracing::{field, info_span, Instrument};

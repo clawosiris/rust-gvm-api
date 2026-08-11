@@ -8,11 +8,31 @@ use gvm_gateway_domain::{
     CreateTargetInput, GatewayError, ModifyTargetInput, Pagination, ResourceRef, Target,
     TargetPage, TargetPort, TargetQuery,
 };
-use gvm_mock_server::Resource;
+use gvm_mock_server::{Resource, ResourceStore};
 use http::StatusCode;
 use uuid::Uuid;
 
 struct CredentialReadbackTargetAdapter;
+
+const SSH_CREDENTIAL_ID: &str = "11111111-1111-1111-1111-111111111111";
+const SMB_CREDENTIAL_ID: &str = "22222222-2222-2222-2222-222222222222";
+const ESXI_CREDENTIAL_ID: &str = "33333333-3333-3333-3333-333333333333";
+const SNMP_CREDENTIAL_ID: &str = "44444444-4444-4444-4444-444444444444";
+
+fn seed_target_credentials(store: &ResourceStore) {
+    // Current rust-gvm validates target credential references against backend
+    // state, so these tests use existing credentials with compatible types.
+    for (id, name, credential_type) in [
+        (SSH_CREDENTIAL_ID, "SSH Login", "usk"),
+        (SMB_CREDENTIAL_ID, "SMB Login", "up"),
+        (ESXI_CREDENTIAL_ID, "ESXi Login", "up"),
+        (SNMP_CREDENTIAL_ID, "SNMP Login", "snmp"),
+    ] {
+        let mut credential = Resource::with_id("credential", name, Uuid::parse_str(id).unwrap());
+        credential.set_attr("type", credential_type);
+        store.create(credential);
+    }
+}
 
 fn credential_ref(id: Option<String>, name: &str) -> Option<ResourceRef> {
     id.map(|id| ResourceRef {
@@ -205,22 +225,18 @@ async fn create_target() {
 
 #[tokio::test]
 async fn create_target_accepts_documented_credential_ids() {
-    let harness = target_harness(|_| {}).await;
+    let harness = target_harness(seed_target_credentials).await;
     // Regression coverage for the published CreateTarget credential fields:
-    // the gateway must accept them and delegate command construction to rust-gvm.
-    let ssh_id = "11111111-1111-1111-1111-111111111111";
-    let smb_id = "22222222-2222-2222-2222-222222222222";
-    let esxi_id = "33333333-3333-3333-3333-333333333333";
-    let snmp_id = "44444444-4444-4444-4444-444444444444";
+    // the gateway must accept valid references and delegate command construction.
 
     let response = harness
         .create_target(serde_json::json!({
             "name": "Credential Target",
             "hosts": ["192.168.1.20"],
-            "sshCredentialId": ssh_id,
-            "smbCredentialId": smb_id,
-            "esxiCredentialId": esxi_id,
-            "snmpCredentialId": snmp_id
+            "sshCredentialId": SSH_CREDENTIAL_ID,
+            "smbCredentialId": SMB_CREDENTIAL_ID,
+            "esxiCredentialId": ESXI_CREDENTIAL_ID,
+            "snmpCredentialId": SNMP_CREDENTIAL_ID
         }))
         .await;
 
@@ -324,7 +340,7 @@ async fn update_target() {
 
 #[tokio::test]
 async fn update_target_accepts_credential_ids() {
-    let harness = target_harness(|_| {}).await;
+    let harness = target_harness(seed_target_credentials).await;
 
     let create_response = harness
         .create_target(serde_json::json!({
@@ -342,10 +358,10 @@ async fn update_target_accepts_credential_ids() {
         .update_target(
             &id,
             serde_json::json!({
-                "sshCredentialId": "550e8400-e29b-41d4-a716-446655440001",
-                "smbCredentialId": "550e8400-e29b-41d4-a716-446655440002",
-                "esxiCredentialId": "550e8400-e29b-41d4-a716-446655440003",
-                "snmpCredentialId": "550e8400-e29b-41d4-a716-446655440004"
+                "sshCredentialId": SSH_CREDENTIAL_ID,
+                "smbCredentialId": SMB_CREDENTIAL_ID,
+                "esxiCredentialId": ESXI_CREDENTIAL_ID,
+                "snmpCredentialId": SNMP_CREDENTIAL_ID
             }),
         )
         .await;
