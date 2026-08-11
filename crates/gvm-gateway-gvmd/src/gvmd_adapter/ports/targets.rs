@@ -95,51 +95,50 @@ impl TargetPort for GvmdAdapter {
         session_token: &str,
         input: CreateTargetInput,
     ) -> Result<String, GatewayError> {
+        let request = create_target(
+            &input.name,
+            CreateTargetOpts {
+                comment: input.comment,
+                hosts: input.hosts,
+                exclude_hosts: input.exclude_hosts,
+                alive_test: input
+                    .alive_test
+                    .as_deref()
+                    .map(parse_alive_test)
+                    .transpose()?,
+                port_list_id: input
+                    .port_list_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?,
+                ssh_credential_id: input
+                    .ssh_credential_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?,
+                ssh_credential_port: None,
+                smb_credential_id: input
+                    .smb_credential_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?,
+                esxi_credential_id: input
+                    .esxi_credential_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?,
+                snmp_credential_id: input
+                    .snmp_credential_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?,
+                reverse_lookup_only: input.reverse_lookup_only,
+                reverse_lookup_unify: input.reverse_lookup_unify,
+            },
+        )
+        .map_err(|error| GatewayError::InvalidInput(error.to_string()))?;
         let response = self
-            .call_with_session(
-                session_token,
-                "targets.create",
-                create_target(
-                    &input.name,
-                    CreateTargetOpts {
-                        comment: input.comment,
-                        hosts: input.hosts,
-                        exclude_hosts: input.exclude_hosts,
-                        alive_test: input
-                            .alive_test
-                            .as_deref()
-                            .map(parse_alive_test)
-                            .transpose()?,
-                        port_list_id: input
-                            .port_list_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                        ssh_credential_id: input
-                            .ssh_credential_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                        smb_credential_id: input
-                            .smb_credential_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                        esxi_credential_id: input
-                            .esxi_credential_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                        snmp_credential_id: input
-                            .snmp_credential_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                        reverse_lookup_only: input.reverse_lookup_only,
-                        reverse_lookup_unify: input.reverse_lookup_unify,
-                    },
-                ),
-            )
+            .call_with_session(session_token, "targets.create", request)
             .await?;
         let parsed = CreateTargetResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(parsed.id.to_string())
@@ -169,52 +168,61 @@ impl TargetPort for GvmdAdapter {
         input: ModifyTargetInput,
     ) -> Result<Target, GatewayError> {
         let target_id = parse_entity_id(id)?;
+        let request = modify_target(
+            &target_id,
+            ModifyTargetOpts {
+                name: input.name,
+                comment: input.comment,
+                hosts: collection_update(input.hosts),
+                exclude_hosts: collection_update(input.exclude_hosts),
+                reverse_lookup_only: input.reverse_lookup_only,
+                reverse_lookup_unify: input.reverse_lookup_unify,
+                alive_test: input
+                    .alive_test
+                    .as_deref()
+                    .map(parse_alive_test)
+                    .transpose()?,
+                port_list_id: input
+                    .port_list_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?
+                    .map(ScalarUpdate::Set)
+                    .unwrap_or_default(),
+                ssh_credential_id: input
+                    .ssh_credential_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?
+                    .map(ScalarUpdate::Set)
+                    .unwrap_or_default(),
+                ssh_credential_port: ScalarUpdate::Omitted,
+                smb_credential_id: input
+                    .smb_credential_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?
+                    .map(ScalarUpdate::Set)
+                    .unwrap_or_default(),
+                esxi_credential_id: input
+                    .esxi_credential_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?
+                    .map(ScalarUpdate::Set)
+                    .unwrap_or_default(),
+                snmp_credential_id: input
+                    .snmp_credential_id
+                    .as_deref()
+                    .map(parse_entity_id)
+                    .transpose()?
+                    .map(ScalarUpdate::Set)
+                    .unwrap_or_default(),
+            },
+        )
+        .map_err(|error| GatewayError::InvalidInput(error.to_string()))?;
         let response = self
-            .call_with_session(
-                session_token,
-                "targets.modify",
-                modify_target(
-                    &target_id,
-                    ModifyTargetOpts {
-                        name: input.name,
-                        comment: input.comment,
-                        hosts: input.hosts.unwrap_or_default(),
-                        exclude_hosts: input.exclude_hosts.unwrap_or_default(),
-                        reverse_lookup_only: input.reverse_lookup_only,
-                        reverse_lookup_unify: input.reverse_lookup_unify,
-                        alive_test: input
-                            .alive_test
-                            .as_deref()
-                            .map(parse_alive_test)
-                            .transpose()?,
-                        port_list_id: input
-                            .port_list_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                        ssh_credential_id: input
-                            .ssh_credential_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                        smb_credential_id: input
-                            .smb_credential_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                        esxi_credential_id: input
-                            .esxi_credential_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                        snmp_credential_id: input
-                            .snmp_credential_id
-                            .as_deref()
-                            .map(parse_entity_id)
-                            .transpose()?,
-                    },
-                ),
-            )
+            .call_with_session(session_token, "targets.modify", request)
             .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         self.get_target(session_token, id).await
