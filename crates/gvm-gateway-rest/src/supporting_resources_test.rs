@@ -92,6 +92,8 @@ fn host_delete_rejects_ultimate_query() {
         "ultimate=false",
         "ultimate",
         "comment=x&ultimate=true",
+        // Percent-encoded query keys must not bypass the boundary check.
+        "ult%69mate=true",
     ] {
         let error = reject_host_ultimate_query(Some(query))
             .expect_err("ultimate must be rejected for host deletion");

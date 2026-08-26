@@ -30,7 +30,7 @@ use crate::{
     },
     open_enum::open_string_enum,
     openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc},
-    query::{parse_collection_query, DeleteResourceQueryParams},
+    query::{decoded_query_pairs, parse_collection_query, DeleteResourceQueryParams},
     results::NvtRefResponse,
     router::bearer_token,
     targets::validate_uuid,
@@ -1138,8 +1138,8 @@ pub async fn get_host(
 fn reject_host_ultimate_query(query: Option<&str>) -> Result<(), GatewayError> {
     let has_ultimate = query
         .into_iter()
-        .flat_map(|query| query.split('&'))
-        .any(|pair| matches!(pair.split('=').next(), Some("ultimate")));
+        .flat_map(decoded_query_pairs)
+        .any(|(key, _)| key == "ultimate");
     if has_ultimate {
         return Err(GatewayError::InvalidInput(
             "the `ultimate` query parameter is not supported for host deletion".to_string(),
