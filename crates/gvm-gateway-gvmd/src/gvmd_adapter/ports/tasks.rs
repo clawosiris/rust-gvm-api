@@ -390,7 +390,9 @@ impl TaskPort for GvmdAdapter {
             .schedule_id
             .as_deref()
             .map(parse_entity_id)
-            .transpose()?;
+            .transpose()?
+            .map(ScalarUpdate::Set)
+            .unwrap_or_default();
         let alert_ids = input
             .alert_ids
             .map(|ids| {
