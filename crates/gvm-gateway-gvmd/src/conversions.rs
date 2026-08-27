@@ -10,10 +10,10 @@ use std::str::FromStr;
 
 use gvm_gateway_domain::{
     Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt,
-    NvtFamily, NvtRef, Override, Permission, PortList, Report, ReportFormat, ResourceRef,
-    ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
-    Target, Task, TaskObservers, Ticket, TlsCertificate, TlsCertificateAsset, User, UserSetting,
-    Vulnerability,
+    NvtFamily, NvtRef, OciImageTarget, Override, Permission, PortList, Report, ReportFormat,
+    ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
+    SupportingResourceMeta, Tag, Target, Task, TaskObservers, Ticket, TlsCertificate,
+    TlsCertificateAsset, User, UserSetting, Vulnerability, WebApplicationTarget,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -39,6 +39,45 @@ pub(crate) fn target_from_gmp(target: gvm_gmp::responses::Target) -> Target {
         smb_credential: target.smb_credential.map(resource_ref_from_named_entity),
         esxi_credential: target.esxi_credential.map(resource_ref_from_named_entity),
         snmp_credential: target.snmp_credential.map(resource_ref_from_named_entity),
+        in_use: target.meta.in_use,
+        writable: target.meta.writable,
+    }
+}
+
+pub(crate) fn oci_image_target_from_gmp(
+    target: gvm_gmp::responses::OciImageTarget,
+) -> OciImageTarget {
+    OciImageTarget {
+        id: target.meta.id.to_string(),
+        name: target.meta.name,
+        comment: target.meta.comment,
+        image_references: target.image_references,
+        credential: target.credential.map(resource_ref_from_named_entity),
+        tasks: target
+            .tasks
+            .into_iter()
+            .map(resource_ref_from_named_entity)
+            .collect(),
+        in_use: target.meta.in_use,
+        writable: target.meta.writable,
+    }
+}
+
+pub(crate) fn web_application_target_from_gmp(
+    target: gvm_gmp::responses::WebApplicationTarget,
+) -> WebApplicationTarget {
+    WebApplicationTarget {
+        id: target.meta.id.to_string(),
+        name: target.meta.name,
+        comment: target.meta.comment,
+        urls: target.urls,
+        exclude_urls: target.exclude_urls,
+        credential: target.credential.map(resource_ref_from_named_entity),
+        tasks: target
+            .tasks
+            .into_iter()
+            .map(resource_ref_from_named_entity)
+            .collect(),
         in_use: target.meta.in_use,
         writable: target.meta.writable,
     }

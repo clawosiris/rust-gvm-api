@@ -66,32 +66,154 @@ paths:
     post: { operationId: cloneConfig, tags: [Configs], summary: Clone a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
 
   /oci-image-targets:
-    get: { operationId: getOciImageTargets, tags: [OCI Image Targets], summary: List OCI image targets, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    post: { operationId: createOciImageTarget, tags: [OCI Image Targets], summary: Create an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getOciImageTargets
+      tags: [OCI Image Targets]
+      summary: List OCI image targets
+      parameters: &specializedTargetListParameters
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - name: trash
+          in: query
+          schema: { type: boolean, default: false }
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200": { description: Paginated OCI image targets, content: { application/json: { schema: { $ref: "#/components/schemas/OciImageTargetList" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+    post:
+      operationId: createOciImageTarget
+      tags: [OCI Image Targets]
+      summary: Create an OCI image target
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateOciImageTarget" } } } }
+      responses:
+        "201": &specializedTargetCreated { description: Target created, headers: { Location: { $ref: "./common.yaml#/components/headers/Location" } }, content: { application/json: { schema: { $ref: "./common.yaml#/components/schemas/ResourceCreated" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
   /oci-image-targets/{id}:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getOciImageTarget, tags: [OCI Image Targets], summary: Get an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    put: { operationId: modifyOciImageTarget, tags: [OCI Image Targets], summary: Modify an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    delete: { operationId: deleteOciImageTarget, tags: [OCI Image Targets], summary: Delete an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getOciImageTarget
+      tags: [OCI Image Targets]
+      summary: Get an OCI image target
+      responses:
+        "200": { description: OCI image target, content: { application/json: { schema: { $ref: "#/components/schemas/OciImageTarget" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+    put:
+      operationId: modifyOciImageTarget
+      tags: [OCI Image Targets]
+      summary: Modify an OCI image target
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ModifyOciImageTarget" } } } }
+      responses:
+        "200": { description: Updated OCI image target, content: { application/json: { schema: { $ref: "#/components/schemas/OciImageTarget" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+    delete:
+      operationId: deleteOciImageTarget
+      tags: [OCI Image Targets]
+      summary: Delete an OCI image target
+      parameters: [{ $ref: "./common.yaml#/components/parameters/UltimateDelete" }]
+      responses: &specializedTargetDeleteResponses
+        "204": { description: Target deleted }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./common.yaml#/components/responses/Forbidden" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
   /oci-image-targets/{id}/clone:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    post: { operationId: cloneOciImageTarget, tags: [OCI Image Targets], summary: Clone an OCI image target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    post:
+      operationId: cloneOciImageTarget
+      tags: [OCI Image Targets]
+      summary: Clone an OCI image target
+      responses:
+        "201": *specializedTargetCreated
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
 
   /web-application-targets:
-    get: { operationId: getWebApplicationTargets, tags: [Web Application Targets], summary: List web application targets, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    post: { operationId: createWebApplicationTarget, tags: [Web Application Targets], summary: Create a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getWebApplicationTargets
+      tags: [Web Application Targets]
+      summary: List web application targets
+      parameters: *specializedTargetListParameters
+      responses:
+        "200": { description: Paginated web application targets, content: { application/json: { schema: { $ref: "#/components/schemas/WebApplicationTargetList" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+    post:
+      operationId: createWebApplicationTarget
+      tags: [Web Application Targets]
+      summary: Create a web application target
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateWebApplicationTarget" } } } }
+      responses:
+        "201": *specializedTargetCreated
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
   /web-application-targets/{id}:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getWebApplicationTarget, tags: [Web Application Targets], summary: Get a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    put: { operationId: modifyWebApplicationTarget, tags: [Web Application Targets], summary: Modify a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    delete: { operationId: deleteWebApplicationTarget, tags: [Web Application Targets], summary: Delete a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getWebApplicationTarget
+      tags: [Web Application Targets]
+      summary: Get a web application target
+      responses:
+        "200": { description: Web application target, content: { application/json: { schema: { $ref: "#/components/schemas/WebApplicationTarget" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+    put:
+      operationId: modifyWebApplicationTarget
+      tags: [Web Application Targets]
+      summary: Modify a web application target
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ModifyWebApplicationTarget" } } } }
+      responses:
+        "200": { description: Updated web application target, content: { application/json: { schema: { $ref: "#/components/schemas/WebApplicationTarget" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+    delete:
+      operationId: deleteWebApplicationTarget
+      tags: [Web Application Targets]
+      summary: Delete a web application target
+      parameters: [{ $ref: "./common.yaml#/components/parameters/UltimateDelete" }]
+      responses: *specializedTargetDeleteResponses
   /web-application-targets/{id}/clone:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    post: { operationId: cloneWebApplicationTarget, tags: [Web Application Targets], summary: Clone a web application target, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    post:
+      operationId: cloneWebApplicationTarget
+      tags: [Web Application Targets]
+      summary: Clone a web application target
+      responses:
+        "201": *specializedTargetCreated
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
 
   /reports/{id}/hosts:
     parameters:
@@ -122,3 +244,75 @@ paths:
     get: { operationId: getOperatingSystem, tags: [Operating Systems], summary: Get an operating system, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     put: { operationId: modifyOperatingSystem, tags: [Operating Systems], summary: Modify an operating system, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
     delete: { operationId: deleteOperatingSystem, tags: [Operating Systems], summary: Delete an operating system, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+
+components:
+  schemas:
+    OciImageTarget:
+      type: object
+      required: [id, name, imageReferences, tasks, inUse, writable]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        comment: { type: string }
+        imageReferences: { type: array, items: { type: string } }
+        credential: { $ref: "./common.yaml#/components/schemas/ResourceRef" }
+        tasks: { type: array, items: { $ref: "./common.yaml#/components/schemas/ResourceRef" } }
+        inUse: { type: boolean }
+        writable: { type: boolean }
+    OciImageTargetList:
+      type: object
+      required: [data, pagination]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/OciImageTarget" } }
+        pagination: { $ref: "./common.yaml#/components/schemas/Pagination" }
+    CreateOciImageTarget:
+      type: object
+      required: [name, imageReferences]
+      properties:
+        name: { type: string }
+        comment: { type: string }
+        imageReferences: { type: array, minItems: 1, items: { type: string } }
+        credentialId: { type: string, format: uuid }
+    ModifyOciImageTarget:
+      type: object
+      properties:
+        name: { type: string }
+        comment: { type: string }
+        imageReferences: { type: array, minItems: 1, items: { type: string } }
+        credentialId: { type: string, format: uuid }
+    WebApplicationTarget:
+      type: object
+      required: [id, name, urls, excludeUrls, tasks, inUse, writable]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        comment: { type: string }
+        urls: { type: array, items: { type: string, format: uri } }
+        excludeUrls: { type: array, items: { type: string, format: uri } }
+        credential: { $ref: "./common.yaml#/components/schemas/ResourceRef" }
+        tasks: { type: array, items: { $ref: "./common.yaml#/components/schemas/ResourceRef" } }
+        inUse: { type: boolean }
+        writable: { type: boolean }
+    WebApplicationTargetList:
+      type: object
+      required: [data, pagination]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/WebApplicationTarget" } }
+        pagination: { $ref: "./common.yaml#/components/schemas/Pagination" }
+    CreateWebApplicationTarget:
+      type: object
+      required: [name, urls]
+      properties:
+        name: { type: string }
+        comment: { type: string }
+        urls: { type: array, minItems: 1, items: { type: string, format: uri } }
+        excludeUrls: { type: array, items: { type: string, format: uri } }
+        credentialId: { type: string, format: uuid }
+    ModifyWebApplicationTarget:
+      type: object
+      properties:
+        name: { type: string }
+        comment: { type: string }
+        urls: { type: array, minItems: 1, items: { type: string, format: uri } }
+        excludeUrls: { type: array, items: { type: string, format: uri } }
+        credentialId: { type: string, format: uuid }
