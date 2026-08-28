@@ -5,7 +5,9 @@ use std::collections::HashMap;
 
 use serde_json::json;
 
-use super::{AlertCondition, AlertEvent, AlertMethod, AlertResponse};
+use super::{
+    AlertCondition, AlertEvent, AlertMethod, AlertResponse, CreateAlertRequest, ModifyAlertRequest,
+};
 use gvm_gateway_domain::Alert;
 
 fn alert_with_selectors(event: &str, condition: &str, method: &str) -> Alert {
@@ -70,4 +72,80 @@ fn alert_response_preserves_known_and_unknown_selectors() {
     assert_eq!(unknown["event"], json!("future_event"));
     assert_eq!(unknown["condition"], json!("future_condition"));
     assert_eq!(unknown["method"], json!("future_method"));
+}
+
+#[test]
+fn alert_requests_preserve_selector_data_maps_and_rename() {
+    // Regression coverage for #402 and #404: alert create/modify requests must
+    // keep the advertised selector data maps and replacement name intact.
+    let create = CreateAlertRequest {
+        name: "Alert".to_string(),
+        comment: None,
+        event: Some(AlertEvent::parse("task_run_status_changed")),
+        condition: Some(AlertCondition::parse("severity_at_least")),
+        method: Some(AlertMethod::parse("email")),
+        event_data: HashMap::from([("status".to_string(), "Done".to_string())]),
+        condition_data: HashMap::from([("severity".to_string(), "7.5".to_string())]),
+        method_data: HashMap::from([("to_address".to_string(), "ops@example.com".to_string())]),
+        filter_id: None,
+    }
+    .validate()
+    .expect("alert create request should accept selector data maps");
+    let modify = ModifyAlertRequest {
+        name: Some("Renamed Alert".to_string()),
+        comment: None,
+        event: Some("task_run_status_changed".to_string()),
+        condition: Some("severity_at_least".to_string()),
+        method: Some("email".to_string()),
+        event_data: Some(HashMap::from([(
+            "status".to_string(),
+            "Stopped".to_string(),
+        )])),
+        condition_data: Some(HashMap::from([("severity".to_string(), "8.0".to_string())])),
+        method_data: Some(HashMap::from([(
+            "to_address".to_string(),
+            "soc@example.com".to_string(),
+        )])),
+        filter_id: None,
+    }
+    .validate()
+    .expect("alert modify request should accept rename and selector data maps");
+
+    assert_eq!(
+        create.event_data.get("status").map(String::as_str),
+        Some("Done")
+    );
+    assert_eq!(
+        create.condition_data.get("severity").map(String::as_str),
+        Some("7.5")
+    );
+    assert_eq!(
+        create.method_data.get("to_address").map(String::as_str),
+        Some("ops@example.com")
+    );
+    assert_eq!(modify.name.as_deref(), Some("Renamed Alert"));
+    assert_eq!(
+        modify
+            .event_data
+            .as_ref()
+            .and_then(|data| data.get("status"))
+            .map(String::as_str),
+        Some("Stopped")
+    );
+    assert_eq!(
+        modify
+            .condition_data
+            .as_ref()
+            .and_then(|data| data.get("severity"))
+            .map(String::as_str),
+        Some("8.0")
+    );
+    assert_eq!(
+        modify
+            .method_data
+            .as_ref()
+            .and_then(|data| data.get("to_address"))
+            .map(String::as_str),
+        Some("soc@example.com")
+    );
 }

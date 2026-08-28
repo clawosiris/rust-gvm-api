@@ -346,6 +346,8 @@ pub struct ModifyTaskRequest {
     /// Optional alert identifiers.
     #[serde(rename = "alertIds")]
     pub alert_ids: Option<Vec<String>>,
+    /// Optional alterable flag.
+    pub alterable: Option<bool>,
     /// Optional hosts ordering.
     #[serde(rename = "hostsOrdering")]
     pub hosts_ordering: Option<String>,
@@ -381,6 +383,7 @@ impl ModifyTaskRequest {
             scanner_id: self.scanner_id,
             schedule_id: self.schedule_id,
             alert_ids: self.alert_ids,
+            alterable: self.alterable,
             hosts_ordering: self.hosts_ordering,
             observers: self.observers,
             schedule_periods: self.schedule_periods,

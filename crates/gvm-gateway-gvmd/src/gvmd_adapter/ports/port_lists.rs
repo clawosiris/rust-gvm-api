@@ -104,7 +104,8 @@ impl PortListPort for GvmdAdapter {
             .await?
             .call(modify_port_list(
                 &parse_entity_id(id)?,
-                PortListOpts {
+                ModifyPortListOpts {
+                    name: input.name,
                     comment: input.comment,
                     port_range: input.port_range,
                 },

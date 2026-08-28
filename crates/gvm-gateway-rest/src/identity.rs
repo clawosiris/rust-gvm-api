@@ -505,12 +505,13 @@ struct CreateUserDoc {
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyUser")]
 struct ModifyUserDoc {
+    name: Option<String>,
     comment: Option<String>,
     #[schemars(schema_with = "password_schema")]
     password: Option<String>,
     hosts: Option<String>,
-    /// Assigned role identifiers. Omitted, null, or empty arrays leave existing
-    /// roles unchanged; clearing all roles is not supported by this request shape.
+    /// Assigned role identifiers. Omitted or null leaves existing roles
+    /// unchanged; an empty array clears all roles.
     roles: Option<Vec<Uuid>>,
     #[serde(rename = "authenticationType")]
     authentication_type: Option<AuthenticationType>,
@@ -665,11 +666,12 @@ impl CreateUserRequest {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 struct ModifyUserRequest {
+    name: Option<String>,
     comment: Option<String>,
     password: Option<String>,
     hosts: Option<String>,
-    /// Assigned role identifiers. Omitted, null, or empty arrays leave existing
-    /// roles unchanged; clearing all roles is not supported by this request shape.
+    /// Assigned role identifiers. Omitted or null leaves existing roles
+    /// unchanged; an empty array clears all roles.
     roles: Option<Vec<String>>,
     #[serde(rename = "authenticationType")]
     authentication_type: Option<String>,
@@ -683,6 +685,7 @@ impl ModifyUserRequest {
             .transpose()?;
         validate_auth_type(self.authentication_type.as_deref())?;
         Ok(ModifyUserInput {
+            name: self.name,
             comment: self.comment,
             password: self.password,
             hosts: self.hosts,

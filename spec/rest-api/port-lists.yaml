@@ -175,6 +175,8 @@ components:
     ModifyPortList:
       type: object
       properties:
+        name:
+          type: string
         comment:
           type: string
         portRange:

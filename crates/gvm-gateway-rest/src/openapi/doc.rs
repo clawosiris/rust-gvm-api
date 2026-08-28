@@ -212,6 +212,7 @@ pub(crate) struct ModifyTaskDoc {
     schedule_id: Option<Uuid>,
     #[serde(rename = "alertIds")]
     alert_ids: Option<Vec<Uuid>>,
+    alterable: Option<bool>,
     #[serde(rename = "hostsOrdering")]
     hosts_ordering: Option<HostsOrderingDoc>,
     observers: Option<Vec<String>>,

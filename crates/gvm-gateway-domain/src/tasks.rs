@@ -154,6 +154,8 @@ pub struct ModifyTaskInput {
     pub schedule_id: Option<String>,
     /// Optional alert identifiers.
     pub alert_ids: Option<Vec<String>>,
+    /// Optional alterable flag.
+    pub alterable: Option<bool>,
     /// Optional hosts ordering.
     pub hosts_ordering: Option<String>,
     /// Optional observers.

@@ -118,3 +118,50 @@ fn credential_json_parse_error_detail_omits_submitted_values() {
     assert!(!detail.contains("111222333"));
     assert!(!detail.contains("444555666"));
 }
+
+#[test]
+fn credential_requests_preserve_supported_secret_and_type_fields() {
+    // Regression coverage for #403: REST credential requests must keep the
+    // supported secret-bearing fields and public type values for the typed
+    // gvmd adapter instead of rejecting or collapsing them locally.
+    let create = CreateCredentialRequest {
+        name: "Credential".to_string(),
+        comment: None,
+        credential_type: serde_json::from_value(json!("snmpv3"))
+            .expect("known credential type should parse"),
+        login: Some("snmp-user".to_string()),
+        password: Some("auth-secret".to_string()),
+        private_key: Some("PRIVATE KEY".to_string()),
+        certificate: Some("CERTIFICATE".to_string()),
+        community: Some("public".to_string()),
+        auth_algorithm: Some("sha1".to_string()),
+        privacy_algorithm: Some("aes".to_string()),
+        privacy_password: Some("privacy-secret".to_string()),
+    }
+    .validate()
+    .expect("credential create request should preserve supported secrets");
+    let modify = ModifyCredentialRequest {
+        name: Some("Renamed Credential".to_string()),
+        comment: None,
+        login: Some("snmp-user".to_string()),
+        password: Some("auth-secret".to_string()),
+        private_key: Some("PRIVATE KEY".to_string()),
+        certificate: Some("CERTIFICATE".to_string()),
+        community: Some("public".to_string()),
+        auth_algorithm: Some("sha1".to_string()),
+        privacy_algorithm: Some("aes".to_string()),
+        privacy_password: Some("privacy-secret".to_string()),
+    }
+    .validate();
+
+    assert_eq!(create.credential_type, "snmpv3");
+    assert_eq!(create.private_key.as_deref(), Some("PRIVATE KEY"));
+    assert_eq!(create.certificate.as_deref(), Some("CERTIFICATE"));
+    assert_eq!(create.community.as_deref(), Some("public"));
+    assert_eq!(create.privacy_password.as_deref(), Some("privacy-secret"));
+    assert_eq!(modify.name.as_deref(), Some("Renamed Credential"));
+    assert_eq!(modify.private_key.as_deref(), Some("PRIVATE KEY"));
+    assert_eq!(modify.certificate.as_deref(), Some("CERTIFICATE"));
+    assert_eq!(modify.community.as_deref(), Some("public"));
+    assert_eq!(modify.privacy_password.as_deref(), Some("privacy-secret"));
+}

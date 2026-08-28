@@ -3,7 +3,7 @@
 
 use serde_json::json;
 
-use super::TaskResponse;
+use super::{ModifyTaskRequest, TaskResponse};
 use gvm_gateway_domain::{ResourceRef, Task, TaskObservers};
 
 fn task_with_status(status: &str) -> Task {
@@ -103,4 +103,18 @@ fn task_response_preserves_group_and_role_observers() {
     assert!(json["observers"].get("users").is_none());
     assert_eq!(json["observers"]["groups"][0]["name"], "Auditors");
     assert_eq!(json["observers"]["roles"][0]["name"], "Observers");
+}
+
+#[test]
+fn modify_task_request_forwards_alterable() {
+    // Regression coverage for #406: PUT /tasks/{id} must expose the same
+    // alterable control as task creation and preserve an explicit false value.
+    let request: ModifyTaskRequest = serde_json::from_value(json!({ "alterable": false }))
+        .expect("alterable should deserialize on task modify");
+
+    let input = request
+        .validate()
+        .expect("alterable requires no ID validation");
+
+    assert_eq!(input.alterable, Some(false));
 }

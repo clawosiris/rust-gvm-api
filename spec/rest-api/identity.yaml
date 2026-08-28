@@ -685,6 +685,8 @@ components:
     ModifyUser:
       type: object
       properties:
+        name:
+          type: string
         comment:
           type: string
         password:
@@ -697,6 +699,7 @@ components:
           items:
             type: string
             format: uuid
+          description: Assigned role identifiers. Omitted or null leaves existing roles unchanged; an empty array clears all roles.
         authenticationType:
           type: string
           enum:

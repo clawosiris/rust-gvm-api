@@ -86,6 +86,7 @@ fn generated_openapi_preserves_key_schema_fields() {
     assert!(modify_target_props.get("snmpCredentialId").is_some());
 
     let modify_task_props = &generated["components"]["schemas"]["ModifyTask"]["properties"];
+    assert!(modify_task_props.get("alterable").is_some());
     assert!(modify_task_props.get("preferences").is_some());
     let preferences_description = modify_task_props["preferences"]["description"]
         .as_str()
@@ -94,21 +95,44 @@ fn generated_openapi_preserves_key_schema_fields() {
     assert!(preferences_description.contains("clearing preferences is not supported"));
 
     let schemas = &generated["components"]["schemas"];
-    assert_empty_array_modify_limitation(
+    let create_alert_props = &schemas["CreateAlert"]["properties"];
+    assert!(create_alert_props.get("eventData").is_some());
+    assert!(create_alert_props.get("conditionData").is_some());
+    assert!(create_alert_props.get("methodData").is_some());
+    let modify_alert_props = &schemas["ModifyAlert"]["properties"];
+    assert!(modify_alert_props.get("name").is_some());
+    assert!(modify_alert_props.get("eventData").is_some());
+    assert!(modify_alert_props.get("conditionData").is_some());
+    assert!(modify_alert_props.get("methodData").is_some());
+    let create_credential_props = &schemas["CreateCredential"]["properties"];
+    assert!(create_credential_props.get("privateKey").is_some());
+    assert!(create_credential_props.get("certificate").is_some());
+    assert!(create_credential_props.get("community").is_some());
+    assert!(create_credential_props.get("privacyPassword").is_some());
+    let modify_credential_props = &schemas["ModifyCredential"]["properties"];
+    assert!(modify_credential_props.get("privateKey").is_some());
+    assert!(modify_credential_props.get("certificate").is_some());
+    assert!(modify_credential_props.get("community").is_some());
+    assert!(modify_credential_props.get("privacyPassword").is_some());
+    assert_empty_array_clear_contract(
         &schemas["UpdateNote"]["properties"]["hosts"],
         "UpdateNote.hosts",
-        "clearing all hosts",
+        "empty array clears",
     );
-    assert_empty_array_modify_limitation(
+    assert_empty_array_clear_contract(
         &schemas["UpdateOverride"]["properties"]["hosts"],
         "UpdateOverride.hosts",
-        "clearing all hosts",
+        "empty array clears",
     );
-    assert_empty_array_modify_limitation(
+    assert_empty_array_clear_contract(
         &schemas["ModifyUser"]["properties"]["roles"],
         "ModifyUser.roles",
-        "clearing all roles",
+        "empty array clears",
     );
+    assert!(schemas["ModifyPortList"]["properties"]
+        .get("name")
+        .is_some());
+    assert!(schemas["ModifyUser"]["properties"].get("name").is_some());
 }
 
 #[test]
@@ -574,17 +598,11 @@ fn resolve_local_schema_ref<'a>(schemas: &'a Value, schema: &'a Value) -> &'a Va
     &schemas[name]
 }
 
-fn assert_empty_array_modify_limitation(schema: &Value, context: &str, clear_phrase: &str) {
+fn assert_empty_array_clear_contract(schema: &Value, context: &str, clear_phrase: &str) {
     let description = schema["description"]
         .as_str()
         .unwrap_or_else(|| panic!("{context} should document empty-array update semantics"));
-    for phrase in [
-        "Omitted",
-        "null",
-        "empty arrays",
-        "leave existing",
-        clear_phrase,
-    ] {
+    for phrase in ["Omitted", "null", "unchanged", clear_phrase] {
         assert!(
             description.contains(phrase),
             "{context} description should mention {phrase:?}; description={description:?}"
