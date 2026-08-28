@@ -3,7 +3,14 @@
 
 use gvm_gateway_domain::GatewayError;
 
-use super::filters::{paginated_filter, paginated_filter_with_reserved_terms};
+use super::filters::{paged_slice, paginated_filter, paginated_filter_with_reserved_terms};
+
+#[test]
+fn paged_slice_treats_maximum_page_as_out_of_range() {
+    // An extreme page must produce the normal empty out-of-range page instead
+    // of overflowing the client-side fallback offset and wrapping to old data.
+    assert!(paged_slice(vec!["first", "second"], u32::MAX, 1_000).is_empty());
+}
 
 #[test]
 fn paginated_filter_appends_backend_paging_terms() {
