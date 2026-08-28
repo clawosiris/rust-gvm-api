@@ -24,7 +24,10 @@ pub(super) fn gvmd_total(filtered: Option<u32>, total: Option<u32>, current_len:
 }
 
 pub(super) fn paged_slice<T>(items: Vec<T>, page: u32, per_page: u32) -> Vec<T> {
-    let start = ((page.saturating_sub(1)) * per_page) as usize;
+    let offset = u64::from(page.saturating_sub(1)) * u64::from(per_page);
+    let Ok(start) = usize::try_from(offset) else {
+        return Vec::new();
+    };
     items
         .into_iter()
         .skip(start)
