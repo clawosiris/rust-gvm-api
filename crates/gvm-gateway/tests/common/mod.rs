@@ -386,6 +386,50 @@ pub async fn target_harness(seed: impl FnOnce(&ResourceStore) + Send + 'static) 
     target_harness_with_security(seed, RestSecurityConfig::default()).await
 }
 
+pub async fn specialized_target_harness(
+    seed: impl FnOnce(&ResourceStore) + Send + 'static,
+) -> TargetHarness {
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .unix_socket_auto()
+        .seed(seed)
+        .build()
+        .await
+        .unwrap();
+
+    let target_adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let sessions = Arc::new(SessionManager::default());
+    let service = live_gateway_service(target_adapter.clone(), Arc::clone(&sessions));
+    let token = service.session_manager().create("admin").unwrap().token;
+    target_adapter
+        .connect_session(&token, "admin", "admin")
+        .await
+        .unwrap();
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = build_router(service);
+    let handle = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<ClientPeerAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+
+    TargetHarness {
+        addr,
+        client: Client::new(),
+        token,
+        sessions,
+        target_adapter,
+        server,
+        handle,
+    }
+}
+
 pub async fn target_harness_with_security(
     seed: impl FnOnce(&ResourceStore) + Send + 'static,
     security: RestSecurityConfig,

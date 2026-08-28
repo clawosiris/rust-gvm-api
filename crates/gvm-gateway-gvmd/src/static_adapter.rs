@@ -7,25 +7,27 @@
 use async_trait::async_trait;
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
-    CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput, CreateOverrideInput,
-    CreatePermissionInput, CreatePortListInput, CreateRoleInput, CreateScanConfigInput,
-    CreateScheduleInput, CreateTagInput, CreateTargetInput, CreateTaskInput, CreateUserInput,
-    Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort,
-    Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage,
-    IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput,
-    ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput,
+    CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
+    CreateOciImageTargetInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
+    CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput,
+    CreateTaskInput, CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage,
+    CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage,
+    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
+    ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput,
+    ModifyNoteInput, ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput,
     ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
     ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
-    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override, OverridePage, Permission,
-    PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
-    ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
-    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort,
+    ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget,
+    OciImageTargetPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
+    PortListPort, PortListQuery, ReadinessStatus, Report, ReportExport, ReportExportRequest,
+    ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
+    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
+    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
+    SchedulePort, ScheduleQuery, SpecializedTargetQuery, SupportingResourcePort,
     SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
     Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
     TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery, VulnerabilityPage,
+    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -401,6 +403,79 @@ impl TargetPort for StaticGvmdAdapter {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support targets".to_string(),
         ))
+    }
+
+    async fn list_oci_image_targets(
+        &self,
+        _: &str,
+        _: &SpecializedTargetQuery,
+    ) -> Result<OciImageTargetPage, GatewayError> {
+        unsupported!("static adapter does not support OCI image targets")
+    }
+    async fn create_oci_image_target(
+        &self,
+        _: &str,
+        _: CreateOciImageTargetInput,
+    ) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support OCI image targets")
+    }
+    async fn clone_oci_image_target(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support OCI image targets")
+    }
+    async fn get_oci_image_target(&self, _: &str, _: &str) -> Result<OciImageTarget, GatewayError> {
+        unsupported!("static adapter does not support OCI image targets")
+    }
+    async fn modify_oci_image_target(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyOciImageTargetInput,
+    ) -> Result<OciImageTarget, GatewayError> {
+        unsupported!("static adapter does not support OCI image targets")
+    }
+    async fn delete_oci_image_target(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support OCI image targets")
+    }
+
+    async fn list_web_application_targets(
+        &self,
+        _: &str,
+        _: &SpecializedTargetQuery,
+    ) -> Result<WebApplicationTargetPage, GatewayError> {
+        unsupported!("static adapter does not support web application targets")
+    }
+    async fn create_web_application_target(
+        &self,
+        _: &str,
+        _: CreateWebApplicationTargetInput,
+    ) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support web application targets")
+    }
+    async fn clone_web_application_target(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support web application targets")
+    }
+    async fn get_web_application_target(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<WebApplicationTarget, GatewayError> {
+        unsupported!("static adapter does not support web application targets")
+    }
+    async fn modify_web_application_target(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyWebApplicationTargetInput,
+    ) -> Result<WebApplicationTarget, GatewayError> {
+        unsupported!("static adapter does not support web application targets")
+    }
+    async fn delete_web_application_target(
+        &self,
+        _: &str,
+        _: &str,
+        _: bool,
+    ) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support web application targets")
     }
 }
 

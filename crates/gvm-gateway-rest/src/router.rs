@@ -42,22 +42,16 @@ use crate::{
     },
     docs::{api_docs, redoc_js},
     emerging::{
-        clone_agent_group_docs, clone_config_docs, clone_oci_image_target_docs,
-        clone_web_application_target_docs, create_agent_group_docs, create_asset_docs,
-        create_config_docs, create_oci_image_target_docs, create_web_application_target_docs,
-        delete_agent_docs, delete_agent_group_docs, delete_asset_docs, delete_config_docs,
-        delete_oci_image_target_docs, delete_operating_system_docs,
-        delete_web_application_target_docs, get_agent_docs, get_agent_group_docs,
+        clone_agent_group_docs, clone_config_docs, create_agent_group_docs, create_asset_docs,
+        create_config_docs, delete_agent_docs, delete_agent_group_docs, delete_asset_docs,
+        delete_config_docs, delete_operating_system_docs, get_agent_docs, get_agent_group_docs,
         get_agent_installer_instruction_docs, get_agent_support_bundle_docs, get_asset_docs,
-        get_config_docs, get_oci_image_target_docs, get_operating_system_docs,
-        get_report_applications_docs, get_report_cves_docs, get_report_hosts_docs,
-        get_report_operating_systems_docs, get_report_ports_docs, get_web_application_target_docs,
-        list_agent_groups_docs, list_agents_docs, list_assets_docs, list_configs_docs,
-        list_oci_image_targets_docs, list_operating_systems_docs,
-        list_web_application_targets_docs, modify_agent_control_scan_config_docs,
+        get_config_docs, get_operating_system_docs, get_report_applications_docs,
+        get_report_cves_docs, get_report_hosts_docs, get_report_operating_systems_docs,
+        get_report_ports_docs, list_agent_groups_docs, list_agents_docs, list_assets_docs,
+        list_configs_docs, list_operating_systems_docs, modify_agent_control_scan_config_docs,
         modify_agent_docs, modify_agent_group_docs, modify_asset_docs, modify_config_docs,
-        modify_oci_image_target_docs, modify_operating_system_docs,
-        modify_web_application_target_docs, not_implemented, sync_agents_docs,
+        modify_operating_system_docs, not_implemented, sync_agents_docs,
     },
     error::RestError,
     feeds::{list_feeds, list_feeds_docs},
@@ -110,6 +104,17 @@ use crate::{
         get_session_docs,
     },
     shutdown::ShutdownRuntime,
+    specialized_targets::{
+        clone_oci_image_target, clone_oci_image_target_docs, clone_web_application_target,
+        clone_web_application_target_docs, create_oci_image_target, create_oci_image_target_docs,
+        create_web_application_target, create_web_application_target_docs, delete_oci_image_target,
+        delete_oci_image_target_docs, delete_web_application_target,
+        delete_web_application_target_docs, get_oci_image_target, get_oci_image_target_docs,
+        get_web_application_target, get_web_application_target_docs, list_oci_image_targets,
+        list_oci_image_targets_docs, list_web_application_targets,
+        list_web_application_targets_docs, update_oci_image_target, update_oci_image_target_docs,
+        update_web_application_target, update_web_application_target_docs,
+    },
     supporting_resources::{
         clone_filter, clone_filter_docs, clone_tag, clone_tag_docs, create_filter,
         create_filter_docs, create_host, create_host_docs, create_note, create_note_docs,
@@ -354,51 +359,66 @@ fn documented_router() -> ApiRouter<GatewayService> {
         // New target families from current GVMD
         .api_route(
             "/api/v1/oci-image-targets",
-            get_with(not_implemented, list_oci_image_targets_docs),
+            get_with(list_oci_image_targets, list_oci_image_targets_docs),
         )
         .api_route(
             "/api/v1/oci-image-targets",
-            post_with(not_implemented, create_oci_image_target_docs),
+            post_with(create_oci_image_target, create_oci_image_target_docs),
         )
         .api_route(
             "/api/v1/oci-image-targets/{id}",
-            get_with(not_implemented, get_oci_image_target_docs),
+            get_with(get_oci_image_target, get_oci_image_target_docs),
         )
         .api_route(
             "/api/v1/oci-image-targets/{id}",
-            put_with(not_implemented, modify_oci_image_target_docs),
+            put_with(update_oci_image_target, update_oci_image_target_docs),
         )
         .api_route(
             "/api/v1/oci-image-targets/{id}",
-            delete_with(not_implemented, delete_oci_image_target_docs),
+            delete_with(delete_oci_image_target, delete_oci_image_target_docs),
         )
         .api_route(
             "/api/v1/oci-image-targets/{id}/clone",
-            post_with(not_implemented, clone_oci_image_target_docs),
+            post_with(clone_oci_image_target, clone_oci_image_target_docs),
         )
         .api_route(
             "/api/v1/web-application-targets",
-            get_with(not_implemented, list_web_application_targets_docs),
+            get_with(
+                list_web_application_targets,
+                list_web_application_targets_docs,
+            ),
         )
         .api_route(
             "/api/v1/web-application-targets",
-            post_with(not_implemented, create_web_application_target_docs),
+            post_with(
+                create_web_application_target,
+                create_web_application_target_docs,
+            ),
         )
         .api_route(
             "/api/v1/web-application-targets/{id}",
-            get_with(not_implemented, get_web_application_target_docs),
+            get_with(get_web_application_target, get_web_application_target_docs),
         )
         .api_route(
             "/api/v1/web-application-targets/{id}",
-            put_with(not_implemented, modify_web_application_target_docs),
+            put_with(
+                update_web_application_target,
+                update_web_application_target_docs,
+            ),
         )
         .api_route(
             "/api/v1/web-application-targets/{id}",
-            delete_with(not_implemented, delete_web_application_target_docs),
+            delete_with(
+                delete_web_application_target,
+                delete_web_application_target_docs,
+            ),
         )
         .api_route(
             "/api/v1/web-application-targets/{id}/clone",
-            post_with(not_implemented, clone_web_application_target_docs),
+            post_with(
+                clone_web_application_target,
+                clone_web_application_target_docs,
+            ),
         )
         // Alerts
         .api_route("/api/v1/alerts", get_with(list_alerts, list_alerts_docs))

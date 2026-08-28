@@ -7,23 +7,25 @@ use async_trait::async_trait;
 
 use crate::{
     Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreateFilterInput,
-    CreateGroupInput, CreateHostInput, CreateNoteInput, CreateOverrideInput, CreatePermissionInput,
-    CreatePortListInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
-    CreateTagInput, CreateTargetInput, CreateTaskInput, CreateUserInput, Credential,
-    CredentialPage, CredentialQuery, CredentialStore, Feed, Filter, FilterPage, GatewayError,
-    GetReportOpts, Group, GroupPage, Host, HostPage, IdentityQuery, ModifyAlertInput,
-    ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
+    CreateGroupInput, CreateHostInput, CreateNoteInput, CreateOciImageTargetInput,
+    CreateOverrideInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
+    CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput, CreateTaskInput,
+    CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage, CredentialQuery,
+    CredentialStore, Feed, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host,
+    HostPage, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput,
+    ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput,
     ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override,
-    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
-    ReadinessStatus, Report, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
-    ReportPage, ReportQuery, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
-    ScheduleQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task,
-    TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
-    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery, VulnerabilityPage,
+    ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt,
+    NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, Override, OverridePage, Permission,
+    PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report, ReportExport,
+    ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportQuery, ResultPage,
+    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner,
+    ScannerPage, ScannerQuery, Schedule, SchedulePage, ScheduleQuery, SpecializedTargetQuery,
+    SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task, TaskAction,
+    TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificateAsset, TlsCertificateAssetPage,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -831,6 +833,97 @@ pub trait TargetPort: Send + Sync + 'static {
         id: &str,
         ultimate: bool,
     ) -> Result<(), GatewayError>;
+
+    /// List OCI image targets for the session.
+    async fn list_oci_image_targets(
+        &self,
+        _: &str,
+        _: &SpecializedTargetQuery,
+    ) -> Result<OciImageTargetPage, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Create an OCI image target.
+    async fn create_oci_image_target(
+        &self,
+        _: &str,
+        _: CreateOciImageTargetInput,
+    ) -> Result<String, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Clone an OCI image target.
+    async fn clone_oci_image_target(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Fetch an OCI image target.
+    async fn get_oci_image_target(&self, _: &str, _: &str) -> Result<OciImageTarget, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Modify an OCI image target.
+    async fn modify_oci_image_target(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyOciImageTargetInput,
+    ) -> Result<OciImageTarget, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Delete an OCI image target.
+    async fn delete_oci_image_target(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        specialized_targets_not_implemented()
+    }
+
+    /// List web application targets for the session.
+    async fn list_web_application_targets(
+        &self,
+        _: &str,
+        _: &SpecializedTargetQuery,
+    ) -> Result<WebApplicationTargetPage, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Create a web application target.
+    async fn create_web_application_target(
+        &self,
+        _: &str,
+        _: CreateWebApplicationTargetInput,
+    ) -> Result<String, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Clone a web application target.
+    async fn clone_web_application_target(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Fetch a web application target.
+    async fn get_web_application_target(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<WebApplicationTarget, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Modify a web application target.
+    async fn modify_web_application_target(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyWebApplicationTargetInput,
+    ) -> Result<WebApplicationTarget, GatewayError> {
+        specialized_targets_not_implemented()
+    }
+    /// Delete a web application target.
+    async fn delete_web_application_target(
+        &self,
+        _: &str,
+        _: &str,
+        _: bool,
+    ) -> Result<(), GatewayError> {
+        specialized_targets_not_implemented()
+    }
+}
+
+fn specialized_targets_not_implemented<T>() -> Result<T, GatewayError> {
+    Err(GatewayError::NotImplemented(
+        "specialized target resources are not implemented by this adapter".to_string(),
+    ))
 }
 
 /// Port for task CRUD and lifecycle operations.
