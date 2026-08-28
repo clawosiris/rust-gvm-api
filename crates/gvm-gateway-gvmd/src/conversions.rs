@@ -14,8 +14,8 @@ use gvm_gateway_domain::{
     PortList, Report, ReportClosedCve, ReportError, ReportFormat, ReportVulnerability, ResourceRef,
     ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
     Target, Task, TaskObservers, TaskReportComplianceCount, TaskReportReference,
-    TaskReportResultCount, Ticket, TlsCertificate, TlsCertificateAsset, User, UserSetting,
-    Vulnerability, WebApplicationTarget,
+    TaskReportResultCount, Ticket, Timezone, TlsCertificate, TlsCertificateAsset, User,
+    UserSetting, Vulnerability, WebApplicationTarget,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -156,6 +156,13 @@ pub(crate) fn feed_from_gmp(feed: gvm_gmp::responses::Feed) -> Feed {
             .currently_syncing
             .as_deref()
             .is_some_and(|value| value != "0"),
+    }
+}
+
+pub(crate) fn timezone_from_gmp(timezone: gvm_gmp::responses::Timezone) -> Timezone {
+    Timezone {
+        name: timezone.name,
+        offset: timezone.offset,
     }
 }
 

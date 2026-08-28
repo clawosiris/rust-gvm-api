@@ -23,7 +23,7 @@ use gvm_gateway_domain::{
     ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
     SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort, SupportingResourceQuery,
     SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
-    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
+    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
     TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
     UserSettingQuery, VulnerabilityPage,
 };
@@ -53,6 +53,10 @@ impl SystemPort for MockSystemPort {
 
     async fn gmp_version(&self) -> Result<String, GatewayError> {
         Ok(self.gmp_version.clone())
+    }
+
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Ok(vec![])
     }
 }
 

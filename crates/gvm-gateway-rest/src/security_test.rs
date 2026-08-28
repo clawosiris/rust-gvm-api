@@ -55,6 +55,7 @@ fn request_scoped_basic_auth_applies_to_protected_routes_by_default() {
         "/api/v1/credentials/stores",
         "/api/v1/feeds",
         "/api/v1/report-formats",
+        "/api/v1/timezones",
         "/api/v1/users",
         "/api/v1/future-resource",
     ] {

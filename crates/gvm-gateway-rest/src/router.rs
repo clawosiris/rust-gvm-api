@@ -132,7 +132,10 @@ use crate::{
         update_filter_docs, update_host, update_host_docs, update_note, update_note_docs,
         update_override, update_override_docs, update_tag, update_tag_docs,
     },
-    system::{health, health_docs, ready, ready_docs, version, version_docs},
+    system::{
+        health, health_docs, list_timezones, list_timezones_docs, ready, ready_docs, version,
+        version_docs,
+    },
     targets::{
         clone_target, clone_target_docs, create_target, create_target_docs, delete_target,
         delete_target_docs, get_target, get_target_docs, list_targets, list_targets_docs,
@@ -222,6 +225,10 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route("/health", get_with(health, health_docs))
         .api_route("/ready", get_with(ready, ready_docs))
         .api_route("/api/v1/version", get_with(version, version_docs))
+        .api_route(
+            "/api/v1/timezones",
+            get_with(list_timezones, list_timezones_docs),
+        )
         // Session lifecycle
         .api_route(
             "/api/v1/session",

@@ -539,6 +539,28 @@ fn generated_openapi_applies_route_auth_policy_consistently() {
 }
 
 #[test]
+fn generated_openapi_documents_backend_timezone_contract() {
+    let generated = build_openapi();
+    let operation = op(&generated, "/timezones", "get");
+    let schemas = &generated["components"]["schemas"];
+
+    assert_eq!(operation["operationId"], json!("getTimezones"));
+    assert_eq!(
+        response_statuses(operation),
+        BTreeSet::from(["200", "401", "501", "502"])
+    );
+    assert_eq!(
+        operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        json!("#/components/schemas/TimezoneList")
+    );
+    assert_eq!(
+        schemas["Timezone"]["required"],
+        json!(["name"]),
+        "timezone items must only require the backend-provided timezone name"
+    );
+}
+
+#[test]
 fn generated_openapi_excludes_the_browser_docs_ui() {
     // The browser UI is an operational convenience, not part of the client API
     // contract, so generating the contract must never publish it as an API path.

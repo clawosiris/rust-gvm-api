@@ -89,6 +89,20 @@ fn version_info_camel_case_fields() {
     assert!(json.contains("\"gmpVersion\""));
 }
 
+/// Backend timezone entries keep `offset` optional so gvmd can return bare
+/// names like `UTC` without the gateway inventing extra normalization.
+#[test]
+fn timezone_omits_none_offset() {
+    let timezone = Timezone {
+        name: "UTC".to_string(),
+        offset: None,
+    };
+    let json = serde_json::to_string(&timezone).unwrap();
+
+    assert!(json.contains("\"name\":\"UTC\""));
+    assert!(!json.contains("offset"));
+}
+
 /// Pagination keeps camelCase wire fields after the split.
 #[test]
 fn pagination_serializes_camel_case() {

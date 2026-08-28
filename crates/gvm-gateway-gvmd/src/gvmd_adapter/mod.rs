@@ -34,7 +34,7 @@ use gvm_gateway_domain::{
     ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
     SessionTokenDigest, SpecializedTargetQuery, SupportingResourcePort, SupportingResourceQuery,
     SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
-    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
+    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
     TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
     UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
@@ -93,7 +93,7 @@ use gvm_gmp::{
             create_schedule, delete_schedule, get_schedule, get_schedules, modify_schedule,
             GetSchedulesOpts, ScheduleOpts,
         },
-        system::{get_vulns, FilteredGetOpts},
+        system::{get_timezones, get_vulns, FilteredGetOpts},
         tags::{clone_tag, create_tag, delete_tag, get_tag, get_tags, modify_tag, GetTagsOpts},
         targets::{
             clone_target, create_target, delete_target, get_target, get_targets, modify_target,
@@ -137,10 +137,10 @@ use gvm_gmp::{
         GetOverridesResponse, GetPermissionsResponse, GetPortListsResponse,
         GetReportFormatsResponse, GetReportsResponse, GetResultsResponse, GetRolesResponse,
         GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse, GetTagsResponse,
-        GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetTlsCertificatesResponse,
-        GetUserSettingsResponse, GetUsersResponse, GetVersionResponse, GetVulnerabilitiesResponse,
-        GetWebApplicationTargetsResponse, ModifyUserSettingResponse, ResumeTaskResponse,
-        StartTaskResponse, User as GmpUser,
+        GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetTimezonesResponse,
+        GetTlsCertificatesResponse, GetUserSettingsResponse, GetUsersResponse, GetVersionResponse,
+        GetVulnerabilitiesResponse, GetWebApplicationTargetsResponse, ModifyUserSettingResponse,
+        ResumeTaskResponse, StartTaskResponse, User as GmpUser,
     },
     CollectionUpdate, EntityId, Pagination as GmpPagination, ScalarUpdate,
 };
@@ -168,9 +168,9 @@ use crate::conversions::{
     permission_from_gmp, port_list_from_gmp, report_closed_cve_from_gmp, report_error_from_gmp,
     report_format_from_gmp, report_from_gmp, result_from_gmp, result_from_report_vulnerability,
     role_from_gmp, scan_config_from_gmp, scanner_from_gmp, schedule_from_gmp, tag_from_gmp,
-    target_from_gmp, task_from_gmp, ticket_from_gmp, tls_certificate_asset_from_gmp,
-    tls_certificate_from_report_tls_certificate, user_from_gmp, user_setting_from_gmp,
-    vulnerability_from_gmp, web_application_target_from_gmp,
+    target_from_gmp, task_from_gmp, ticket_from_gmp, timezone_from_gmp,
+    tls_certificate_asset_from_gmp, tls_certificate_from_report_tls_certificate, user_from_gmp,
+    user_setting_from_gmp, vulnerability_from_gmp, web_application_target_from_gmp,
 };
 use filters::{
     backend_ignored_pagination, composed_filter, gvmd_total, needs_client_side_pagination_fallback,

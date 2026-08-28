@@ -2809,3 +2809,52 @@ async fn gvmd_adapter_create_host_emits_asset() {
 
     server.shutdown().await;
 }
+
+#[tokio::test]
+async fn gvmd_adapter_list_timezones_returns_backend_catalog_on_v22_8() {
+    // The timezone catalog must come from gvmd itself so the gateway does not
+    // reintroduce the proxy-local zoneinfo divergence removed in PR #312.
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+
+    let timezones = adapter.list_timezones(&token).await.unwrap();
+
+    assert_eq!(
+        timezones,
+        vec![
+            Timezone {
+                name: "UTC".to_string(),
+                offset: None,
+            },
+            Timezone {
+                name: "Europe/Berlin".to_string(),
+                offset: Some("+01:00".to_string()),
+            },
+        ]
+    );
+    assert!(
+        server
+            .command_history()
+            .iter()
+            .any(|record| record.command_name() == "get_timezones"),
+        "list_timezones should emit get_timezones"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_timezones_returns_not_implemented_on_v22_7() {
+    // Regression coverage for the exact review blocker from PR #425: older
+    // supported backends must surface a typed unsupported-command error as 501,
+    // not as a generic backend outage.
+    let (adapter, server, token) = create_mock_adapter().await;
+
+    let error = adapter.list_timezones(&token).await.unwrap_err();
+
+    assert!(
+        matches!(error, GatewayError::NotImplemented(ref detail) if detail.contains("get_timezones")),
+        "expected unsupported 22.7 backend to map to NotImplemented, got {error:?}"
+    );
+
+    server.shutdown().await;
+}

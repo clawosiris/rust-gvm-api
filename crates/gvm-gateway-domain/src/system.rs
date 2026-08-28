@@ -32,3 +32,13 @@ pub struct VersionInfo {
     #[serde(rename = "gmpVersion")]
     pub gmp_version: String,
 }
+
+/// Timezone entry exposed by the backend timezone catalog.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Timezone {
+    /// IANA timezone name.
+    pub name: String,
+    /// Optional UTC offset reported by gvmd.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<String>,
+}
