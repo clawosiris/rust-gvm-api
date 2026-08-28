@@ -4,8 +4,30 @@ use super::super::*;
 
 #[async_trait]
 impl CredentialPort for GvmdAdapter {
-    async fn list_credential_stores(&self, _: &str) -> Result<Vec<CredentialStore>, GatewayError> {
-        Ok(self.default_credential_stores())
+    async fn list_credential_stores(
+        &self,
+        session_token: &str,
+    ) -> Result<Vec<CredentialStore>, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let parsed = match client.lock().await?.get_credential_stores().await {
+            Ok(parsed) => parsed,
+            Err(error) if credential_store_capability_unavailable(&error) => {
+                return Err(unsupported_credential_store_error());
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
+
+        Ok(parsed
+            .items
+            .into_iter()
+            .map(|store| CredentialStore {
+                id: store.id,
+                name: store.name,
+                provider: store.type_,
+                default: None,
+                writable: None,
+            })
+            .collect())
     }
 
     async fn list_credentials(
@@ -185,4 +207,31 @@ impl CredentialPort for GvmdAdapter {
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
     }
+}
+
+pub(super) fn credential_store_capability_unavailable(error: &gvm_client::GvmError) -> bool {
+    match error {
+        gvm_client::GvmError::UnsupportedCommand { command, .. } => {
+            command == "get_credential_stores"
+        }
+        gvm_client::GvmError::Server {
+            status: 503,
+            message,
+        }
+        | gvm_client::GvmError::Parse(gvm_gmp::responses::ParseError::ServerError {
+            status: 503,
+            message,
+        }) => credential_store_command_disabled(message),
+        _ => false,
+    }
+}
+
+fn credential_store_command_disabled(message: &str) -> bool {
+    message.to_ascii_lowercase().contains("command disabled")
+}
+
+pub(super) fn unsupported_credential_store_error() -> GatewayError {
+    GatewayError::NotImplemented(
+        "credential stores are not available because gvmd does not expose `get_credential_stores` on this backend instance; the proxy does not synthesize credential store entries".to_string(),
+    )
 }

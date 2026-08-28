@@ -290,11 +290,11 @@ pub struct Alert {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct CredentialStore {
-    pub id: String,
+    pub id: Option<String>,
     pub name: String,
     pub provider: Option<String>,
-    pub default: bool,
-    pub writable: bool,
+    pub default: Option<bool>,
+    pub writable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -314,7 +314,7 @@ pub struct IdentityResourceMeta {
     pub id: String,
     pub name: String,
     pub comment: Option<String>,
-    pub owner: Option<ResourceRef>,
+    pub owner: Option<IdentityOwner>,
     #[serde(rename = "creationTime")]
     pub creation_time: Option<String>,
     #[serde(rename = "modificationTime")]
@@ -322,6 +322,11 @@ pub struct IdentityResourceMeta {
     #[serde(rename = "inUse")]
     pub in_use: bool,
     pub writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct IdentityOwner {
+    pub name: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]

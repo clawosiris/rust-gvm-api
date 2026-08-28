@@ -93,12 +93,15 @@ pub(crate) struct CredentialListResponse {
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "CredentialStore")]
 pub(crate) struct CredentialStoreResponse {
-    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     provider: Option<String>,
-    default: bool,
-    writable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    writable: Option<bool>,
 }
 
 impl From<CredentialStore> for CredentialStoreResponse {
@@ -455,13 +458,18 @@ pub(crate) fn list_credential_stores_docs(op: TransformOperation<'_>) -> Transfo
         .id("getCredentialStores")
         .tag("Credentials")
         .summary("List available credential stores")
-        .description("Returns backend credential stores available to credential workflows.")
+        .description("Returns credential stores reported by gvmd. Backends that do not expose this capability, including versions before GMP 22.8 and instances where gvmd disables `get_credential_stores`, return 501 because the gateway does not synthesize default store entries.")
         .security_requirement("bearerAuth")
         .response_with::<200, Json<CredentialStoreListResponse>, _>(ok_json(
             "Available credential stores",
         ));
 
-    problem_response::<401>(op, "Authentication required or session expired")
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<501>(
+        op,
+        "The connected gvmd backend does not expose credential stores",
+    );
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 
 pub(crate) fn create_credential_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {

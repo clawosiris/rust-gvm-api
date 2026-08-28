@@ -12,7 +12,8 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    GatewayError, GetReportOpts, ReportQuery, ResultQuery, TlsCertificate, TlsCertificatePage,
+    GatewayError, GetReportOpts, ReportClosedCvePage, ReportErrorPage, ReportQuery,
+    ReportVulnerabilityPage, ResultQuery, TlsCertificate, TlsCertificatePage,
 };
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -26,7 +27,7 @@ use crate::{
         ResourceIdPathDoc,
     },
     query::{parse_collection_query, parse_delete_resource_query, DeleteResourceQueryParams},
-    results::{ResultListResponse, ResultResponse},
+    results::{NvtRefResponse, ResultListResponse, ResultResponse, Threat},
     router::bearer_token,
     targets::validate_uuid,
 };
@@ -178,6 +179,171 @@ impl From<gvm_gateway_domain::ReportPage> for ReportListResponse {
     fn from(page: gvm_gateway_domain::ReportPage) -> Self {
         Self {
             data: page.data.into_iter().map(ReportResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+/// JSON body returned for one aggregate report vulnerability.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportVulnerability")]
+pub(crate) struct ReportVulnerabilityResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nvt: Option<NvtRefResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    threat: Option<Threat>,
+    #[serde(rename = "hostsCount", skip_serializing_if = "Option::is_none")]
+    hosts_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    occurrences: Option<u32>,
+}
+
+impl From<gvm_gateway_domain::ReportVulnerability> for ReportVulnerabilityResponse {
+    fn from(vulnerability: gvm_gateway_domain::ReportVulnerability) -> Self {
+        Self {
+            id: vulnerability.id,
+            nvt: vulnerability.nvt.map(NvtRefResponse::from),
+            host: vulnerability.host,
+            port: vulnerability.port,
+            severity: vulnerability.severity,
+            threat: vulnerability.threat.as_deref().map(Threat::parse),
+            hosts_count: vulnerability.hosts_count,
+            occurrences: vulnerability.occurrences,
+        }
+    }
+}
+
+/// JSON body returned for a paginated report-vulnerability list.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportVulnerabilityList")]
+pub(crate) struct ReportVulnerabilityListResponse {
+    #[schemars(length(max = 1000))]
+    data: Vec<ReportVulnerabilityResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<ReportVulnerabilityPage> for ReportVulnerabilityListResponse {
+    fn from(page: ReportVulnerabilityPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ReportVulnerabilityResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+/// JSON body returned for one report error.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportError")]
+pub(crate) struct ReportErrorResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(rename = "nvtName", skip_serializing_if = "Option::is_none")]
+    nvt_name: Option<String>,
+}
+
+impl From<gvm_gateway_domain::ReportError> for ReportErrorResponse {
+    fn from(error: gvm_gateway_domain::ReportError) -> Self {
+        Self {
+            id: error.id,
+            name: error.name,
+            host: error.host,
+            port: error.port,
+            description: error.description,
+            nvt_name: error.nvt_name,
+        }
+    }
+}
+
+/// JSON body returned for a paginated report-error list.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportErrorList")]
+pub(crate) struct ReportErrorListResponse {
+    #[schemars(length(max = 1000))]
+    data: Vec<ReportErrorResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<ReportErrorPage> for ReportErrorListResponse {
+    fn from(page: ReportErrorPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ReportErrorResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+/// JSON body returned for one closed-CVE report finding.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportClosedCve")]
+pub(crate) struct ReportClosedCveResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nvt: Option<NvtRefResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cve: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    threat: Option<Threat>,
+}
+
+impl From<gvm_gateway_domain::ReportClosedCve> for ReportClosedCveResponse {
+    fn from(closed_cve: gvm_gateway_domain::ReportClosedCve) -> Self {
+        Self {
+            id: closed_cve.id,
+            nvt: closed_cve.nvt.map(NvtRefResponse::from),
+            cve: closed_cve.cve,
+            host: closed_cve.host,
+            severity: closed_cve.severity,
+            threat: closed_cve.threat.as_deref().map(Threat::parse),
+        }
+    }
+}
+
+/// JSON body returned for a paginated closed-CVE list.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportClosedCveList")]
+pub(crate) struct ReportClosedCveListResponse {
+    #[schemars(length(max = 1000))]
+    data: Vec<ReportClosedCveResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<ReportClosedCvePage> for ReportClosedCveListResponse {
+    fn from(page: ReportClosedCvePage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ReportClosedCveResponse::from)
+                .collect(),
             pagination: PaginationResponse::from(page.pagination),
         }
     }
@@ -428,7 +594,11 @@ pub async fn get_report_vulnerabilities(
         )
         .await
     {
-        Ok(results) => (StatusCode::OK, Json(ResultListResponse::from(results))).into_response(),
+        Ok(results) => (
+            StatusCode::OK,
+            Json(ReportVulnerabilityListResponse::from(results)),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -508,7 +678,9 @@ pub async fn get_report_errors(
         )
         .await
     {
-        Ok(results) => (StatusCode::OK, Json(ResultListResponse::from(results))).into_response(),
+        Ok(results) => {
+            (StatusCode::OK, Json(ReportErrorListResponse::from(results))).into_response()
+        }
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -546,7 +718,11 @@ pub async fn get_report_closed_cves(
         )
         .await
     {
-        Ok(results) => (StatusCode::OK, Json(ResultListResponse::from(results))).into_response(),
+        Ok(results) => (
+            StatusCode::OK,
+            Json(ReportClosedCveListResponse::from(results)),
+        )
+            .into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -626,19 +802,20 @@ pub(crate) fn get_report_vulnerabilities_docs(
         .id("getReportVulnerabilities")
         .tag("Reports")
         .summary("Get vulnerability findings for a report")
-        .description("Returns a paginated list of vulnerability findings for a report.")
+        .description("Returns purpose-shaped aggregate vulnerability findings. On gvmd versions before GMP 22.8 this returns 501; clients may fall back to `/reports/{id}/results`.")
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
-        .response_with::<200, Json<ResultListResponse>, _>(ok_json(
+        .response_with::<200, Json<ReportVulnerabilityListResponse>, _>(ok_json(
             "Paginated list of vulnerability findings",
         ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<404>(op, "Resource not found");
-    problem_response::<501>(
+    let op = problem_response::<501>(
         op,
         "The connected gvmd backend does not implement this report-detail operation",
-    )
+    );
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 
 /// OpenAPI transform for `GET /api/v1/reports/{id}/tls-certificates`.
@@ -658,10 +835,11 @@ pub(crate) fn get_report_tls_certificates_docs(
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<404>(op, "Resource not found");
-    problem_response::<501>(
+    let op = problem_response::<501>(
         op,
         "The connected gvmd backend does not implement this report-detail operation",
-    )
+    );
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 
 /// OpenAPI transform for `GET /api/v1/reports/{id}/errors`.
@@ -670,19 +848,20 @@ pub(crate) fn get_report_errors_docs(op: TransformOperation<'_>) -> TransformOpe
         .id("getReportErrors")
         .tag("Reports")
         .summary("Get report error findings")
-        .description("Returns a paginated list of report error findings.")
+        .description("Returns purpose-shaped report errors without fabricated threat or severity values. On gvmd versions before GMP 22.8 this returns 501; clients may fall back to `/reports/{id}/results`.")
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
-        .response_with::<200, Json<ResultListResponse>, _>(ok_json(
+        .response_with::<200, Json<ReportErrorListResponse>, _>(ok_json(
             "Paginated list of report errors",
         ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<404>(op, "Resource not found");
-    problem_response::<501>(
+    let op = problem_response::<501>(
         op,
         "The connected gvmd backend does not implement this report-detail operation",
-    )
+    );
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 
 /// OpenAPI transform for `GET /api/v1/reports/{id}/closed-cves`.
@@ -691,19 +870,20 @@ pub(crate) fn get_report_closed_cves_docs(op: TransformOperation<'_>) -> Transfo
         .id("getReportClosedCves")
         .tag("Reports")
         .summary("Get closed CVE findings for a report")
-        .description("Returns a paginated list of closed-CVE findings for a report.")
+        .description("Returns purpose-shaped closed-CVE findings. On gvmd versions before GMP 22.8 this returns 501; clients may fall back to `/reports/{id}/results`.")
         .security_requirement("bearerAuth")
         .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
-        .response_with::<200, Json<ResultListResponse>, _>(ok_json(
+        .response_with::<200, Json<ReportClosedCveListResponse>, _>(ok_json(
             "Paginated list of closed CVE findings",
         ));
 
     let op = problem_response::<401>(op, "Authentication required or session expired");
     let op = problem_response::<404>(op, "Resource not found");
-    problem_response::<501>(
+    let op = problem_response::<501>(
         op,
         "The connected gvmd backend does not implement this report-detail operation",
-    )
+    );
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 
 #[cfg(test)]

@@ -44,7 +44,7 @@ struct IdentityMetaResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    owner: Option<ResourceRefResponse>,
+    owner: Option<IdentityOwnerResponse>,
     #[serde(rename = "creationTime", skip_serializing_if = "Option::is_none")]
     creation_time: Option<String>,
     #[serde(rename = "modificationTime", skip_serializing_if = "Option::is_none")]
@@ -60,12 +60,24 @@ impl From<gvm_gateway_domain::IdentityResourceMeta> for IdentityMetaResponse {
             id: parse_uuid(&meta.id),
             name: meta.name,
             comment: meta.comment,
-            owner: meta.owner.map(ResourceRefResponse::from),
+            owner: meta.owner.map(IdentityOwnerResponse::from),
             creation_time: meta.creation_time,
             modification_time: meta.modification_time,
             writable: meta.writable,
             in_use: meta.in_use,
         }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "IdentityOwner")]
+struct IdentityOwnerResponse {
+    name: String,
+}
+
+impl From<gvm_gateway_domain::IdentityOwner> for IdentityOwnerResponse {
+    fn from(owner: gvm_gateway_domain::IdentityOwner) -> Self {
+        Self { name: owner.name }
     }
 }
 
@@ -294,7 +306,7 @@ struct IdentityResourceBaseDoc {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    owner: Option<ResourceRefResponse>,
+    owner: Option<IdentityOwnerResponse>,
     #[serde(rename = "creationTime", skip_serializing_if = "Option::is_none")]
     #[schemars(schema_with = "datetime_schema")]
     creation_time: Option<String>,

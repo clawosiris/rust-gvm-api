@@ -142,6 +142,9 @@ components:
           type: integer
         udpCount:
           type: integer
+        portRange:
+          type: string
+          description: Raw backend port-range expression for the list.
         inUse:
           type: boolean
         writable:

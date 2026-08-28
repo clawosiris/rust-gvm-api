@@ -12,9 +12,10 @@ use async_trait::async_trait;
 use gvm_gateway_domain::{
     CreateReportExportRequest, CreateTargetInput, GatewayError, GetReportOpts,
     GvmdReportFormatExportRequest, JobStatus, JsonReportExportRequest, ModifyTargetInput,
-    Pagination, ReadinessStatus, Report, ReportExport, ReportExportJob, ReportExportRequest,
-    ReportPage, ReportPort, ReportQuery, ResourceRef, ResultPage, ResultQuery, ScanResult,
-    SessionLimits, SessionManager, SessionTokenDigest, SystemPort, TargetQuery, TlsCertificatePage,
+    Pagination, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
+    ReportExportJob, ReportExportRequest, ReportPage, ReportPort, ReportQuery,
+    ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery, ScanResult, SessionLimits,
+    SessionManager, SessionTokenDigest, SystemPort, TargetQuery, TlsCertificatePage,
 };
 use tokio::sync::Notify;
 
@@ -670,8 +671,8 @@ impl ReportPort for BlockingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -696,8 +697,8 @@ impl ReportPort for BlockingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -705,8 +706,8 @@ impl ReportPort for BlockingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
     }
 }
 
@@ -766,8 +767,8 @@ impl ReportPort for ExistingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -792,8 +793,8 @@ impl ReportPort for ExistingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -801,8 +802,8 @@ impl ReportPort for ExistingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
     }
 }
 
@@ -868,8 +869,8 @@ impl ReportPort for CapturingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -894,8 +895,8 @@ impl ReportPort for CapturingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -903,8 +904,8 @@ impl ReportPort for CapturingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
     }
 }
 
@@ -960,8 +961,8 @@ impl ReportPort for MissingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -986,8 +987,8 @@ impl ReportPort for MissingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -995,8 +996,8 @@ impl ReportPort for MissingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
     }
 }
 
@@ -1024,6 +1025,27 @@ fn empty_result_page(query: &ResultQuery) -> ResultPage {
             total: 0,
             total_pages: 0,
         },
+    }
+}
+
+fn empty_report_vulnerability_page(query: &ResultQuery) -> ReportVulnerabilityPage {
+    ReportVulnerabilityPage {
+        data: vec![],
+        pagination: empty_result_page(query).pagination,
+    }
+}
+
+fn empty_report_error_page(query: &ResultQuery) -> ReportErrorPage {
+    ReportErrorPage {
+        data: vec![],
+        pagination: empty_result_page(query).pagination,
+    }
+}
+
+fn empty_report_closed_cve_page(query: &ResultQuery) -> ReportClosedCvePage {
+    ReportClosedCvePage {
+        data: vec![],
+        pagination: empty_result_page(query).pagination,
     }
 }
 

@@ -108,7 +108,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "./results.yaml#/components/schemas/ResultList"
+                $ref: "#/components/schemas/ReportVulnerabilityList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "502":
@@ -162,7 +162,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "./results.yaml#/components/schemas/ResultList"
+                $ref: "#/components/schemas/ReportErrorList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "502":
@@ -189,7 +189,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "./results.yaml#/components/schemas/ResultList"
+                $ref: "#/components/schemas/ReportClosedCveList"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "502":
@@ -259,6 +259,114 @@ components:
           maxItems: 1000
           items:
             $ref: "#/components/schemas/Report"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    ReportVulnerability:
+      type: object
+      properties:
+        id:
+          type: string
+        nvt:
+          $ref: "./results.yaml#/components/schemas/NvtRef"
+        host:
+          type: string
+        port:
+          type: string
+        severity:
+          type: number
+          format: double
+        threat:
+          type: string
+          enum:
+            - High
+            - Medium
+            - Low
+            - Log
+            - Alarm
+        hostsCount:
+          type: integer
+        occurrences:
+          type: integer
+
+    ReportVulnerabilityList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/ReportVulnerability"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    ReportError:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: string
+        description:
+          type: string
+        nvtName:
+          type: string
+
+    ReportErrorList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/ReportError"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    ReportClosedCve:
+      type: object
+      properties:
+        id:
+          type: string
+        nvt:
+          $ref: "./results.yaml#/components/schemas/NvtRef"
+        cve:
+          type: string
+        host:
+          type: string
+        severity:
+          type: number
+          format: double
+        threat:
+          type: string
+          enum:
+            - High
+            - Medium
+            - Low
+            - Log
+            - Alarm
+
+    ReportClosedCveList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/ReportClosedCve"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
 

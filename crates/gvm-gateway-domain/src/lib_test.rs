@@ -355,11 +355,18 @@ fn task_serializes_lifecycle_detail_fields() {
         },
         schedule_periods: Some(3),
         last_report: None,
-        current_report: Some(ResourceRef {
+        current_report: Some(TaskReportReference {
             id: "33333333-3333-3333-3333-333333333333".to_string(),
-            name: None,
+            timestamp: None,
+            scan_start: None,
+            scan_end: None,
+            result_count: None,
+            severity: None,
+            compliance_count: None,
         }),
         report_count: Some(7),
+        usage_type: Some("scan".to_string()),
+        trend: None,
         in_use: true,
         writable: true,
     };

@@ -10,7 +10,7 @@ use gvm_gateway_domain::*;
 use gvm_gateway_gvmd::GvmdAdapter;
 use gvm_mock_server::{
     response_gen::{REPORT_EXPORT_BINARY_FORMAT_ID, REPORT_EXPORT_XML_FORMAT_ID},
-    GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode,
+    Fault, FaultKind, GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode,
 };
 use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use tracing_subscriber::{fmt::format::FmtSpan, layer::SubscriberExt};
@@ -144,6 +144,34 @@ async fn create_mock_adapter_v22_8() -> (GvmdAdapter, MockGmpServer, String) {
             filter.set_attr("term", "threat=Alarm");
             store.create(filter);
         })
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+
+    (adapter, server, token.to_string())
+}
+
+async fn create_mock_adapter_v22_8_with_credential_store_error(
+    message: &str,
+) -> (GvmdAdapter, MockGmpServer, String) {
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .inject_fault(Fault::on_command(
+            "get_credential_stores",
+            FaultKind::ErrorStatus {
+                code: 503,
+                message: message.to_string(),
+            },
+        ))
         .unix_socket_auto()
         .build()
         .await
@@ -1808,15 +1836,22 @@ async fn gvmd_adapter_get_report_vulnerabilities_uses_typed_command() {
     assert_eq!(page.pagination.per_page, 10);
     assert_eq!(page.pagination.total, 1);
     assert_eq!(page.data.len(), 1);
-    assert_eq!(page.data[0].name, "SSL/TLS Renegotiation Vulnerability");
     assert_eq!(page.data[0].host, None);
     assert_eq!(page.data[0].port, None);
     assert_eq!(page.data[0].severity, Some(5.0));
+    assert_eq!(page.data[0].threat.as_deref(), Some("Medium"));
     assert_eq!(page.data[0].hosts_count, Some(2));
     assert_eq!(page.data[0].occurrences, Some(3));
     assert_eq!(
         page.data[0].nvt.as_ref().and_then(|nvt| nvt.oid.as_deref()),
         Some("1.3.6.1.4.1.25623.1.0.117761")
+    );
+    assert_eq!(
+        page.data[0]
+            .nvt
+            .as_ref()
+            .and_then(|nvt| nvt.name.as_deref()),
+        Some("SSL/TLS Renegotiation Vulnerability")
     );
     assert_eq!(
         page.data[0]
@@ -1872,6 +1907,99 @@ async fn gvmd_adapter_get_report_vulnerabilities_returns_not_implemented_on_v22_
             .count(),
         0
     );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_credential_stores_uses_typed_backend_response() {
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+    server.clear_history();
+
+    let stores = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect("typed credential stores");
+
+    assert_eq!(stores.len(), 1);
+    assert_eq!(stores[0].id.as_deref(), Some("local"));
+    assert_eq!(stores[0].name, "Local credential store");
+    assert_eq!(stores[0].provider.as_deref(), Some("local"));
+    assert_eq!(stores[0].default, None);
+    assert_eq!(stores[0].writable, None);
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "get_credential_stores")
+        .expect("get_credential_stores command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<get_credential_stores"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_credential_stores_returns_not_implemented_on_v22_7() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("v22.7 should return not implemented");
+
+    assert!(matches!(
+        error,
+        GatewayError::NotImplemented(detail) if detail.contains("get_credential_stores")
+    ));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_credential_stores_returns_not_implemented_when_gvmd_disables_command() {
+    let (adapter, server, token) = create_mock_adapter_v22_8_with_credential_store_error(
+        "Service unavailable: Command disabled",
+    )
+    .await;
+    server.clear_history();
+
+    // Regression coverage for PR #463 live E2E: gvmd 22.8 may advertise the
+    // command by version but disable it at runtime, returning a typed 503
+    // parse-status response instead of an UnsupportedCommand client error.
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("disabled credential-store command should return not implemented");
+
+    assert!(matches!(
+        error,
+        GatewayError::NotImplemented(detail) if detail.contains("get_credential_stores")
+    ));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_credential_stores_keeps_unrelated_503_as_backend_unavailable() {
+    let (adapter, server, token) = create_mock_adapter_v22_8_with_credential_store_error(
+        "Service unavailable: database offline",
+    )
+    .await;
+    server.clear_history();
+
+    // A same-endpoint backend outage without the disabled-command reason must
+    // keep the generic 502 REST behavior through GatewayError::BackendUnavailable.
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("unrelated backend 503 should remain backend unavailable");
+
+    assert!(matches!(
+        error,
+        GatewayError::BackendUnavailable(detail) if detail.contains("database offline")
+    ));
 
     server.shutdown().await;
 }
@@ -2055,18 +2183,13 @@ async fn gvmd_adapter_get_report_errors_uses_typed_command() {
 
     assert_eq!(page.pagination.total, 1);
     assert_eq!(page.data.len(), 1);
+    assert_eq!(page.data[0].name.as_deref(), Some("Host dead"));
     assert_eq!(
         page.data[0].description.as_deref(),
         Some("Could not reach host.")
     );
-    assert_eq!(page.data[0].threat.as_deref(), Some("Alarm"));
-    assert_eq!(
-        page.data[0]
-            .nvt
-            .as_ref()
-            .and_then(|nvt| nvt.name.as_deref()),
-        Some("Ping Host")
-    );
+    assert_eq!(page.data[0].nvt_name.as_deref(), Some("Ping Host"));
+    assert_eq!(page.data[0].host.as_deref(), Some("192.0.2.20"));
 
     let history = server.command_history();
     let command = history
@@ -2100,8 +2223,9 @@ async fn gvmd_adapter_get_report_closed_cves_uses_typed_command() {
 
     assert_eq!(page.pagination.total, 1);
     assert_eq!(page.data.len(), 1);
-    assert_eq!(page.data[0].name, "CVE-2025-9999");
+    assert_eq!(page.data[0].cve.as_deref(), Some("CVE-2025-9999"));
     assert_eq!(page.data[0].severity, Some(5.0));
+    assert_eq!(page.data[0].threat.as_deref(), Some("Medium"));
     assert_eq!(
         page.data[0]
             .nvt

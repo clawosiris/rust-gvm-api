@@ -11,8 +11,10 @@ use async_trait::async_trait;
 use common::{spawn_server, spawn_server_with_sessions};
 use gvm_gateway_app::{GatewayPorts, GatewayService};
 use gvm_gateway_domain::{
-    CreateTaskInput, GatewayError, GetReportOpts, ModifyTaskInput, Pagination, Report,
-    ReportExport, ReportExportRequest, ReportPage, ReportPort, ReportQuery, ResourceRef,
+    CreateCredentialInput, CreateTaskInput, Credential, CredentialPage, CredentialPort,
+    CredentialQuery, CredentialStore, GatewayError, GetReportOpts, ModifyCredentialInput,
+    ModifyTaskInput, Pagination, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
+    ReportExportRequest, ReportPage, ReportPort, ReportQuery, ReportVulnerabilityPage, ResourceRef,
     ResultPage, ResultQuery, ScanResult, SessionLimits, SessionManager, Task, TaskAction,
     TaskObservers, TaskPage, TaskPort, TaskQuery, TlsCertificatePage,
 };
@@ -312,6 +314,66 @@ async fn report_export_job_create_returns_not_found_for_missing_report() {
     handle.abort();
 }
 
+#[tokio::test]
+async fn credential_store_capability_absence_returns_501_problem() {
+    let (addr, token, handle) =
+        spawn_credential_server(Arc::new(CredentialStoreErrorPort(GatewayError::NotImplemented(
+            "credential stores are not available because gvmd disabled `get_credential_stores` on this backend instance".to_string(),
+        ))))
+        .await;
+
+    // Credential-store capability absence is documented as 501 rather than a
+    // generic bad gateway so clients can distinguish unsupported setup flows
+    // from transient backend outages.
+    let response = Client::new()
+        .get(format!("http://{addr}/api/v1/credential-stores"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["code"], serde_json::json!("not_implemented"));
+    assert_eq!(json["title"], serde_json::json!("Not Implemented"));
+    assert_eq!(json["status"], serde_json::json!(501));
+    assert_eq!(
+        json["instance"],
+        serde_json::json!("/api/v1/credential-stores")
+    );
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn credential_store_backend_outage_returns_502_problem() {
+    let (addr, token, handle) = spawn_credential_server(Arc::new(CredentialStoreErrorPort(
+        GatewayError::BackendUnavailable("gvmd transport unavailable".to_string()),
+    )))
+    .await;
+
+    // Unrelated backend failures on the same route must not be widened into
+    // the credential-store capability fallback; clients still receive 502.
+    let response = Client::new()
+        .get(format!("http://{addr}/api/v1/credential-stores"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let json = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(json["code"], serde_json::json!("backend_unavailable"));
+    assert_eq!(json["title"], serde_json::json!("Bad Gateway"));
+    assert_eq!(json["status"], serde_json::json!(502));
+    assert_eq!(
+        json["instance"],
+        serde_json::json!("/api/v1/credential-stores")
+    );
+
+    handle.abort();
+}
+
 async fn spawn_task_server(
     task_port: Arc<dyn TaskPort>,
 ) -> (std::net::SocketAddr, String, tokio::task::JoinHandle<()>) {
@@ -331,6 +393,42 @@ async fn spawn_task_server(
             identity: adapter.clone(),
             targets: adapter.clone(),
             tasks: task_port,
+            auth: adapter.clone(),
+            reports: adapter.clone(),
+            results: adapter.clone(),
+            scan_configs: adapter.clone(),
+            scanners: adapter.clone(),
+            supporting_resources: adapter,
+        },
+        sessions,
+    );
+    let app = build_router(service);
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (addr, token, handle)
+}
+
+async fn spawn_credential_server(
+    credential_port: Arc<dyn CredentialPort>,
+) -> (std::net::SocketAddr, String, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let sessions = Arc::new(SessionManager::default());
+    let token = sessions.create("admin").unwrap().token;
+    let adapter = Arc::new(StaticGvmdAdapter::ready("22.7"));
+    let service = GatewayService::new(
+        GatewayPorts {
+            system: adapter.clone(),
+            alerts: adapter.clone(),
+            schedules: adapter.clone(),
+            credentials: credential_port,
+            port_lists: adapter.clone(),
+            feeds: adapter.clone(),
+            identity: adapter.clone(),
+            targets: adapter.clone(),
+            tasks: adapter.clone(),
             auth: adapter.clone(),
             reports: adapter.clone(),
             results: adapter.clone(),
@@ -464,8 +562,8 @@ impl ReportPort for JsonExportReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -490,8 +588,8 @@ impl ReportPort for JsonExportReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -499,8 +597,60 @@ impl ReportPort for JsonExportReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
+    }
+}
+
+struct CredentialStoreErrorPort(GatewayError);
+
+#[async_trait]
+impl CredentialPort for CredentialStoreErrorPort {
+    async fn list_credential_stores(&self, _: &str) -> Result<Vec<CredentialStore>, GatewayError> {
+        Err(self.0.clone())
+    }
+
+    async fn list_credentials(
+        &self,
+        _: &str,
+        query: &CredentialQuery,
+    ) -> Result<CredentialPage, GatewayError> {
+        Ok(CredentialPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_credential(
+        &self,
+        _: &str,
+        _: CreateCredentialInput,
+    ) -> Result<String, GatewayError> {
+        Err(GatewayError::Internal(
+            "not implemented in test credential port".to_string(),
+        ))
+    }
+
+    async fn get_credential(&self, _: &str, id: &str) -> Result<Credential, GatewayError> {
+        Err(GatewayError::NotFound(format!("credential {id} not found")))
+    }
+
+    async fn modify_credential(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyCredentialInput,
+    ) -> Result<Credential, GatewayError> {
+        Err(GatewayError::NotFound(format!("credential {id} not found")))
+    }
+
+    async fn delete_credential(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("credential {id} not found")))
     }
 }
 
@@ -556,8 +706,8 @@ impl ReportPort for MissingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -582,8 +732,8 @@ impl ReportPort for MissingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -591,8 +741,8 @@ impl ReportPort for MissingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
     }
 }
 
@@ -640,6 +790,27 @@ fn empty_result_page(query: &ResultQuery) -> ResultPage {
             total: 0,
             total_pages: 0,
         },
+    }
+}
+
+fn empty_report_vulnerability_page(query: &ResultQuery) -> ReportVulnerabilityPage {
+    ReportVulnerabilityPage {
+        data: vec![],
+        pagination: empty_result_page(query).pagination,
+    }
+}
+
+fn empty_report_error_page(query: &ResultQuery) -> ReportErrorPage {
+    ReportErrorPage {
+        data: vec![],
+        pagination: empty_result_page(query).pagination,
+    }
+}
+
+fn empty_report_closed_cve_page(query: &ResultQuery) -> ReportClosedCvePage {
+    ReportClosedCvePage {
+        data: vec![],
+        pagination: empty_result_page(query).pagination,
     }
 }
 
@@ -788,6 +959,8 @@ fn task_response(id: &str, name: &str) -> Task {
         last_report: None,
         current_report: None,
         report_count: None,
+        usage_type: None,
+        trend: None,
         in_use: false,
         writable: true,
     }
