@@ -256,4 +256,410 @@ impl TargetPort for GvmdAdapter {
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
     }
+
+    async fn list_oci_image_targets(
+        &self,
+        session_token: &str,
+        query: &SpecializedTargetQuery,
+    ) -> Result<OciImageTargetPage, GatewayError> {
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "oci_image_targets.list",
+                get_oci_image_targets(GetOciImageTargetsOpts {
+                    filter_string,
+                    filter_id: None,
+                    trash: Some(query.trash),
+                    tasks: Some(true),
+                }),
+            )
+            .await?;
+        let parsed =
+            GetOciImageTargetsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(oci_image_target_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+        if items.is_empty() || needs_client_side_pagination_fallback(&items, total, query.page) {
+            let filter_string = self
+                .filter_resolving_filter_id(
+                    session_token,
+                    None,
+                    query.filter_string.as_deref(),
+                    filter_id.as_ref(),
+                    &[],
+                )
+                .await?;
+            let response = self
+                .call_with_session(
+                    session_token,
+                    "oci_image_targets.list",
+                    get_oci_image_targets(GetOciImageTargetsOpts {
+                        filter_string,
+                        filter_id: None,
+                        trash: Some(query.trash),
+                        tasks: Some(true),
+                    }),
+                )
+                .await?;
+            let parsed =
+                GetOciImageTargetsResponse::from_response(&response).map_err(map_parse_error)?;
+            let items = parsed
+                .items
+                .into_iter()
+                .map(oci_image_target_from_gmp)
+                .collect::<Vec<_>>();
+            let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+            return Ok(OciImageTargetPage {
+                data: paged_slice(items, query.page, query.per_page),
+                pagination: paged_pagination(total, query.page, query.per_page),
+            });
+        }
+        Ok(OciImageTargetPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn create_oci_image_target(
+        &self,
+        session_token: &str,
+        input: CreateOciImageTargetInput,
+    ) -> Result<String, GatewayError> {
+        let credential_id = input
+            .credential_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "oci_image_targets.create",
+                create_oci_image_target(
+                    &input.name,
+                    &input.image_references,
+                    CreateOciImageTargetOpts {
+                        comment: input.comment,
+                        credential_id,
+                    },
+                ),
+            )
+            .await?;
+        Ok(CreateOciImageTargetResponse::from_response(&response)
+            .map_err(map_parse_error)?
+            .id
+            .to_string())
+    }
+
+    async fn clone_oci_image_target(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<String, GatewayError> {
+        let response = self
+            .call_with_session(
+                session_token,
+                "oci_image_targets.clone",
+                clone_oci_image_target(&parse_entity_id(id)?),
+            )
+            .await?;
+        Ok(CreateOciImageTargetResponse::from_response(&response)
+            .map_err(map_parse_error)?
+            .id
+            .to_string())
+    }
+
+    async fn get_oci_image_target(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<OciImageTarget, GatewayError> {
+        let response = self
+            .call_with_session(
+                session_token,
+                "oci_image_targets.get",
+                get_oci_image_target(&parse_entity_id(id)?, Some(true)),
+            )
+            .await?;
+        GetOciImageTargetsResponse::from_response(&response)
+            .map_err(map_parse_error)?
+            .items
+            .into_iter()
+            .next()
+            .map(oci_image_target_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("OCI image target {id} not found")))
+    }
+
+    async fn modify_oci_image_target(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyOciImageTargetInput,
+    ) -> Result<OciImageTarget, GatewayError> {
+        let target_id = parse_entity_id(id)?;
+        let credential_id = input
+            .credential_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "oci_image_targets.modify",
+                modify_oci_image_target(
+                    &target_id,
+                    ModifyOciImageTargetOpts {
+                        name: input.name,
+                        comment: input.comment,
+                        image_references: input.image_references.unwrap_or_default(),
+                        credential_id,
+                    },
+                ),
+            )
+            .await?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_oci_image_target(session_token, id).await
+    }
+
+    async fn delete_oci_image_target(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        let response = self
+            .call_with_session(
+                session_token,
+                "oci_image_targets.delete",
+                delete_oci_image_target(&parse_entity_id(id)?, ultimate),
+            )
+            .await?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn list_web_application_targets(
+        &self,
+        session_token: &str,
+        query: &SpecializedTargetQuery,
+    ) -> Result<WebApplicationTargetPage, GatewayError> {
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "web_application_targets.list",
+                get_web_application_targets(GetWebApplicationTargetsOpts {
+                    filter_string,
+                    filter_id: None,
+                    trash: Some(query.trash),
+                    tasks: Some(true),
+                }),
+            )
+            .await?;
+        let parsed =
+            GetWebApplicationTargetsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(web_application_target_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+        if items.is_empty() || needs_client_side_pagination_fallback(&items, total, query.page) {
+            let filter_string = self
+                .filter_resolving_filter_id(
+                    session_token,
+                    None,
+                    query.filter_string.as_deref(),
+                    filter_id.as_ref(),
+                    &[],
+                )
+                .await?;
+            let response = self
+                .call_with_session(
+                    session_token,
+                    "web_application_targets.list",
+                    get_web_application_targets(GetWebApplicationTargetsOpts {
+                        filter_string,
+                        filter_id: None,
+                        trash: Some(query.trash),
+                        tasks: Some(true),
+                    }),
+                )
+                .await?;
+            let parsed = GetWebApplicationTargetsResponse::from_response(&response)
+                .map_err(map_parse_error)?;
+            let items = parsed
+                .items
+                .into_iter()
+                .map(web_application_target_from_gmp)
+                .collect::<Vec<_>>();
+            let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+            return Ok(WebApplicationTargetPage {
+                data: paged_slice(items, query.page, query.per_page),
+                pagination: paged_pagination(total, query.page, query.per_page),
+            });
+        }
+        Ok(WebApplicationTargetPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn create_web_application_target(
+        &self,
+        session_token: &str,
+        input: CreateWebApplicationTargetInput,
+    ) -> Result<String, GatewayError> {
+        let credential_id = input
+            .credential_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "web_application_targets.create",
+                create_web_application_target(
+                    &input.name,
+                    &input.urls,
+                    CreateWebApplicationTargetOpts {
+                        comment: input.comment,
+                        exclude_urls: input.exclude_urls,
+                        credential_id,
+                    },
+                ),
+            )
+            .await?;
+        Ok(CreateWebApplicationTargetResponse::from_response(&response)
+            .map_err(map_parse_error)?
+            .id
+            .to_string())
+    }
+
+    async fn clone_web_application_target(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<String, GatewayError> {
+        let response = self
+            .call_with_session(
+                session_token,
+                "web_application_targets.clone",
+                clone_web_application_target(&parse_entity_id(id)?),
+            )
+            .await?;
+        Ok(CreateWebApplicationTargetResponse::from_response(&response)
+            .map_err(map_parse_error)?
+            .id
+            .to_string())
+    }
+
+    async fn get_web_application_target(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<WebApplicationTarget, GatewayError> {
+        let response = self
+            .call_with_session(
+                session_token,
+                "web_application_targets.get",
+                get_web_application_target(&parse_entity_id(id)?, Some(true)),
+            )
+            .await?;
+        GetWebApplicationTargetsResponse::from_response(&response)
+            .map_err(map_parse_error)?
+            .items
+            .into_iter()
+            .next()
+            .map(web_application_target_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("web application target {id} not found")))
+    }
+
+    async fn modify_web_application_target(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyWebApplicationTargetInput,
+    ) -> Result<WebApplicationTarget, GatewayError> {
+        let target_id = parse_entity_id(id)?;
+        let credential_id = input
+            .credential_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?;
+        let response = self
+            .call_with_session(
+                session_token,
+                "web_application_targets.modify",
+                modify_web_application_target(
+                    &target_id,
+                    ModifyWebApplicationTargetOpts {
+                        name: input.name,
+                        comment: input.comment,
+                        urls: input.urls.unwrap_or_default(),
+                        exclude_urls: input.exclude_urls.unwrap_or_default(),
+                        credential_id,
+                    },
+                ),
+            )
+            .await?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_web_application_target(session_token, id).await
+    }
+
+    async fn delete_web_application_target(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        let response = self
+            .call_with_session(
+                session_token,
+                "web_application_targets.delete",
+                delete_web_application_target(&parse_entity_id(id)?, ultimate),
+            )
+            .await?;
+        let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
 }

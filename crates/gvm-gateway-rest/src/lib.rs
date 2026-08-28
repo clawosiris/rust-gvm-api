@@ -32,6 +32,7 @@ pub mod schedules;
 pub(crate) mod security;
 pub mod sessions;
 pub mod shutdown;
+pub mod specialized_targets;
 pub mod supporting_resources;
 pub(crate) mod system;
 pub mod targets;

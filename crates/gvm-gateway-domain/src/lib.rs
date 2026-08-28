@@ -25,6 +25,7 @@ mod scan_configs;
 mod scanners;
 mod schedules;
 mod session;
+mod specialized_targets;
 mod supporting_resources;
 mod system;
 mod targets;
@@ -50,6 +51,7 @@ pub use session::{
     Session, SessionCreated, SessionHold, SessionInfo, SessionLimits, SessionManager, SessionState,
     SessionTokenDigest, DEFAULT_MAX_GLOBAL_SESSIONS, DEFAULT_MAX_SESSIONS_PER_USER,
 };
+pub use specialized_targets::*;
 pub use supporting_resources::*;
 pub use system::*;
 pub use targets::*;

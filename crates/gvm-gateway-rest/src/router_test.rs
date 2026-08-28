@@ -151,9 +151,9 @@ async fn draining_router_keeps_readiness_probe_available() {
 }
 
 #[tokio::test]
-async fn reserved_current_gvmd_routes_still_require_authentication() {
-    // Current-GVMD route placeholders are protected API surface, not public
-    // discovery endpoints, even while response typing is still blocked upstream.
+async fn specialized_target_routes_require_authentication() {
+    // Implemented current-GVMD target routes remain protected API surface,
+    // rather than becoming public discovery endpoints.
     let app = build_router(static_gateway_service());
 
     let response = app
