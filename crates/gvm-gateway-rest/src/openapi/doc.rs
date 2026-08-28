@@ -74,6 +74,7 @@ pub(crate) struct TargetListQueryDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateTarget")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CreateTargetDoc {
     name: String,
     comment: Option<String>,
@@ -101,6 +102,7 @@ pub(crate) struct CreateTargetDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyTarget")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ModifyTargetDoc {
     name: Option<String>,
     comment: Option<String>,
@@ -175,6 +177,7 @@ pub(crate) struct TaskListQueryDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateTask")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CreateTaskDoc {
     name: String,
     comment: Option<String>,
@@ -199,6 +202,7 @@ pub(crate) struct CreateTaskDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyTask")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ModifyTaskDoc {
     name: Option<String>,
     comment: Option<String>,

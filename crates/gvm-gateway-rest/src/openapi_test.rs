@@ -166,6 +166,76 @@ fn generated_openapi_preserves_key_schema_fields() {
 }
 
 #[test]
+fn generated_openapi_closes_request_objects_without_closing_extension_maps() {
+    let generated = build_openapi();
+    let schemas = &generated["components"]["schemas"];
+
+    // Request-body objects now reject unknown top-level fields across the
+    // published contract, including doc-only identity request schemas.
+    for schema_name in [
+        "CreateTarget",
+        "ModifyTarget",
+        "CreateTask",
+        "ModifyTask",
+        "CreateAlert",
+        "ModifyAlert",
+        "CreateCredential",
+        "ModifyCredential",
+        "CreateUser",
+        "ModifyUser",
+        "CreateGroup",
+        "ModifyGroup",
+        "CreateRole",
+        "ModifyRole",
+        "CreatePermission",
+        "ModifyPermission",
+        "ModifyUserSetting",
+        "GvmdReportFormatExportRequest",
+        "JsonReportExportRequest",
+    ] {
+        assert_eq!(
+            schemas[schema_name]["additionalProperties"],
+            json!(false),
+            "{schema_name} should reject unknown top-level fields"
+        );
+    }
+
+    // Open map fields remain extensible for backend-defined keys.
+    assert!(
+        schemas["CreateTask"]["properties"]["preferences"]["additionalProperties"].is_object(),
+        "CreateTask.preferences should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyTask"]["properties"]["preferences"]["additionalProperties"].is_object(),
+        "ModifyTask.preferences should remain an open string map"
+    );
+    assert!(
+        schemas["CreateAlert"]["properties"]["eventData"]["additionalProperties"].is_object(),
+        "CreateAlert.eventData should remain an open string map"
+    );
+    assert!(
+        schemas["CreateAlert"]["properties"]["conditionData"]["additionalProperties"].is_object(),
+        "CreateAlert.conditionData should remain an open string map"
+    );
+    assert!(
+        schemas["CreateAlert"]["properties"]["methodData"]["additionalProperties"].is_object(),
+        "CreateAlert.methodData should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyAlert"]["properties"]["eventData"]["additionalProperties"].is_object(),
+        "ModifyAlert.eventData should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyAlert"]["properties"]["conditionData"]["additionalProperties"].is_object(),
+        "ModifyAlert.conditionData should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyAlert"]["properties"]["methodData"]["additionalProperties"].is_object(),
+        "ModifyAlert.methodData should remain an open string map"
+    );
+}
+
+#[test]
 fn generated_openapi_feed_version_matches_required_runtime_contract() {
     let generated = build_openapi();
     let required = generated["components"]["schemas"]["Feed"]["required"]

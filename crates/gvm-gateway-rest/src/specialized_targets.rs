@@ -139,6 +139,7 @@ impl From<gvm_gateway_domain::OciImageTargetPage> for OciImageTargetListResponse
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateOciImageTarget")]
+#[serde(deny_unknown_fields)]
 struct CreateOciImageTargetRequest {
     name: String,
     comment: Option<String>,
@@ -164,6 +165,7 @@ impl ValidateInto<CreateOciImageTargetInput> for CreateOciImageTargetRequest {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifyOciImageTarget")]
+#[serde(deny_unknown_fields)]
 struct ModifyOciImageTargetRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -242,6 +244,7 @@ impl From<gvm_gateway_domain::WebApplicationTargetPage> for WebApplicationTarget
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateWebApplicationTarget")]
+#[serde(deny_unknown_fields)]
 struct CreateWebApplicationTargetRequest {
     name: String,
     comment: Option<String>,
@@ -271,6 +274,7 @@ impl ValidateInto<CreateWebApplicationTargetInput> for CreateWebApplicationTarge
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifyWebApplicationTarget")]
+#[serde(deny_unknown_fields)]
 struct ModifyWebApplicationTargetRequest {
     name: Option<String>,
     comment: Option<String>,

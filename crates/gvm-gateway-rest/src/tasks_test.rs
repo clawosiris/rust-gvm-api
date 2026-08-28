@@ -3,7 +3,7 @@
 
 use serde_json::json;
 
-use super::{ModifyTaskRequest, TaskResponse};
+use super::{CreateTaskRequest, ModifyTaskRequest, TaskResponse};
 use gvm_gateway_domain::{
     ResourceRef, Task, TaskObservers, TaskReportComplianceCount, TaskReportReference,
     TaskReportResultCount,
@@ -177,4 +177,35 @@ fn task_response_preserves_report_reference_metadata_and_usage_fields() {
     assert_eq!(json["lastReport"]["complianceCount"]["yes"], 7);
     assert_eq!(json["currentReport"]["scanStart"], "2026-08-28T12:05:00Z");
     assert!(json["currentReport"].get("severity").is_none());
+}
+
+#[test]
+fn task_requests_reject_unknown_fields_without_closing_preferences() {
+    // Strict task DTOs must still allow backend-defined preference keys inside
+    // the documented map field while rejecting misspelled sibling fields.
+    let error = serde_json::from_value::<ModifyTaskRequest>(json!({
+        "preferences": {
+            "scanner.max_hosts": "64"
+        },
+        "preferencez": {
+            "scanner.max_checks": "4"
+        }
+    }))
+    .expect_err("unknown update-task field should be rejected");
+    assert!(
+        error.to_string().contains("preferencez"),
+        "error should name the rejected field: {error}"
+    );
+
+    serde_json::from_value::<CreateTaskRequest>(json!({
+        "name": "Example",
+        "targetId": "123e4567-e89b-12d3-a456-426614174000",
+        "scanConfigId": "223e4567-e89b-12d3-a456-426614174000",
+        "scannerId": "323e4567-e89b-12d3-a456-426614174000",
+        "preferences": {
+            "scanner.max_hosts": "64",
+            "x-gvmd-extension": "enabled"
+        }
+    }))
+    .expect("documented task fields and open preference keys should still parse");
 }

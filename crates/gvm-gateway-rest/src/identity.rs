@@ -503,6 +503,7 @@ enum PermissionSubjectTypeDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateUser")]
+#[serde(deny_unknown_fields)]
 struct CreateUserDoc {
     name: String,
     comment: Option<String>,
@@ -516,6 +517,7 @@ struct CreateUserDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyUser")]
+#[serde(deny_unknown_fields)]
 struct ModifyUserDoc {
     name: Option<String>,
     comment: Option<String>,
@@ -531,6 +533,7 @@ struct ModifyUserDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateGroup")]
+#[serde(deny_unknown_fields)]
 struct CreateGroupDoc {
     name: String,
     comment: Option<String>,
@@ -539,6 +542,7 @@ struct CreateGroupDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyGroup")]
+#[serde(deny_unknown_fields)]
 struct ModifyGroupDoc {
     comment: Option<String>,
     users: Option<Vec<String>>,
@@ -546,6 +550,7 @@ struct ModifyGroupDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateRole")]
+#[serde(deny_unknown_fields)]
 struct CreateRoleDoc {
     name: String,
     comment: Option<String>,
@@ -554,6 +559,7 @@ struct CreateRoleDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyRole")]
+#[serde(deny_unknown_fields)]
 struct ModifyRoleDoc {
     comment: Option<String>,
     users: Option<Vec<String>>,
@@ -561,6 +567,7 @@ struct ModifyRoleDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreatePermission")]
+#[serde(deny_unknown_fields)]
 struct CreatePermissionDoc {
     name: Option<String>,
     comment: Option<String>,
@@ -576,6 +583,7 @@ struct CreatePermissionDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyPermission")]
+#[serde(deny_unknown_fields)]
 struct ModifyPermissionDoc {
     name: Option<String>,
     comment: Option<String>,
@@ -591,6 +599,7 @@ struct ModifyPermissionDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyUserSetting")]
+#[serde(deny_unknown_fields)]
 struct ModifyUserSettingDoc {
     value: String,
 }
@@ -650,6 +659,7 @@ impl UserSettingsListQuery {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct CreateUserRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -677,6 +687,7 @@ impl CreateUserRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyUserRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -708,6 +719,7 @@ impl ModifyUserRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct CreateGroupRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -725,6 +737,7 @@ impl CreateGroupRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyGroupRequest {
     comment: Option<String>,
     users: Option<Vec<String>>,
@@ -740,6 +753,7 @@ impl ModifyGroupRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct CreateRoleRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -757,6 +771,7 @@ impl CreateRoleRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyRoleRequest {
     comment: Option<String>,
     users: Option<Vec<String>>,
@@ -772,6 +787,7 @@ impl ModifyRoleRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct CreatePermissionRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -802,6 +818,7 @@ impl CreatePermissionRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyPermissionRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -832,6 +849,7 @@ impl ModifyPermissionRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyUserSettingRequest {
     value: Option<String>,
 }
