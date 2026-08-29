@@ -4,11 +4,13 @@
 //! Supporting-resource use cases.
 
 use gvm_gateway_domain::{
-    CreateFilterInput, CreateHostInput, CreateNoteInput, CreateOverrideInput, CreateTagInput,
-    Filter, FilterPage, GatewayError, Host, HostPage, ModifyFilterInput, ModifyHostInput,
-    ModifyNoteInput, ModifyOverrideInput, ModifyTagInput, Note, NotePage, Nvt, NvtFamilyPage,
-    NvtPage, Override, OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag,
-    TagPage, Ticket, TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
+    CertBundAdvisory, CertBundAdvisoryPage, Cpe, CpePage, CreateFilterInput, CreateHostInput,
+    CreateNoteInput, CreateOverrideInput, CreateTagInput, Cve, CvePage, DfnCertAdvisory,
+    DfnCertAdvisoryPage, Filter, FilterPage, GatewayError, Host, HostPage, ModifyFilterInput,
+    ModifyHostInput, ModifyNoteInput, ModifyOverrideInput, ModifyTagInput, Note, NotePage, Nvt,
+    NvtFamilyPage, NvtPage, Override, OverridePage, ReportFormat, ReportFormatPage,
+    SupportingResourceQuery, Tag, TagPage, Ticket, TicketPage, TlsCertificateAsset,
+    TlsCertificateAssetPage, VulnerabilityPage,
 };
 
 use crate::GatewayService;
@@ -752,4 +754,160 @@ impl GatewayService {
         )
         .await
     }
+
+    /// Lists CVEs for an authenticated session.
+    pub async fn list_cves(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<CvePage, GatewayError> {
+        self.execute_with_resource(
+            "cves.list",
+            session_token,
+            "list",
+            "cve",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_cves(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches a CVE for an authenticated session.
+    pub async fn get_cve(&self, session_token: &str, id: &str) -> Result<Cve, GatewayError> {
+        self.execute_with_resource(
+            "cves.get",
+            session_token,
+            "read",
+            "cve",
+            Some(id),
+            |session| async move { self.supporting_resources.get_cve(&session.token, id).await },
+        )
+        .await
+    }
+
+    /// Lists CPEs for an authenticated session.
+    pub async fn list_cpes(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<CpePage, GatewayError> {
+        self.execute_with_resource(
+            "cpes.list",
+            session_token,
+            "list",
+            "cpe",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_cpes(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches a CPE for an authenticated session.
+    pub async fn get_cpe(&self, session_token: &str, id: &str) -> Result<Cpe, GatewayError> {
+        self.execute_with_resource(
+            "cpes.get",
+            session_token,
+            "read",
+            "cpe",
+            Some(id),
+            |session| async move { self.supporting_resources.get_cpe(&session.token, id).await },
+        )
+        .await
+    }
+
+    /// Lists CERT-Bund advisories for an authenticated session.
+    pub async fn list_cert_bund_advisories(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<CertBundAdvisoryPage, GatewayError> {
+        self.execute_with_resource(
+            "cert_bund_advisories.list",
+            session_token,
+            "list",
+            "cert_bund_advisory",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_cert_bund_advisories(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches a CERT-Bund advisory for an authenticated session.
+    pub async fn get_cert_bund_advisory(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<CertBundAdvisory, GatewayError> {
+        self.execute_with_resource(
+            "cert_bund_advisories.get",
+            session_token,
+            "read",
+            "cert_bund_advisory",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .get_cert_bund_advisory(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists DFN-CERT advisories for an authenticated session.
+    pub async fn list_dfn_cert_advisories(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<DfnCertAdvisoryPage, GatewayError> {
+        self.execute_with_resource(
+            "dfn_cert_advisories.list",
+            session_token,
+            "list",
+            "dfn_cert_advisory",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_dfn_cert_advisories(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches a DFN-CERT advisory for an authenticated session.
+    pub async fn get_dfn_cert_advisory(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<DfnCertAdvisory, GatewayError> {
+        self.execute_with_resource(
+            "dfn_cert_advisories.get",
+            session_token,
+            "read",
+            "dfn_cert_advisory",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .get_dfn_cert_advisory(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
 }
+
+#[cfg(test)]
+#[path = "supporting_resources_test.rs"]
+mod supporting_resources_test;

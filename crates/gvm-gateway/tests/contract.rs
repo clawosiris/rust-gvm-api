@@ -1478,6 +1478,32 @@ async fn problem_details_shape_on_error() {
 }
 
 #[tokio::test]
+async fn secinfo_item_routes_accept_non_uuid_ids() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let (addr, handle) = spawn_server(adapter.clone(), adapter).await;
+    let client = Client::new();
+    let session_token = create_route_probe_session(&client, addr).await;
+
+    // SecInfo ids are backend-defined strings like CVE and advisory names, so
+    // item routes must not reject them through UUID-only path validation.
+    let response = client
+        .get(format!("http://{addr}/api/v1/cves/CVE-2026-1000"))
+        .bearer_auth(&session_token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = response.json::<Value>().await.unwrap();
+    assert_eq!(
+        body["code"],
+        Value::String("backend_unavailable".to_string())
+    );
+
+    handle.abort();
+}
+
+#[tokio::test]
 async fn not_found_route_returns_404_problem() {
     let adapter = StaticGvmdAdapter::ready("22.7");
     let (addr, handle) = spawn_server(adapter.clone(), adapter).await;

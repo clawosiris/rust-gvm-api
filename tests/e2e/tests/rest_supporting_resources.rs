@@ -4,7 +4,8 @@
 use anyhow::{Context, Result};
 use gvm_gateway_e2e::harness::{
     CreatedResource, Credential, E2eHarness, ListResponse, NoteResource, NvtCatalogEntry,
-    OverrideResource, PortList, ScanConfig, ScanResult, Scanner, SessionResponse, Target, Task,
+    OverrideResource, PortList, ScanConfig, ScanResult, Scanner, SecInfoEntry, SessionResponse,
+    Target, Task,
 };
 
 // Covers stable list/read contracts for supporting catalogs used by setup and discovery flows.
@@ -21,6 +22,10 @@ async fn rest_supporting_catalogs_list_and_read_resources() -> Result<()> {
         assert_credential_store_catalog(&harness, &session.token).await?;
         assert_credential_list_shape(&harness, &session.token).await?;
         assert_report_format_catalog(&harness, &session.token).await?;
+        assert_cve_catalog(&harness, &session.token).await?;
+        assert_cpe_catalog(&harness, &session.token).await?;
+        assert_cert_bund_advisory_catalog(&harness, &session.token).await?;
+        assert_dfn_cert_advisory_catalog(&harness, &session.token).await?;
         assert_filter_catalog(&harness, &session.token).await?;
         assert_tag_catalog(&harness, &session.token).await?;
         assert_ticket_catalog(&harness, &session.token).await?;
@@ -580,6 +585,50 @@ async fn assert_report_format_catalog(harness: &E2eHarness, token: &str) -> Resu
     Ok(())
 }
 
+async fn assert_cve_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let cves = harness.list_cves(token).await?;
+    assert_secinfo_catalog(
+        "cve",
+        &cves,
+        |id| async move { harness.get_cve(token, &id).await },
+        "cve catalog is empty; deepest boundary reached is list/pagination contract",
+    )
+    .await
+}
+
+async fn assert_cpe_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let cpes = harness.list_cpes(token).await?;
+    assert_secinfo_catalog(
+        "cpe",
+        &cpes,
+        |id| async move { harness.get_cpe(token, &id).await },
+        "cpe catalog is empty; deepest boundary reached is list/pagination contract",
+    )
+    .await
+}
+
+async fn assert_cert_bund_advisory_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let advisories = harness.list_cert_bund_advisories(token).await?;
+    assert_secinfo_catalog(
+        "cert-bund advisory",
+        &advisories,
+        |id| async move { harness.get_cert_bund_advisory(token, &id).await },
+        "cert-bund advisory catalog is empty; deepest boundary reached is list/pagination contract",
+    )
+    .await
+}
+
+async fn assert_dfn_cert_advisory_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    let advisories = harness.list_dfn_cert_advisories(token).await?;
+    assert_secinfo_catalog(
+        "dfn-cert advisory",
+        &advisories,
+        |id| async move { harness.get_dfn_cert_advisory(token, &id).await },
+        "dfn-cert advisory catalog is empty; deepest boundary reached is list/pagination contract",
+    )
+    .await
+}
+
 async fn assert_host_catalog_after_completed_scan(harness: &E2eHarness, token: &str) -> Result<()> {
     let hosts = harness.list_hosts(token).await?;
     assert_pagination_shape("hosts", &hosts);
@@ -760,6 +809,33 @@ fn assert_pagination_shape<T>(resource: &str, response: &ListResponse<T>) {
         response.data.len() <= response.pagination.per_page as usize,
         "{resource} list returned more items than its page size"
     );
+}
+
+async fn assert_secinfo_catalog<F, Fut>(
+    resource: &str,
+    response: &ListResponse<SecInfoEntry>,
+    fetch: F,
+    empty_message: &str,
+) -> Result<()>
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = Result<SecInfoEntry>>,
+{
+    assert_pagination_shape(resource, response);
+    let Some(selected) = response.data.first() else {
+        eprintln!("{empty_message}");
+        return Ok(());
+    };
+
+    let fetched = fetch(selected.id.clone()).await?;
+    assert_named_resource_matches(
+        resource,
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    Ok(())
 }
 
 async fn assert_nvt_pagination_round_trip(

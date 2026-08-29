@@ -126,10 +126,14 @@ use crate::{
         create_filter_docs, create_host, create_host_docs, create_note, create_note_docs,
         create_override, create_override_docs, create_tag, create_tag_docs, delete_filter,
         delete_filter_docs, delete_host, delete_host_docs, delete_note, delete_note_docs,
-        delete_override, delete_override_docs, delete_tag, delete_tag_docs, get_filter,
-        get_filter_docs, get_host, get_host_docs, get_note, get_note_docs, get_nvt, get_nvt_docs,
-        get_override, get_override_docs, get_report_format, get_report_format_docs, get_tag,
-        get_tag_docs, get_ticket, get_ticket_docs, get_tls_certificate, get_tls_certificate_docs,
+        delete_override, delete_override_docs, delete_tag, delete_tag_docs, get_cert_bund_advisory,
+        get_cert_bund_advisory_docs, get_cpe, get_cpe_docs, get_cve, get_cve_docs,
+        get_dfn_cert_advisory, get_dfn_cert_advisory_docs, get_filter, get_filter_docs, get_host,
+        get_host_docs, get_note, get_note_docs, get_nvt, get_nvt_docs, get_override,
+        get_override_docs, get_report_format, get_report_format_docs, get_tag, get_tag_docs,
+        get_ticket, get_ticket_docs, get_tls_certificate, get_tls_certificate_docs,
+        list_cert_bund_advisories, list_cert_bund_advisories_docs, list_cpes, list_cpes_docs,
+        list_cves, list_cves_docs, list_dfn_cert_advisories, list_dfn_cert_advisories_docs,
         list_filters, list_filters_docs, list_hosts, list_hosts_docs, list_notes, list_notes_docs,
         list_nvt_families, list_nvt_families_docs, list_nvts, list_nvts_docs, list_overrides,
         list_overrides_docs, list_report_formats, list_report_formats_docs, list_tags,
@@ -616,6 +620,26 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/vulnerabilities",
             get_with(list_vulnerabilities, list_vulnerabilities_docs),
+        )
+        .api_route("/api/v1/cves", get_with(list_cves, list_cves_docs))
+        .api_route("/api/v1/cves/{id}", get_with(get_cve, get_cve_docs))
+        .api_route("/api/v1/cpes", get_with(list_cpes, list_cpes_docs))
+        .api_route("/api/v1/cpes/{id}", get_with(get_cpe, get_cpe_docs))
+        .api_route(
+            "/api/v1/cert-bund-advisories",
+            get_with(list_cert_bund_advisories, list_cert_bund_advisories_docs),
+        )
+        .api_route(
+            "/api/v1/cert-bund-advisories/{id}",
+            get_with(get_cert_bund_advisory, get_cert_bund_advisory_docs),
+        )
+        .api_route(
+            "/api/v1/dfn-cert-advisories",
+            get_with(list_dfn_cert_advisories, list_dfn_cert_advisories_docs),
+        )
+        .api_route(
+            "/api/v1/dfn-cert-advisories/{id}",
+            get_with(get_dfn_cert_advisory, get_dfn_cert_advisory_docs),
         )
         .api_route(
             "/api/v1/nvt-families",

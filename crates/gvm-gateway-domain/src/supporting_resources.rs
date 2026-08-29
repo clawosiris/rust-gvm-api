@@ -285,6 +285,78 @@ pub struct VulnerabilityPage {
     pub pagination: Pagination,
 }
 
+/// Domain CVE summary.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Cve {
+    /// CVE identifier.
+    pub id: String,
+    /// CVE name.
+    pub name: String,
+}
+
+/// Paginated CVE list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CvePage {
+    /// Page items.
+    pub data: Vec<Cve>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain CPE summary.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Cpe {
+    /// CPE identifier.
+    pub id: String,
+    /// CPE name.
+    pub name: String,
+}
+
+/// Paginated CPE list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CpePage {
+    /// Page items.
+    pub data: Vec<Cpe>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain CERT-Bund advisory summary.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CertBundAdvisory {
+    /// CERT-Bund advisory identifier.
+    pub id: String,
+    /// CERT-Bund advisory name.
+    pub name: String,
+}
+
+/// Paginated CERT-Bund advisory list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CertBundAdvisoryPage {
+    /// Page items.
+    pub data: Vec<CertBundAdvisory>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Domain DFN-CERT advisory summary.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DfnCertAdvisory {
+    /// DFN-CERT advisory identifier.
+    pub id: String,
+    /// DFN-CERT advisory name.
+    pub name: String,
+}
+
+/// Paginated DFN-CERT advisory list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DfnCertAdvisoryPage {
+    /// Page items.
+    pub data: Vec<DfnCertAdvisory>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
 /// Domain NVT family representation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct NvtFamily {

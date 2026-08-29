@@ -8,21 +8,22 @@ use async_trait::async_trait;
 use crate::{
     Agent, AgentGroup, AgentGroupPage, AgentGroupQuery, AgentInstallerInstruction,
     AgentInstallerInstructionQuery, AgentPage, AgentQuery, AgentSupportBundle,
-    AgentSupportBundleQuery, Alert, AlertPage, AlertQuery, CreateAgentGroupInput, CreateAlertInput,
-    CreateCredentialInput, CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
+    AgentSupportBundleQuery, Alert, AlertPage, AlertQuery, CertBundAdvisory, CertBundAdvisoryPage,
+    Cpe, CpePage, CreateAgentGroupInput, CreateAlertInput, CreateCredentialInput,
+    CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
     CreateOciImageTargetInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
     CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput,
     CreateTaskInput, CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage,
-    CredentialQuery, CredentialStore, Feed, Filter, FilterPage, GatewayError, GetReportOpts, Group,
-    GroupPage, Host, HostPage, IdentityQuery, ModifyAgentControlScanConfigInput,
-    ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput, ModifyCredentialInput,
-    ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
-    ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput,
-    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput,
-    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput,
-    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, Override,
-    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
-    ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
+    CredentialQuery, CredentialStore, Cve, CvePage, DfnCertAdvisory, DfnCertAdvisoryPage, Feed,
+    Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage,
+    IdentityQuery, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput,
+    ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput,
+    ModifyNoteInput, ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput,
+    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
+    ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
+    ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget,
+    OciImageTargetPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
+    PortListQuery, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
     ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportQuery,
     ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
     ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
@@ -897,6 +898,54 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
         session_token: &str,
         query: &SupportingResourceQuery,
     ) -> Result<VulnerabilityPage, GatewayError>;
+
+    /// List CVEs for the session.
+    async fn list_cves(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<CvePage, GatewayError>;
+
+    /// Fetch a CVE by identifier.
+    async fn get_cve(&self, session_token: &str, id: &str) -> Result<Cve, GatewayError>;
+
+    /// List CPEs for the session.
+    async fn list_cpes(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<CpePage, GatewayError>;
+
+    /// Fetch a CPE by identifier.
+    async fn get_cpe(&self, session_token: &str, id: &str) -> Result<Cpe, GatewayError>;
+
+    /// List CERT-Bund advisories for the session.
+    async fn list_cert_bund_advisories(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<CertBundAdvisoryPage, GatewayError>;
+
+    /// Fetch a CERT-Bund advisory by identifier.
+    async fn get_cert_bund_advisory(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<CertBundAdvisory, GatewayError>;
+
+    /// List DFN-CERT advisories for the session.
+    async fn list_dfn_cert_advisories(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<DfnCertAdvisoryPage, GatewayError>;
+
+    /// Fetch a DFN-CERT advisory by identifier.
+    async fn get_dfn_cert_advisory(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<DfnCertAdvisory, GatewayError>;
 }
 
 /// Port for target CRUD operations.

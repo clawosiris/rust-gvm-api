@@ -1039,4 +1039,268 @@ impl SupportingResourcePort for GvmdAdapter {
             pagination: paged_pagination(total, query.page, query.per_page),
         })
     }
+
+    async fn list_cves(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<CvePage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let parsed = client
+            .lock()
+            .await?
+            .get_cves(GetSecInfoOpts {
+                filter: filter_string,
+                filter_id: None,
+                details: None,
+            })
+            .await
+            .map_err(map_gvm_error)?;
+        let total = gvmd_total(
+            parsed.counts.filtered,
+            parsed.counts.total,
+            parsed.items.len(),
+        );
+        Ok(CvePage {
+            data: parsed.items.into_iter().map(cve_from_gmp).collect(),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_cve(&self, session_token: &str, id: &str) -> Result<Cve, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let parsed = client
+            .lock()
+            .await?
+            .get_cve(id)
+            .await
+            .map_err(map_gvm_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(cve_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("cve {id} not found")))
+    }
+
+    async fn list_cpes(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<CpePage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let parsed = client
+            .lock()
+            .await?
+            .get_cpes(GetSecInfoOpts {
+                filter: filter_string,
+                filter_id: None,
+                details: None,
+            })
+            .await
+            .map_err(map_gvm_error)?;
+        let total = gvmd_total(
+            parsed.counts.filtered,
+            parsed.counts.total,
+            parsed.items.len(),
+        );
+        Ok(CpePage {
+            data: parsed.items.into_iter().map(cpe_from_gmp).collect(),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_cpe(&self, session_token: &str, id: &str) -> Result<Cpe, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let parsed = client
+            .lock()
+            .await?
+            .get_cpe(id)
+            .await
+            .map_err(map_gvm_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(cpe_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("cpe {id} not found")))
+    }
+
+    async fn list_cert_bund_advisories(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<CertBundAdvisoryPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let parsed = client
+            .lock()
+            .await?
+            .get_cert_bund_advisories(GetSecInfoOpts {
+                filter: filter_string,
+                filter_id: None,
+                details: None,
+            })
+            .await
+            .map_err(map_gvm_error)?;
+        let total = gvmd_total(
+            parsed.counts.filtered,
+            parsed.counts.total,
+            parsed.items.len(),
+        );
+        Ok(CertBundAdvisoryPage {
+            data: parsed
+                .items
+                .into_iter()
+                .map(cert_bund_advisory_from_gmp)
+                .collect(),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_cert_bund_advisory(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<CertBundAdvisory, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let parsed = client
+            .lock()
+            .await?
+            .get_cert_bund_advisory(id)
+            .await
+            .map_err(map_gvm_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(cert_bund_advisory_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("cert bund advisory {id} not found")))
+    }
+
+    async fn list_dfn_cert_advisories(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<DfnCertAdvisoryPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let parsed = client
+            .lock()
+            .await?
+            .get_dfn_cert_advisories(GetSecInfoOpts {
+                filter: filter_string,
+                filter_id: None,
+                details: None,
+            })
+            .await
+            .map_err(map_gvm_error)?;
+        let total = gvmd_total(
+            parsed.counts.filtered,
+            parsed.counts.total,
+            parsed.items.len(),
+        );
+        Ok(DfnCertAdvisoryPage {
+            data: parsed
+                .items
+                .into_iter()
+                .map(dfn_cert_advisory_from_gmp)
+                .collect(),
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_dfn_cert_advisory(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<DfnCertAdvisory, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let parsed = client
+            .lock()
+            .await?
+            .get_dfn_cert_advisory(id)
+            .await
+            .map_err(map_gvm_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(dfn_cert_advisory_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("dfn cert advisory {id} not found")))
+    }
 }

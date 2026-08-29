@@ -93,3 +93,23 @@ async fn static_adapter_delete_target_unsupported() {
     let result = adapter.delete_target("token", "id", false).await;
     assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
 }
+
+/// Focused SecInfo list reads must stay unavailable on the static adapter so
+/// router-only tests do not accidentally pretend to serve live catalog data.
+#[tokio::test]
+async fn static_adapter_list_cves_unsupported() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let result = adapter
+        .list_cves("token", &SupportingResourceQuery::default())
+        .await;
+    assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
+}
+
+/// SecInfo item reads remain a backend operation and should therefore fail
+/// uniformly on the static adapter for non-UUID identifiers as well.
+#[tokio::test]
+async fn static_adapter_get_dfn_cert_advisory_unsupported() {
+    let adapter = StaticGvmdAdapter::ready("22.7");
+    let result = adapter.get_dfn_cert_advisory("token", "DFN-2026-001").await;
+    assert!(matches!(result, Err(GatewayError::BackendUnavailable(_))));
+}

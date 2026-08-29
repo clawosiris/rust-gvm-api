@@ -138,6 +138,108 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn list_cves(&self, token: &str) -> Result<ListResponse<SecInfoEntry>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/cves?perPage=1000", token),
+            StatusCode::OK,
+            "list cves",
+        )
+        .await
+    }
+
+    pub async fn get_cve(&self, token: &str, cve_id: &str) -> Result<SecInfoEntry> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/cves/{cve_id}"), token),
+            StatusCode::OK,
+            "get cve",
+        )
+        .await
+    }
+
+    pub async fn list_cpes(&self, token: &str) -> Result<ListResponse<SecInfoEntry>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/cpes?perPage=1000", token),
+            StatusCode::OK,
+            "list cpes",
+        )
+        .await
+    }
+
+    pub async fn get_cpe(&self, token: &str, cpe_id: &str) -> Result<SecInfoEntry> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/cpes/{cpe_id}"), token),
+            StatusCode::OK,
+            "get cpe",
+        )
+        .await
+    }
+
+    pub async fn list_cert_bund_advisories(
+        &self,
+        token: &str,
+    ) -> Result<ListResponse<SecInfoEntry>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                "/api/v1/cert-bund-advisories?perPage=1000",
+                token,
+            ),
+            StatusCode::OK,
+            "list cert-bund advisories",
+        )
+        .await
+    }
+
+    pub async fn get_cert_bund_advisory(
+        &self,
+        token: &str,
+        advisory_id: &str,
+    ) -> Result<SecInfoEntry> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/cert-bund-advisories/{advisory_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get cert-bund advisory",
+        )
+        .await
+    }
+
+    pub async fn list_dfn_cert_advisories(
+        &self,
+        token: &str,
+    ) -> Result<ListResponse<SecInfoEntry>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                "/api/v1/dfn-cert-advisories?perPage=1000",
+                token,
+            ),
+            StatusCode::OK,
+            "list dfn-cert advisories",
+        )
+        .await
+    }
+
+    pub async fn get_dfn_cert_advisory(
+        &self,
+        token: &str,
+        advisory_id: &str,
+    ) -> Result<SecInfoEntry> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/dfn-cert-advisories/{advisory_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get dfn-cert advisory",
+        )
+        .await
+    }
+
     pub async fn get_report_format(
         &self,
         token: &str,
