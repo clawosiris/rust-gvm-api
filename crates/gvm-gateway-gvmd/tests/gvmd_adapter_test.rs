@@ -1791,6 +1791,158 @@ async fn gvmd_adapter_list_hosts_emits_backend_pagination_filter() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_list_assets_forwards_open_type_and_shared_pagination() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    // Generic asset filters must use rust-gvm's canonical `type` attribute,
+    // including known values represented through its forward-compatible type.
+    let error = adapter
+        .list_assets(
+            &token,
+            &AssetQuery {
+                filter_string: Some("name~certificate".to_string()),
+                filter_id: None,
+                page: 2,
+                per_page: 10,
+                asset_type: "tls_certificate".to_string(),
+            },
+        )
+        .await
+        .expect_err("the pinned mock deliberately rejects unsupported asset families");
+    assert!(matches!(error, GatewayError::NotFound(_)));
+
+    let command = server
+        .command_history()
+        .into_iter()
+        .find(|record| record.command_name() == "get_assets")
+        .expect("get_assets command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("type=\"tls_certificate\""), "xml={xml}");
+    assert!(!xml.contains("asset_type="), "xml={xml}");
+    assert!(
+        xml.contains("filter=\"name~certificate first=11 rows=10\""),
+        "xml={xml}"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_asset_mutations_emit_comment_only_and_no_ultimate() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    let id = adapter
+        .create_host(
+            &token,
+            CreateHostInput {
+                value: "192.0.2.42".to_string(),
+                comment: Some("initial".to_string()),
+            },
+        )
+        .await
+        .expect("host seed should be created through typed rust-gvm");
+    server.clear_history();
+
+    // The generic surface promises only comment mutation and a single asset
+    // delete mode, matching the exact typed command options supported upstream.
+    let updated = adapter
+        .modify_asset(
+            &token,
+            &id,
+            "host",
+            ModifyAssetInput {
+                comment: Some("updated".to_string()),
+            },
+        )
+        .await
+        .expect("generic asset comment should update");
+    assert_eq!(updated.meta.comment.as_deref(), Some("updated"));
+    adapter
+        .delete_asset(&token, &id)
+        .await
+        .expect("generic asset should delete");
+
+    let history = server.command_history();
+    let modify = history
+        .iter()
+        .find(|record| record.command_name() == "modify_asset")
+        .expect("modify_asset command should be recorded");
+    let modify_xml = String::from_utf8(modify.raw_xml().to_vec()).expect("xml command");
+    assert!(modify_xml.contains("<comment>updated</comment>"));
+    assert!(!modify_xml.contains("<value>"), "xml={modify_xml}");
+    let get = history
+        .iter()
+        .find(|record| record.command_name() == "get_assets")
+        .expect("the mutation response read must emit get_assets");
+    let get_xml = String::from_utf8(get.raw_xml().to_vec()).expect("xml command");
+    assert!(get_xml.contains("type=\"host\""), "xml={get_xml}");
+    let delete = history
+        .iter()
+        .find(|record| record.command_name() == "delete_asset")
+        .expect("delete_asset command should be recorded");
+    let delete_xml = String::from_utf8(delete.raw_xml().to_vec()).expect("xml command");
+    assert!(!delete_xml.contains("ultimate"), "xml={delete_xml}");
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_generic_configs_forward_open_usage_clone_and_ultimate_delete() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    // List usage is open and forwarded by the typed get_configs builder; the
+    // cloned identifier and ultimate delete then exercise typed write fidelity.
+    let configs = adapter
+        .list_configs(
+            &token,
+            &GenericConfigQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 25,
+                usage_type: Some("future_usage".to_string()),
+            },
+        )
+        .await
+        .expect("open config usage query should be accepted");
+    assert!(configs.data.is_empty());
+
+    // Fetch the mock's canonical config directly because its generic list
+    // fixture interprets pagination directives as resource predicates.
+    let source_id = "daba56c8-73ec-11df-a475-002264764cea";
+    let source = adapter
+        .get_config(&token, source_id)
+        .await
+        .expect("stateful mock should expose its seeded config by id");
+    assert_eq!(source.usage_type, "scan");
+    let cloned_id = adapter
+        .clone_config(&token, source_id)
+        .await
+        .expect("typed config clone should return an id");
+    adapter
+        .delete_config(&token, &cloned_id, true)
+        .await
+        .expect("typed config ultimate delete should succeed");
+
+    let history = server.command_history();
+    assert!(history.iter().any(|record| {
+        record.command_name() == "get_configs"
+            && String::from_utf8_lossy(record.raw_xml()).contains("usage_type=\"future_usage\"")
+    }));
+    assert!(history.iter().any(|record| {
+        record.command_name() == "create_config"
+            && String::from_utf8_lossy(record.raw_xml()).contains("<copy>")
+    }));
+    assert!(history.iter().any(|record| {
+        record.command_name() == "delete_config"
+            && String::from_utf8_lossy(record.raw_xml()).contains("ultimate=\"1\"")
+    }));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_list_vulnerabilities_emits_get_vulns() {
     let (adapter, server, token) = create_mock_adapter().await;
     server.clear_history();

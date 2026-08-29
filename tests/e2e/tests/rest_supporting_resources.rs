@@ -15,6 +15,7 @@ async fn rest_supporting_catalogs_list_and_read_resources() -> Result<()> {
     let (harness, session) = ready_session().await?;
 
     let run = async {
+        assert_generic_resource_catalogs(&harness, &session.token).await?;
         assert_scan_config_catalog(&harness, &session.token).await?;
         assert_scanner_catalog(&harness, &session.token).await?;
         assert_port_list_catalog(&harness, &session.token).await?;
@@ -38,6 +39,44 @@ async fn rest_supporting_catalogs_list_and_read_resources() -> Result<()> {
     .await;
 
     finish_session(&harness, &session, run).await
+}
+
+async fn assert_generic_resource_catalogs(harness: &E2eHarness, token: &str) -> Result<()> {
+    // Compose-backed reads validate the generic routes against real gvmd. The
+    // host asset catalog may legitimately be empty on a fresh stack, whereas
+    // the scan-config catalog must provide a representative generic config.
+    let assets = harness.list_generic_assets(token, "host").await?;
+    assert_pagination_shape("generic host assets", &assets);
+    if let Some(selected) = assets.data.first() {
+        let fetched = harness
+            .get_generic_asset(token, &selected.id, &selected.asset_type)
+            .await?;
+        assert_named_resource_matches(
+            "generic asset",
+            &fetched.id,
+            &fetched.name,
+            &selected.id,
+            &selected.name,
+        );
+        assert_eq!(fetched.asset_type, selected.asset_type);
+    }
+
+    let configs = harness.list_generic_configs(token).await?;
+    assert_pagination_shape("generic configs", &configs);
+    let selected = configs
+        .data
+        .first()
+        .context("generic config catalog returned no configs")?;
+    let fetched = harness.get_generic_config(token, &selected.id).await?;
+    assert_named_resource_matches(
+        "generic config",
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    assert_eq!(fetched.usage_type, selected.usage_type);
+    Ok(())
 }
 
 // Covers the triage-resource list/read contract in the context of a completed

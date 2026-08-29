@@ -553,7 +553,8 @@ pub(crate) fn generic_config_from_gmp(config: gvm_gmp::responses::GenericConfig)
         config_type: config.type_,
         usage_type: config
             .usage_type
-            .map(|usage_type| usage_type.as_gmp_str().to_string()),
+            .map(|usage_type| usage_type.as_gmp_str().to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
         in_use: config.meta.in_use,
         writable: config.meta.writable,
     }

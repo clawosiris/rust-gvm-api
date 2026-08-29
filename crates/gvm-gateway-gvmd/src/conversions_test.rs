@@ -4,11 +4,12 @@
 use super::*;
 use gvm_gmp::responses::{
     GetAgentGroupsResponse, GetAgentInstallerInstructionResponse, GetAgentSupportBundleResponse,
-    GetAgentsResponse, GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse,
-    GetNotesResponse, GetOverridesResponse, GetPortListsResponse, GetReportClosedCvesResponse,
-    GetReportTlsCertificatesResponse, GetReportVulnsResponse, GetReportsResponse,
-    GetResultsResponse, GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse,
-    GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetUsersResponse,
+    GetAgentsResponse, GetAlertsResponse, GetAssetsResponse, GetConfigsResponse,
+    GetCredentialsResponse, GetFeedsResponse, GetNotesResponse, GetOverridesResponse,
+    GetPortListsResponse, GetReportClosedCvesResponse, GetReportTlsCertificatesResponse,
+    GetReportVulnsResponse, GetReportsResponse, GetResultsResponse, GetScanConfigsResponse,
+    GetScannersResponse, GetSchedulesResponse, GetTargetsResponse, GetTasksResponse,
+    GetTicketsResponse, GetUsersResponse,
 };
 use gvm_protocol::Response as GmpResponse;
 
@@ -638,6 +639,62 @@ fn remaining_open_enum_conversions_preserve_backend_values() {
     .expect("tickets parse");
     let ticket = ticket_from_gmp(tickets.items.into_iter().next().unwrap());
     assert_eq!(ticket.status.as_deref(), Some("Deferred"));
+}
+
+#[test]
+fn generic_asset_conversion_preserves_typed_known_and_custom_variants() {
+    // The gateway consumes rust-gvm's typed response parser and must retain
+    // both the canonical TLS certificate spelling and future asset strings.
+    let parsed = GetAssetsResponse::from_response(&GmpResponse::from(
+        r#"<get_assets_response status="200" status_text="OK">
+            <asset id="123e4567-e89b-12d3-a456-426614174010">
+                <name>TLS asset</name><type>tls_certificate</type><value>fingerprint</value>
+            </asset>
+            <asset id="123e4567-e89b-12d3-a456-426614174011">
+                <name>Firmware asset</name><type>firmware</type><value>1.2.3</value>
+            </asset>
+            <asset_count>2<filtered>2</filtered></asset_count>
+        </get_assets_response>"#,
+    ))
+    .expect("typed asset response should parse");
+    let assets = parsed
+        .items
+        .into_iter()
+        .map(generic_asset_from_gmp)
+        .collect::<Result<Vec<_>, _>>()
+        .expect("typed asset variants should convert");
+
+    assert_eq!(assets[0].asset_type, "tls_certificate");
+    assert_eq!(assets[0].value.as_deref(), Some("fingerprint"));
+    assert_eq!(assets[1].asset_type, "firmware");
+    assert_eq!(assets[1].value.as_deref(), Some("1.2.3"));
+}
+
+#[test]
+fn generic_config_conversion_preserves_audit_and_future_usage_types() {
+    // Config usage is an open typed rust-gvm value; converting it must not
+    // collapse audit or a backend value introduced after this client release.
+    let parsed = GetConfigsResponse::from_response(&GmpResponse::from(
+        r#"<get_configs_response status="200" status_text="OK">
+            <config id="123e4567-e89b-12d3-a456-426614174020">
+                <name>Audit</name><usage_type>audit</usage_type><type>1</type>
+            </config>
+            <config id="123e4567-e89b-12d3-a456-426614174021">
+                <name>Future</name><usage_type>future_usage</usage_type><type>42</type>
+            </config>
+            <config_count>2<filtered>2</filtered></config_count>
+        </get_configs_response>"#,
+    ))
+    .expect("typed config response should parse");
+    let configs = parsed
+        .items
+        .into_iter()
+        .map(generic_config_from_gmp)
+        .collect::<Vec<_>>();
+
+    assert_eq!(configs[0].usage_type, "audit");
+    assert_eq!(configs[1].usage_type, "future_usage");
+    assert_eq!(configs[1].config_type, Some(42));
 }
 
 #[test]

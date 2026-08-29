@@ -700,13 +700,19 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
     ) -> Result<GenericAssetPage, GatewayError>;
 
     /// Fetch a generic asset by identifier.
-    async fn get_asset(&self, session_token: &str, id: &str) -> Result<GenericAsset, GatewayError>;
+    async fn get_asset(
+        &self,
+        session_token: &str,
+        id: &str,
+        asset_type: &str,
+    ) -> Result<GenericAsset, GatewayError>;
 
     /// Modify a generic asset by identifier.
     async fn modify_asset(
         &self,
         session_token: &str,
         id: &str,
+        asset_type: &str,
         input: ModifyAssetInput,
     ) -> Result<GenericAsset, GatewayError>;
 

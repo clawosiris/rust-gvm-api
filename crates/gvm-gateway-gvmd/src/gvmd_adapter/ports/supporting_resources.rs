@@ -35,7 +35,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .call(get_assets(GetAssetsOpts {
                 asset_id: None,
                 asset_type: None,
-                type_: query.asset_type.as_deref().map(parse_asset_type),
+                type_: Some(parse_asset_type(&query.asset_type)),
                 filter_string,
                 filter_id: None,
                 trash: None,
@@ -63,7 +63,12 @@ impl SupportingResourcePort for GvmdAdapter {
         })
     }
 
-    async fn get_asset(&self, session_token: &str, id: &str) -> Result<GenericAsset, GatewayError> {
+    async fn get_asset(
+        &self,
+        session_token: &str,
+        id: &str,
+        asset_type: &str,
+    ) -> Result<GenericAsset, GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
@@ -71,7 +76,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .call(get_assets(GetAssetsOpts {
                 asset_id: Some(parse_entity_id(id)?),
                 asset_type: None,
-                type_: None,
+                type_: Some(parse_asset_type(asset_type)),
                 filter_string: None,
                 filter_id: None,
                 trash: None,
@@ -93,6 +98,7 @@ impl SupportingResourcePort for GvmdAdapter {
         &self,
         session_token: &str,
         id: &str,
+        asset_type: &str,
         input: ModifyAssetInput,
     ) -> Result<GenericAsset, GatewayError> {
         let client = self.session_client(session_token)?;
@@ -111,7 +117,7 @@ impl SupportingResourcePort for GvmdAdapter {
             .map_err(map_gvm_error)?;
         ActionResponse::from_response(&response).map_err(map_parse_error)?;
         drop(client);
-        self.get_asset(session_token, id).await
+        self.get_asset(session_token, id, asset_type).await
     }
 
     async fn delete_asset(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {

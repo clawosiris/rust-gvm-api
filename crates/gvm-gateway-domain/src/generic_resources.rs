@@ -19,8 +19,11 @@ pub struct AssetQuery {
     pub page: u32,
     /// Requested page size.
     pub per_page: u32,
-    /// Optional asset type discriminator.
-    pub asset_type: Option<String>,
+    /// Required open asset type discriminator.
+    ///
+    /// The typed GMP `get_assets` command requires this value even for an ID
+    /// lookup, so keeping it explicit prevents invalid wire commands.
+    pub asset_type: String,
 }
 
 /// Generic config list query options.
@@ -149,9 +152,9 @@ pub struct GenericConfig {
     /// Optional backend numeric type discriminator.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub config_type: Option<u32>,
-    /// Optional backend usage-type discriminator.
-    #[serde(rename = "usageType", skip_serializing_if = "Option::is_none")]
-    pub usage_type: Option<String>,
+    /// Open backend usage-type discriminator.
+    #[serde(rename = "usageType")]
+    pub usage_type: String,
     /// Whether the config is in use.
     #[serde(rename = "inUse")]
     pub in_use: bool,
@@ -167,3 +170,7 @@ pub struct GenericConfigPage {
     /// Pagination metadata.
     pub pagination: Pagination,
 }
+
+#[cfg(test)]
+#[path = "generic_resources_test.rs"]
+mod generic_resources_test;

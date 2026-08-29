@@ -191,6 +191,30 @@ pub struct HostResource {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct GenericAsset {
+    pub id: String,
+    pub name: String,
+    pub comment: Option<String>,
+    #[serde(rename = "type")]
+    pub asset_type: String,
+    pub value: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct GenericConfig {
+    pub id: String,
+    pub name: String,
+    pub comment: Option<String>,
+    #[serde(rename = "type")]
+    pub config_type: Option<u32>,
+    #[serde(rename = "usageType")]
+    pub usage_type: String,
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    pub writable: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct TagResource {
     pub id: String,
     pub name: String,

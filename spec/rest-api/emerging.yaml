@@ -272,28 +272,137 @@ paths:
         "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
 
   /assets:
-    get: { operationId: getAssets, tags: [Assets], summary: List generic assets, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    post: { operationId: createAsset, tags: [Assets], summary: Create a generic asset, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getAssets
+      tags: [Assets]
+      summary: List generic assets
+      description: Returns typed host, operating-system, TLS-certificate, and future asset variants with an open type discriminator.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - name: type
+          in: query
+          required: true
+          description: Required because typed gvmd asset reads are type-scoped.
+          schema: { $ref: "#/components/schemas/AssetType" }
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200": { description: List generic assets, content: { application/json: { schema: { $ref: "#/components/schemas/GenericAssetList" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
   /assets/{id}:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getAsset, tags: [Assets], summary: Get a generic asset, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    put: { operationId: modifyAsset, tags: [Assets], summary: Modify a generic asset, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    delete: { operationId: deleteAsset, tags: [Assets], summary: Delete a generic asset, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getAsset
+      tags: [Assets]
+      summary: Get a generic asset
+      description: The open type query is required because typed gvmd asset reads are type-scoped.
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/AssetType" }
+      responses:
+        "200": { description: Get a generic asset, content: { application/json: { schema: { $ref: "#/components/schemas/GenericAsset" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+    put:
+      operationId: modifyAsset
+      tags: [Assets]
+      summary: Modify a generic asset
+      description: Updates only the asset comment. The open type query is required to read back the type-scoped asset after mutation.
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/AssetType" }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ModifyGenericAsset" } } } }
+      responses:
+        "200": { description: Generic asset updated, content: { application/json: { schema: { $ref: "#/components/schemas/GenericAsset" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+    delete:
+      operationId: deleteAsset
+      tags: [Assets]
+      summary: Delete a generic asset
+      description: Deletes an asset without an ultimate option because typed gvmd asset deletion does not support permanent-delete selection.
+      responses:
+        "204": { description: Generic asset deleted }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./common.yaml#/components/responses/Forbidden" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
 
   /configs:
-    get: { operationId: getConfigs, tags: [Configs], summary: List generic configs, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    post: { operationId: createConfig, tags: [Configs], summary: Create a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getConfigs
+      tags: [Configs]
+      summary: List generic configs
+      description: Returns scan, audit, policy, and future config variants with an open usageType discriminator.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - name: usageType
+          in: query
+          schema: { $ref: "#/components/schemas/ConfigUsageType" }
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200": { description: List generic configs, content: { application/json: { schema: { $ref: "#/components/schemas/GenericConfigList" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
   /configs/{id}:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getConfig, tags: [Configs], summary: Get a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    put: { operationId: modifyConfig, tags: [Configs], summary: Modify a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    delete: { operationId: deleteConfig, tags: [Configs], summary: Delete a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getConfig
+      tags: [Configs]
+      summary: Get a generic config
+      responses:
+        "200": { description: Get a generic config, content: { application/json: { schema: { $ref: "#/components/schemas/GenericConfig" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+    delete:
+      operationId: deleteConfig
+      tags: [Configs]
+      summary: Delete a generic config
+      description: Deletes a config. Pass `ultimate=true` to request permanent backend deletion.
+      parameters: [{ $ref: "./common.yaml#/components/parameters/UltimateDelete" }]
+      responses:
+        "204": { description: Generic config deleted }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./common.yaml#/components/responses/Forbidden" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
   /configs/{id}/clone:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    post: { operationId: cloneConfig, tags: [Configs], summary: Clone a generic config, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    post:
+      operationId: cloneConfig
+      tags: [Configs]
+      summary: Clone a generic config
+      responses:
+        "201": { description: Generic config cloned, headers: { Location: { $ref: "./common.yaml#/components/headers/Location" } }, content: { application/json: { schema: { $ref: "./common.yaml#/components/schemas/ResourceCreated" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
 
   /oci-image-targets:
     get:
@@ -477,6 +586,83 @@ paths:
 
 components:
   schemas:
+    AssetType:
+      type: string
+      enum: [host, os, tls_certificate]
+      description: Known values are listed for documentation and client generation. This list is not exhaustive; unknown future values may also be returned verbatim, and clients must preserve them.
+    ConfigUsageType:
+      type: string
+      enum: [scan, audit, policy]
+      description: Known values are listed for documentation and client generation. This list is not exhaustive; unknown future values may also be returned verbatim, and clients must preserve them.
+    AssetIdentifier:
+      type: object
+      properties:
+        name: { type: string }
+        value: { type: string }
+        source: { type: string }
+    AssetHost:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        severity: { type: string }
+    GenericAsset:
+      type: object
+      required: [id, name, writable, inUse, type]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        comment: { type: string }
+        creationTime: { type: string }
+        modificationTime: { type: string }
+        writable: { type: boolean }
+        inUse: { type: boolean }
+        type: { $ref: "#/components/schemas/AssetType" }
+        value: { type: string }
+        identifiers: { type: array, items: { $ref: "#/components/schemas/AssetIdentifier" } }
+        severity: { type: string }
+        ip: { type: string }
+        hostname: { type: string }
+        os: { type: string }
+        hostsCount: { type: integer, format: uint32, minimum: 0 }
+        title: { type: string }
+        installs: { type: integer, format: uint32, minimum: 0 }
+        allInstalls: { type: integer, format: uint32, minimum: 0 }
+        latestSeverity: { type: string }
+        highestSeverity: { type: string }
+        averageSeverity: { type: string }
+        hostCount: { type: integer, format: uint32, minimum: 0 }
+        hosts: { type: array, items: { $ref: "#/components/schemas/AssetHost" } }
+    GenericAssetList:
+      type: object
+      required: [data, pagination]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/GenericAsset" } }
+        pagination: { $ref: "./common.yaml#/components/schemas/Pagination" }
+    ModifyGenericAsset:
+      type: object
+      description: Comment-only mutation supported by typed gvmd generic assets.
+      properties:
+        comment: { type: string }
+      additionalProperties: false
+    GenericConfig:
+      type: object
+      required: [id, name, usageType, inUse, writable]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        comment: { type: string }
+        type: { type: integer, format: uint32, minimum: 0 }
+        usageType: { $ref: "#/components/schemas/ConfigUsageType" }
+        inUse: { type: boolean }
+        writable: { type: boolean }
+    GenericConfigList:
+      type: object
+      required: [data, pagination]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/GenericConfig" } }
+        pagination: { $ref: "./common.yaml#/components/schemas/Pagination" }
     AgentRetryConfig:
       type: object
       properties:

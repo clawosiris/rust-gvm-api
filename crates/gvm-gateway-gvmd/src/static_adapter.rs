@@ -936,12 +936,13 @@ impl SupportingResourcePort for StaticGvmdAdapter {
         unsupported!("static adapter does not support assets")
     }
 
-    async fn get_asset(&self, _: &str, _: &str) -> Result<GenericAsset, GatewayError> {
+    async fn get_asset(&self, _: &str, _: &str, _: &str) -> Result<GenericAsset, GatewayError> {
         unsupported!("static adapter does not support assets")
     }
 
     async fn modify_asset(
         &self,
+        _: &str,
         _: &str,
         _: &str,
         _: ModifyAssetInput,

@@ -1265,7 +1265,7 @@ impl SupportingResourcePort for MockSupportingResourcePort {
         })
     }
 
-    async fn get_asset(&self, _: &str, id: &str) -> Result<GenericAsset, GatewayError> {
+    async fn get_asset(&self, _: &str, id: &str, _: &str) -> Result<GenericAsset, GatewayError> {
         Err(GatewayError::NotFound(format!("asset {id} not found")))
     }
 
@@ -1273,6 +1273,7 @@ impl SupportingResourcePort for MockSupportingResourcePort {
         &self,
         _: &str,
         id: &str,
+        _: &str,
         _: ModifyAssetInput,
     ) -> Result<GenericAsset, GatewayError> {
         Err(GatewayError::NotFound(format!("asset {id} not found")))

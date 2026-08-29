@@ -9,7 +9,7 @@ use std::{
 
 use axum::{
     body::Body,
-    http::{header::CONTENT_TYPE, Request, StatusCode},
+    http::{header::CONTENT_TYPE, Method, Request, StatusCode},
 };
 use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use tower::ServiceExt;
@@ -169,6 +169,73 @@ async fn specialized_target_routes_require_authentication() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn generic_resource_routes_dispatch_to_typed_services() {
+    // Static typed ports return the sanitized backend-unavailable response.
+    // Seeing 502 on every implemented generic route proves the router no
+    // longer dispatches these methods to the 501 reservation handler.
+    let app = build_router(static_gateway_service());
+    let id = "123e4567-e89b-12d3-a456-426614174000";
+    for (method, uri, body) in [
+        (Method::GET, "/api/v1/assets?type=host".to_string(), ""),
+        (Method::GET, format!("/api/v1/assets/{id}?type=host"), ""),
+        (
+            Method::PUT,
+            format!("/api/v1/assets/{id}?type=host"),
+            r#"{"comment":"updated"}"#,
+        ),
+        (Method::DELETE, format!("/api/v1/assets/{id}"), ""),
+        (Method::GET, "/api/v1/configs".to_string(), ""),
+        (Method::GET, format!("/api/v1/configs/{id}"), ""),
+        (Method::DELETE, format!("/api/v1/configs/{id}"), ""),
+        (Method::POST, format!("/api/v1/configs/{id}/clone"), ""),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method.clone())
+                    .uri(&uri)
+                    .header(axum::http::header::AUTHORIZATION, "Basic YWRtaW46c2VjcmV0")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_GATEWAY,
+            "{method} {uri} should reach the static typed port"
+        );
+    }
+
+    // Unsupported generic creation/config modification methods are omitted
+    // from the contract and use the normal known-path 405 response.
+    for (method, uri) in [
+        (Method::POST, "/api/v1/assets"),
+        (Method::POST, "/api/v1/configs"),
+        (
+            Method::PUT,
+            "/api/v1/configs/123e4567-e89b-12d3-a456-426614174000",
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
 }
 
 #[tokio::test]

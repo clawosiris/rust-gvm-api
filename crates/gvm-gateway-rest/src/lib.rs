@@ -15,6 +15,7 @@ pub(crate) mod dto;
 pub mod emerging;
 pub mod error;
 pub mod feeds;
+pub mod generic_resources;
 pub(crate) mod handler;
 pub mod identity;
 pub mod jobs;

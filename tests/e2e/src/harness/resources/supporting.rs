@@ -102,6 +102,59 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn list_generic_assets(
+        &self,
+        token: &str,
+        asset_type: &str,
+    ) -> Result<ListResponse<GenericAsset>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/assets?type={asset_type}&perPage=1000"),
+                token,
+            ),
+            StatusCode::OK,
+            "list generic assets",
+        )
+        .await
+    }
+
+    pub async fn get_generic_asset(
+        &self,
+        token: &str,
+        asset_id: &str,
+        asset_type: &str,
+    ) -> Result<GenericAsset> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/assets/{asset_id}?type={asset_type}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get generic asset",
+        )
+        .await
+    }
+
+    pub async fn list_generic_configs(&self, token: &str) -> Result<ListResponse<GenericConfig>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/configs?perPage=1000", token),
+            StatusCode::OK,
+            "list generic configs",
+        )
+        .await
+    }
+
+    pub async fn get_generic_config(&self, token: &str, config_id: &str) -> Result<GenericConfig> {
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/configs/{config_id}"), token),
+            StatusCode::OK,
+            "get generic config",
+        )
+        .await
+    }
+
     pub async fn list_hosts_page(
         &self,
         token: &str,

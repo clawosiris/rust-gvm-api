@@ -42,6 +42,7 @@ impl GatewayService {
         &self,
         session_token: &str,
         id: &str,
+        asset_type: &str,
     ) -> Result<GenericAsset, GatewayError> {
         self.execute_with_resource(
             "assets.get",
@@ -51,7 +52,7 @@ impl GatewayService {
             Some(id),
             |session| async move {
                 self.supporting_resources
-                    .get_asset(&session.token, id)
+                    .get_asset(&session.token, id, asset_type)
                     .await
             },
         )
@@ -63,6 +64,7 @@ impl GatewayService {
         &self,
         session_token: &str,
         id: &str,
+        asset_type: &str,
         input: ModifyAssetInput,
     ) -> Result<GenericAsset, GatewayError> {
         self.execute_with_resource(
@@ -73,7 +75,7 @@ impl GatewayService {
             Some(id),
             |session| async move {
                 self.supporting_resources
-                    .modify_asset(&session.token, id, input)
+                    .modify_asset(&session.token, id, asset_type, input)
                     .await
             },
         )
