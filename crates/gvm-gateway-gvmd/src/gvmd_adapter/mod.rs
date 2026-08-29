@@ -44,7 +44,6 @@ use gvm_gmp::{
             create_alert, delete_alert, get_alert, get_alerts, modify_alert, AlertData, AlertOpts,
             GetAlertsOpts,
         },
-        authentication::authenticate,
         configs::{modify_config as modify_config_generic, ConfigUsageType, ModifyConfigOpts},
         credentials::{
             create_credential, delete_credential, get_credential, get_credentials,
@@ -127,21 +126,21 @@ use gvm_gmp::{
         },
     },
     responses::{
-        ActionResponse, AuthenticateResponse, CreateAlertResponse, CreateCredentialResponse,
-        CreateFilterResponse, CreateGroupResponse, CreateHostResponse, CreateNoteResponse,
-        CreateOciImageTargetResponse, CreateOverrideResponse, CreatePermissionResponse,
-        CreatePortListResponse, CreateRoleResponse, CreateScanConfigResponse,
-        CreateScheduleResponse, CreateTagResponse, CreateTargetResponse, CreateTaskResponse,
-        CreateUserResponse, CreateWebApplicationTargetResponse, GetAlertsResponse,
-        GetCredentialsResponse, GetFeedsResponse, GetFiltersResponse, GetGroupsResponse,
-        GetHostsResponse, GetNotesResponse, GetNvtFamiliesResponse, GetNvtsResponse,
-        GetOciImageTargetsResponse, GetOverridesResponse, GetPermissionsResponse,
-        GetPortListsResponse, GetReportFormatsResponse, GetReportsResponse, GetResultsResponse,
-        GetRolesResponse, GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse,
-        GetTagsResponse, GetTargetsResponse, GetTasksResponse, GetTicketsResponse,
-        GetTlsCertificatesResponse, GetUserSettingsResponse, GetUsersResponse, GetVersionResponse,
-        GetVulnerabilitiesResponse, GetWebApplicationTargetsResponse, ModifyUserSettingResponse,
-        ResumeTaskResponse, StartTaskResponse, User as GmpUser,
+        ActionResponse, CreateAlertResponse, CreateCredentialResponse, CreateFilterResponse,
+        CreateGroupResponse, CreateHostResponse, CreateNoteResponse, CreateOciImageTargetResponse,
+        CreateOverrideResponse, CreatePermissionResponse, CreatePortListResponse,
+        CreateRoleResponse, CreateScanConfigResponse, CreateScheduleResponse, CreateTagResponse,
+        CreateTargetResponse, CreateTaskResponse, CreateUserResponse,
+        CreateWebApplicationTargetResponse, GetAlertsResponse, GetCredentialsResponse,
+        GetFeedsResponse, GetFiltersResponse, GetGroupsResponse, GetHostsResponse,
+        GetNotesResponse, GetNvtFamiliesResponse, GetNvtsResponse, GetOciImageTargetsResponse,
+        GetOverridesResponse, GetPermissionsResponse, GetPortListsResponse,
+        GetReportFormatsResponse, GetReportsResponse, GetResultsResponse, GetRolesResponse,
+        GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse, GetTagsResponse,
+        GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetTlsCertificatesResponse,
+        GetUserSettingsResponse, GetUsersResponse, GetVersionResponse, GetVulnerabilitiesResponse,
+        GetWebApplicationTargetsResponse, ModifyUserSettingResponse, ResumeTaskResponse,
+        StartTaskResponse, User as GmpUser,
     },
     CollectionUpdate, EntityId, Pagination as GmpPagination, ScalarUpdate,
 };
@@ -177,7 +176,9 @@ use filters::{
     backend_ignored_pagination, composed_filter, gvmd_total, needs_client_side_pagination_fallback,
     paged_pagination, paged_slice, paginated_filter,
 };
-use session::{SessionClient, SharedClient};
+use session::{
+    connect_authenticated_client, CredentialStoreCapability, SessionClient, SharedClient,
+};
 use supporting_inputs::{
     collection_update, filter_opts_from_create_input, filter_opts_from_modify_input,
     host_opts_from_create_input, host_opts_from_modify_input, note_opts_from_create_input,
@@ -258,16 +259,32 @@ impl GvmdAdapter {
         );
 
         async move {
-            let connection = UnixSocketConnection::with_path(&self.socket_path);
-            let mut client = GmpClient::connect(connection)
-                .await
-                .map_err(map_gvm_error)?;
+            let mut client =
+                connect_authenticated_client(&self.socket_path, username, password).await?;
             let negotiated = client.version().to_string();
-            let response = client
-                .call(authenticate(username, password))
-                .await
-                .map_err(map_gvm_error)?;
-            AuthenticateResponse::from_response(&response).map_err(map_parse_error)?;
+            let credential_store_capability =
+                match ports::credentials::probe_credential_store_capability(&mut client).await {
+                    Ok(outcome) => {
+                        if outcome.requires_reconnect {
+                            client =
+                                connect_authenticated_client(&self.socket_path, username, password)
+                                    .await?;
+                        }
+                        outcome.capability
+                    }
+                    Err(error) => {
+                        client =
+                            connect_authenticated_client(&self.socket_path, username, password)
+                                .await?;
+                        tracing::debug!(
+                            session_id = %safe_session_id(session_token),
+                            gvmd_username = %username,
+                            ?error,
+                            "credential-store capability probe deferred after reconnect"
+                        );
+                        CredentialStoreCapability::Unknown
+                    }
+                };
 
             self.sessions
                 .lock()
@@ -276,11 +293,7 @@ impl GvmdAdapter {
                 })?
                 .insert(
                     SessionTokenDigest::from_token(session_token),
-                    Arc::new(SessionClient::new(
-                        client,
-                        username.to_string(),
-                        password.to_string(),
-                    )),
+                    Arc::new(SessionClient::new(client, credential_store_capability)),
                 );
 
             Ok(negotiated)

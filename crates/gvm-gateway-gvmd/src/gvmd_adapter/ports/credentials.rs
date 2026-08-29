@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Greenbone AG
 use super::super::*;
+use crate::gvmd_adapter::session::CredentialStoreCapability;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::gvmd_adapter) struct CredentialStoreProbeOutcome {
+    pub(in crate::gvmd_adapter) capability: CredentialStoreCapability,
+    pub(in crate::gvmd_adapter) requires_reconnect: bool,
+}
 
 #[async_trait]
 impl CredentialPort for GvmdAdapter {
@@ -9,19 +16,14 @@ impl CredentialPort for GvmdAdapter {
         session_token: &str,
     ) -> Result<Vec<CredentialStore>, GatewayError> {
         let client = self.session_client(session_token)?;
-        let (username, password) = client.auth_pair_owned();
+        if client.credential_store_capability() == CredentialStoreCapability::Unsupported {
+            return Err(unsupported_credential_store_error());
+        }
+
         let mut guard = client.lock().await?;
         let parsed = match guard.get_credential_stores().await {
             Ok(parsed) => parsed,
             Err(error) if credential_store_capability_unavailable(&error) => {
-                if let Err(_reconnect_error) = guard
-                    .reconnect(&self.socket_path, &username, &password)
-                    .await
-                {
-                    // The current request already established a stable
-                    // capability-absence result; keep returning 501 even if
-                    // gvmd refuses the best-effort socket refresh.
-                }
                 return Err(unsupported_credential_store_error());
             }
             Err(error) => return Err(map_gvm_error(error)),
@@ -217,6 +219,32 @@ impl CredentialPort for GvmdAdapter {
             .map_err(map_gvm_error)?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
+    }
+}
+
+pub(in crate::gvmd_adapter) async fn probe_credential_store_capability(
+    client: &mut GmpClient<UnixSocketConnection>,
+) -> Result<CredentialStoreProbeOutcome, gvm_client::GvmError> {
+    match client.get_credential_stores().await {
+        Ok(_) => Ok(CredentialStoreProbeOutcome {
+            capability: CredentialStoreCapability::Supported,
+            requires_reconnect: false,
+        }),
+        Err(gvm_client::GvmError::UnsupportedCommand { command, .. })
+            if command == "get_credential_stores" =>
+        {
+            Ok(CredentialStoreProbeOutcome {
+                capability: CredentialStoreCapability::Unsupported,
+                requires_reconnect: false,
+            })
+        }
+        Err(error) if credential_store_capability_unavailable(&error) => {
+            Ok(CredentialStoreProbeOutcome {
+                capability: CredentialStoreCapability::Unsupported,
+                requires_reconnect: true,
+            })
+        }
+        Err(error) => Err(error),
     }
 }
 

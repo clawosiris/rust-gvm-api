@@ -3,7 +3,7 @@
 
 mod alerts;
 mod auth;
-mod credentials;
+pub(super) mod credentials;
 #[cfg(test)]
 mod credentials_test;
 mod feeds;

@@ -17,24 +17,28 @@ use crate::conversions::{map_gvm_error, map_parse_error};
 
 const MAX_SESSION_COMMANDS_IN_FLIGHT_OR_WAITING: usize = 64;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CredentialStoreCapability {
+    Unknown,
+    Supported,
+    Unsupported,
+}
+
 pub(super) struct SessionClient {
     client: AsyncMutex<GmpClient<UnixSocketConnection>>,
     command_slots: Arc<Semaphore>,
-    username: String,
-    password: String,
+    credential_store_capability: CredentialStoreCapability,
 }
 
 impl SessionClient {
     pub(super) fn new(
         client: GmpClient<UnixSocketConnection>,
-        username: String,
-        password: String,
+        credential_store_capability: CredentialStoreCapability,
     ) -> Self {
         Self {
             client: AsyncMutex::new(client),
             command_slots: Arc::new(Semaphore::new(MAX_SESSION_COMMANDS_IN_FLIGHT_OR_WAITING)),
-            username,
-            password,
+            credential_store_capability,
         }
     }
 
@@ -48,8 +52,8 @@ impl SessionClient {
         Ok(SessionClientGuard { _slot: slot, guard })
     }
 
-    pub(super) fn auth_pair_owned(&self) -> (String, String) {
-        (self.username.clone(), self.password.clone())
+    pub(super) fn credential_store_capability(&self) -> CredentialStoreCapability {
+        self.credential_store_capability
     }
 }
 
@@ -72,25 +76,21 @@ impl DerefMut for SessionClientGuard<'_> {
     }
 }
 
-impl SessionClientGuard<'_> {
-    pub(super) async fn reconnect(
-        &mut self,
-        socket_path: &Path,
-        username: &str,
-        password: &str,
-    ) -> Result<(), GatewayError> {
-        let connection = UnixSocketConnection::with_path(socket_path);
-        let mut client = GmpClient::connect(connection)
-            .await
-            .map_err(map_gvm_error)?;
-        let response = client
-            .call(authenticate(username, password))
-            .await
-            .map_err(map_gvm_error)?;
-        AuthenticateResponse::from_response(&response).map_err(map_parse_error)?;
-        *self.guard = client;
-        Ok(())
-    }
+pub(super) async fn connect_authenticated_client(
+    socket_path: &Path,
+    username: &str,
+    password: &str,
+) -> Result<GmpClient<UnixSocketConnection>, GatewayError> {
+    let connection = UnixSocketConnection::with_path(socket_path);
+    let mut client = GmpClient::connect(connection)
+        .await
+        .map_err(map_gvm_error)?;
+    let response = client
+        .call(authenticate(username, password))
+        .await
+        .map_err(map_gvm_error)?;
+    AuthenticateResponse::from_response(&response).map_err(map_parse_error)?;
+    Ok(client)
 }
 
 pub(super) type SharedClient = Arc<SessionClient>;

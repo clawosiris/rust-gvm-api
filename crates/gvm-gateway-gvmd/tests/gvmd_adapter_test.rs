@@ -224,6 +224,46 @@ async fn create_mock_adapter_v22_8_with_disabled_credential_stores_followed_by_d
     (adapter, server, token.to_string())
 }
 
+async fn create_mock_adapter_v22_8_with_unknown_credential_store_probe_followed_by_disconnect(
+) -> (GvmdAdapter, MockGmpServer, String) {
+    let credential_id =
+        uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174010").expect("valid credential id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .seed(move |store| {
+            let mut credential = Resource::with_id(
+                "credential",
+                "Reconnect-safe unknown probe credential",
+                credential_id,
+            );
+            credential.set_attr("type", "up");
+            credential.set_attr("login", "admin");
+            store.create(credential);
+        })
+        .inject_fault(Fault::on_command(
+            "get_credential_stores",
+            FaultKind::ErrorStatus {
+                code: 503,
+                message: "Service unavailable: database offline".to_string(),
+            },
+        ))
+        .inject_fault(Fault::after_commands(3, FaultKind::Disconnect))
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+
+    (adapter, server, token.to_string())
+}
+
 fn assert_paginated_commands(
     server: &MockGmpServer,
     command_name: &str,
@@ -1990,6 +2030,15 @@ async fn gvmd_adapter_list_credential_stores_returns_not_implemented_on_v22_7() 
         error,
         GatewayError::NotImplemented(detail) if detail.contains("get_credential_stores")
     ));
+    assert_eq!(
+        server
+            .command_history()
+            .into_iter()
+            .filter(|record| record.command_name() == "get_credential_stores")
+            .count(),
+        0,
+        "unsupported backends should return the cached 501 capability result without probing again"
+    );
 
     server.shutdown().await;
 }
@@ -2014,6 +2063,15 @@ async fn gvmd_adapter_list_credential_stores_returns_not_implemented_when_gvmd_d
         error,
         GatewayError::NotImplemented(detail) if detail.contains("get_credential_stores")
     ));
+    assert_eq!(
+        server
+            .command_history()
+            .into_iter()
+            .filter(|record| record.command_name() == "get_credential_stores")
+            .count(),
+        0,
+        "disabled-command capability absence should be cached after connect_session"
+    );
 
     server.shutdown().await;
 }
@@ -2048,10 +2106,9 @@ async fn gvmd_adapter_refreshes_cached_session_after_disabled_credential_store_r
     server.clear_history();
 
     // Regression coverage for GitHub E2E run 33263885269 on 2026-08-29:
-    // gvmd may return the documented disabled-command 503 for
-    // get_credential_stores and then close the authenticated GMP socket. The
-    // adapter must keep the session usable for the immediately following
-    // get_credentials call instead of surfacing Broken pipe as 502.
+    // connect_session must consume the disabled-command capability probe,
+    // restore the authenticated socket before publishing the session, and let
+    // later routes observe 501 plus a healthy credentials list.
     let error = adapter
         .list_credential_stores(&token)
         .await
@@ -2086,8 +2143,16 @@ async fn gvmd_adapter_refreshes_cached_session_after_disabled_credential_store_r
             .iter()
             .filter(|record| record.command_name() == "authenticate")
             .count(),
-        1,
-        "the adapter should re-authenticate once after gvmd closes the disabled-command session"
+        0,
+        "the reconnect should happen during connect_session, before history is cleared"
+    );
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "get_credential_stores")
+            .count(),
+        0,
+        "list_credential_stores should use the cached unsupported capability state"
     );
     assert_eq!(
         history
@@ -2096,6 +2161,71 @@ async fn gvmd_adapter_refreshes_cached_session_after_disabled_credential_store_r
             .count(),
         1,
         "credential listing should use the refreshed session instead of failing on a stale socket"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_reconnects_before_caching_unknown_credential_store_capability() {
+    let (adapter, server, token) =
+        create_mock_adapter_v22_8_with_unknown_credential_store_probe_followed_by_disconnect()
+            .await;
+    server.clear_history();
+
+    // If the connect-time capability probe fails for a non-capability reason,
+    // the adapter must still reconnect before publishing the session. That
+    // keeps subsequent commands off a potentially poisoned socket even though
+    // `/credential-stores` must keep probing live and may still fail later.
+    let page = adapter
+        .list_credentials(
+            &token,
+            &CredentialQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 1000,
+            },
+        )
+        .await
+        .expect("credentials should succeed after the unknown probe reconnects");
+
+    assert_eq!(page.pagination.page, 1);
+    assert_eq!(page.pagination.per_page, 1000);
+
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("unknown credential-store failures should stay backend unavailable");
+    assert!(
+        matches!(error, GatewayError::BackendUnavailable(_)),
+        "unexpected credential-store error: {error:?}"
+    );
+
+    let history = server.command_history();
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "authenticate")
+            .count(),
+        0,
+        "the reconnect should happen during connect_session, before history is cleared"
+    );
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "get_credential_stores")
+            .count(),
+        1,
+        "unknown capability state must keep probing `/credential-stores` live"
+    );
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "get_credentials")
+            .count(),
+        1,
+        "credentials should use the refreshed session instead of failing on the stale connect-time probe socket"
     );
 
     server.shutdown().await;
