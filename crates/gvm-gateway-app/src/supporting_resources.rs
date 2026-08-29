@@ -8,9 +8,10 @@ use gvm_gateway_domain::{
     CreateHostInput, CreateNoteInput, CreateOverrideInput, CreateTagInput, Cve, CvePage,
     DfnCertAdvisory, DfnCertAdvisoryPage, Filter, FilterPage, GatewayError, GenericAsset,
     GenericAssetPage, Host, HostPage, ModifyAssetInput, ModifyFilterInput, ModifyHostInput,
-    ModifyNoteInput, ModifyOverrideInput, ModifyTagInput, Note, NotePage, Nvt, NvtFamilyPage,
-    NvtPage, Override, OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag,
-    TagPage, Ticket, TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
+    ModifyNoteInput, ModifyOperatingSystemInput, ModifyOverrideInput, ModifyTagInput, Note,
+    NotePage, Nvt, NvtFamilyPage, NvtPage, OperatingSystem, OperatingSystemPage, Override,
+    OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket,
+    TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
 };
 
 use crate::GatewayService;
@@ -175,6 +176,48 @@ impl GatewayService {
         .await
     }
 
+    /// Lists operating-system assets for an authenticated session.
+    pub async fn list_operating_systems(
+        &self,
+        session_token: &str,
+        query: SupportingResourceQuery,
+    ) -> Result<OperatingSystemPage, GatewayError> {
+        self.execute_with_resource(
+            "operating_systems.list",
+            session_token,
+            "list",
+            "operating_system",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_operating_systems(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches an operating-system asset for an authenticated session.
+    pub async fn get_operating_system(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<OperatingSystem, GatewayError> {
+        self.execute_with_resource(
+            "operating_systems.get",
+            session_token,
+            "read",
+            "operating_system",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .get_operating_system(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
     /// Creates a host asset for an authenticated session.
     pub async fn create_host(
         &self,
@@ -218,6 +261,28 @@ impl GatewayService {
         .await
     }
 
+    /// Modifies an operating-system asset for an authenticated session.
+    pub async fn modify_operating_system(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyOperatingSystemInput,
+    ) -> Result<OperatingSystem, GatewayError> {
+        self.execute_with_resource(
+            "operating_systems.modify",
+            session_token,
+            "modify",
+            "operating_system",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .modify_operating_system(&session.token, id, input)
+                    .await
+            },
+        )
+        .await
+    }
+
     /// Deletes a host asset for an authenticated session.
     pub async fn delete_host(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
         self.execute_with_resource(
@@ -229,6 +294,27 @@ impl GatewayService {
             |session| async move {
                 self.supporting_resources
                     .delete_host(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Deletes an operating-system asset for an authenticated session.
+    pub async fn delete_operating_system(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "operating_systems.delete",
+            session_token,
+            "delete",
+            "operating_system",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .delete_operating_system(&session.token, id)
                     .await
             },
         )

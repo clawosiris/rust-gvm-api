@@ -12,7 +12,6 @@ pub(crate) mod auth_policy;
 pub mod credentials;
 pub(crate) mod docs;
 pub(crate) mod dto;
-pub mod emerging;
 pub mod error;
 pub mod feeds;
 pub mod generic_resources;

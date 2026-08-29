@@ -208,6 +208,77 @@ impl SupportingResourcePort for GvmdAdapter {
             .ok_or_else(|| GatewayError::NotFound(format!("host {id} not found")))
     }
 
+    async fn list_operating_systems(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<OperatingSystemPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_operating_systems(GetOperatingSystemsOpts {
+                filter_string,
+                filter_id: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed =
+            GetOperatingSystemAssetsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(operating_system_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+        Ok(OperatingSystemPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_operating_system(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<OperatingSystem, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_operating_system(&parse_entity_id(id)?, Some(true)))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed =
+            GetOperatingSystemAssetsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(operating_system_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("operating system {id} not found")))
+    }
+
     async fn list_tls_certificates(
         &self,
         session_token: &str,
@@ -314,6 +385,27 @@ impl SupportingResourcePort for GvmdAdapter {
         self.get_host(session_token, id).await
     }
 
+    async fn modify_operating_system(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyOperatingSystemInput,
+    ) -> Result<OperatingSystem, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let operating_system_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await?
+            .call(modify_operating_system(
+                &operating_system_id,
+                input.comment.as_deref(),
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        self.get_operating_system(session_token, id).await
+    }
+
     async fn delete_host(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
         let client = self.session_client(session_token)?;
         let response = client
@@ -324,6 +416,32 @@ impl SupportingResourcePort for GvmdAdapter {
             .call(delete_host(&parse_entity_id(id)?, false))
             .await
             .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn delete_operating_system(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(delete_operating_system(&parse_entity_id(id)?))
+            .await
+            .map_err(|error| match error {
+                // The typed OS delete command has no client-controlled option
+                // beyond its already validated ID. gvmd uses status 400 when
+                // the asset is still in use, which is a resource conflict at
+                // the REST/domain boundary rather than malformed input.
+                gvm_client::GvmError::Server {
+                    status: 400,
+                    message,
+                } => GatewayError::Conflict(message),
+                other => map_gvm_error(other),
+            })?;
         ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
     }

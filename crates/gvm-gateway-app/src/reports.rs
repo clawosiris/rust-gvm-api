@@ -4,8 +4,9 @@
 //! Report use cases.
 
 use gvm_gateway_domain::{
-    GatewayError, GetReportOpts, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
-    ReportExportRequest, ReportPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery,
+    GatewayError, GetReportOpts, Report, ReportApplicationPage, ReportClosedCvePage, ReportCvePage,
+    ReportErrorPage, ReportExport, ReportExportRequest, ReportHostPage, ReportOperatingSystemPage,
+    ReportPage, ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery,
     TlsCertificatePage,
 };
 
@@ -135,6 +136,116 @@ impl GatewayService {
             |session| async move {
                 self.reports
                     .get_report_vulnerabilities(&session.token, report_id, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists host summaries for a specific report.
+    pub async fn get_report_hosts(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        self.execute_with_resource(
+            "reports.hosts.list",
+            session_token,
+            "list",
+            "report_host",
+            Some(report_id),
+            |session| async move {
+                self.reports
+                    .get_report_hosts(&session.token, report_id, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists port summaries for a specific report.
+    pub async fn get_report_ports(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        self.execute_with_resource(
+            "reports.ports.list",
+            session_token,
+            "list",
+            "report_port",
+            Some(report_id),
+            |session| async move {
+                self.reports
+                    .get_report_ports(&session.token, report_id, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists application summaries for a specific report.
+    pub async fn get_report_applications(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        self.execute_with_resource(
+            "reports.applications.list",
+            session_token,
+            "list",
+            "report_application",
+            Some(report_id),
+            |session| async move {
+                self.reports
+                    .get_report_applications(&session.token, report_id, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists operating-system summaries for a specific report.
+    pub async fn get_report_operating_systems(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        self.execute_with_resource(
+            "reports.operating_systems.list",
+            session_token,
+            "list",
+            "report_operating_system",
+            Some(report_id),
+            |session| async move {
+                self.reports
+                    .get_report_operating_systems(&session.token, report_id, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Lists CVE summaries for a specific report.
+    pub async fn get_report_cves(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        self.execute_with_resource(
+            "reports.cves.list",
+            session_token,
+            "list",
+            "report_cve",
+            Some(report_id),
+            |session| async move {
+                self.reports
+                    .get_report_cves(&session.token, report_id, &query)
                     .await
             },
         )

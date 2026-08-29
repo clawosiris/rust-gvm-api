@@ -15,8 +15,9 @@ use gvm_gateway_domain::{
     CreateTargetInput, CreateTaskInput, Credential, CredentialPage, CredentialPort,
     CredentialQuery, CredentialStore, GatewayError, GetReportOpts, ModifyAlertInput,
     ModifyCredentialInput, ModifyTargetInput, ModifyTaskInput, Pagination, Report,
-    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportPage,
-    ReportPort, ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery,
+    ReportApplicationPage, ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport,
+    ReportExportRequest, ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPort,
+    ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery,
     ScanResult, SessionLimits, SessionManager, Target, TargetPage, TargetPort, TargetQuery, Task,
     TaskAction, TaskObservers, TaskPage, TaskPort, TaskQuery, TlsCertificatePage,
 };
@@ -1061,6 +1062,91 @@ impl CredentialPort for CredentialStoreErrorPort {
     async fn delete_credential(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
         Err(GatewayError::NotFound(format!("credential {id} not found")))
     }
+
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Ok(ReportHostPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Ok(ReportPortPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Ok(ReportApplicationPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Ok(ReportOperatingSystemPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Ok(ReportCvePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
 }
 
 struct MissingReportPort;
@@ -1152,6 +1238,91 @@ impl ReportPort for MissingReportPort {
         query: &ResultQuery,
     ) -> Result<ReportClosedCvePage, GatewayError> {
         Ok(empty_report_closed_cve_page(query))
+    }
+
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Ok(ReportHostPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Ok(ReportPortPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Ok(ReportApplicationPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Ok(ReportOperatingSystemPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Ok(ReportCvePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
     }
 }
 

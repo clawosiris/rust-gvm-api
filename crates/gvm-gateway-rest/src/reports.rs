@@ -12,7 +12,9 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    GatewayError, GetReportOpts, ReportClosedCvePage, ReportErrorPage, ReportQuery,
+    GatewayError, GetReportOpts, ReportApplication, ReportApplicationPage, ReportClosedCvePage,
+    ReportCve, ReportCvePage, ReportErrorPage, ReportHost, ReportHostPage, ReportOperatingSystem,
+    ReportOperatingSystemPage, ReportPortPage, ReportPortSummary, ReportQuery,
     ReportVulnerabilityPage, ResultQuery, TlsCertificate, TlsCertificatePage,
 };
 use schemars::JsonSchema;
@@ -170,6 +172,222 @@ impl From<TlsCertificatePage> for TlsCertificateListResponse {
                 .into_iter()
                 .map(TlsCertificateResponse::from)
                 .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+/// JSON body returned for a report host summary.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportHost")]
+pub(crate) struct ReportHostResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+}
+
+impl From<ReportHost> for ReportHostResponse {
+    fn from(host: ReportHost) -> Self {
+        Self {
+            id: host.id,
+            name: host.name,
+            severity: host.severity,
+        }
+    }
+}
+
+/// JSON body returned for a paginated report-host list.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportHostList")]
+pub(crate) struct ReportHostListResponse {
+    #[schemars(length(max = 1000))]
+    data: Vec<ReportHostResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<ReportHostPage> for ReportHostListResponse {
+    fn from(page: ReportHostPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ReportHostResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+/// JSON body returned for a report port summary.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportPort")]
+pub(crate) struct ReportPortResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+}
+
+impl From<ReportPortSummary> for ReportPortResponse {
+    fn from(port: ReportPortSummary) -> Self {
+        Self {
+            id: port.id,
+            name: port.name,
+            severity: port.severity,
+        }
+    }
+}
+
+/// JSON body returned for a paginated report-port list.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportPortList")]
+pub(crate) struct ReportPortListResponse {
+    #[schemars(length(max = 1000))]
+    data: Vec<ReportPortResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<ReportPortPage> for ReportPortListResponse {
+    fn from(page: ReportPortPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ReportPortResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+/// JSON body returned for a report application summary.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportApplication")]
+pub(crate) struct ReportApplicationResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+}
+
+impl From<ReportApplication> for ReportApplicationResponse {
+    fn from(application: ReportApplication) -> Self {
+        Self {
+            id: application.id,
+            name: application.name,
+            severity: application.severity,
+        }
+    }
+}
+
+/// JSON body returned for a paginated report-application list.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportApplicationList")]
+pub(crate) struct ReportApplicationListResponse {
+    #[schemars(length(max = 1000))]
+    data: Vec<ReportApplicationResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<ReportApplicationPage> for ReportApplicationListResponse {
+    fn from(page: ReportApplicationPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ReportApplicationResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+/// JSON body returned for a report operating-system summary.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportOperatingSystem")]
+pub(crate) struct ReportOperatingSystemResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+}
+
+impl From<ReportOperatingSystem> for ReportOperatingSystemResponse {
+    fn from(operating_system: ReportOperatingSystem) -> Self {
+        Self {
+            id: operating_system.id,
+            name: operating_system.name,
+            severity: operating_system.severity,
+        }
+    }
+}
+
+/// JSON body returned for a paginated report-operating-system list.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportOperatingSystemList")]
+pub(crate) struct ReportOperatingSystemListResponse {
+    #[schemars(length(max = 1000))]
+    data: Vec<ReportOperatingSystemResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<ReportOperatingSystemPage> for ReportOperatingSystemListResponse {
+    fn from(page: ReportOperatingSystemPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(ReportOperatingSystemResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+/// JSON body returned for a report CVE summary.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportCve")]
+pub(crate) struct ReportCveResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+}
+
+impl From<ReportCve> for ReportCveResponse {
+    fn from(cve: ReportCve) -> Self {
+        Self {
+            id: cve.id,
+            name: cve.name,
+            severity: cve.severity,
+        }
+    }
+}
+
+/// JSON body returned for a paginated report-CVE list.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "ReportCveList")]
+pub(crate) struct ReportCveListResponse {
+    #[schemars(length(max = 1000))]
+    data: Vec<ReportCveResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<ReportCvePage> for ReportCveListResponse {
+    fn from(page: ReportCvePage) -> Self {
+        Self {
+            data: page.data.into_iter().map(ReportCveResponse::from).collect(),
             pagination: PaginationResponse::from(page.pagination),
         }
     }
@@ -424,6 +642,15 @@ impl ReportResultsQuery {
     }
 }
 
+fn report_results_query(query: ReportResultsQuery) -> ResultQuery {
+    ResultQuery {
+        filter_string: query.filter_string,
+        filter_id: query.filter_id,
+        page: query.page,
+        per_page: query.per_page,
+    }
+}
+
 /// List reports handler.
 pub async fn list_reports(
     State(service): State<GatewayService>,
@@ -540,16 +767,7 @@ pub async fn get_report_results(
     };
 
     match service
-        .get_report_results(
-            &session,
-            &id,
-            ResultQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
+        .get_report_results(&session, &id, report_results_query(query))
         .await
     {
         Ok(results) => (
@@ -582,16 +800,7 @@ pub async fn get_report_vulnerabilities(
     };
 
     match service
-        .get_report_vulnerabilities(
-            &session,
-            &id,
-            ResultQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
+        .get_report_vulnerabilities(&session, &id, report_results_query(query))
         .await
     {
         Ok(results) => (
@@ -624,16 +833,7 @@ pub async fn get_report_tls_certificates(
     };
 
     match service
-        .get_report_tls_certificates(
-            &session,
-            &id,
-            ResultQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
+        .get_report_tls_certificates(&session, &id, report_results_query(query))
         .await
     {
         Ok(certificates) => (
@@ -666,16 +866,7 @@ pub async fn get_report_errors(
     };
 
     match service
-        .get_report_errors(
-            &session,
-            &id,
-            ResultQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
+        .get_report_errors(&session, &id, report_results_query(query))
         .await
     {
         Ok(results) => {
@@ -706,16 +897,7 @@ pub async fn get_report_closed_cves(
     };
 
     match service
-        .get_report_closed_cves(
-            &session,
-            &id,
-            ResultQuery {
-                filter_string: query.filter_string,
-                filter_id: query.filter_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
+        .get_report_closed_cves(&session, &id, report_results_query(query))
         .await
     {
         Ok(results) => (
@@ -723,6 +905,159 @@ pub async fn get_report_closed_cves(
             Json(ReportClosedCveListResponse::from(results)),
         )
             .into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Get report hosts handler.
+pub async fn get_report_hosts(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportResultsQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .get_report_hosts(&session, &id, report_results_query(query))
+        .await
+    {
+        Ok(hosts) => (StatusCode::OK, Json(ReportHostListResponse::from(hosts))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Get report ports handler.
+pub async fn get_report_ports(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportResultsQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .get_report_ports(&session, &id, report_results_query(query))
+        .await
+    {
+        Ok(ports) => (StatusCode::OK, Json(ReportPortListResponse::from(ports))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Get report applications handler.
+pub async fn get_report_applications(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportResultsQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .get_report_applications(&session, &id, report_results_query(query))
+        .await
+    {
+        Ok(applications) => (
+            StatusCode::OK,
+            Json(ReportApplicationListResponse::from(applications)),
+        )
+            .into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Get report operating systems handler.
+pub async fn get_report_operating_systems(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportResultsQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .get_report_operating_systems(&session, &id, report_results_query(query))
+        .await
+    {
+        Ok(operating_systems) => (
+            StatusCode::OK,
+            Json(ReportOperatingSystemListResponse::from(operating_systems)),
+        )
+            .into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Get report CVEs handler.
+pub async fn get_report_cves(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    if let Err(error) = validate_uuid("id", &id) {
+        return RestError::from_gateway_error(error, instance).into_response();
+    }
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let query = match ReportResultsQuery::try_from_query_string(uri.query().unwrap_or("")) {
+        Ok(query) => query,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service
+        .get_report_cves(&session, &id, report_results_query(query))
+        .await
+    {
+        Ok(cves) => (StatusCode::OK, Json(ReportCveListResponse::from(cves))).into_response(),
         Err(error) => RestError::from_gateway_error(error, instance).into_response(),
     }
 }
@@ -884,6 +1219,118 @@ pub(crate) fn get_report_closed_cves_docs(op: TransformOperation<'_>) -> Transfo
         "The connected gvmd backend does not implement this report-detail operation",
     );
     problem_response::<502>(op, "Backend service unreachable or connection failed")
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/hosts`.
+pub(crate) fn get_report_hosts_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportHosts")
+        .tag("Reports")
+        .summary("Get report hosts")
+        .description("Returns a paginated list of host summaries for a report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ReportHostListResponse>, _>(ok_json(
+            "Paginated list of report host summaries",
+        ));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<501>(
+        op,
+        "The connected gvmd backend does not implement this report-detail operation",
+    )
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/ports`.
+pub(crate) fn get_report_ports_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportPorts")
+        .tag("Reports")
+        .summary("Get report ports")
+        .description("Returns a paginated list of port summaries for a report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ReportPortListResponse>, _>(ok_json(
+            "Paginated list of report port summaries",
+        ));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<501>(
+        op,
+        "The connected gvmd backend does not implement this report-detail operation",
+    )
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/applications`.
+pub(crate) fn get_report_applications_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportApplications")
+        .tag("Reports")
+        .summary("Get report applications")
+        .description("Returns a paginated list of application summaries for a report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ReportApplicationListResponse>, _>(ok_json(
+            "Paginated list of report application summaries",
+        ));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<501>(
+        op,
+        "The connected gvmd backend does not implement this report-detail operation",
+    )
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/operating-systems`.
+pub(crate) fn get_report_operating_systems_docs(
+    op: TransformOperation<'_>,
+) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportOperatingSystems")
+        .tag("Reports")
+        .summary("Get report operating systems")
+        .description("Returns a paginated list of operating-system summaries for a report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ReportOperatingSystemListResponse>, _>(ok_json(
+            "Paginated list of report operating-system summaries",
+        ));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<501>(
+        op,
+        "The connected gvmd backend does not implement this report-detail operation",
+    )
+}
+
+/// OpenAPI transform for `GET /api/v1/reports/{id}/cves`.
+pub(crate) fn get_report_cves_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getReportCves")
+        .tag("Reports")
+        .summary("Get report CVEs")
+        .description("Returns a paginated list of CVE summaries for a report.")
+        .security_requirement("bearerAuth")
+        .input::<(Path<ResourceIdPathDoc>, Query<ReportResultsQueryDoc>)>()
+        .response_with::<200, Json<ReportCveListResponse>, _>(ok_json(
+            "Paginated list of report CVE summaries",
+        ));
+
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<501>(
+        op,
+        "The connected gvmd backend does not implement this report-detail operation",
+    )
 }
 
 #[cfg(test)]

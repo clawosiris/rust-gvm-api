@@ -269,6 +269,8 @@ pub(crate) struct GetReportQueryDoc {
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 pub(crate) struct ReportResultsQueryDoc {
     filter: Option<String>,
+    #[serde(rename = "filterId")]
+    filter_id: Option<Uuid>,
     #[serde(default = "default_page")]
     #[schemars(default = "default_page")]
     #[schemars(range(min = 1))]

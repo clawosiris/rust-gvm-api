@@ -161,6 +161,66 @@ pub struct HostPage {
     pub pagination: Pagination,
 }
 
+/// Host reference nested under an operating-system asset.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct OperatingSystemHost {
+    /// Host identifier.
+    pub id: String,
+    /// Host display name.
+    pub name: String,
+    /// Optional host severity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+}
+
+/// Domain operating-system asset representation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct OperatingSystem {
+    /// Shared resource metadata.
+    #[serde(flatten)]
+    pub meta: SupportingResourceMeta,
+    /// Optional backend OS value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// Optional backend hosts count alias.
+    #[serde(rename = "hostsCount", skip_serializing_if = "Option::is_none")]
+    pub hosts_count: Option<u32>,
+    /// Optional backend severity summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Backend title.
+    pub title: String,
+    /// Backend installs count.
+    pub installs: u32,
+    /// Backend all-installs count.
+    #[serde(rename = "allInstalls")]
+    pub all_installs: u32,
+    /// Optional latest severity.
+    #[serde(rename = "latestSeverity", skip_serializing_if = "Option::is_none")]
+    pub latest_severity: Option<String>,
+    /// Optional highest severity.
+    #[serde(rename = "highestSeverity", skip_serializing_if = "Option::is_none")]
+    pub highest_severity: Option<String>,
+    /// Optional average severity.
+    #[serde(rename = "averageSeverity", skip_serializing_if = "Option::is_none")]
+    pub average_severity: Option<String>,
+    /// Backend host count.
+    #[serde(rename = "hostCount")]
+    pub host_count: u32,
+    /// Related hosts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<OperatingSystemHost>,
+}
+
+/// Paginated operating-system asset list response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct OperatingSystemPage {
+    /// Page items.
+    pub data: Vec<OperatingSystem>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
 /// Domain representation of a TLS certificate asset.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TlsCertificateAsset {
@@ -500,6 +560,16 @@ pub struct ModifyHostInput {
     /// The gvmd `modify_asset` command does not update a host asset's name/IP
     /// value, so this input intentionally carries no `value`: a host's
     /// identity cannot be edited and callers must not be able to request it.
+    pub comment: Option<String>,
+}
+
+/// Operating-system asset update command.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ModifyOperatingSystemInput {
+    /// Optional comment.
+    ///
+    /// The pinned gvmd operating-system asset update surface only accepts a
+    /// comment payload, so this input intentionally carries no other fields.
     pub comment: Option<String>,
 }
 

@@ -51,12 +51,6 @@ use crate::{
         list_credentials, list_credentials_docs, update_credential, update_credential_docs,
     },
     docs::{api_docs, redoc_js},
-    emerging::{
-        delete_operating_system_docs, get_operating_system_docs, get_report_applications_docs,
-        get_report_cves_docs, get_report_hosts_docs, get_report_operating_systems_docs,
-        get_report_ports_docs, list_operating_systems_docs, modify_operating_system_docs,
-        not_implemented,
-    },
     error::RestError,
     feeds::{list_feeds, list_feeds_docs},
     generic_resources::{
@@ -87,10 +81,13 @@ use crate::{
         update_port_list_docs,
     },
     reports::{
-        delete_report, delete_report_docs, get_report, get_report_closed_cves,
-        get_report_closed_cves_docs, get_report_docs, get_report_errors, get_report_errors_docs,
-        get_report_results, get_report_results_docs, get_report_tls_certificates,
-        get_report_tls_certificates_docs, get_report_vulnerabilities,
+        delete_report, delete_report_docs, get_report, get_report_applications,
+        get_report_applications_docs, get_report_closed_cves, get_report_closed_cves_docs,
+        get_report_cves, get_report_cves_docs, get_report_docs, get_report_errors,
+        get_report_errors_docs, get_report_hosts, get_report_hosts_docs,
+        get_report_operating_systems, get_report_operating_systems_docs, get_report_ports,
+        get_report_ports_docs, get_report_results, get_report_results_docs,
+        get_report_tls_certificates, get_report_tls_certificates_docs, get_report_vulnerabilities,
         get_report_vulnerabilities_docs, list_reports, list_reports_docs,
     },
     results::{get_result, get_result_docs, list_results, list_results_docs},
@@ -129,20 +126,23 @@ use crate::{
         create_filter_docs, create_host, create_host_docs, create_note, create_note_docs,
         create_override, create_override_docs, create_tag, create_tag_docs, delete_filter,
         delete_filter_docs, delete_host, delete_host_docs, delete_note, delete_note_docs,
-        delete_override, delete_override_docs, delete_tag, delete_tag_docs, get_cert_bund_advisory,
+        delete_operating_system, delete_operating_system_docs, delete_override,
+        delete_override_docs, delete_tag, delete_tag_docs, get_cert_bund_advisory,
         get_cert_bund_advisory_docs, get_cpe, get_cpe_docs, get_cve, get_cve_docs,
         get_dfn_cert_advisory, get_dfn_cert_advisory_docs, get_filter, get_filter_docs, get_host,
-        get_host_docs, get_note, get_note_docs, get_nvt, get_nvt_docs, get_override,
-        get_override_docs, get_report_format, get_report_format_docs, get_tag, get_tag_docs,
-        get_ticket, get_ticket_docs, get_tls_certificate, get_tls_certificate_docs,
-        list_cert_bund_advisories, list_cert_bund_advisories_docs, list_cpes, list_cpes_docs,
-        list_cves, list_cves_docs, list_dfn_cert_advisories, list_dfn_cert_advisories_docs,
-        list_filters, list_filters_docs, list_hosts, list_hosts_docs, list_notes, list_notes_docs,
-        list_nvt_families, list_nvt_families_docs, list_nvts, list_nvts_docs, list_overrides,
-        list_overrides_docs, list_report_formats, list_report_formats_docs, list_tags,
-        list_tags_docs, list_tickets, list_tickets_docs, list_tls_certificates,
-        list_tls_certificates_docs, list_vulnerabilities, list_vulnerabilities_docs, update_filter,
-        update_filter_docs, update_host, update_host_docs, update_note, update_note_docs,
+        get_host_docs, get_note, get_note_docs, get_nvt, get_nvt_docs, get_operating_system,
+        get_operating_system_docs, get_override, get_override_docs, get_report_format,
+        get_report_format_docs, get_tag, get_tag_docs, get_ticket, get_ticket_docs,
+        get_tls_certificate, get_tls_certificate_docs, list_cert_bund_advisories,
+        list_cert_bund_advisories_docs, list_cpes, list_cpes_docs, list_cves, list_cves_docs,
+        list_dfn_cert_advisories, list_dfn_cert_advisories_docs, list_filters, list_filters_docs,
+        list_hosts, list_hosts_docs, list_notes, list_notes_docs, list_nvt_families,
+        list_nvt_families_docs, list_nvts, list_nvts_docs, list_operating_systems,
+        list_operating_systems_docs, list_overrides, list_overrides_docs, list_report_formats,
+        list_report_formats_docs, list_tags, list_tags_docs, list_tickets, list_tickets_docs,
+        list_tls_certificates, list_tls_certificates_docs, list_vulnerabilities,
+        list_vulnerabilities_docs, modify_operating_system_docs, update_filter, update_filter_docs,
+        update_host, update_host_docs, update_note, update_note_docs, update_operating_system,
         update_override, update_override_docs, update_tag, update_tag_docs,
     },
     system::{
@@ -784,23 +784,26 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         .api_route(
             "/api/v1/reports/{id}/hosts",
-            get_with(not_implemented, get_report_hosts_docs),
+            get_with(get_report_hosts, get_report_hosts_docs),
         )
         .api_route(
             "/api/v1/reports/{id}/ports",
-            get_with(not_implemented, get_report_ports_docs),
+            get_with(get_report_ports, get_report_ports_docs),
         )
         .api_route(
             "/api/v1/reports/{id}/applications",
-            get_with(not_implemented, get_report_applications_docs),
+            get_with(get_report_applications, get_report_applications_docs),
         )
         .api_route(
             "/api/v1/reports/{id}/operating-systems",
-            get_with(not_implemented, get_report_operating_systems_docs),
+            get_with(
+                get_report_operating_systems,
+                get_report_operating_systems_docs,
+            ),
         )
         .api_route(
             "/api/v1/reports/{id}/cves",
-            get_with(not_implemented, get_report_cves_docs),
+            get_with(get_report_cves, get_report_cves_docs),
         )
         // Jobs
         .api_route("/api/v1/jobs/{id}", get_with(get_job, get_job_docs))
@@ -871,19 +874,19 @@ fn documented_router() -> ApiRouter<GatewayService> {
         )
         .api_route(
             "/api/v1/operating-systems",
-            get_with(not_implemented, list_operating_systems_docs),
+            get_with(list_operating_systems, list_operating_systems_docs),
         )
         .api_route(
             "/api/v1/operating-systems/{id}",
-            get_with(not_implemented, get_operating_system_docs),
+            get_with(get_operating_system, get_operating_system_docs),
         )
         .api_route(
             "/api/v1/operating-systems/{id}",
-            put_with(not_implemented, modify_operating_system_docs),
+            put_with(update_operating_system, modify_operating_system_docs),
         )
         .api_route(
             "/api/v1/operating-systems/{id}",
-            delete_with(not_implemented, delete_operating_system_docs),
+            delete_with(delete_operating_system, delete_operating_system_docs),
         )
 }
 

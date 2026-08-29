@@ -77,6 +77,29 @@ pub struct ReportErrorPage {
     pub pagination: Pagination,
 }
 
+/// Host summary returned by a report drill-down.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportHost {
+    /// Backend row identifier when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Backend host label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Backend severity summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+}
+
+/// Paginated report-host response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportHostPage {
+    /// Page items.
+    pub data: Vec<ReportHost>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
 /// Closed-CVE finding returned by a report drill-down.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ReportClosedCve {
@@ -105,6 +128,98 @@ pub struct ReportClosedCve {
 pub struct ReportClosedCvePage {
     /// Page items.
     pub data: Vec<ReportClosedCve>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Port summary returned by a report drill-down.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportPortSummary {
+    /// Backend row identifier when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Backend port label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Backend severity summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+}
+
+/// Paginated report-port response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportPortPage {
+    /// Page items.
+    pub data: Vec<ReportPortSummary>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Application summary returned by a report drill-down.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportApplication {
+    /// Backend row identifier when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Backend application label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Backend severity summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+}
+
+/// Paginated report-application response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportApplicationPage {
+    /// Page items.
+    pub data: Vec<ReportApplication>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Operating-system summary returned by a report drill-down.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportOperatingSystem {
+    /// Backend row identifier when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Backend operating-system label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Backend severity summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+}
+
+/// Paginated report-operating-system response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportOperatingSystemPage {
+    /// Page items.
+    pub data: Vec<ReportOperatingSystem>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// CVE summary returned by a report drill-down.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportCve {
+    /// Backend row identifier when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Backend CVE label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Backend severity summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+}
+
+/// Paginated report-CVE response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportCvePage {
+    /// Page items.
+    pub data: Vec<ReportCve>,
     /// Pagination metadata.
     pub pagination: Pagination,
 }

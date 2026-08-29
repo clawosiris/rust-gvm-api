@@ -13,12 +13,14 @@ use gvm_gateway_domain::{
     AgentInstallerInstruction, AgentRetryConfig, AgentScriptExecutorConfig, AgentSupportBundle,
     Alert, AssetHost, AssetIdentifier, CertBundAdvisory, Cpe, Credential, Cve, DfnCertAdvisory,
     Feed, Filter, GatewayError, GenericAsset, GenericConfig, Group, Host, IdentityOwner,
-    IdentityResourceMeta, JobArtifact, Note, Nvt, NvtFamily, NvtRef, OciImageTarget, Override,
-    Permission, PortList, Report, ReportClosedCve, ReportError, ReportFormat, ReportVulnerability,
-    ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
-    SupportingResourceMeta, Tag, Target, Task, TaskObservers, TaskReportComplianceCount,
-    TaskReportReference, TaskReportResultCount, Ticket, Timezone, TlsCertificate,
-    TlsCertificateAsset, User, UserSetting, Vulnerability, WebApplicationTarget,
+    IdentityResourceMeta, JobArtifact, Note, Nvt, NvtFamily, NvtRef, OciImageTarget,
+    OperatingSystem, OperatingSystemHost, Override, Permission, PortList, Report,
+    ReportApplication, ReportClosedCve, ReportCve, ReportError, ReportFormat, ReportHost,
+    ReportOperatingSystem, ReportPortSummary, ReportVulnerability, ResourceRef, ResultCount, Role,
+    ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag, Target, Task,
+    TaskObservers, TaskReportComplianceCount, TaskReportReference, TaskReportResultCount, Ticket,
+    Timezone, TlsCertificate, TlsCertificateAsset, User, UserSetting, Vulnerability,
+    WebApplicationTarget,
 };
 use gvm_gmp::{
     commands::{assets::AssetType, configs::ConfigUsageType},
@@ -712,6 +714,75 @@ pub(crate) fn tls_certificate_asset_from_gmp(
     }
 }
 
+pub(crate) fn operating_system_from_gmp(
+    operating_system: gvm_gmp::responses::OperatingSystemAsset,
+) -> OperatingSystem {
+    OperatingSystem {
+        meta: supporting_meta_from_gmp(operating_system.meta),
+        value: operating_system.value,
+        hosts_count: operating_system.hosts_count,
+        severity: operating_system.severity,
+        title: operating_system.title,
+        installs: operating_system.installs,
+        all_installs: operating_system.all_installs,
+        latest_severity: operating_system.latest_severity,
+        highest_severity: operating_system.highest_severity,
+        average_severity: operating_system.average_severity,
+        host_count: operating_system.host_count,
+        hosts: operating_system
+            .hosts
+            .into_iter()
+            .map(operating_system_host_from_gmp)
+            .collect(),
+    }
+}
+
+pub(crate) fn report_host_from_gmp(host: gvm_gmp::responses::ReportHostSummary) -> ReportHost {
+    ReportHost {
+        id: host.id,
+        name: host.name,
+        severity: host.severity,
+    }
+}
+
+pub(crate) fn report_port_from_gmp(
+    port: gvm_gmp::responses::ReportPortSummary,
+) -> ReportPortSummary {
+    ReportPortSummary {
+        id: port.id,
+        name: port.name,
+        severity: port.severity,
+    }
+}
+
+pub(crate) fn report_application_from_gmp(
+    application: gvm_gmp::responses::ReportApplicationSummary,
+) -> ReportApplication {
+    ReportApplication {
+        id: application.id,
+        name: application.name,
+        severity: application.severity,
+    }
+}
+
+pub(crate) fn report_operating_system_from_gmp(
+    operating_system: gvm_gmp::responses::ReportOperatingSystemSummary,
+) -> ReportOperatingSystem {
+    ReportOperatingSystem {
+        id: operating_system.id,
+        name: operating_system.name,
+        severity: operating_system.severity,
+    }
+}
+
+pub(crate) fn report_cve_from_gmp(cve: gvm_gmp::responses::ReportCveSummary) -> ReportCve {
+    ReportCve {
+        id: cve.id,
+        name: cve.name,
+        severity: cve.severity,
+    }
+}
+
 pub(crate) fn filter_from_gmp(filter: gvm_gmp::responses::Filter) -> Filter {
     Filter {
         meta: supporting_meta_from_gmp(filter.meta),
@@ -992,6 +1063,16 @@ fn resource_ref_from_named_entity(entity: gvm_gmp::responses::NamedEntity) -> Re
         } else {
             Some(entity.name)
         },
+    }
+}
+
+fn operating_system_host_from_gmp(
+    host: gvm_gmp::responses::OperatingSystemHost,
+) -> OperatingSystemHost {
+    OperatingSystemHost {
+        id: host.id.to_string(),
+        name: host.name,
+        severity: host.severity,
     }
 }
 

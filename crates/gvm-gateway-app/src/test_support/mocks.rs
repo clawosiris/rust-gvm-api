@@ -19,13 +19,15 @@ use gvm_gateway_domain::{
     GenericConfigQuery, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort,
     IdentityQuery, JobArtifact, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput,
     ModifyAgentInput, ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput, ModifyFilterInput,
-    ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput,
-    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
-    ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
-    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override, OverridePage, Permission,
-    PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
-    ReportFormatPage, ReportPage, ReportPort, ReportQuery, ReportVulnerabilityPage, ResourceRef,
+    ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOperatingSystemInput,
+    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
+    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage,
+    OperatingSystem, OperatingSystemPage, Override, OverridePage, Permission, PermissionPage,
+    PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
+    ReportApplicationPage, ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport,
+    ReportExportRequest, ReportFormat, ReportFormatPage, ReportHostPage, ReportOperatingSystemPage,
+    ReportPage, ReportPort, ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResourceRef,
     ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
     ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
     Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourceMeta,
@@ -814,6 +816,91 @@ impl ReportPort for MockReportPort {
         })
     }
 
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Ok(ReportHostPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Ok(ReportPortPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Ok(ReportApplicationPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Ok(ReportOperatingSystemPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Ok(ReportCvePage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
     async fn get_report_tls_certificates(
         &self,
         _: &str,
@@ -1303,6 +1390,32 @@ impl SupportingResourcePort for MockSupportingResourcePort {
         Err(GatewayError::NotFound(format!("host {id} not found")))
     }
 
+    async fn list_operating_systems(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<OperatingSystemPage, GatewayError> {
+        Ok(OperatingSystemPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_operating_system(
+        &self,
+        _: &str,
+        id: &str,
+    ) -> Result<OperatingSystem, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "operating system {id} not found"
+        )))
+    }
+
     async fn list_tls_certificates(
         &self,
         _: &str,
@@ -1342,7 +1455,22 @@ impl SupportingResourcePort for MockSupportingResourcePort {
         Err(GatewayError::NotFound(format!("host {id} not found")))
     }
 
+    async fn modify_operating_system(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyOperatingSystemInput,
+    ) -> Result<OperatingSystem, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "operating system {id} not found"
+        )))
+    }
+
     async fn delete_host(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn delete_operating_system(&self, _: &str, _: &str) -> Result<(), GatewayError> {
         Ok(())
     }
 
