@@ -166,21 +166,33 @@ fn generated_openapi_preserves_key_schema_fields() {
 }
 
 #[test]
-fn generated_openapi_closes_request_objects_without_closing_extension_maps() {
+fn generated_openapi_closes_every_request_object_without_closing_extension_maps() {
     let generated = build_openapi();
     let schemas = &generated["components"]["schemas"];
 
-    // Request-body objects now reject unknown top-level fields across the
-    // published contract, including doc-only identity request schemas.
+    // Keep an explicit inventory of every current request-body object so the
+    // strictness audit covers less prominent and newly added write endpoints,
+    // including doc-only identity schemas. Policies and audits intentionally
+    // reuse the scan-config and task schemas listed here.
     for schema_name in [
         "CreateTarget",
         "ModifyTarget",
+        "CreateOciImageTarget",
+        "ModifyOciImageTarget",
+        "CreateWebApplicationTarget",
+        "ModifyWebApplicationTarget",
         "CreateTask",
         "ModifyTask",
         "CreateAlert",
         "ModifyAlert",
         "CreateCredential",
         "ModifyCredential",
+        "CreateSchedule",
+        "ModifySchedule",
+        "CreatePortList",
+        "ModifyPortList",
+        "CreateScanConfig",
+        "ModifyScanConfig",
         "CreateUser",
         "ModifyUser",
         "CreateGroup",
@@ -190,6 +202,16 @@ fn generated_openapi_closes_request_objects_without_closing_extension_maps() {
         "CreatePermission",
         "ModifyPermission",
         "ModifyUserSetting",
+        "CreateHost",
+        "UpdateHost",
+        "CreateFilter",
+        "UpdateFilter",
+        "CreateTag",
+        "UpdateTag",
+        "CreateNote",
+        "UpdateNote",
+        "CreateOverride",
+        "UpdateOverride",
         "GvmdReportFormatExportRequest",
         "JsonReportExportRequest",
     ] {
