@@ -113,6 +113,7 @@ impl ValidateInto<CreatePortListInput> for CreatePortListRequest {
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifyPortList")]
 pub struct ModifyPortListRequest {
+    pub name: Option<String>,
     pub comment: Option<String>,
     #[serde(rename = "portRange")]
     pub port_range: Option<String>,
@@ -121,6 +122,7 @@ pub struct ModifyPortListRequest {
 impl ModifyPortListRequest {
     fn validate(self) -> ModifyPortListInput {
         ModifyPortListInput {
+            name: self.name,
             comment: self.comment,
             port_range: self.port_range,
         }
@@ -302,3 +304,7 @@ pub(crate) fn delete_port_list_docs(op: TransformOperation<'_>) -> TransformOper
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
 }
+
+#[cfg(test)]
+#[path = "port_lists_test.rs"]
+mod port_lists_test;

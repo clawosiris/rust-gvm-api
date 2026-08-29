@@ -71,6 +71,8 @@ pub struct CreatePortListInput {
 /// Port-list update command.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ModifyPortListInput {
+    /// Optional replacement name.
+    pub name: Option<String>,
     /// Optional comment.
     pub comment: Option<String>,
     /// Optional raw port-range expression.

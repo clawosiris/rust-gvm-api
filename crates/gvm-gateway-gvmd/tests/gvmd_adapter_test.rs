@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     io,
     io::Write,
     sync::{Arc, Mutex, OnceLock},
@@ -479,6 +480,438 @@ async fn gvmd_adapter_modify_task_forwards_preferences() {
     let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
     assert!(xml.contains("<scanner_name>scanner.max_hosts</scanner_name>"));
     assert!(xml.contains("<value>64</value>"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_create_alert_forwards_selector_data_maps() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    // Regression coverage for #402: advertised alert selector data maps must
+    // reach the typed GMP request instead of being rejected locally.
+    let alert_id = adapter
+        .create_alert(
+            &token,
+            CreateAlertInput {
+                name: "Selector Alert".to_string(),
+                comment: Some("notify".to_string()),
+                event: Some("task_run_status_changed".to_string()),
+                condition: Some("severity_at_least".to_string()),
+                method: Some("email".to_string()),
+                event_data: HashMap::from([("status".to_string(), "Done".to_string())]),
+                condition_data: HashMap::from([("severity".to_string(), "7.5".to_string())]),
+                method_data: HashMap::from([(
+                    "to_address".to_string(),
+                    "ops@example.com".to_string(),
+                )]),
+                filter_id: None,
+            },
+        )
+        .await
+        .expect("alert create should succeed with non-empty selector data");
+    let alert = adapter
+        .get_alert(&token, &alert_id)
+        .await
+        .expect("created alert should remain readable");
+
+    assert_eq!(
+        alert.event_data.get("status").map(String::as_str),
+        Some("Done")
+    );
+    assert_eq!(
+        alert.condition_data.get("severity").map(String::as_str),
+        Some("7.5")
+    );
+    assert_eq!(
+        alert.method_data.get("to_address").map(String::as_str),
+        Some("ops@example.com")
+    );
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "create_alert")
+        .expect("create_alert command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<event>Task run status changed"));
+    assert!(xml.contains("<data>Done<name>status</name></data>"));
+    assert!(xml.contains("<condition>Severity at least"));
+    assert!(xml.contains("<data>7.5<name>severity</name></data>"));
+    assert!(xml.contains("<method>Email"));
+    assert!(xml.contains("<data>ops@example.com<name>to_address</name></data>"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_modify_alert_forwards_rename_and_selector_data_maps() {
+    let alert_id =
+        uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440120").expect("valid alert id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_7)
+        .seed(move |store| {
+            store.create(Resource::with_id("alert", "Existing Alert", alert_id));
+        })
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+    server.clear_history();
+
+    // Regression coverage for #402 and #404: alert modify must keep the
+    // replacement name and advertised selector data maps.
+    let alert = adapter
+        .modify_alert(
+            token,
+            &alert_id.to_string(),
+            ModifyAlertInput {
+                name: Some("Renamed Alert".to_string()),
+                event: Some("task_run_status_changed".to_string()),
+                condition: Some("severity_at_least".to_string()),
+                method: Some("email".to_string()),
+                event_data: Some(HashMap::from([(
+                    "status".to_string(),
+                    "Stopped".to_string(),
+                )])),
+                condition_data: Some(HashMap::from([("severity".to_string(), "8.0".to_string())])),
+                method_data: Some(HashMap::from([(
+                    "to_address".to_string(),
+                    "soc@example.com".to_string(),
+                )])),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("alert modify should succeed with rename and selector data");
+
+    assert_eq!(alert.name, "Renamed Alert");
+    assert_eq!(
+        alert.event_data.get("status").map(String::as_str),
+        Some("Stopped")
+    );
+    assert_eq!(
+        alert.condition_data.get("severity").map(String::as_str),
+        Some("8.0")
+    );
+    assert_eq!(
+        alert.method_data.get("to_address").map(String::as_str),
+        Some("soc@example.com")
+    );
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "modify_alert")
+        .expect("modify_alert command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<name>Renamed Alert</name>"));
+    assert!(xml.contains("<data>Stopped<name>status</name></data>"));
+    assert!(xml.contains("<data>8.0<name>severity</name></data>"));
+    assert!(xml.contains("<data>soc@example.com<name>to_address</name></data>"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_create_credential_forwards_certificate_and_community_fields() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    // Regression coverage for #403: typed credential create requests must keep
+    // supported secret-bearing fields instead of 400-rejecting them locally.
+    let result = adapter
+        .create_credential(
+            &token,
+            CreateCredentialInput {
+                name: "Credential".to_string(),
+                comment: None,
+                credential_type: "cc".to_string(),
+                login: None,
+                password: None,
+                private_key: None,
+                certificate: Some("CERTIFICATE".to_string()),
+                community: Some("public".to_string()),
+                auth_algorithm: None,
+                privacy_algorithm: None,
+                privacy_password: None,
+            },
+        )
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "credential create should accept supported secret-bearing fields: {result:?}"
+    );
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "create_credential")
+        .expect("create_credential command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<type>cc</type>"));
+    assert!(xml.contains("<certificate>CERTIFICATE</certificate>"));
+    assert!(xml.contains("<community>public</community>"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_modify_credential_forwards_private_key_and_privacy_fields() {
+    let credential_id =
+        uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440121").expect("valid credential id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_7)
+        .seed(move |store| {
+            store.create(Resource::with_id(
+                "credential",
+                "Existing Credential",
+                credential_id,
+            ));
+        })
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+    server.clear_history();
+
+    // Regression coverage for #403: modify must keep supported nested secret
+    // values instead of dropping them for typed credential updates.
+    let result = adapter
+        .modify_credential(
+            token,
+            &credential_id.to_string(),
+            ModifyCredentialInput {
+                name: Some("Renamed Credential".to_string()),
+                private_key: Some("PRIVATE".to_string()),
+                community: Some("public".to_string()),
+                privacy_algorithm: Some("des".to_string()),
+                privacy_password: Some("privacy-secret".to_string()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "credential modify should accept supported secret-bearing fields: {result:?}"
+    );
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "modify_credential")
+        .expect("modify_credential command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<name>Renamed Credential</name>"));
+    assert!(xml.contains("<private>PRIVATE</private>"));
+    assert!(xml.contains("<community>public</community>"));
+    assert!(xml.contains("<algorithm>des</algorithm>"));
+    assert!(xml.contains("<password>privacy-secret</password>"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_modify_task_forwards_alterable() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    // Regression coverage for #406: task modify must preserve explicit false
+    // instead of hardcoding alterable to omitted.
+    let result = adapter
+        .modify_task(
+            &token,
+            "550e8400-e29b-41d4-a716-446655440010",
+            ModifyTaskInput {
+                alterable: Some(false),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(
+        result.is_err(),
+        "mock backend may reject the unknown task, but the command should still be emitted"
+    );
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "modify_task")
+        .expect("modify_task command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<alterable>0</alterable>"));
+    assert!(xml.contains("task_id=\"550e8400-e29b-41d4-a716-446655440010\""));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_modify_audit_forwards_alterable() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    // Shared audit updates reuse ModifyTaskInput, so the adapter must not drop
+    // alterable there either.
+    let result = adapter
+        .modify_audit(
+            &token,
+            "550e8400-e29b-41d4-a716-446655440011",
+            ModifyTaskInput {
+                alterable: Some(false),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(
+        result.is_err(),
+        "mock backend may reject the unknown audit, but the command should still be emitted"
+    );
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "modify_task")
+        .expect("modify_task command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<alterable>0</alterable>"));
+    assert!(xml.contains("<usage_type>audit</usage_type>"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_modify_user_forwards_rename_and_explicit_role_clear() {
+    let user_id =
+        uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440122").expect("valid user id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_7)
+        .seed(move |store| {
+            let mut user = Resource::with_id("user", "existing-user", user_id);
+            user.set_attr("hosts_allow", "1");
+            user.set_attr("hosts", "192.0.2.0/24");
+            store.create(user);
+        })
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+    server.clear_history();
+
+    // Regression coverage for #404 and #405: user modify must keep both
+    // explicit rename and explicit role clearing in the typed request.
+    let result = adapter
+        .modify_user(
+            token,
+            &user_id.to_string(),
+            ModifyUserInput {
+                name: Some("renamed-user".to_string()),
+                role_ids: Some(Vec::new()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(result.is_ok(), "modify_user should succeed: {result:?}");
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "modify_user")
+        .expect("modify_user command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<new_name>renamed-user</new_name>"));
+    assert!(xml.contains("<role id=\"0\"/>"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_modify_scan_config_forwards_rename() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    // Regression coverage for #404: scan-config PUT now promises rename
+    // support, so the typed modify_config request must emit the new name.
+    let result = adapter
+        .modify_scan_config(
+            &token,
+            "550e8400-e29b-41d4-a716-446655440123",
+            ModifyScanConfigInput {
+                name: Some("Renamed Config".to_string()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(
+        result.is_err(),
+        "mock backend may reject the unknown config, but the command should still be emitted"
+    );
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "modify_config")
+        .expect("modify_config command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<name>Renamed Config</name>"));
+    assert!(xml.contains("<usage_type>scan</usage_type>"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_modify_port_list_forwards_rename() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    // Regression coverage for #404: port-list PUT must forward the replacement
+    // name through the typed modify_port_list request.
+    let result = adapter
+        .modify_port_list(
+            &token,
+            "550e8400-e29b-41d4-a716-446655440124",
+            ModifyPortListInput {
+                name: Some("Renamed Ports".to_string()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(
+        result.is_err(),
+        "mock backend may reject the unknown port list, but the command should still be emitted"
+    );
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "modify_port_list")
+        .expect("modify_port_list command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<name>Renamed Ports</name>"));
 
     server.shutdown().await;
 }

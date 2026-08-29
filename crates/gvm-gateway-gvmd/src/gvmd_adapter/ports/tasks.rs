@@ -186,7 +186,7 @@ impl TaskPort for GvmdAdapter {
                     ModifyTaskOpts {
                         name: input.name,
                         comment: input.comment,
-                        alterable: None,
+                        alterable: input.alterable,
                         hosts_ordering,
                         schedule_id,
                         schedule_periods: input.schedule_periods,
@@ -416,7 +416,7 @@ impl TaskPort for GvmdAdapter {
                     ModifyTaskOpts {
                         name: input.name,
                         comment: input.comment,
-                        alterable: None,
+                        alterable: input.alterable,
                         hosts_ordering,
                         schedule_id,
                         schedule_periods: input.schedule_periods,

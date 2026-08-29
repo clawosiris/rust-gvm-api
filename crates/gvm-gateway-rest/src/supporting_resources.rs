@@ -793,8 +793,8 @@ pub(crate) struct CreateNoteRequest {
 #[schemars(rename = "UpdateNote")]
 pub(crate) struct ModifyNoteRequest {
     text: Option<String>,
-    /// Host selector list. Omitted, null, or empty arrays leave existing host
-    /// selectors unchanged; clearing all hosts is not supported by this request shape.
+    /// Host selector list. Omitted or null leaves existing selectors unchanged;
+    /// an empty array clears all host selectors.
     hosts: Option<Vec<String>>,
     port: Option<String>,
     severity: Option<String>,
@@ -834,8 +834,8 @@ pub(crate) struct CreateOverrideRequest {
 #[schemars(rename = "UpdateOverride")]
 pub(crate) struct ModifyOverrideRequest {
     text: Option<String>,
-    /// Host selector list. Omitted, null, or empty arrays leave existing host
-    /// selectors unchanged; clearing all hosts is not supported by this request shape.
+    /// Host selector list. Omitted or null leaves existing selectors unchanged;
+    /// an empty array clears all host selectors.
     hosts: Option<Vec<String>>,
     port: Option<String>,
     severity: Option<String>,

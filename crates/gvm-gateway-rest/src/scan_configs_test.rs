@@ -3,7 +3,7 @@
 
 use serde_json::json;
 
-use super::{ScanConfigResponse, ScanConfigType};
+use super::{ModifyScanConfigRequest, ScanConfigResponse, ScanConfigType};
 use gvm_gateway_domain::ScanConfig;
 
 fn scan_config_with_type(config_type: u32) -> ScanConfig {
@@ -66,4 +66,18 @@ fn scan_config_response_exposes_usage_type_discriminator() {
     assert_eq!(policy["usageType"], json!("policy"));
     assert_eq!(scan["usageType"], json!("scan"));
     assert_eq!(unspecified.get("usageType"), None);
+}
+
+#[test]
+fn modify_scan_config_request_preserves_rename() {
+    // Regression coverage for #404: accepting a scan-config name on PUT is a
+    // public promise, so conversion must keep it for the typed adapter.
+    let input = ModifyScanConfigRequest {
+        name: Some("renamed config".to_string()),
+        comment: None,
+    }
+    .validate()
+    .expect("rename-only scan config updates are valid");
+
+    assert_eq!(input.name.as_deref(), Some("renamed config"));
 }

@@ -45,6 +45,7 @@ use gvm_gmp::{
             GetAlertsOpts,
         },
         authentication::authenticate,
+        configs::{modify_config as modify_config_generic, ConfigUsageType, ModifyConfigOpts},
         credentials::{
             create_credential, delete_credential, get_credential, get_credentials,
             modify_credential, CredentialOpts, GetCredentialsOpts, ModifyCredentialOpts,
@@ -75,7 +76,7 @@ use gvm_gmp::{
         },
         port_lists::{
             create_port_list, delete_port_list, get_port_list, get_port_lists, modify_port_list,
-            GetPortListsOpts, PortListOpts,
+            GetPortListsOpts, ModifyPortListOpts, PortListOpts,
         },
         report_formats::{get_report_format, get_report_formats, GetReportFormatsOpts},
         reports::{delete_report, get_reports, GetReportsOpts},
@@ -85,8 +86,8 @@ use gvm_gmp::{
         },
         scan_configs::{
             create_policy, create_scan_config, delete_policy as delete_policy_cmd,
-            delete_scan_config, get_policies, get_scan_config, get_scan_configs,
-            modify_policy as modify_policy_cmd, modify_scan_config, ConfigOpts, GetScanConfigsOpts,
+            delete_scan_config, get_policies, get_scan_config, get_scan_configs, ConfigOpts,
+            GetScanConfigsOpts,
         },
         scanners::{get_scanner, get_scanners, GetScannersOpts},
         schedules::{
@@ -116,7 +117,7 @@ use gvm_gmp::{
         },
         users::{
             create_user, delete_user, get_user, get_users, modify_user, GetUsersOpts,
-            UserHostAccess, UserOpts,
+            ModifyUserOpts, UserHostAccess, UserOpts,
         },
         web_application_targets::{
             clone_web_application_target, create_web_application_target,
@@ -142,7 +143,7 @@ use gvm_gmp::{
         GetVulnerabilitiesResponse, GetWebApplicationTargetsResponse, ModifyUserSettingResponse,
         ResumeTaskResponse, StartTaskResponse, User as GmpUser,
     },
-    EntityId, Pagination as GmpPagination, ScalarUpdate,
+    CollectionUpdate, EntityId, Pagination as GmpPagination, ScalarUpdate,
 };
 use gvm_protocol::{Request, Response};
 use tracing::{field, info_span, Instrument};

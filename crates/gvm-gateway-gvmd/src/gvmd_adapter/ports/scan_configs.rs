@@ -118,11 +118,12 @@ impl ScanConfigPort for GvmdAdapter {
         let response = client
             .lock()
             .await?
-            .call(modify_scan_config(
+            .call(modify_config_generic(
                 &config_id,
-                ConfigOpts {
+                ModifyConfigOpts {
+                    name: input.name,
                     comment: input.comment,
-                    usage_type: None,
+                    usage_type: Some(ConfigUsageType::Scan),
                 },
             ))
             .await
@@ -258,11 +259,12 @@ impl ScanConfigPort for GvmdAdapter {
         let response = client
             .lock()
             .await?
-            .call(modify_policy_cmd(
+            .call(modify_config_generic(
                 &config_id,
-                ConfigOpts {
+                ModifyConfigOpts {
+                    name: input.name,
                     comment: input.comment,
-                    usage_type: None,
+                    usage_type: Some(ConfigUsageType::Policy),
                 },
             ))
             .await

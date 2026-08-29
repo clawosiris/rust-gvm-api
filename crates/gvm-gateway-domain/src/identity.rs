@@ -105,6 +105,8 @@ pub struct CreateUserInput {
 /// User update command.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ModifyUserInput {
+    /// Optional replacement name.
+    pub name: Option<String>,
     /// Optional comment.
     pub comment: Option<String>,
     /// Optional password.

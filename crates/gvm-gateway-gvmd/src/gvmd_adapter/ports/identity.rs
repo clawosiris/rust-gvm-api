@@ -97,6 +97,7 @@ impl IdentityPort for GvmdAdapter {
     ) -> Result<User, GatewayError> {
         let user_id = parse_entity_id(id)?;
         let ModifyUserInput {
+            name,
             comment,
             password,
             hosts,
@@ -108,10 +109,15 @@ impl IdentityPort for GvmdAdapter {
             None => self.get_gmp_user(session_token, id).await?.host_access(),
         };
         let role_ids = role_ids
-            .unwrap_or_default()
-            .into_iter()
-            .map(|value| parse_entity_id(&value))
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|role_ids| {
+                role_ids
+                    .into_iter()
+                    .map(|value| parse_entity_id(&value))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(CollectionUpdate::from)
+            })
+            .transpose()?
+            .unwrap_or_default();
         let auth_type = authentication_type
             .as_deref()
             .map(parse_user_auth_type)
@@ -122,7 +128,8 @@ impl IdentityPort for GvmdAdapter {
                 "users.modify",
                 modify_user(
                     &user_id,
-                    UserOpts {
+                    ModifyUserOpts {
+                        new_name: name,
                         comment,
                         password,
                         host_access,

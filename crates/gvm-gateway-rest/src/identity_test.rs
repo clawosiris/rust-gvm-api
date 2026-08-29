@@ -3,7 +3,9 @@
 
 use serde_json::json;
 
-use super::{AuthenticationType, IdentityListQuery, UserResponse, UserSettingsListQuery};
+use super::{
+    AuthenticationType, IdentityListQuery, ModifyUserRequest, UserResponse, UserSettingsListQuery,
+};
 use gvm_gateway_domain::{IdentityResourceMeta, User};
 
 #[test]
@@ -75,4 +77,24 @@ fn user_response_preserves_known_and_unknown_authentication_types() {
 
     assert_eq!(known["authenticationType"], json!("file"));
     assert_eq!(unknown["authenticationType"], json!("oidc_connect"));
+}
+
+#[test]
+fn modify_user_request_preserves_rename_and_explicit_role_clear() {
+    // Regression coverage for #404 and #405: a user rename must be forwarded,
+    // while [] remains distinguishable from an omitted roles property.
+    let clear: ModifyUserRequest = serde_json::from_value(json!({
+        "name": "renamed-user",
+        "roles": []
+    }))
+    .expect("rename and empty roles should deserialize");
+    let omitted: ModifyUserRequest =
+        serde_json::from_value(json!({})).expect("omitted roles should deserialize");
+
+    let clear = clear.validate().expect("empty roles are a valid clear");
+    let omitted = omitted.validate().expect("omitted roles are valid");
+
+    assert_eq!(clear.name.as_deref(), Some("renamed-user"));
+    assert_eq!(clear.role_ids, Some(Vec::new()));
+    assert_eq!(omitted.role_ids, None);
 }
