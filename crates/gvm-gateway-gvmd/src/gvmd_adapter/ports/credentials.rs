@@ -9,13 +9,24 @@ impl CredentialPort for GvmdAdapter {
         session_token: &str,
     ) -> Result<Vec<CredentialStore>, GatewayError> {
         let client = self.session_client(session_token)?;
-        let parsed = match client.lock().await?.get_credential_stores().await {
+        let (username, password) = client.auth_pair_owned();
+        let mut guard = client.lock().await?;
+        let parsed = match guard.get_credential_stores().await {
             Ok(parsed) => parsed,
             Err(error) if credential_store_capability_unavailable(&error) => {
+                if let Err(_reconnect_error) = guard
+                    .reconnect(&self.socket_path, &username, &password)
+                    .await
+                {
+                    // The current request already established a stable
+                    // capability-absence result; keep returning 501 even if
+                    // gvmd refuses the best-effort socket refresh.
+                }
                 return Err(unsupported_credential_store_error());
             }
             Err(error) => return Err(map_gvm_error(error)),
         };
+        drop(guard);
 
         Ok(parsed
             .items

@@ -187,6 +187,43 @@ async fn create_mock_adapter_v22_8_with_credential_store_error(
     (adapter, server, token.to_string())
 }
 
+async fn create_mock_adapter_v22_8_with_disabled_credential_stores_followed_by_disconnect(
+) -> (GvmdAdapter, MockGmpServer, String) {
+    let credential_id =
+        uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174009").expect("valid credential id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .seed(move |store| {
+            let mut credential =
+                Resource::with_id("credential", "Reconnect-safe credential", credential_id);
+            credential.set_attr("type", "up");
+            credential.set_attr("login", "admin");
+            store.create(credential);
+        })
+        .inject_fault(Fault::on_command(
+            "get_credential_stores",
+            FaultKind::ErrorStatus {
+                code: 503,
+                message: "Service unavailable: Command disabled".to_string(),
+            },
+        ))
+        .inject_fault(Fault::after_commands(3, FaultKind::Disconnect))
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+
+    (adapter, server, token.to_string())
+}
+
 fn assert_paginated_commands(
     server: &MockGmpServer,
     command_name: &str,
@@ -2000,6 +2037,66 @@ async fn gvmd_adapter_list_credential_stores_keeps_unrelated_503_as_backend_unav
         error,
         GatewayError::BackendUnavailable(detail) if detail.contains("database offline")
     ));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_refreshes_cached_session_after_disabled_credential_store_response() {
+    let (adapter, server, token) =
+        create_mock_adapter_v22_8_with_disabled_credential_stores_followed_by_disconnect().await;
+    server.clear_history();
+
+    // Regression coverage for GitHub E2E run 33263885269 on 2026-08-29:
+    // gvmd may return the documented disabled-command 503 for
+    // get_credential_stores and then close the authenticated GMP socket. The
+    // adapter must keep the session usable for the immediately following
+    // get_credentials call instead of surfacing Broken pipe as 502.
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("disabled credential-store command should still return not implemented");
+    assert!(
+        matches!(
+            error,
+            GatewayError::NotImplemented(ref detail) if detail.contains("get_credential_stores")
+        ),
+        "unexpected credential-store error: {error:?}"
+    );
+
+    let page = adapter
+        .list_credentials(
+            &token,
+            &CredentialQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 1000,
+            },
+        )
+        .await
+        .expect("credentials should succeed after the cached session reconnects");
+
+    assert_eq!(page.pagination.page, 1);
+    assert_eq!(page.pagination.per_page, 1000);
+
+    let history = server.command_history();
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "authenticate")
+            .count(),
+        1,
+        "the adapter should re-authenticate once after gvmd closes the disabled-command session"
+    );
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "get_credentials")
+            .count(),
+        1,
+        "credential listing should use the refreshed session instead of failing on a stale socket"
+    );
 
     server.shutdown().await;
 }

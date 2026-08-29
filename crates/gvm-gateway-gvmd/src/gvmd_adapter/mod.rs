@@ -276,7 +276,11 @@ impl GvmdAdapter {
                 })?
                 .insert(
                     SessionTokenDigest::from_token(session_token),
-                    Arc::new(SessionClient::new(client)),
+                    Arc::new(SessionClient::new(
+                        client,
+                        username.to_string(),
+                        password.to_string(),
+                    )),
                 );
 
             Ok(negotiated)

@@ -374,6 +374,44 @@ async fn credential_store_backend_outage_returns_502_problem() {
     handle.abort();
 }
 
+#[tokio::test]
+async fn credential_store_capability_probe_does_not_change_credentials_list_contract() {
+    let (addr, token, handle) =
+        spawn_credential_server(Arc::new(CredentialStoreErrorPort(GatewayError::NotImplemented(
+            "credential stores are not available because gvmd disabled `get_credential_stores` on this backend instance".to_string(),
+        ))))
+        .await;
+
+    // Regression coverage for the August 29, 2026 supporting-catalog flow:
+    // a documented 501 on `/credential-stores` must not imply that
+    // `/credentials` is unavailable for the same authenticated session.
+    let client = Client::new();
+    let store_response = client
+        .get(format!("http://{addr}/api/v1/credential-stores"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(store_response.status(), StatusCode::NOT_IMPLEMENTED);
+
+    let credentials_response = client
+        .get(format!("http://{addr}/api/v1/credentials?perPage=1000"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(credentials_response.status(), StatusCode::OK);
+    let json = credentials_response
+        .json::<serde_json::Value>()
+        .await
+        .unwrap();
+    assert!(json.get("data").is_some());
+    assert_eq!(json["pagination"]["page"], serde_json::json!(1));
+    assert_eq!(json["pagination"]["perPage"], serde_json::json!(1000));
+
+    handle.abort();
+}
+
 async fn spawn_task_server(
     task_port: Arc<dyn TaskPort>,
 ) -> (std::net::SocketAddr, String, tokio::task::JoinHandle<()>) {
