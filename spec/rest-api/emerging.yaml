@@ -5,41 +5,271 @@ openapi: 3.1.0
 
 paths:
   /agents:
-    get: { operationId: getAgents, tags: [Agents], summary: List agents, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getAgents
+      tags: [Agents]
+      summary: Paginated list of agents
+      parameters: &agentListParameters
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200": { description: Paginated list of agents, content: { application/json: { schema: { $ref: "#/components/schemas/AgentList" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
   /agents/{id}:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getAgent, tags: [Agents], summary: Get an agent, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    put: { operationId: modifyAgent, tags: [Agents], summary: Modify an agent, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    delete: { operationId: deleteAgent, tags: [Agents], summary: Delete an agent, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getAgent
+      tags: [Agents]
+      summary: Agent details
+      responses:
+        "200": { description: Agent details, content: { application/json: { schema: { $ref: "#/components/schemas/Agent" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
+    put:
+      operationId: modifyAgent
+      tags: [Agents]
+      summary: Updated agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModifyAgent" }
+      responses:
+        "200": { description: Updated agent, content: { application/json: { schema: { $ref: "#/components/schemas/Agent" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
+    delete:
+      operationId: deleteAgent
+      tags: [Agents]
+      summary: Agent deleted
+      responses:
+        "204": { description: Agent deleted }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./common.yaml#/components/responses/Forbidden" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
   /agents/sync:
-    post: { operationId: syncAgents, tags: [Agents], summary: Synchronize agents, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    post:
+      operationId: syncAgents
+      tags: [Agents]
+      summary: Agent synchronization started
+      responses:
+        "204": { description: Agent synchronization started }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
   /agents/{id}/support-bundle:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getAgentSupportBundle, tags: [Agents], summary: Get an agent support bundle, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+      - name: days
+        in: query
+        required: false
+        schema: { type: integer, minimum: 1 }
+        description: Limit the support bundle to the most recent number of days.
+    get:
+      operationId: getAgentSupportBundle
+      tags: [Agents]
+      summary: Get an agent support bundle
+      responses:
+        "200":
+          description: Agent support bundle download
+          headers:
+            Content-Disposition:
+              description: Attachment-style filename for the support bundle.
+              schema: { type: string }
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+            application/gzip: { schema: { type: string, format: binary } }
+            application/zip: { schema: { type: string, format: binary } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
   /agent-control-scan-configs/{id}:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    put: { operationId: modifyAgentControlScanConfig, tags: [Agents], summary: Modify agent-control scan config defaults, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    put:
+      operationId: modifyAgentControlScanConfig
+      tags: [Agents]
+      summary: Modify agent-control scan config defaults
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModifyAgentControlScanConfig" }
+      responses:
+        "204": { description: Agent-control scan config defaults updated }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
   /scanners/{id}/agent-installer-instruction:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getAgentInstallerInstruction, tags: [Agents], summary: Get agent installer instructions, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+      - name: originUrl
+        in: query
+        required: true
+        schema: { type: string, format: uri }
+        description: Absolute origin URL used to generate installer instructions.
+      - name: language
+        in: query
+        required: false
+        schema: { type: string, default: en }
+        description: Requested installer-instruction language. Supported values are `en` and `de`.
+    get:
+      operationId: getAgentInstallerInstruction
+      tags: [Agents]
+      summary: Get agent installer instructions
+      responses:
+        "200": { description: Agent installer instructions, content: { application/json: { schema: { $ref: "#/components/schemas/AgentInstallerInstruction" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
 
   /agent-groups:
-    get: { operationId: getAgentGroups, tags: [Agent Groups], summary: List agent groups, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    post: { operationId: createAgentGroup, tags: [Agent Groups], summary: Create an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getAgentGroups
+      tags: [Agent Groups]
+      summary: Paginated list of agent groups
+      parameters: &agentGroupListParameters
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - name: trash
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200": { description: Paginated list of agent groups, content: { application/json: { schema: { $ref: "#/components/schemas/AgentGroupList" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
+    post:
+      operationId: createAgentGroup
+      tags: [Agent Groups]
+      summary: Agent group created
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAgentGroup" }
+      responses: &agentGroupCreatedResponses
+        "201":
+          description: Agent group created
+          headers:
+            Location: { $ref: "./common.yaml#/components/headers/Location" }
+          content:
+            application/json:
+              schema: { $ref: "./common.yaml#/components/schemas/ResourceCreated" }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
   /agent-groups/{id}:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getAgentGroup, tags: [Agent Groups], summary: Get an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    put: { operationId: modifyAgentGroup, tags: [Agent Groups], summary: Modify an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    delete: { operationId: deleteAgentGroup, tags: [Agent Groups], summary: Delete an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    get:
+      operationId: getAgentGroup
+      tags: [Agent Groups]
+      summary: Agent group details
+      responses:
+        "200": { description: Agent group details, content: { application/json: { schema: { $ref: "#/components/schemas/AgentGroup" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
+    put:
+      operationId: modifyAgentGroup
+      tags: [Agent Groups]
+      summary: Updated agent group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModifyAgentGroup" }
+      responses:
+        "200": { description: Updated agent group, content: { application/json: { schema: { $ref: "#/components/schemas/AgentGroup" } } } }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
+    delete:
+      operationId: deleteAgentGroup
+      tags: [Agent Groups]
+      summary: Agent group deleted
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/UltimateDelete"
+      responses:
+        "204": { description: Agent group deleted }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./common.yaml#/components/responses/Forbidden" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
   /agent-groups/{id}/clone:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
-    post: { operationId: cloneAgentGroup, tags: [Agent Groups], summary: Clone an agent group, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
+    post:
+      operationId: cloneAgentGroup
+      tags: [Agent Groups]
+      summary: Clone an agent group
+      responses:
+        "201":
+          description: Agent group clone created
+          headers:
+            Location: { $ref: "./common.yaml#/components/headers/Location" }
+          content:
+            application/json:
+              schema: { $ref: "./common.yaml#/components/schemas/ResourceCreated" }
+        "400": { $ref: "./common.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./common.yaml#/components/responses/Conflict" }
+        "501": { $ref: "./common.yaml#/components/responses/NotImplemented" }
+        "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
+        "504": { $ref: "./common.yaml#/components/responses/GatewayTimeout" }
 
   /assets:
     get: { operationId: getAssets, tags: [Assets], summary: List generic assets, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
@@ -247,6 +477,154 @@ paths:
 
 components:
   schemas:
+    AgentRetryConfig:
+      type: object
+      properties:
+        attempts: { type: integer, minimum: 0 }
+        delayInSeconds: { type: integer, minimum: 0 }
+        maxJitterInSeconds: { type: integer, minimum: 0 }
+    AgentControlConfig:
+      type: object
+      properties:
+        retry: { $ref: "#/components/schemas/AgentRetryConfig" }
+    AgentScriptExecutorConfig:
+      type: object
+      properties:
+        bulkSize: { type: integer, minimum: 0 }
+        bulkThrottleTimeInMs: { type: integer, minimum: 0 }
+        indexerDirDepth: { type: integer, minimum: 0 }
+        schedulerCronTime:
+          type: array
+          items: { type: string }
+    AgentHeartbeatConfig:
+      type: object
+      properties:
+        intervalInSeconds: { type: integer, minimum: 0 }
+        missUntilInactive: { type: integer, minimum: 0 }
+    AgentConfig:
+      type: object
+      properties:
+        agentControl: { $ref: "#/components/schemas/AgentControlConfig" }
+        agentScriptExecutor: { $ref: "#/components/schemas/AgentScriptExecutorConfig" }
+        heartbeat: { $ref: "#/components/schemas/AgentHeartbeatConfig" }
+    Agent:
+      type: object
+      required: [id, name, writable, inUse]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        comment: { type: string }
+        creationTime: { type: string }
+        modificationTime: { type: string }
+        writable: { type: boolean }
+        inUse: { type: boolean }
+        authorized: { type: boolean }
+        updateToLatest: { type: boolean }
+        status: { type: string }
+        version: { type: string }
+        lastUpdateTime: { type: string }
+        lastContactTime: { type: string }
+        scanner: { $ref: "./common.yaml#/components/schemas/ResourceRef" }
+        config: { $ref: "#/components/schemas/AgentConfig" }
+    AgentList:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Agent" }
+        pagination: { $ref: "./common.yaml#/components/schemas/Pagination" }
+    AgentConfigUpdate:
+      type: object
+      properties:
+        agentControl: { $ref: "#/components/schemas/AgentControlConfigUpdate" }
+        agentScriptExecutor: { $ref: "#/components/schemas/AgentScriptExecutorConfigUpdate" }
+        heartbeat: { $ref: "#/components/schemas/AgentHeartbeatConfigUpdate" }
+    AgentControlConfigUpdate:
+      type: object
+      properties:
+        retry: { $ref: "#/components/schemas/AgentRetryConfigUpdate" }
+    AgentRetryConfigUpdate:
+      type: object
+      properties:
+        attempts: { type: integer, minimum: 0 }
+        delayInSeconds: { type: integer, minimum: 0 }
+        maxJitterInSeconds: { type: integer, minimum: 0 }
+    AgentScriptExecutorConfigUpdate:
+      type: object
+      properties:
+        bulkSize: { type: integer, minimum: 0 }
+        bulkThrottleTimeInMs: { type: integer, minimum: 0 }
+        indexerDirDepth: { type: integer, minimum: 0 }
+        schedulerCronTime:
+          type: array
+          items: { type: string }
+    AgentHeartbeatConfigUpdate:
+      type: object
+      properties:
+        intervalInSeconds: { type: integer, minimum: 0 }
+        missUntilInactive: { type: integer, minimum: 0 }
+    ModifyAgent:
+      type: object
+      properties:
+        authorized: { type: boolean }
+        updateToLatest: { type: boolean }
+        comment: { type: string }
+        config: { $ref: "#/components/schemas/AgentConfigUpdate" }
+    ModifyAgentControlScanConfig:
+      type: object
+      properties:
+        agentDefaults: { $ref: "#/components/schemas/AgentConfigUpdate" }
+        updateToLatest: { type: boolean }
+    AgentInstallerInstruction:
+      type: object
+      required: [language, instruction]
+      properties:
+        language: { type: string }
+        instruction: { type: string }
+    AgentGroup:
+      type: object
+      required: [id, name, writable, inUse]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        comment: { type: string }
+        creationTime: { type: string }
+        modificationTime: { type: string }
+        writable: { type: boolean }
+        inUse: { type: boolean }
+        schedulerCronTime: { type: string }
+        agents:
+          type: array
+          items: { $ref: "./common.yaml#/components/schemas/ResourceRef" }
+    AgentGroupList:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/AgentGroup" }
+        pagination: { $ref: "./common.yaml#/components/schemas/Pagination" }
+    CreateAgentGroup:
+      type: object
+      required: [name, schedulerCronTime]
+      properties:
+        name: { type: string }
+        schedulerCronTime: { type: string }
+        comment: { type: string }
+        agentIds:
+          type: array
+          items: { type: string, format: uuid }
+    ModifyAgentGroup:
+      type: object
+      required: [schedulerCronTime]
+      properties:
+        schedulerCronTime: { type: string }
+        name: { type: string }
+        comment: { type: string }
+        agentIds:
+          type: array
+          items: { type: string, format: uuid }
     OciImageTarget:
       type: object
       required: [id, name, imageReferences, tasks, inUse, writable]

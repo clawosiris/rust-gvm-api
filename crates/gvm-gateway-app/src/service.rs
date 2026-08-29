@@ -6,9 +6,9 @@
 use std::sync::Arc;
 
 use gvm_gateway_domain::{
-    AlertPort, AuthPort, CredentialPort, FeedPort, GatewayError, IdentityPort, PortListPort,
-    ReportPort, ResultPort, ScanConfigPort, ScannerPort, SchedulePort, SessionManager,
-    SessionTokenDigest, SupportingResourcePort, SystemPort, TargetPort, TaskPort,
+    AgentPort, AlertPort, AuthPort, CredentialPort, FeedPort, GatewayError, IdentityPort,
+    PortListPort, ReportPort, ResultPort, ScanConfigPort, ScannerPort, SchedulePort,
+    SessionManager, SessionTokenDigest, SupportingResourcePort, SystemPort, TargetPort, TaskPort,
 };
 use tracing::{field, info_span, Instrument};
 
@@ -47,6 +47,8 @@ pub struct GatewayPorts {
     pub scan_configs: Arc<dyn ScanConfigPort>,
     /// Scanner resource port.
     pub scanners: Arc<dyn ScannerPort>,
+    /// Agent and agent-group resource port.
+    pub agents: Arc<dyn AgentPort>,
     /// Supporting resource port.
     pub supporting_resources: Arc<dyn SupportingResourcePort>,
 }
@@ -70,6 +72,7 @@ pub struct GatewayService {
     pub(crate) results: Arc<dyn ResultPort>,
     pub(crate) scan_configs: Arc<dyn ScanConfigPort>,
     pub(crate) scanners: Arc<dyn ScannerPort>,
+    pub(crate) agents: Arc<dyn AgentPort>,
     pub(crate) supporting_resources: Arc<dyn SupportingResourcePort>,
     pub(crate) sessions: Arc<SessionManager>,
     pub(crate) jobs: Arc<JobRegistry>,
@@ -93,6 +96,7 @@ impl GatewayService {
             results: ports.results,
             scan_configs: ports.scan_configs,
             scanners: ports.scanners,
+            agents: ports.agents,
             supporting_resources: ports.supporting_resources,
             sessions,
             jobs: new_job_registry(),
@@ -300,6 +304,7 @@ impl Clone for GatewayService {
             results: Arc::clone(&self.results),
             scan_configs: Arc::clone(&self.scan_configs),
             scanners: Arc::clone(&self.scanners),
+            agents: Arc::clone(&self.agents),
             supporting_resources: Arc::clone(&self.supporting_resources),
             sessions: Arc::clone(&self.sessions),
             jobs: Arc::clone(&self.jobs),

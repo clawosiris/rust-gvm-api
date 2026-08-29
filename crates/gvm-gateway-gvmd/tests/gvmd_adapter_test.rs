@@ -1549,6 +1549,123 @@ async fn gvmd_adapter_list_targets_resolves_filter_id_before_paginating() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_list_agents_uses_typed_pagination_and_version_gate() {
+    // Agent list parity depends on GMP 22.8-only typed commands. Keep both the
+    // pagination filter shape and the unsupported-backend mapping explicit.
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+    assert_backend_pagination!(
+        adapter,
+        server,
+        adapter.list_agents(
+            &token,
+            &AgentQuery {
+                filter_string: Some("name~Agent".to_string()),
+                filter_id: None,
+                page: 2,
+                per_page: 10,
+            }
+        ),
+        "get_agents",
+        "filter=\"name~Agent first=11 rows=10\"",
+        2
+    );
+    server.shutdown().await;
+
+    let (adapter, server, token) = create_mock_adapter().await;
+    let error = adapter
+        .list_agents(
+            &token,
+            &AgentQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 25,
+            },
+        )
+        .await
+        .expect_err("GMP 22.7 should reject typed agent commands");
+    assert!(
+        matches!(error, GatewayError::NotImplemented(ref detail) if detail.contains("get_agents")),
+        "unsupported command should surface as NotImplemented: {error:?}"
+    );
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_agent_group_list_preserves_trash_query() {
+    // Agent-group trash browsing is a public lifecycle contract, so the gvmd
+    // adapter must carry the trash selector into the typed backend command.
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+    server.clear_history();
+
+    let result = adapter
+        .list_agent_groups(
+            &token,
+            &AgentGroupQuery {
+                filter_string: Some("name~Group".to_string()),
+                filter_id: None,
+                trash: true,
+                page: 1,
+                per_page: 10,
+            },
+        )
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "agent-group list should succeed: {result:?}"
+    );
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "get_agent_groups")
+        .expect("get_agent_groups command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(
+        xml.contains("filter=\"name~Group first=1 rows=10\""),
+        "xml={xml}"
+    );
+    assert!(xml.contains("trash=\"1\""), "xml={xml}");
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_agent_download_helpers_map_typed_payloads() {
+    // The agent download endpoints are the most shape-sensitive part of issue
+    // #341 because they are not plain JSON CRUD resources.
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+
+    let instruction = adapter
+        .get_agent_installer_instruction(
+            &token,
+            "08b69003-5fc2-4037-a479-93b440211c73",
+            &AgentInstallerInstructionQuery {
+                language: "de".to_string(),
+                origin_url: "https://manager.example.invalid".to_string(),
+            },
+        )
+        .await
+        .expect("installer instruction should succeed");
+    assert_eq!(instruction.language, "de");
+    assert!(instruction.instruction.contains("mock agent"));
+
+    let bundle = adapter
+        .get_agent_support_bundle(
+            &token,
+            "550e8400-e29b-41d4-a716-446655440000",
+            &AgentSupportBundleQuery { days: Some(7) },
+        )
+        .await
+        .expect("support bundle should succeed");
+    assert_eq!(bundle.artifact.filename, "mock-agent-support-bundle.tar.gz");
+    assert_eq!(bundle.artifact.content_type, "application/octet-stream");
+    assert_eq!(&bundle.artifact.bytes[..], b"hello-mock");
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_list_alerts_filter_id_resolution_does_not_deadlock() {
     let filter_id =
         uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").expect("valid filter id");

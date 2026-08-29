@@ -3,8 +3,9 @@
 
 use super::*;
 use gvm_gmp::responses::{
-    GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetNotesResponse,
-    GetOverridesResponse, GetPortListsResponse, GetReportClosedCvesResponse,
+    GetAgentGroupsResponse, GetAgentInstallerInstructionResponse, GetAgentSupportBundleResponse,
+    GetAgentsResponse, GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse,
+    GetNotesResponse, GetOverridesResponse, GetPortListsResponse, GetReportClosedCvesResponse,
     GetReportTlsCertificatesResponse, GetReportVulnsResponse, GetReportsResponse,
     GetResultsResponse, GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse,
     GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetUsersResponse,
@@ -165,6 +166,157 @@ fn map_parse_error_403_to_forbidden() {
     };
     let mapped = map_parse_error(error);
     assert!(matches!(mapped, GatewayError::Forbidden(_)));
+}
+
+#[test]
+fn agent_from_gmp_maps_nested_runtime_configuration() {
+    // Agent parity depends on preserving typed nested config values instead of
+    // flattening or dropping them at the gateway/domain boundary.
+    let parsed = GetAgentsResponse::from_response(&GmpResponse::from(
+        r#"<get_agents_response status="200" status_text="OK">
+            <agent id="550e8400-e29b-41d4-a716-446655440000">
+                <owner><name>admin</name></owner>
+                <name>Managed Agent</name>
+                <comment>demo</comment>
+                <creation_time>2026-08-01T00:00:00Z</creation_time>
+                <modification_time>2026-08-02T00:00:00Z</modification_time>
+                <writable>1</writable>
+                <in_use>1</in_use>
+                <authorized>1</authorized>
+                <update_to_latest>0</update_to_latest>
+                <status>active</status>
+                <version>1.2.3</version>
+                <last_update_time>2026-08-03T00:00:00Z</last_update_time>
+                <last_contact_time>2026-08-04T00:00:00Z</last_contact_time>
+                <scanner id="08b69003-5fc2-4037-a479-93b440211c73"><name>Controller</name></scanner>
+                <config>
+                    <agent_control>
+                        <retry>
+                            <attempts>5</attempts>
+                            <delay_in_seconds>30</delay_in_seconds>
+                            <max_jitter_in_seconds>3</max_jitter_in_seconds>
+                        </retry>
+                    </agent_control>
+                    <agent_script_executor>
+                        <bulk_size>20</bulk_size>
+                        <bulk_throttle_time_in_ms>100</bulk_throttle_time_in_ms>
+                        <indexer_dir_depth>4</indexer_dir_depth>
+                        <scheduler_cron_time>
+                            <item>0 */5 * * *</item>
+                            <item>15 */5 * * *</item>
+                        </scheduler_cron_time>
+                    </agent_script_executor>
+                    <heartbeat>
+                        <interval_in_seconds>60</interval_in_seconds>
+                        <miss_until_inactive>3</miss_until_inactive>
+                    </heartbeat>
+                </config>
+            </agent>
+            <agent_count>1<filtered>1</filtered></agent_count>
+        </get_agents_response>"#,
+    ))
+    .expect("agents parse");
+
+    let agent = agent_from_gmp(parsed.items.into_iter().next().unwrap());
+
+    assert_eq!(agent.meta.name, "Managed Agent");
+    assert_eq!(agent.authorized, Some(true));
+    assert_eq!(agent.update_to_latest, Some(false));
+    assert_eq!(agent.status.as_deref(), Some("active"));
+    assert_eq!(agent.version.as_deref(), Some("1.2.3"));
+    assert_eq!(
+        agent
+            .scanner
+            .as_ref()
+            .map(|scanner| scanner.name.as_deref()),
+        Some(Some("Controller"))
+    );
+    let config = agent.config.expect("config");
+    assert_eq!(
+        config
+            .agent_control
+            .and_then(|control| control.retry)
+            .and_then(|retry| retry.attempts),
+        Some(5)
+    );
+    assert_eq!(
+        config
+            .agent_script_executor
+            .as_ref()
+            .map(|executor| executor.scheduler_cron_time.clone()),
+        Some(vec!["0 */5 * * *".to_string(), "15 */5 * * *".to_string()])
+    );
+    assert_eq!(
+        config
+            .heartbeat
+            .and_then(|heartbeat| heartbeat.interval_in_seconds),
+        Some(60)
+    );
+}
+
+#[test]
+fn agent_group_from_gmp_maps_members_and_schedule() {
+    // Agent groups carry both scheduling data and member references, and both
+    // are part of the public REST contract for issue #341.
+    let parsed = GetAgentGroupsResponse::from_response(&GmpResponse::from(
+        r#"<get_agent_groups_response status="200" status_text="OK">
+            <agent_group id="123e4567-e89b-12d3-a456-426614174000">
+                <owner><name>admin</name></owner>
+                <name>Blue Team Agents</name>
+                <comment>demo</comment>
+                <creation_time>2026-08-01T00:00:00Z</creation_time>
+                <modification_time>2026-08-02T00:00:00Z</modification_time>
+                <writable>1</writable>
+                <in_use>0</in_use>
+                <scheduler_cron_time>0 */10 * * *</scheduler_cron_time>
+                <agents>
+                    <agent id="550e8400-e29b-41d4-a716-446655440000"><name>Agent One</name></agent>
+                    <agent id="550e8400-e29b-41d4-a716-446655440001"><name>Agent Two</name></agent>
+                </agents>
+            </agent_group>
+            <agent_group_count>1<filtered>1</filtered></agent_group_count>
+        </get_agent_groups_response>"#,
+    ))
+    .expect("agent groups parse");
+
+    let group = agent_group_from_gmp(parsed.items.into_iter().next().unwrap());
+
+    assert_eq!(group.meta.name, "Blue Team Agents");
+    assert_eq!(group.scheduler_cron_time.as_deref(), Some("0 */10 * * *"));
+    assert_eq!(group.agents.len(), 2);
+    assert_eq!(group.agents[0].name.as_deref(), Some("Agent One"));
+}
+
+#[test]
+fn agent_download_conversions_preserve_instruction_and_binary_bundle() {
+    // Download-style responses should keep their typed metadata and decoded
+    // bytes intact instead of being reinterpreted by the REST layer.
+    let instruction = GetAgentInstallerInstructionResponse::from_response(&GmpResponse::from(
+        r#"<get_agent_installer_instruction_response status="200" status_text="OK">
+            <language>en</language>
+            <instruction>Install me</instruction>
+        </get_agent_installer_instruction_response>"#,
+    ))
+    .expect("instruction parses");
+    let instruction = agent_installer_instruction_from_gmp(instruction);
+    assert_eq!(instruction.language, "en");
+    assert_eq!(instruction.instruction, "Install me");
+
+    let bundle = GetAgentSupportBundleResponse::from_response(&GmpResponse::from(
+        r#"<get_agent_support_bundle_response status="200" status_text="OK">
+            <file>
+                <name>bundle.tar.gz</name>
+                <content_type>application/gzip</content_type>
+                <size>5</size>
+                <content encoding="base64">aGVsbG8=</content>
+            </file>
+        </get_agent_support_bundle_response>"#,
+    ))
+    .expect("support bundle parses");
+    let bundle = agent_support_bundle_from_gmp(bundle);
+    assert_eq!(bundle.artifact.filename, "bundle.tar.gz");
+    assert_eq!(bundle.artifact.content_type, "application/gzip");
+    assert_eq!(&bundle.artifact.bytes[..], b"hello");
 }
 
 #[test]

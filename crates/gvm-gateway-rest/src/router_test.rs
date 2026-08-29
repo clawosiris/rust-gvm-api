@@ -76,6 +76,7 @@ fn static_gateway_service() -> GatewayService {
     let results: Arc<dyn gvm_gateway_domain::ResultPort> = adapter.clone();
     let scan_configs: Arc<dyn gvm_gateway_domain::ScanConfigPort> = adapter.clone();
     let scanners: Arc<dyn gvm_gateway_domain::ScannerPort> = adapter.clone();
+    let agents: Arc<dyn gvm_gateway_domain::AgentPort> = adapter.clone();
     let supporting_resources: Arc<dyn gvm_gateway_domain::SupportingResourcePort> = adapter;
 
     GatewayService::new(
@@ -94,6 +95,7 @@ fn static_gateway_service() -> GatewayService {
             results,
             scan_configs,
             scanners,
+            agents,
             supporting_resources,
         },
         Arc::new(gvm_gateway_domain::SessionManager::default()),

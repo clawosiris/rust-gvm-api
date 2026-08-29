@@ -6,6 +6,7 @@
 
 //! REST adapter for the GVM gateway.
 
+pub mod agents;
 pub mod alerts;
 pub(crate) mod auth_policy;
 pub mod credentials;

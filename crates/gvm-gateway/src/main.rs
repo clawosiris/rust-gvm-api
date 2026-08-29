@@ -108,6 +108,7 @@ fn gateway_service(
             results: live_adapter.clone(),
             scan_configs: live_adapter.clone(),
             scanners: live_adapter.clone(),
+            agents: live_adapter.clone(),
             supporting_resources: live_adapter,
         },
         sessions,

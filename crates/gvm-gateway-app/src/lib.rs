@@ -6,6 +6,7 @@
 
 //! Application use cases for the GVM gateway.
 
+mod agents;
 mod alerts;
 mod credentials;
 mod feeds;
