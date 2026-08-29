@@ -2743,6 +2743,265 @@ async fn gvmd_adapter_get_report_closed_cves_uses_typed_command() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_report_summary_drill_downs_use_typed_commands() {
+    // Issue #344 requires five distinct report-summary contracts. This test
+    // guards both their typed response mapping and their shared backend
+    // filter/pagination command shape without coercing them into generic assets.
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+    server.clear_history();
+    let report_id = "550e8400-e29b-41d4-a716-446655440000";
+    let query = ResultQuery {
+        filter_string: Some("severity>3".to_string()),
+        filter_id: None,
+        page: 1,
+        per_page: 10,
+    };
+
+    let hosts = adapter
+        .get_report_hosts(&token, report_id, &query)
+        .await
+        .expect("typed report hosts");
+    let ports = adapter
+        .get_report_ports(&token, report_id, &query)
+        .await
+        .expect("typed report ports");
+    let applications = adapter
+        .get_report_applications(&token, report_id, &query)
+        .await
+        .expect("typed report applications");
+    let operating_systems = adapter
+        .get_report_operating_systems(&token, report_id, &query)
+        .await
+        .expect("typed report operating systems");
+    let cves = adapter
+        .get_report_cves(&token, report_id, &query)
+        .await
+        .expect("typed report CVEs");
+
+    assert_eq!(hosts.data[0].name.as_deref(), Some("192.0.2.10"));
+    assert_eq!(ports.data[0].name.as_deref(), Some("22/tcp"));
+    assert_eq!(applications.data[0].name.as_deref(), Some("OpenSSH"));
+    assert_eq!(operating_systems.data[0].name.as_deref(), Some("Debian"));
+    assert_eq!(cves.data[0].name.as_deref(), Some("CVE-2026-0001"));
+
+    for command_name in [
+        "get_report_hosts",
+        "get_report_ports",
+        "get_report_applications",
+        "get_report_operating_systems",
+        "get_report_cves",
+    ] {
+        let xml = recorded_xml(&server, command_name);
+        assert!(
+            xml.contains(&format!("report_id=\"{report_id}\"")),
+            "xml={xml}"
+        );
+        assert!(
+            xml.contains("filter=\"severity&gt;3 first=1 rows=10\""),
+            "xml={xml}"
+        );
+        assert!(xml.contains("details=\"1\""), "xml={xml}");
+    }
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_report_summary_drill_down_maps_unsupported_version() {
+    // gvmd 22.7 predates these report-detail commands. The adapter must expose
+    // the negotiated capability failure instead of falling back to generic
+    // results or attempting local GMP parsing.
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let error = adapter
+        .get_report_hosts(
+            &token,
+            "550e8400-e29b-41d4-a716-446655440000",
+            &ResultQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 25,
+            },
+        )
+        .await
+        .expect_err("gvmd 22.7 must not claim report-host support");
+
+    assert!(
+        matches!(error, GatewayError::NotImplemented(detail) if detail.contains("get_report_hosts"))
+    );
+    assert!(server.command_history().is_empty());
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_operating_system_reads_preserve_typed_asset_fields() {
+    // OS resources use the typed asset view, including backend ownership flags
+    // and severity/install aggregates, rather than the generic asset schema.
+    let os_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440131")
+        .expect("valid operating-system id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .seed(move |store| {
+            let mut operating_system =
+                Resource::with_id("asset", "cpe:/o:debian:debian_linux:12", os_id);
+            operating_system.comment = "discovered OS".to_string();
+            operating_system.set_attr("type", "os");
+            operating_system.set_attr("title", "Debian GNU/Linux 12");
+            operating_system.set_attr("installs", "0");
+            operating_system.set_attr("all_installs", "4");
+            operating_system.set_attr("latest_severity", "4.2");
+            operating_system.set_attr("highest_severity", "8.1");
+            operating_system.set_attr("average_severity", "5.3");
+            store.create(operating_system);
+        })
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+    server.clear_history();
+
+    let page = adapter
+        .list_operating_systems(
+            token,
+            &SupportingResourceQuery {
+                filter_string: Some("name=cpe:/o:debian:debian_linux:12".to_string()),
+                filter_id: None,
+                page: 1,
+                per_page: 10,
+            },
+        )
+        .await
+        .expect("typed OS list");
+    assert_eq!(page.data.len(), 1);
+    assert_eq!(page.data[0].title, "Debian GNU/Linux 12");
+    assert_eq!(page.data[0].all_installs, 4);
+    assert_eq!(page.data[0].highest_severity.as_deref(), Some("8.1"));
+    assert!(!page.data[0].meta.writable);
+    assert!(!page.data[0].meta.in_use);
+
+    let fetched = adapter
+        .get_operating_system(token, &os_id.to_string())
+        .await
+        .expect("typed OS get");
+    assert_eq!(fetched.meta.id, os_id.to_string());
+    assert_eq!(fetched.meta.comment.as_deref(), Some("discovered OS"));
+
+    let history = server.command_history();
+    let list_xml = history
+        .iter()
+        .find(|record| {
+            record.command_name() == "get_assets"
+                && String::from_utf8_lossy(record.raw_xml()).contains("filter=")
+        })
+        .map(|record| String::from_utf8_lossy(record.raw_xml()).into_owned())
+        .expect("OS list command should be recorded");
+    assert!(list_xml.contains("type=\"os\""), "xml={list_xml}");
+    assert!(
+        list_xml.contains("filter=\"name=cpe:/o:debian:debian_linux:12 first=1 rows=10\""),
+        "xml={list_xml}"
+    );
+    let get_xml = history
+        .iter()
+        .find(|record| {
+            record.command_name() == "get_assets"
+                && String::from_utf8_lossy(record.raw_xml()).contains("asset_id=")
+        })
+        .map(|record| String::from_utf8_lossy(record.raw_xml()).into_owned())
+        .expect("OS get command should be recorded");
+    assert!(
+        get_xml.contains(&format!("asset_id=\"{os_id}\"")),
+        "xml={get_xml}"
+    );
+    assert!(get_xml.contains("type=\"os\""), "xml={get_xml}");
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_operating_system_mutations_use_backend_supported_shape() {
+    // The OS modify command accepts only a comment, and OS deletion has no
+    // ultimate flag. The mock currently rejects OS comment mutation, but its
+    // command history still proves the typed boundary shape before that reply.
+    let removable_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440132")
+        .expect("valid operating-system id");
+    let in_use_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440133")
+        .expect("valid operating-system id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .seed(move |store| {
+            for (id, installs) in [(removable_id, "0"), (in_use_id, "2")] {
+                let mut operating_system = Resource::with_id("asset", "Debian", id);
+                operating_system.set_attr("type", "os");
+                operating_system.set_attr("title", "Debian GNU/Linux");
+                operating_system.set_attr("installs", installs);
+                store.create(operating_system);
+            }
+        })
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+    server.clear_history();
+
+    let modify_error = adapter
+        .modify_operating_system(
+            token,
+            &removable_id.to_string(),
+            ModifyOperatingSystemInput {
+                comment: Some("reviewed".to_string()),
+            },
+        )
+        .await
+        .expect_err("stateful mock does not mutate OS comments yet");
+    assert!(matches!(modify_error, GatewayError::NotFound(_)));
+    let modify_xml = recorded_xml(&server, "modify_asset");
+    assert!(modify_xml.contains(&format!("asset_id=\"{removable_id}\"")));
+    assert!(modify_xml.contains("<comment>reviewed</comment>"));
+    assert!(!modify_xml.contains("<name>"));
+    assert!(!modify_xml.contains("<value>"));
+
+    let conflict = adapter
+        .delete_operating_system(token, &in_use_id.to_string())
+        .await
+        .expect_err("an installed OS asset must be protected");
+    assert!(matches!(conflict, GatewayError::Conflict(_)));
+
+    adapter
+        .delete_operating_system(token, &removable_id.to_string())
+        .await
+        .expect("unused OS asset should be deleted");
+    let delete_commands = server
+        .command_history()
+        .into_iter()
+        .filter(|record| record.command_name() == "delete_asset")
+        .collect::<Vec<_>>();
+    assert_eq!(delete_commands.len(), 2);
+    for command in delete_commands {
+        let xml = String::from_utf8(command.raw_xml().to_vec()).expect("delete XML");
+        assert!(!xml.contains("ultimate="), "xml={xml}");
+    }
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_list_targets_unauthorized() {
     let server = MockGmpServer::builder()
         .mode(ServerMode::Stateful)

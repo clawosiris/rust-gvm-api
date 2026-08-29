@@ -4,6 +4,28 @@
 use super::super::*;
 
 impl E2eHarness {
+    pub async fn get_report_summary_page(
+        &self,
+        token: &str,
+        report_id: &str,
+        subresource: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<ListResponse<ReportSummaryRow>> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!(
+                    "/api/v1/reports/{report_id}/{subresource}?page={page}&perPage={per_page}"
+                ),
+                token,
+            ),
+            StatusCode::OK,
+            &format!("get report {subresource} summary page"),
+        )
+        .await
+    }
+
     pub async fn get_report(&self, token: &str, report_id: &str) -> Result<Report> {
         self.send_json(
             self.authed(

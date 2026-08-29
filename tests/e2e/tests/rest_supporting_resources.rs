@@ -34,6 +34,7 @@ async fn rest_supporting_catalogs_list_and_read_resources() -> Result<()> {
         assert_override_catalog(&harness, &session.token).await?;
         assert_nvt_catalog(&harness, &session.token).await?;
         assert_nvt_family_catalog(&harness, &session.token).await?;
+        assert_operating_system_catalog(&harness, &session.token).await?;
         Ok(())
     }
     .await;
@@ -697,6 +698,35 @@ async fn assert_host_catalog_after_completed_scan(harness: &E2eHarness, token: &
     assert_eq!(
         fetched.hostname, selected.hostname,
         "host hostname drifted on read"
+    );
+    Ok(())
+}
+
+async fn assert_operating_system_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
+    // Compose-backed OS data depends on prior scans. The list contract is
+    // always testable; item fidelity is checked when gvmd has an OS asset.
+    let operating_systems = harness.list_operating_systems(token).await?;
+    assert_pagination_shape("operating systems", &operating_systems);
+    let Some(selected) = operating_systems.data.first() else {
+        eprintln!("operating-system catalog is empty; skipping item read assertion");
+        return Ok(());
+    };
+    let fetched = harness.get_operating_system(token, &selected.id).await?;
+    assert_named_resource_matches(
+        "operating system",
+        &fetched.id,
+        &fetched.name,
+        &selected.id,
+        &selected.name,
+    );
+    assert_eq!(fetched.title, selected.title, "OS title drifted on read");
+    assert_eq!(
+        fetched.all_installs, selected.all_installs,
+        "OS all-installs count drifted on read"
+    );
+    assert_eq!(
+        fetched.host_count, selected.host_count,
+        "OS host count drifted on read"
     );
     Ok(())
 }

@@ -155,6 +155,35 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn list_operating_systems(
+        &self,
+        token: &str,
+    ) -> Result<ListResponse<OperatingSystemAsset>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/operating-systems?perPage=1000", token),
+            StatusCode::OK,
+            "list operating systems",
+        )
+        .await
+    }
+
+    pub async fn get_operating_system(
+        &self,
+        token: &str,
+        operating_system_id: &str,
+    ) -> Result<OperatingSystemAsset> {
+        self.send_json(
+            self.authed(
+                Method::GET,
+                &format!("/api/v1/operating-systems/{operating_system_id}"),
+                token,
+            ),
+            StatusCode::OK,
+            "get operating system",
+        )
+        .await
+    }
+
     pub async fn list_hosts_page(
         &self,
         token: &str,
