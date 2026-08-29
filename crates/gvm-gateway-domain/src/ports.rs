@@ -8,30 +8,31 @@ use async_trait::async_trait;
 use crate::{
     Agent, AgentGroup, AgentGroupPage, AgentGroupQuery, AgentInstallerInstruction,
     AgentInstallerInstructionQuery, AgentPage, AgentQuery, AgentSupportBundle,
-    AgentSupportBundleQuery, Alert, AlertPage, AlertQuery, CertBundAdvisory, CertBundAdvisoryPage,
-    Cpe, CpePage, CreateAgentGroupInput, CreateAlertInput, CreateCredentialInput,
-    CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
+    AgentSupportBundleQuery, Alert, AlertPage, AlertQuery, AssetQuery, CertBundAdvisory,
+    CertBundAdvisoryPage, Cpe, CpePage, CreateAgentGroupInput, CreateAlertInput,
+    CreateCredentialInput, CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
     CreateOciImageTargetInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
     CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput,
     CreateTaskInput, CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage,
     CredentialQuery, CredentialStore, Cve, CvePage, DfnCertAdvisory, DfnCertAdvisoryPage, Feed,
-    Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage,
+    Filter, FilterPage, GatewayError, GenericAsset, GenericAssetPage, GenericConfig,
+    GenericConfigPage, GenericConfigQuery, GetReportOpts, Group, GroupPage, Host, HostPage,
     IdentityQuery, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput,
-    ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput,
-    ModifyNoteInput, ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput,
-    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
-    ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
-    ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget,
-    OciImageTargetPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
-    PortListQuery, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
-    ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportQuery,
-    ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
-    ScheduleQuery, SpecializedTargetQuery, SupportingResourceQuery, Tag, TagPage, Target,
-    TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone,
-    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
-    WebApplicationTargetPage,
+    ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput,
+    ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput, ModifyOverrideInput,
+    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage,
+    NvtPage, OciImageTarget, OciImageTargetPage, Override, OverridePage, Permission,
+    PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report,
+    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
+    ReportFormatPage, ReportPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery,
+    Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerQuery, Schedule, SchedulePage, ScheduleQuery, SpecializedTargetQuery,
+    SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task, TaskAction,
+    TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
+    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -487,6 +488,31 @@ pub trait ResultPort: Send + Sync + 'static {
 /// Port for scan config CRUD operations.
 #[async_trait]
 pub trait ScanConfigPort: Send + Sync + 'static {
+    /// List generic configs for the session.
+    async fn list_configs(
+        &self,
+        session_token: &str,
+        query: &GenericConfigQuery,
+    ) -> Result<GenericConfigPage, GatewayError>;
+
+    /// Fetch a generic config by identifier.
+    async fn get_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<GenericConfig, GatewayError>;
+
+    /// Delete a generic config by identifier.
+    async fn delete_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
+
+    /// Clone a generic config by identifier.
+    async fn clone_config(&self, session_token: &str, id: &str) -> Result<String, GatewayError>;
+
     /// List scan configs for the session.
     async fn list_scan_configs(
         &self,
@@ -666,6 +692,30 @@ pub trait AgentPort: Send + Sync + 'static {
 /// Port for supporting report-format, triage, asset, and NVT catalogs.
 #[async_trait]
 pub trait SupportingResourcePort: Send + Sync + 'static {
+    /// List generic assets for the session.
+    async fn list_assets(
+        &self,
+        session_token: &str,
+        query: &AssetQuery,
+    ) -> Result<GenericAssetPage, GatewayError>;
+
+    /// Fetch a generic asset by identifier.
+    async fn get_asset(&self, session_token: &str, id: &str) -> Result<GenericAsset, GatewayError>;
+
+    /// Modify a generic asset by identifier.
+    async fn modify_asset(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyAssetInput,
+    ) -> Result<GenericAsset, GatewayError>;
+
+    /// Delete a generic asset by identifier.
+    ///
+    /// The gvmd generic asset delete command does not support the `ultimate`
+    /// flag, so this method intentionally takes no `ultimate` argument.
+    async fn delete_asset(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
     /// List hosts for the session.
     async fn list_hosts(
         &self,

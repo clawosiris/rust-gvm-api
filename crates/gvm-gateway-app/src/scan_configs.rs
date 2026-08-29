@@ -4,13 +4,86 @@
 //! Scan configuration use cases.
 
 use gvm_gateway_domain::{
-    CreateScanConfigInput, GatewayError, ModifyScanConfigInput, ScanConfig, ScanConfigPage,
-    ScanConfigQuery,
+    CreateScanConfigInput, GatewayError, GenericConfig, GenericConfigPage, GenericConfigQuery,
+    ModifyScanConfigInput, ScanConfig, ScanConfigPage, ScanConfigQuery,
 };
 
 use crate::GatewayService;
 
 impl GatewayService {
+    /// Lists generic configs for an authenticated session.
+    pub async fn list_configs(
+        &self,
+        session_token: &str,
+        query: GenericConfigQuery,
+    ) -> Result<GenericConfigPage, GatewayError> {
+        self.execute_with_resource(
+            "configs.list",
+            session_token,
+            "list",
+            "config",
+            None,
+            |session| async move { self.scan_configs.list_configs(&session.token, &query).await },
+        )
+        .await
+    }
+
+    /// Fetches a generic config for an authenticated session.
+    pub async fn get_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<GenericConfig, GatewayError> {
+        self.execute_with_resource(
+            "configs.get",
+            session_token,
+            "read",
+            "config",
+            Some(id),
+            |session| async move { self.scan_configs.get_config(&session.token, id).await },
+        )
+        .await
+    }
+
+    /// Deletes a generic config for an authenticated session.
+    pub async fn delete_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "configs.delete",
+            session_token,
+            "delete",
+            "config",
+            Some(id),
+            |session| async move {
+                self.scan_configs
+                    .delete_config(&session.token, id, ultimate)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Clones a generic config for an authenticated session.
+    pub async fn clone_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<String, GatewayError> {
+        self.execute_with_resource(
+            "configs.clone",
+            session_token,
+            "create",
+            "config",
+            Some(id),
+            |session| async move { self.scan_configs.clone_config(&session.token, id).await },
+        )
+        .await
+    }
+
     /// Lists scan configs for an authenticated session.
     pub async fn list_scan_configs(
         &self,

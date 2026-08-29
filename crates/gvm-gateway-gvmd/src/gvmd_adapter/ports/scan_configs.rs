@@ -4,6 +4,134 @@ use super::super::*;
 
 #[async_trait]
 impl ScanConfigPort for GvmdAdapter {
+    async fn list_configs(
+        &self,
+        session_token: &str,
+        query: &GenericConfigQuery,
+    ) -> Result<GenericConfigPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_configs(GetConfigsOpts {
+                config_id: None,
+                filter_string,
+                filter_id: None,
+                trash: None,
+                details: Some(true),
+                families: None,
+                preferences: None,
+                tasks: None,
+                usage_type: query.usage_type.as_deref().map(parse_config_usage_type),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(generic_config_from_gmp)
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| {
+            left.usage_type
+                .cmp(&right.usage_type)
+                .then_with(|| left.name.cmp(&right.name))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        Ok(GenericConfigPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_config(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<GenericConfig, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_config(
+                &parse_entity_id(id)?,
+                GetConfigOpts {
+                    details: Some(true),
+                    families: None,
+                    preferences: None,
+                    tasks: None,
+                    usage_type: None,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetConfigsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(generic_config_from_gmp)
+            .ok_or_else(|| GatewayError::NotFound(format!("config {id} not found")))
+    }
+
+    async fn delete_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(delete_config(
+                &parse_entity_id(id)?,
+                DeleteConfigOpts {
+                    ultimate: ultimate.then_some(true),
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
+    async fn clone_config(&self, session_token: &str, id: &str) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(clone_config(
+                &parse_entity_id(id)?,
+                CloneConfigOpts::default(),
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateConfigResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
     async fn list_scan_configs(
         &self,
         session_token: &str,

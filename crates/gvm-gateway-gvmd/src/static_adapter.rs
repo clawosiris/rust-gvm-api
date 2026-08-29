@@ -8,17 +8,18 @@ use async_trait::async_trait;
 use gvm_gateway_domain::{
     Agent, AgentGroup, AgentGroupPage, AgentGroupQuery, AgentInstallerInstruction,
     AgentInstallerInstructionQuery, AgentPage, AgentPort, AgentQuery, AgentSupportBundle,
-    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CertBundAdvisory,
-    CertBundAdvisoryPage, Cpe, CpePage, CreateAgentGroupInput, CreateAlertInput,
+    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AssetQuery, AuthPort,
+    CertBundAdvisory, CertBundAdvisoryPage, Cpe, CpePage, CreateAgentGroupInput, CreateAlertInput,
     CreateCredentialInput, CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
     CreateOciImageTargetInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
     CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput,
     CreateTaskInput, CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage,
     CredentialPort, CredentialQuery, CredentialStore, Cve, CvePage, DfnCertAdvisory,
-    DfnCertAdvisoryPage, Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group,
+    DfnCertAdvisoryPage, Feed, FeedPort, Filter, FilterPage, GatewayError, GenericAsset,
+    GenericAssetPage, GenericConfig, GenericConfigPage, GenericConfigQuery, GetReportOpts, Group,
     GroupPage, Host, HostPage, IdentityPort, IdentityQuery, ModifyAgentControlScanConfigInput,
-    ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput, ModifyCredentialInput,
-    ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
+    ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput, ModifyAssetInput,
+    ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
     ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput,
     ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput,
     ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput,
@@ -715,6 +716,26 @@ impl ResultPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl ScanConfigPort for StaticGvmdAdapter {
+    async fn list_configs(
+        &self,
+        _: &str,
+        _: &GenericConfigQuery,
+    ) -> Result<GenericConfigPage, GatewayError> {
+        unsupported!("static adapter does not support configs")
+    }
+
+    async fn get_config(&self, _: &str, _: &str) -> Result<GenericConfig, GatewayError> {
+        unsupported!("static adapter does not support configs")
+    }
+
+    async fn delete_config(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support configs")
+    }
+
+    async fn clone_config(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support configs")
+    }
+
     async fn list_scan_configs(
         &self,
         _: &str,
@@ -911,6 +932,27 @@ impl AgentPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl SupportingResourcePort for StaticGvmdAdapter {
+    async fn list_assets(&self, _: &str, _: &AssetQuery) -> Result<GenericAssetPage, GatewayError> {
+        unsupported!("static adapter does not support assets")
+    }
+
+    async fn get_asset(&self, _: &str, _: &str) -> Result<GenericAsset, GatewayError> {
+        unsupported!("static adapter does not support assets")
+    }
+
+    async fn modify_asset(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyAssetInput,
+    ) -> Result<GenericAsset, GatewayError> {
+        unsupported!("static adapter does not support assets")
+    }
+
+    async fn delete_asset(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support assets")
+    }
+
     async fn list_hosts(
         &self,
         _: &str,

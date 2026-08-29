@@ -11,15 +11,17 @@ use std::str::FromStr;
 use gvm_gateway_domain::{
     Agent, AgentConfig, AgentControlConfig, AgentGroup, AgentHeartbeatConfig,
     AgentInstallerInstruction, AgentRetryConfig, AgentScriptExecutorConfig, AgentSupportBundle,
-    Alert, CertBundAdvisory, Cpe, Credential, Cve, DfnCertAdvisory, Feed, Filter, GatewayError,
-    Group, Host, IdentityOwner, IdentityResourceMeta, JobArtifact, Note, Nvt, NvtFamily, NvtRef,
-    OciImageTarget, Override, Permission, PortList, Report, ReportClosedCve, ReportError,
-    ReportFormat, ReportVulnerability, ResourceRef, ResultCount, Role, ScanConfig, ScanResult,
-    Scanner, Schedule, SupportingResourceMeta, Tag, Target, Task, TaskObservers,
-    TaskReportComplianceCount, TaskReportReference, TaskReportResultCount, Ticket, Timezone,
-    TlsCertificate, TlsCertificateAsset, User, UserSetting, Vulnerability, WebApplicationTarget,
+    Alert, AssetHost, AssetIdentifier, CertBundAdvisory, Cpe, Credential, Cve, DfnCertAdvisory,
+    Feed, Filter, GatewayError, GenericAsset, GenericConfig, Group, Host, IdentityOwner,
+    IdentityResourceMeta, JobArtifact, Note, Nvt, NvtFamily, NvtRef, OciImageTarget, Override,
+    Permission, PortList, Report, ReportClosedCve, ReportError, ReportFormat, ReportVulnerability,
+    ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
+    SupportingResourceMeta, Tag, Target, Task, TaskObservers, TaskReportComplianceCount,
+    TaskReportReference, TaskReportResultCount, Ticket, Timezone, TlsCertificate,
+    TlsCertificateAsset, User, UserSetting, Vulnerability, WebApplicationTarget,
 };
 use gvm_gmp::{
+    commands::{assets::AssetType, configs::ConfigUsageType},
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
     PermissionSubjectType, SnmpAuthAlgorithm, SnmpPrivacyAlgorithm, UserAuthType,
 };
@@ -543,6 +545,20 @@ pub(crate) fn scan_config_from_gmp(config: gvm_gmp::responses::ScanConfig) -> Sc
     }
 }
 
+pub(crate) fn generic_config_from_gmp(config: gvm_gmp::responses::GenericConfig) -> GenericConfig {
+    GenericConfig {
+        id: config.meta.id.to_string(),
+        name: config.meta.name,
+        comment: config.meta.comment,
+        config_type: config.type_,
+        usage_type: config
+            .usage_type
+            .map(|usage_type| usage_type.as_gmp_str().to_string()),
+        in_use: config.meta.in_use,
+        writable: config.meta.writable,
+    }
+}
+
 pub(crate) fn scanner_from_gmp(scanner: gvm_gmp::responses::Scanner) -> Scanner {
     Scanner {
         id: scanner.meta.id.to_string(),
@@ -580,6 +596,103 @@ pub(crate) fn host_from_gmp(host: gvm_gmp::responses::Host) -> Host {
         severity: host.severity,
         os: host.os,
     }
+}
+
+pub(crate) fn generic_asset_from_gmp(
+    asset: gvm_gmp::responses::Asset,
+) -> Result<GenericAsset, GatewayError> {
+    let asset = match asset {
+        gvm_gmp::responses::Asset::Host(host) => {
+            let value = host
+                .ip
+                .clone()
+                .or_else(|| host.hostname.clone())
+                .or_else(|| Some(host.meta.name.clone()));
+            GenericAsset {
+                meta: supporting_meta_from_gmp(host.meta),
+                asset_type: "host".to_string(),
+                value,
+                identifiers: vec![],
+                severity: host.severity,
+                ip: host.ip,
+                hostname: host.hostname,
+                os: host.os,
+                hosts_count: None,
+                title: None,
+                installs: None,
+                all_installs: None,
+                latest_severity: None,
+                highest_severity: None,
+                average_severity: None,
+                host_count: None,
+                hosts: vec![],
+            }
+        }
+        gvm_gmp::responses::Asset::OperatingSystem(asset) => GenericAsset {
+            meta: supporting_meta_from_gmp(asset.meta),
+            asset_type: "os".to_string(),
+            value: asset.value,
+            identifiers: vec![],
+            severity: asset.severity,
+            ip: None,
+            hostname: None,
+            os: None,
+            hosts_count: asset.hosts_count,
+            title: Some(asset.title),
+            installs: Some(asset.installs),
+            all_installs: Some(asset.all_installs),
+            latest_severity: asset.latest_severity,
+            highest_severity: asset.highest_severity,
+            average_severity: asset.average_severity,
+            host_count: Some(asset.host_count),
+            hosts: asset
+                .hosts
+                .into_iter()
+                .map(|host| AssetHost {
+                    id: host.id.to_string(),
+                    name: host.name,
+                    severity: host.severity,
+                })
+                .collect(),
+        },
+        gvm_gmp::responses::Asset::Generic(asset) => GenericAsset {
+            meta: supporting_meta_from_gmp(asset.meta),
+            asset_type: asset
+                .type_
+                .or(asset.asset_type)
+                .map(|asset_type| asset_type.as_gmp_str().to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
+            value: asset.value,
+            identifiers: asset
+                .identifiers
+                .into_iter()
+                .map(|identifier| AssetIdentifier {
+                    name: identifier.name,
+                    value: identifier.value,
+                    source: identifier.source,
+                })
+                .collect(),
+            severity: asset.severity,
+            ip: None,
+            hostname: None,
+            os: None,
+            hosts_count: None,
+            title: None,
+            installs: None,
+            all_installs: None,
+            latest_severity: None,
+            highest_severity: None,
+            average_severity: None,
+            host_count: None,
+            hosts: vec![],
+        },
+        _ => {
+            return Err(GatewayError::NotImplemented(
+                "unsupported asset response variant".to_string(),
+            ));
+        }
+    };
+    Ok(asset)
 }
 
 pub(crate) fn tls_certificate_asset_from_gmp(
@@ -732,6 +845,23 @@ pub(crate) fn parse_entity_id(value: &str) -> Result<EntityId, GatewayError> {
 pub(crate) fn parse_alive_test(value: &str) -> Result<AliveTest, GatewayError> {
     AliveTest::from_str(value)
         .map_err(|_| GatewayError::InvalidInput(format!("invalid aliveTest: {value}")))
+}
+
+pub(crate) fn parse_asset_type(value: &str) -> AssetType {
+    match value {
+        "host" => AssetType::Host,
+        "os" => AssetType::OperatingSystem,
+        other => AssetType::custom(other),
+    }
+}
+
+pub(crate) fn parse_config_usage_type(value: &str) -> ConfigUsageType {
+    match value {
+        "scan" => ConfigUsageType::Scan,
+        "audit" => ConfigUsageType::Audit,
+        "policy" => ConfigUsageType::Policy,
+        other => ConfigUsageType::custom(other),
+    }
 }
 
 pub(crate) fn parse_hosts_ordering(value: &str) -> Result<HostsOrdering, GatewayError> {

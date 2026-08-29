@@ -4,6 +4,131 @@ use super::super::*;
 
 #[async_trait]
 impl SupportingResourcePort for GvmdAdapter {
+    async fn list_assets(
+        &self,
+        session_token: &str,
+        query: &AssetQuery,
+    ) -> Result<GenericAssetPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let filter_id = query
+            .filter_id
+            .as_deref()
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput("invalid filterId".to_string()))
+            })
+            .transpose()?;
+        let filter_string = self
+            .paginated_filter_resolving_filter_id(
+                session_token,
+                None,
+                query.filter_string.as_deref(),
+                filter_id.as_ref(),
+                query.page,
+                query.per_page,
+                &[],
+            )
+            .await?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_assets(GetAssetsOpts {
+                asset_id: None,
+                asset_type: None,
+                type_: query.asset_type.as_deref().map(parse_asset_type),
+                filter_string,
+                filter_id: None,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetAssetsResponse::from_response(&response).map_err(map_parse_error)?;
+        let mut items = parsed
+            .items
+            .into_iter()
+            .map(generic_asset_from_gmp)
+            .collect::<Result<Vec<_>, _>>()?;
+        items.sort_by(|left, right| {
+            left.asset_type
+                .cmp(&right.asset_type)
+                .then_with(|| left.meta.name.cmp(&right.meta.name))
+                .then_with(|| left.value.cmp(&right.value))
+                .then_with(|| left.meta.id.cmp(&right.meta.id))
+        });
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+        Ok(GenericAssetPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_asset(&self, session_token: &str, id: &str) -> Result<GenericAsset, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(get_assets(GetAssetsOpts {
+                asset_id: Some(parse_entity_id(id)?),
+                asset_type: None,
+                type_: None,
+                filter_string: None,
+                filter_id: None,
+                trash: None,
+                details: Some(true),
+            }))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = GetAssetsResponse::from_response(&response).map_err(map_parse_error)?;
+        parsed
+            .items
+            .into_iter()
+            .next()
+            .map(generic_asset_from_gmp)
+            .transpose()?
+            .ok_or_else(|| GatewayError::NotFound(format!("asset {id} not found")))
+    }
+
+    async fn modify_asset(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyAssetInput,
+    ) -> Result<GenericAsset, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let asset_id = parse_entity_id(id)?;
+        let response = client
+            .lock()
+            .await?
+            .call(modify_asset(
+                &asset_id,
+                ModifyAssetOpts {
+                    comment: input.comment,
+                    value: None,
+                },
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        drop(client);
+        self.get_asset(session_token, id).await
+    }
+
+    async fn delete_asset(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(delete_asset(
+                &parse_entity_id(id)?,
+                DeleteAssetOpts::default(),
+            ))
+            .await
+            .map_err(map_gvm_error)?;
+        ActionResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(())
+    }
+
     async fn list_hosts(
         &self,
         session_token: &str,
