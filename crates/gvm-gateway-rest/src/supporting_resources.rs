@@ -160,6 +160,11 @@ pub(crate) struct NvtOidPathDoc {
     id: String,
 }
 
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct SecInfoIdPathDoc {
+    id: String,
+}
+
 #[derive(Clone, Debug, Serialize, JsonSchema)]
 #[schemars(rename = "SupportingResourceMeta")]
 pub(crate) struct SupportingResourceMetaResponse {
@@ -936,6 +941,142 @@ impl From<gvm_gateway_domain::VulnerabilityPage> for VulnerabilityListResponse {
                 .data
                 .into_iter()
                 .map(VulnerabilityResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Cve")]
+pub(crate) struct CveResponse {
+    id: String,
+    name: String,
+}
+
+impl From<gvm_gateway_domain::Cve> for CveResponse {
+    fn from(cve: gvm_gateway_domain::Cve) -> Self {
+        Self {
+            id: cve.id,
+            name: cve.name,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "CveList")]
+pub(crate) struct CveListResponse {
+    data: Vec<CveResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::CvePage> for CveListResponse {
+    fn from(page: gvm_gateway_domain::CvePage) -> Self {
+        Self {
+            data: page.data.into_iter().map(CveResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "Cpe")]
+pub(crate) struct CpeResponse {
+    id: String,
+    name: String,
+}
+
+impl From<gvm_gateway_domain::Cpe> for CpeResponse {
+    fn from(cpe: gvm_gateway_domain::Cpe) -> Self {
+        Self {
+            id: cpe.id,
+            name: cpe.name,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "CpeList")]
+pub(crate) struct CpeListResponse {
+    data: Vec<CpeResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::CpePage> for CpeListResponse {
+    fn from(page: gvm_gateway_domain::CpePage) -> Self {
+        Self {
+            data: page.data.into_iter().map(CpeResponse::from).collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "CertBundAdvisory")]
+pub(crate) struct CertBundAdvisoryResponse {
+    id: String,
+    name: String,
+}
+
+impl From<gvm_gateway_domain::CertBundAdvisory> for CertBundAdvisoryResponse {
+    fn from(advisory: gvm_gateway_domain::CertBundAdvisory) -> Self {
+        Self {
+            id: advisory.id,
+            name: advisory.name,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "CertBundAdvisoryList")]
+pub(crate) struct CertBundAdvisoryListResponse {
+    data: Vec<CertBundAdvisoryResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::CertBundAdvisoryPage> for CertBundAdvisoryListResponse {
+    fn from(page: gvm_gateway_domain::CertBundAdvisoryPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(CertBundAdvisoryResponse::from)
+                .collect(),
+            pagination: PaginationResponse::from(page.pagination),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "DfnCertAdvisory")]
+pub(crate) struct DfnCertAdvisoryResponse {
+    id: String,
+    name: String,
+}
+
+impl From<gvm_gateway_domain::DfnCertAdvisory> for DfnCertAdvisoryResponse {
+    fn from(advisory: gvm_gateway_domain::DfnCertAdvisory) -> Self {
+        Self {
+            id: advisory.id,
+            name: advisory.name,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "DfnCertAdvisoryList")]
+pub(crate) struct DfnCertAdvisoryListResponse {
+    data: Vec<DfnCertAdvisoryResponse>,
+    pagination: PaginationResponse,
+}
+
+impl From<gvm_gateway_domain::DfnCertAdvisoryPage> for DfnCertAdvisoryListResponse {
+    fn from(page: gvm_gateway_domain::DfnCertAdvisoryPage) -> Self {
+        Self {
+            data: page
+                .data
+                .into_iter()
+                .map(DfnCertAdvisoryResponse::from)
                 .collect(),
             pagination: PaginationResponse::from(page.pagination),
         }
@@ -1853,6 +1994,162 @@ pub async fn list_vulnerabilities(
     }
 }
 
+/// Lists CVEs visible to the authenticated session.
+pub async fn list_cves(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    list_resource(
+        service,
+        headers,
+        uri,
+        SupportingListQuery::try_from_query_string,
+        |service, session, query| async move {
+            service.list_cves(&session, supporting_query(query)).await
+        },
+        CveListResponse::from,
+    )
+    .await
+}
+
+/// Returns a single CVE by identifier.
+pub async fn get_cve(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.get_cve(&session, &id).await {
+        Ok(item) => (StatusCode::OK, Json(CveResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Lists CPEs visible to the authenticated session.
+pub async fn list_cpes(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    list_resource(
+        service,
+        headers,
+        uri,
+        SupportingListQuery::try_from_query_string,
+        |service, session, query| async move {
+            service.list_cpes(&session, supporting_query(query)).await
+        },
+        CpeListResponse::from,
+    )
+    .await
+}
+
+/// Returns a single CPE by identifier.
+pub async fn get_cpe(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.get_cpe(&session, &id).await {
+        Ok(item) => (StatusCode::OK, Json(CpeResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Lists CERT-Bund advisories visible to the authenticated session.
+pub async fn list_cert_bund_advisories(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    list_resource(
+        service,
+        headers,
+        uri,
+        SupportingListQuery::try_from_query_string,
+        |service, session, query| async move {
+            service
+                .list_cert_bund_advisories(&session, supporting_query(query))
+                .await
+        },
+        CertBundAdvisoryListResponse::from,
+    )
+    .await
+}
+
+/// Returns a single CERT-Bund advisory by identifier.
+pub async fn get_cert_bund_advisory(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.get_cert_bund_advisory(&session, &id).await {
+        Ok(item) => (StatusCode::OK, Json(CertBundAdvisoryResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// Lists DFN-CERT advisories visible to the authenticated session.
+pub async fn list_dfn_cert_advisories(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+) -> Response {
+    list_resource(
+        service,
+        headers,
+        uri,
+        SupportingListQuery::try_from_query_string,
+        |service, session, query| async move {
+            service
+                .list_dfn_cert_advisories(&session, supporting_query(query))
+                .await
+        },
+        DfnCertAdvisoryListResponse::from,
+    )
+    .await
+}
+
+/// Returns a single DFN-CERT advisory by identifier.
+pub async fn get_dfn_cert_advisory(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+
+    match service.get_dfn_cert_advisory(&session, &id).await {
+        Ok(item) => (StatusCode::OK, Json(DfnCertAdvisoryResponse::from(item))).into_response(),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
 /// Returns a single NVT by OID.
 pub async fn get_nvt(
     State(service): State<GatewayService>,
@@ -2402,6 +2699,126 @@ pub(crate) fn list_vulnerabilities_docs(op: TransformOperation<'_>) -> Transform
         ));
     let op = problem_response::<400>(op, "Invalid request");
     problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn list_cves_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getCves")
+        .tag("CVEs")
+        .summary("List CVEs")
+        .description("Returns a paginated list of CVE entries from the SecInfo database.")
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<CveListResponse>, _>(ok_json("Paginated list of CVEs"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_cve_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getCve")
+        .tag("CVEs")
+        .summary("Get a CVE")
+        .description("Returns the details for a single CVE entry.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SecInfoIdPathDoc>>()
+        .response_with::<200, Json<CveResponse>, _>(ok_json("CVE details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn list_cpes_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getCpes")
+        .tag("CPEs")
+        .summary("List CPEs")
+        .description("Returns a paginated list of CPE entries from the SecInfo database.")
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<CpeListResponse>, _>(ok_json("Paginated list of CPEs"));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_cpe_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getCpe")
+        .tag("CPEs")
+        .summary("Get a CPE")
+        .description("Returns the details for a single CPE entry.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SecInfoIdPathDoc>>()
+        .response_with::<200, Json<CpeResponse>, _>(ok_json("CPE details"));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn list_cert_bund_advisories_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getCertBundAdvisories")
+        .tag("CERT-Bund Advisories")
+        .summary("List CERT-Bund advisories")
+        .description(
+            "Returns a paginated list of CERT-Bund advisory entries from the SecInfo database.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<CertBundAdvisoryListResponse>, _>(ok_json(
+            "Paginated list of CERT-Bund advisories",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_cert_bund_advisory_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getCertBundAdvisory")
+        .tag("CERT-Bund Advisories")
+        .summary("Get a CERT-Bund advisory")
+        .description("Returns the details for a single CERT-Bund advisory entry.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SecInfoIdPathDoc>>()
+        .response_with::<200, Json<CertBundAdvisoryResponse>, _>(ok_json(
+            "CERT-Bund advisory details",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn list_dfn_cert_advisories_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getDfnCertAdvisories")
+        .tag("DFN-CERT Advisories")
+        .summary("List DFN-CERT advisories")
+        .description(
+            "Returns a paginated list of DFN-CERT advisory entries from the SecInfo database.",
+        )
+        .security_requirement("bearerAuth")
+        .input::<Query<SupportingResourceListQueryParams>>()
+        .response_with::<200, Json<DfnCertAdvisoryListResponse>, _>(ok_json(
+            "Paginated list of DFN-CERT advisories",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    problem_response::<401>(op, "Authentication required or session expired")
+}
+
+pub(crate) fn get_dfn_cert_advisory_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("getDfnCertAdvisory")
+        .tag("DFN-CERT Advisories")
+        .summary("Get a DFN-CERT advisory")
+        .description("Returns the details for a single DFN-CERT advisory entry.")
+        .security_requirement("bearerAuth")
+        .input::<Path<SecInfoIdPathDoc>>()
+        .response_with::<200, Json<DfnCertAdvisoryResponse>, _>(ok_json(
+            "DFN-CERT advisory details",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<404>(op, "Resource not found")
 }
 
 pub(crate) fn get_nvt_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {

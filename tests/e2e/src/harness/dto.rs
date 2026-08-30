@@ -153,6 +153,12 @@ pub struct Feed {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct SecInfoEntry {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct ReportFormat {
     pub id: String,
     pub name: String,

@@ -273,6 +273,22 @@ fn openapi_tags() -> Value {
             "description": "SecInfo vulnerability discovery"
         },
         {
+            "name": "CVEs",
+            "description": "SecInfo CVE discovery"
+        },
+        {
+            "name": "CPEs",
+            "description": "SecInfo CPE discovery"
+        },
+        {
+            "name": "CERT-Bund Advisories",
+            "description": "SecInfo CERT-Bund advisory discovery"
+        },
+        {
+            "name": "DFN-CERT Advisories",
+            "description": "SecInfo DFN-CERT advisory discovery"
+        },
+        {
             "name": "NVT Families",
             "description": "NVT family discovery"
         },

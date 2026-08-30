@@ -2833,6 +2833,59 @@ fn recorded_xml(server: &MockGmpServer, command_name: &str) -> String {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_list_cves_uses_typed_secinfo_request_with_pagination_filter() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let page = adapter
+        .list_cves(
+            &token,
+            &SupportingResourceQuery {
+                filter_string: Some("name~CVE".to_string()),
+                filter_id: None,
+                page: 2,
+                per_page: 1,
+            },
+        )
+        .await
+        .expect("list_cves should succeed against the mock backend");
+
+    assert_eq!(page.data.len(), 2);
+    assert_eq!(page.pagination.page, 2);
+    assert_eq!(page.pagination.per_page, 1);
+    assert_eq!(page.pagination.total, 2);
+    assert_eq!(page.pagination.total_pages, 2);
+    let xml = recorded_xml(&server, "get_info");
+    assert!(xml.contains("type=\"CVE\""), "xml={xml}");
+    assert!(
+        xml.contains("filter=\"name~CVE first=2 rows=1\""),
+        "xml={xml}"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_get_cert_bund_advisory_uses_typed_secinfo_item_lookup() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let advisory = adapter
+        .get_cert_bund_advisory(&token, "CB-K26/001")
+        .await
+        .expect("get_cert_bund_advisory should succeed against the mock backend");
+
+    assert_eq!(advisory.id, "CB-K26/001");
+    assert_eq!(advisory.name, "CERT-Bund advisory one");
+    let xml = recorded_xml(&server, "get_info");
+    assert!(xml.contains("type=\"CERT_BUND_ADV\""), "xml={xml}");
+    assert!(xml.contains("details=\"1\""), "xml={xml}");
+    assert!(xml.contains("info_id=\"CB-K26/001\""), "xml={xml}");
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_create_filter_emits_name_and_term() {
     let (adapter, server, token) = create_mock_adapter().await;
     server.clear_history();

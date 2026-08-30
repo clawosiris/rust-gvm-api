@@ -834,6 +834,202 @@ paths:
         "502":
           $ref: "./common.yaml#/components/responses/BadGateway"
 
+  /cves:
+    get:
+      operationId: getCves
+      tags: [CVEs]
+      summary: List CVEs
+      description: Returns a paginated list of CVE entries from the SecInfo database.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of CVEs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CveList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /cves/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SecInfoId"
+    get:
+      operationId: getCve
+      tags: [CVEs]
+      summary: Get a CVE
+      description: Returns the details for a single CVE entry.
+      responses:
+        "200":
+          description: CVE details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cve"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /cpes:
+    get:
+      operationId: getCpes
+      tags: [CPEs]
+      summary: List CPEs
+      description: Returns a paginated list of CPE entries from the SecInfo database.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of CPEs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CpeList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /cpes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SecInfoId"
+    get:
+      operationId: getCpe
+      tags: [CPEs]
+      summary: Get a CPE
+      description: Returns the details for a single CPE entry.
+      responses:
+        "200":
+          description: CPE details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cpe"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /cert-bund-advisories:
+    get:
+      operationId: getCertBundAdvisories
+      tags: [CERT-Bund Advisories]
+      summary: List CERT-Bund advisories
+      description: Returns a paginated list of CERT-Bund advisory entries from the SecInfo database.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of CERT-Bund advisories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertBundAdvisoryList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /cert-bund-advisories/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SecInfoId"
+    get:
+      operationId: getCertBundAdvisory
+      tags: [CERT-Bund Advisories]
+      summary: Get a CERT-Bund advisory
+      description: Returns the details for a single CERT-Bund advisory entry.
+      responses:
+        "200":
+          description: CERT-Bund advisory details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertBundAdvisory"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
+  /dfn-cert-advisories:
+    get:
+      operationId: getDfnCertAdvisories
+      tags: [DFN-CERT Advisories]
+      summary: List DFN-CERT advisories
+      description: Returns a paginated list of DFN-CERT advisory entries from the SecInfo database.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of DFN-CERT advisories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DfnCertAdvisoryList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /dfn-cert-advisories/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SecInfoId"
+    get:
+      operationId: getDfnCertAdvisory
+      tags: [DFN-CERT Advisories]
+      summary: Get a DFN-CERT advisory
+      description: Returns the details for a single DFN-CERT advisory entry.
+      responses:
+        "200":
+          description: DFN-CERT advisory details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DfnCertAdvisory"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+
   /nvts:
     get:
       operationId: getNvts
@@ -912,6 +1108,15 @@ paths:
           $ref: "./common.yaml#/components/responses/BadGateway"
 
 components:
+  parameters:
+    SecInfoId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: SecInfo identifier such as a CVE, CPE, or advisory id
+
   schemas:
     Host:
       type: object
@@ -1578,6 +1783,102 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Vulnerability"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Cve:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    CveList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Cve"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    Cpe:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    CpeList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Cpe"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    CertBundAdvisory:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    CertBundAdvisoryList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CertBundAdvisory"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    DfnCertAdvisory:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    DfnCertAdvisoryList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DfnCertAdvisory"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
 

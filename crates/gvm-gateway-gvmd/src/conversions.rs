@@ -11,13 +11,13 @@ use std::str::FromStr;
 use gvm_gateway_domain::{
     Agent, AgentConfig, AgentControlConfig, AgentGroup, AgentHeartbeatConfig,
     AgentInstallerInstruction, AgentRetryConfig, AgentScriptExecutorConfig, AgentSupportBundle,
-    Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityOwner,
-    IdentityResourceMeta, JobArtifact, Note, Nvt, NvtFamily, NvtRef, OciImageTarget, Override,
-    Permission, PortList, Report, ReportClosedCve, ReportError, ReportFormat, ReportVulnerability,
-    ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
-    SupportingResourceMeta, Tag, Target, Task, TaskObservers, TaskReportComplianceCount,
-    TaskReportReference, TaskReportResultCount, Ticket, Timezone, TlsCertificate,
-    TlsCertificateAsset, User, UserSetting, Vulnerability, WebApplicationTarget,
+    Alert, CertBundAdvisory, Cpe, Credential, Cve, DfnCertAdvisory, Feed, Filter, GatewayError,
+    Group, Host, IdentityOwner, IdentityResourceMeta, JobArtifact, Note, Nvt, NvtFamily, NvtRef,
+    OciImageTarget, Override, Permission, PortList, Report, ReportClosedCve, ReportError,
+    ReportFormat, ReportVulnerability, ResourceRef, ResultCount, Role, ScanConfig, ScanResult,
+    Scanner, Schedule, SupportingResourceMeta, Tag, Target, Task, TaskObservers,
+    TaskReportComplianceCount, TaskReportReference, TaskReportResultCount, Ticket, Timezone,
+    TlsCertificate, TlsCertificateAsset, User, UserSetting, Vulnerability, WebApplicationTarget,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -664,6 +664,38 @@ pub(crate) fn vulnerability_from_gmp(vuln: gvm_gmp::responses::Vulnerability) ->
     Vulnerability {
         id: vuln.id,
         name: vuln.name,
+    }
+}
+
+pub(crate) fn cve_from_gmp(cve: gvm_gmp::responses::Cve) -> Cve {
+    Cve {
+        id: cve.id,
+        name: cve.name,
+    }
+}
+
+pub(crate) fn cpe_from_gmp(cpe: gvm_gmp::responses::Cpe) -> Cpe {
+    Cpe {
+        id: cpe.id,
+        name: cpe.name,
+    }
+}
+
+pub(crate) fn cert_bund_advisory_from_gmp(
+    advisory: gvm_gmp::responses::CertBundAdvisory,
+) -> CertBundAdvisory {
+    CertBundAdvisory {
+        id: advisory.id,
+        name: advisory.name,
+    }
+}
+
+pub(crate) fn dfn_cert_advisory_from_gmp(
+    advisory: gvm_gmp::responses::DfnCertAdvisory,
+) -> DfnCertAdvisory {
+    DfnCertAdvisory {
+        id: advisory.id,
+        name: advisory.name,
     }
 }
 

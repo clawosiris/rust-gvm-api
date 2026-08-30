@@ -8,29 +8,30 @@ use gvm_gateway_domain::{
     Agent, AgentConfig, AgentControlConfig, AgentGroup, AgentGroupPage, AgentGroupQuery,
     AgentHeartbeatConfig, AgentInstallerInstruction, AgentInstallerInstructionQuery, AgentPage,
     AgentPort, AgentQuery, AgentRetryConfig, AgentScriptExecutorConfig, AgentSupportBundle,
-    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AuthPort,
-    CreateAgentGroupInput, CreateAlertInput, CreateCredentialInput, CreateFilterInput,
-    CreateGroupInput, CreateHostInput, CreateNoteInput, CreateOverrideInput, CreatePermissionInput,
-    CreatePortListInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
-    CreateTagInput, CreateTargetInput, CreateTaskInput, CreateUserInput, Credential,
-    CredentialPage, CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter,
-    FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort,
-    IdentityQuery, JobArtifact, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput,
-    ModifyAgentInput, ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput,
-    ModifyHostInput, ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput,
-    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
-    ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
-    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override, OverridePage, Permission,
-    PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
-    ReportFormatPage, ReportPage, ReportPort, ReportQuery, ReportVulnerabilityPage, ResourceRef,
-    ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
-    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourceMeta,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
+    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CertBundAdvisory,
+    CertBundAdvisoryPage, Cpe, CpePage, CreateAgentGroupInput, CreateAlertInput,
+    CreateCredentialInput, CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
+    CreateOverrideInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
+    CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput, CreateTaskInput,
+    CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
+    Cve, CvePage, DfnCertAdvisory, DfnCertAdvisoryPage, Feed, FeedPort, Filter, FilterPage,
+    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
+    JobArtifact, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput,
+    ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput,
+    ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput,
+    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput,
+    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage,
+    NvtPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
+    PortListPort, PortListQuery, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage,
+    ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
+    ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultPort, ResultQuery, Role,
+    RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
+    ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
+    SupportingResourceMeta, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
+    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset, TlsCertificateAssetPage,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    VulnerabilityPage,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -1530,5 +1531,97 @@ impl SupportingResourcePort for MockSupportingResourcePort {
                 total_pages: 0,
             },
         })
+    }
+
+    async fn list_cves(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<CvePage, GatewayError> {
+        Ok(CvePage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_cve(&self, _: &str, id: &str) -> Result<Cve, GatewayError> {
+        Err(GatewayError::NotFound(format!("cve {id} not found")))
+    }
+
+    async fn list_cpes(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<CpePage, GatewayError> {
+        Ok(CpePage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_cpe(&self, _: &str, id: &str) -> Result<Cpe, GatewayError> {
+        Err(GatewayError::NotFound(format!("cpe {id} not found")))
+    }
+
+    async fn list_cert_bund_advisories(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<CertBundAdvisoryPage, GatewayError> {
+        Ok(CertBundAdvisoryPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_cert_bund_advisory(
+        &self,
+        _: &str,
+        id: &str,
+    ) -> Result<CertBundAdvisory, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "cert bund advisory {id} not found"
+        )))
+    }
+
+    async fn list_dfn_cert_advisories(
+        &self,
+        _: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<DfnCertAdvisoryPage, GatewayError> {
+        Ok(DfnCertAdvisoryPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_dfn_cert_advisory(
+        &self,
+        _: &str,
+        id: &str,
+    ) -> Result<DfnCertAdvisory, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "dfn cert advisory {id} not found"
+        )))
     }
 }

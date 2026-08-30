@@ -302,6 +302,33 @@ fn generated_openapi_feed_version_matches_required_runtime_contract() {
 }
 
 #[test]
+fn generated_openapi_secinfo_ids_remain_plain_strings() {
+    let generated = build_openapi();
+    let schemas = &generated["components"]["schemas"];
+
+    // SecInfo item ids are backend-defined names like CVE and advisory ids, so
+    // these contracts must remain plain strings instead of UUID-formatted ids.
+    assert_eq!(schemas["Cve"]["properties"]["id"]["type"], "string");
+    assert!(schemas["Cve"]["properties"]["id"].get("format").is_none());
+    assert_eq!(schemas["Cpe"]["properties"]["id"]["type"], "string");
+    assert!(schemas["Cpe"]["properties"]["id"].get("format").is_none());
+    assert_eq!(
+        schemas["CertBundAdvisory"]["properties"]["id"]["type"],
+        "string"
+    );
+    assert!(schemas["CertBundAdvisory"]["properties"]["id"]
+        .get("format")
+        .is_none());
+    assert_eq!(
+        schemas["DfnCertAdvisory"]["properties"]["id"]["type"],
+        "string"
+    );
+    assert!(schemas["DfnCertAdvisory"]["properties"]["id"]
+        .get("format")
+        .is_none());
+}
+
+#[test]
 fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
     let generated = build_openapi();
     let schemas = &generated["components"]["schemas"];

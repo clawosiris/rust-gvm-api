@@ -8,16 +8,17 @@ use async_trait::async_trait;
 use gvm_gateway_domain::{
     Agent, AgentGroup, AgentGroupPage, AgentGroupQuery, AgentInstallerInstruction,
     AgentInstallerInstructionQuery, AgentPage, AgentPort, AgentQuery, AgentSupportBundle,
-    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AuthPort,
-    CreateAgentGroupInput, CreateAlertInput, CreateCredentialInput, CreateFilterInput,
-    CreateGroupInput, CreateHostInput, CreateNoteInput, CreateOciImageTargetInput,
-    CreateOverrideInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
-    CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput, CreateTaskInput,
-    CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage, CredentialPort,
-    CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage, GatewayError,
-    GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
-    ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput,
-    ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
+    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CertBundAdvisory,
+    CertBundAdvisoryPage, Cpe, CpePage, CreateAgentGroupInput, CreateAlertInput,
+    CreateCredentialInput, CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
+    CreateOciImageTargetInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
+    CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput,
+    CreateTaskInput, CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage,
+    CredentialPort, CredentialQuery, CredentialStore, Cve, CvePage, DfnCertAdvisory,
+    DfnCertAdvisoryPage, Feed, FeedPort, Filter, FilterPage, GatewayError, GetReportOpts, Group,
+    GroupPage, Host, HostPage, IdentityPort, IdentityQuery, ModifyAgentControlScanConfigInput,
+    ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput, ModifyCredentialInput,
+    ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
     ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput,
     ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput,
     ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput,
@@ -1129,6 +1130,62 @@ impl SupportingResourcePort for StaticGvmdAdapter {
         _: &SupportingResourceQuery,
     ) -> Result<VulnerabilityPage, GatewayError> {
         unsupported!("static adapter does not support vulnerabilities")
+    }
+
+    async fn list_cves(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<CvePage, GatewayError> {
+        unsupported!("static adapter does not support cves")
+    }
+
+    async fn get_cve(&self, _: &str, _: &str) -> Result<Cve, GatewayError> {
+        unsupported!("static adapter does not support cves")
+    }
+
+    async fn list_cpes(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<CpePage, GatewayError> {
+        unsupported!("static adapter does not support cpes")
+    }
+
+    async fn get_cpe(&self, _: &str, _: &str) -> Result<Cpe, GatewayError> {
+        unsupported!("static adapter does not support cpes")
+    }
+
+    async fn list_cert_bund_advisories(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<CertBundAdvisoryPage, GatewayError> {
+        unsupported!("static adapter does not support cert-bund advisories")
+    }
+
+    async fn get_cert_bund_advisory(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<CertBundAdvisory, GatewayError> {
+        unsupported!("static adapter does not support cert-bund advisories")
+    }
+
+    async fn list_dfn_cert_advisories(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<DfnCertAdvisoryPage, GatewayError> {
+        unsupported!("static adapter does not support dfn-cert advisories")
+    }
+
+    async fn get_dfn_cert_advisory(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<DfnCertAdvisory, GatewayError> {
+        unsupported!("static adapter does not support dfn-cert advisories")
     }
 }
 
