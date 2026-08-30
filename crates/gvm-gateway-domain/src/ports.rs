@@ -18,23 +18,24 @@ use crate::{
     Filter, FilterPage, GatewayError, GenericAsset, GenericAssetPage, GenericConfig,
     GenericConfigPage, GenericConfigQuery, GetReportOpts, Group, GroupPage, Host, HostPage,
     IdentityQuery, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput,
-    ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput,
-    ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput, ModifyOperatingSystemInput,
-    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt,
-    NvtFamilyPage, NvtPage, NvtQuery, OciImageTarget, OciImageTargetPage, OperatingSystem,
-    OperatingSystemPage, Override, OverridePage, Permission, PermissionPage, PortList,
-    PortListPage, PortListQuery, ReadinessStatus, Report, ReportApplicationPage,
-    ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest,
-    ReportFormat, ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage,
-    ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery,
-    Schedule, SchedulePage, ScheduleQuery, SpecializedTargetQuery, SupportingResourceQuery, Tag,
-    TagPage, Target, TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket,
-    TicketPage, Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User,
-    UserPage, UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
-    WebApplicationTarget, WebApplicationTargetPage,
+    ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput, ModifyCredentialStoreInput,
+    ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
+    ModifyOciImageTargetInput, ModifyOperatingSystemInput, ModifyOverrideInput,
+    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage,
+    NvtPage, NvtQuery, OciImageTarget, OciImageTargetPage, OperatingSystem, OperatingSystemPage,
+    Override, OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
+    ReadinessStatus, Report, ReportApplicationPage, ReportClosedCvePage, ReportCvePage,
+    ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
+    ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPortPage, ReportQuery,
+    ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
+    ScheduleQuery, SpecializedTargetQuery, SupportingResourceQuery, Tag, TagPage, Target,
+    TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone,
+    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
+    WebApplicationTargetPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -153,6 +154,28 @@ pub trait CredentialPort: Send + Sync + 'static {
         &self,
         session_token: &str,
     ) -> Result<Vec<CredentialStore>, GatewayError>;
+
+    /// Fetch one backend credential store.
+    async fn get_credential_store(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<CredentialStore, GatewayError>;
+
+    /// Modify one backend credential store.
+    async fn modify_credential_store(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyCredentialStoreInput,
+    ) -> Result<CredentialStore, GatewayError>;
+
+    /// Verify one backend credential store connection.
+    async fn verify_credential_store(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<(), GatewayError>;
 
     /// List credentials for the session.
     async fn list_credentials(

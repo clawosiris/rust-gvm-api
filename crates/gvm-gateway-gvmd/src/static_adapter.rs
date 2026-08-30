@@ -19,24 +19,25 @@ use gvm_gateway_domain::{
     GenericAssetPage, GenericConfig, GenericConfigPage, GenericConfigQuery, GetReportOpts, Group,
     GroupPage, Host, HostPage, IdentityPort, IdentityQuery, ModifyAgentControlScanConfigInput,
     ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput, ModifyAssetInput,
-    ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
-    ModifyOciImageTargetInput, ModifyOperatingSystemInput, ModifyOverrideInput,
-    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
-    ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
-    ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage,
-    NvtPage, NvtQuery, OciImageTarget, OciImageTargetPage, OperatingSystem, OperatingSystemPage,
-    Override, OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort,
-    PortListQuery, ReadinessStatus, Report, ReportApplicationPage, ReportClosedCvePage,
-    ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
-    ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPort,
-    ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultPort, ResultQuery,
-    Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult,
-    Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort,
-    ScheduleQuery, SpecializedTargetQuery, SupportingResourcePort, SupportingResourceQuery,
-    SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
-    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
-    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
+    ModifyCredentialInput, ModifyCredentialStoreInput, ModifyFilterInput, ModifyGroupInput,
+    ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput, ModifyOperatingSystemInput,
+    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
+    ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt,
+    NvtFamilyPage, NvtPage, NvtQuery, OciImageTarget, OciImageTargetPage, OperatingSystem,
+    OperatingSystemPage, Override, OverridePage, Permission, PermissionPage, PortList,
+    PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportApplicationPage,
+    ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest,
+    ReportFormat, ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage,
+    ReportPort, ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultPort,
+    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
+    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
+    SchedulePort, ScheduleQuery, SpecializedTargetQuery, SupportingResourcePort,
+    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
+    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone,
+    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
+    WebApplicationTargetPage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -174,6 +175,27 @@ impl CredentialPort for StaticGvmdAdapter {
             default: Some(true),
             writable: Some(true),
         }])
+    }
+
+    async fn get_credential_store(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<CredentialStore, GatewayError> {
+        unsupported!("static adapter does not support credential stores")
+    }
+
+    async fn modify_credential_store(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyCredentialStoreInput,
+    ) -> Result<CredentialStore, GatewayError> {
+        unsupported!("static adapter does not support credential stores")
+    }
+
+    async fn verify_credential_store(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support credential stores")
     }
 
     async fn list_credentials(
