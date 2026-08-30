@@ -52,15 +52,18 @@ use crate::{
     },
     docs::{api_docs, redoc_js},
     emerging::{
-        clone_config_docs, create_asset_docs, create_config_docs, delete_asset_docs,
-        delete_config_docs, delete_operating_system_docs, get_asset_docs, get_config_docs,
-        get_operating_system_docs, get_report_applications_docs, get_report_cves_docs,
-        get_report_hosts_docs, get_report_operating_systems_docs, get_report_ports_docs,
-        list_assets_docs, list_configs_docs, list_operating_systems_docs, modify_asset_docs,
-        modify_config_docs, modify_operating_system_docs, not_implemented,
+        delete_operating_system_docs, get_operating_system_docs, get_report_applications_docs,
+        get_report_cves_docs, get_report_hosts_docs, get_report_operating_systems_docs,
+        get_report_ports_docs, list_operating_systems_docs, modify_operating_system_docs,
+        not_implemented,
     },
     error::RestError,
     feeds::{list_feeds, list_feeds_docs},
+    generic_resources::{
+        clone_config, clone_config_docs, delete_asset, delete_asset_docs, delete_config,
+        delete_config_docs, get_asset, get_asset_docs, get_config, get_config_docs, list_assets,
+        list_assets_docs, list_configs, list_configs_docs, update_asset, update_asset_docs,
+    },
     identity::{
         create_group, create_group_docs, create_permission, create_permission_docs, create_role,
         create_role_docs, create_user, create_user_docs, delete_group, delete_group_docs,
@@ -328,50 +331,29 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/agent-groups/{id}/clone",
             post_with(clone_agent_group, clone_agent_group_docs),
         )
-        // Generic assets/configs reserved without changing specific hosts/scan-configs contracts
+        // Generic assets/configs remain distinct from specialized hosts/scan-configs contracts.
+        .api_route("/api/v1/assets", get_with(list_assets, list_assets_docs))
+        .api_route("/api/v1/assets/{id}", get_with(get_asset, get_asset_docs))
         .api_route(
-            "/api/v1/assets",
-            get_with(not_implemented, list_assets_docs),
-        )
-        .api_route(
-            "/api/v1/assets",
-            post_with(not_implemented, create_asset_docs),
+            "/api/v1/assets/{id}",
+            put_with(update_asset, update_asset_docs),
         )
         .api_route(
             "/api/v1/assets/{id}",
-            get_with(not_implemented, get_asset_docs),
+            delete_with(delete_asset, delete_asset_docs),
         )
+        .api_route("/api/v1/configs", get_with(list_configs, list_configs_docs))
         .api_route(
-            "/api/v1/assets/{id}",
-            put_with(not_implemented, modify_asset_docs),
-        )
-        .api_route(
-            "/api/v1/assets/{id}",
-            delete_with(not_implemented, delete_asset_docs),
-        )
-        .api_route(
-            "/api/v1/configs",
-            get_with(not_implemented, list_configs_docs),
-        )
-        .api_route(
-            "/api/v1/configs",
-            post_with(not_implemented, create_config_docs),
+            "/api/v1/configs/{id}",
+            get_with(get_config, get_config_docs),
         )
         .api_route(
             "/api/v1/configs/{id}",
-            get_with(not_implemented, get_config_docs),
-        )
-        .api_route(
-            "/api/v1/configs/{id}",
-            put_with(not_implemented, modify_config_docs),
-        )
-        .api_route(
-            "/api/v1/configs/{id}",
-            delete_with(not_implemented, delete_config_docs),
+            delete_with(delete_config, delete_config_docs),
         )
         .api_route(
             "/api/v1/configs/{id}/clone",
-            post_with(not_implemented, clone_config_docs),
+            post_with(clone_config, clone_config_docs),
         )
         // New target families from current GVMD
         .api_route(

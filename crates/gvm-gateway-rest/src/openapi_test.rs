@@ -192,6 +192,21 @@ fn generated_openapi_preserves_key_schema_fields() {
 
     let port_list_props = &schemas["PortList"]["properties"];
     assert!(port_list_props.get("portRange").is_some());
+
+    // Generic resources are additive DTOs: their discriminators and variant
+    // fields must not leak into the established specialized schemas.
+    assert!(schemas["GenericAsset"]["properties"].get("type").is_some());
+    assert!(schemas["GenericAsset"]["properties"]
+        .get("identifiers")
+        .is_some());
+    assert!(schemas["Host"]["properties"].get("type").is_none());
+    assert!(schemas["Host"]["properties"].get("identifiers").is_none());
+    assert!(schemas["GenericConfig"]["properties"]
+        .get("usageType")
+        .is_some());
+    assert!(schemas["ScanConfig"]["properties"]
+        .get("familyCount")
+        .is_some());
 }
 
 #[test]
@@ -365,6 +380,18 @@ fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
         json!(["Open", "Fixed", "Closed"]),
         "TicketStatus",
     );
+    assert_open_enum_schema(
+        schemas,
+        &schemas["AssetType"],
+        json!(["host", "os", "tls_certificate"]),
+        "AssetType",
+    );
+    assert_open_enum_schema(
+        schemas,
+        &schemas["ConfigUsageType"],
+        json!(["scan", "audit", "policy"]),
+        "ConfigUsageType",
+    );
 
     let alert_props = &schemas["Alert"]["properties"];
     assert_open_enum_schema(
@@ -470,6 +497,69 @@ fn generated_openapi_documents_open_enum_fields_as_non_exhaustive() {
         json!(["file", "ldap_connect", "radius_connect"]),
         "User.authenticationType",
     );
+}
+
+#[test]
+fn generated_and_curated_generic_resource_contracts_match_semantics() {
+    // Route parity checks operation IDs/statuses globally. This focused guard
+    // additionally covers the open enums and asymmetric delete semantics that
+    // are central to the generic asset/config contract.
+    let generated = build_openapi();
+    let generated_schemas = &generated["components"]["schemas"];
+    let emerging_path = root_spec_path()
+        .parent()
+        .expect("root spec should have a directory")
+        .join("emerging.yaml");
+    let curated = read_yaml(&emerging_path);
+
+    for name in ["AssetType", "ConfigUsageType"] {
+        assert_eq!(
+            generated_schemas[name]["enum"], curated["components"]["schemas"][name]["enum"],
+            "generated and curated {name} known values must match"
+        );
+        assert_eq!(
+            generated_schemas[name]["description"],
+            curated["components"]["schemas"][name]["description"],
+            "generated and curated {name} openness text must match"
+        );
+    }
+
+    for (path, method) in [
+        ("/assets", "get"),
+        ("/assets/{id}", "get"),
+        ("/assets/{id}", "put"),
+    ] {
+        let generated_type = op(&generated, path, method)["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|parameter| parameter["name"] == "type")
+            .unwrap_or_else(|| panic!("generated {method} {path} must document type"));
+        let curated_type = curated["paths"][path][method]["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|parameter| parameter["name"] == "type")
+            .unwrap_or_else(|| panic!("curated {method} {path} must document type"));
+        assert_eq!(generated_type["required"], json!(true));
+        assert_eq!(curated_type["required"], json!(true));
+    }
+
+    let asset_delete = op(&generated, "/assets/{id}", "delete");
+    let asset_parameters = asset_delete["parameters"].as_array().unwrap();
+    assert!(asset_parameters
+        .iter()
+        .all(|parameter| parameter["name"] != "ultimate"));
+    let config_delete = op(&generated, "/configs/{id}", "delete");
+    assert!(config_delete["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|parameter| parameter["name"] == "ultimate"));
+
+    assert!(generated["paths"]["/assets"].get("post").is_none());
+    assert!(generated["paths"]["/configs"].get("post").is_none());
+    assert!(generated["paths"]["/configs/{id}"].get("put").is_none());
 }
 
 #[test]

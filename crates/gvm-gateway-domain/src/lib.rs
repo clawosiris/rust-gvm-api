@@ -12,6 +12,7 @@ mod common;
 mod credentials;
 mod error;
 mod feeds;
+mod generic_resources;
 mod identity;
 mod jobs;
 #[cfg(test)]
@@ -39,6 +40,7 @@ pub use common::*;
 pub use credentials::*;
 pub use error::*;
 pub use feeds::*;
+pub use generic_resources::*;
 pub use identity::*;
 pub use jobs::*;
 pub use log_safety::{hide_optional_value, hide_value, HiddenValue};

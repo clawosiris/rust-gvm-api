@@ -4,18 +4,101 @@
 //! Supporting-resource use cases.
 
 use gvm_gateway_domain::{
-    CertBundAdvisory, CertBundAdvisoryPage, Cpe, CpePage, CreateFilterInput, CreateHostInput,
-    CreateNoteInput, CreateOverrideInput, CreateTagInput, Cve, CvePage, DfnCertAdvisory,
-    DfnCertAdvisoryPage, Filter, FilterPage, GatewayError, Host, HostPage, ModifyFilterInput,
-    ModifyHostInput, ModifyNoteInput, ModifyOverrideInput, ModifyTagInput, Note, NotePage, Nvt,
-    NvtFamilyPage, NvtPage, Override, OverridePage, ReportFormat, ReportFormatPage,
-    SupportingResourceQuery, Tag, TagPage, Ticket, TicketPage, TlsCertificateAsset,
-    TlsCertificateAssetPage, VulnerabilityPage,
+    AssetQuery, CertBundAdvisory, CertBundAdvisoryPage, Cpe, CpePage, CreateFilterInput,
+    CreateHostInput, CreateNoteInput, CreateOverrideInput, CreateTagInput, Cve, CvePage,
+    DfnCertAdvisory, DfnCertAdvisoryPage, Filter, FilterPage, GatewayError, GenericAsset,
+    GenericAssetPage, Host, HostPage, ModifyAssetInput, ModifyFilterInput, ModifyHostInput,
+    ModifyNoteInput, ModifyOverrideInput, ModifyTagInput, Note, NotePage, Nvt, NvtFamilyPage,
+    NvtPage, Override, OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag,
+    TagPage, Ticket, TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
 };
 
 use crate::GatewayService;
 
 impl GatewayService {
+    /// Lists generic assets for an authenticated session.
+    pub async fn list_assets(
+        &self,
+        session_token: &str,
+        query: AssetQuery,
+    ) -> Result<GenericAssetPage, GatewayError> {
+        self.execute_with_resource(
+            "assets.list",
+            session_token,
+            "list",
+            "asset",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .list_assets(&session.token, &query)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Fetches a generic asset for an authenticated session.
+    pub async fn get_asset(
+        &self,
+        session_token: &str,
+        id: &str,
+        asset_type: &str,
+    ) -> Result<GenericAsset, GatewayError> {
+        self.execute_with_resource(
+            "assets.get",
+            session_token,
+            "read",
+            "asset",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .get_asset(&session.token, id, asset_type)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Modifies a generic asset for an authenticated session.
+    pub async fn modify_asset(
+        &self,
+        session_token: &str,
+        id: &str,
+        asset_type: &str,
+        input: ModifyAssetInput,
+    ) -> Result<GenericAsset, GatewayError> {
+        self.execute_with_resource(
+            "assets.modify",
+            session_token,
+            "modify",
+            "asset",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .modify_asset(&session.token, id, asset_type, input)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Deletes a generic asset for an authenticated session.
+    pub async fn delete_asset(&self, session_token: &str, id: &str) -> Result<(), GatewayError> {
+        self.execute_with_resource(
+            "assets.delete",
+            session_token,
+            "delete",
+            "asset",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .delete_asset(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
     /// Lists hosts for an authenticated session.
     pub async fn list_hosts(
         &self,

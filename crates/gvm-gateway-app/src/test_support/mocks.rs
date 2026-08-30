@@ -8,30 +8,31 @@ use gvm_gateway_domain::{
     Agent, AgentConfig, AgentControlConfig, AgentGroup, AgentGroupPage, AgentGroupQuery,
     AgentHeartbeatConfig, AgentInstallerInstruction, AgentInstallerInstructionQuery, AgentPage,
     AgentPort, AgentQuery, AgentRetryConfig, AgentScriptExecutorConfig, AgentSupportBundle,
-    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CertBundAdvisory,
-    CertBundAdvisoryPage, Cpe, CpePage, CreateAgentGroupInput, CreateAlertInput,
+    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AssetQuery, AuthPort,
+    CertBundAdvisory, CertBundAdvisoryPage, Cpe, CpePage, CreateAgentGroupInput, CreateAlertInput,
     CreateCredentialInput, CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
     CreateOverrideInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
     CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput, CreateTaskInput,
     CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
     Cve, CvePage, DfnCertAdvisory, DfnCertAdvisoryPage, Feed, FeedPort, Filter, FilterPage,
-    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
-    JobArtifact, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput,
-    ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput,
-    ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput,
-    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput,
-    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage,
-    NvtPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
-    PortListPort, PortListQuery, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage,
-    ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
-    ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultPort, ResultQuery, Role,
-    RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner,
-    ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SupportingResourceMeta, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
-    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
-    TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset, TlsCertificateAssetPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
-    VulnerabilityPage,
+    GatewayError, GenericAsset, GenericAssetPage, GenericConfig, GenericConfigPage,
+    GenericConfigQuery, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort,
+    IdentityQuery, JobArtifact, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput,
+    ModifyAgentInput, ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput, ModifyFilterInput,
+    ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput,
+    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
+    ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
+    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override, OverridePage, Permission,
+    PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
+    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
+    ReportFormatPage, ReportPage, ReportPort, ReportQuery, ReportVulnerabilityPage, ResourceRef,
+    ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
+    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourceMeta,
+    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
+    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -894,6 +895,34 @@ pub(crate) struct MockScanConfigPort;
 
 #[async_trait]
 impl ScanConfigPort for MockScanConfigPort {
+    async fn list_configs(
+        &self,
+        _: &str,
+        query: &GenericConfigQuery,
+    ) -> Result<GenericConfigPage, GatewayError> {
+        Ok(GenericConfigPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_config(&self, _: &str, id: &str) -> Result<GenericConfig, GatewayError> {
+        Err(GatewayError::NotFound(format!("config {id} not found")))
+    }
+
+    async fn delete_config(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("config {id} not found")))
+    }
+
+    async fn clone_config(&self, _: &str, id: &str) -> Result<String, GatewayError> {
+        Err(GatewayError::NotFound(format!("config {id} not found")))
+    }
+
     async fn list_scan_configs(
         &self,
         _: &str,
@@ -1220,6 +1249,40 @@ pub(crate) struct MockSupportingResourcePort;
 
 #[async_trait]
 impl SupportingResourcePort for MockSupportingResourcePort {
+    async fn list_assets(
+        &self,
+        _: &str,
+        query: &AssetQuery,
+    ) -> Result<GenericAssetPage, GatewayError> {
+        Ok(GenericAssetPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_asset(&self, _: &str, id: &str, _: &str) -> Result<GenericAsset, GatewayError> {
+        Err(GatewayError::NotFound(format!("asset {id} not found")))
+    }
+
+    async fn modify_asset(
+        &self,
+        _: &str,
+        id: &str,
+        _: &str,
+        _: ModifyAssetInput,
+    ) -> Result<GenericAsset, GatewayError> {
+        Err(GatewayError::NotFound(format!("asset {id} not found")))
+    }
+
+    async fn delete_asset(&self, _: &str, id: &str) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("asset {id} not found")))
+    }
+
     async fn list_hosts(
         &self,
         _: &str,

@@ -10,12 +10,13 @@ use std::{
 
 use async_trait::async_trait;
 use gvm_gateway_domain::{
-    CreateReportExportRequest, CreateTargetInput, GatewayError, GetReportOpts,
-    GvmdReportFormatExportRequest, JobStatus, JsonReportExportRequest, ModifyTargetInput,
-    Pagination, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
-    ReportExportJob, ReportExportRequest, ReportPage, ReportPort, ReportQuery,
-    ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery, ScanResult, SessionLimits,
-    SessionManager, SessionTokenDigest, SystemPort, TargetQuery, Timezone, TlsCertificatePage,
+    AssetQuery, CreateReportExportRequest, CreateTargetInput, GatewayError, GenericConfigQuery,
+    GetReportOpts, GvmdReportFormatExportRequest, JobStatus, JsonReportExportRequest,
+    ModifyAssetInput, ModifyTargetInput, Pagination, ReadinessStatus, Report, ReportClosedCvePage,
+    ReportErrorPage, ReportExport, ReportExportJob, ReportExportRequest, ReportPage, ReportPort,
+    ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery, ScanResult,
+    SessionLimits, SessionManager, SessionTokenDigest, SystemPort, TargetQuery, Timezone,
+    TlsCertificatePage,
 };
 use tokio::sync::Notify;
 
@@ -238,6 +239,61 @@ async fn service_list_timezones_returns_backend_values() {
             },
         ]
     );
+}
+
+/// Generic resource operations share the normal authenticated service path and
+/// preserve list pagination when forwarding to their dedicated ports.
+#[tokio::test]
+async fn service_generic_resource_operations_use_sessions_and_typed_ports() {
+    let service = create_test_service();
+    let session = service.session_manager().create("admin").unwrap();
+
+    let assets = service
+        .list_assets(
+            &session.token,
+            AssetQuery {
+                page: 2,
+                per_page: 10,
+                asset_type: "tls_certificate".to_string(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("valid session should reach the asset port");
+    let configs = service
+        .list_configs(
+            &session.token,
+            GenericConfigQuery {
+                page: 3,
+                per_page: 5,
+                usage_type: Some("future_usage".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("valid session should reach the config port");
+
+    assert_eq!(
+        (assets.pagination.page, assets.pagination.per_page),
+        (2, 10)
+    );
+    assert_eq!(
+        (configs.pagination.page, configs.pagination.per_page),
+        (3, 5)
+    );
+
+    let error = service
+        .modify_asset(
+            "invalid-token",
+            "123e4567-e89b-12d3-a456-426614174000",
+            "host",
+            ModifyAssetInput {
+                comment: Some("blocked".to_string()),
+            },
+        )
+        .await
+        .expect_err("invalid sessions must fail before generic mutation");
+    assert!(matches!(error, GatewayError::SessionInvalidated(_)));
 }
 
 /// Target creation rejects unknown session tokens before hitting the port.

@@ -79,69 +79,6 @@ macro_rules! reserved_id_doc {
     };
 }
 
-reserved_doc!(
-    list_assets_docs,
-    "getAssets",
-    "Assets",
-    "List generic assets"
-);
-reserved_doc!(
-    create_asset_docs,
-    "createAsset",
-    "Assets",
-    "Create a generic asset"
-);
-reserved_id_doc!(get_asset_docs, "getAsset", "Assets", "Get a generic asset");
-reserved_id_doc!(
-    modify_asset_docs,
-    "modifyAsset",
-    "Assets",
-    "Modify a generic asset"
-);
-reserved_id_doc!(
-    delete_asset_docs,
-    "deleteAsset",
-    "Assets",
-    "Delete a generic asset"
-);
-
-reserved_doc!(
-    list_configs_docs,
-    "getConfigs",
-    "Configs",
-    "List generic configs"
-);
-reserved_doc!(
-    create_config_docs,
-    "createConfig",
-    "Configs",
-    "Create a generic config"
-);
-reserved_id_doc!(
-    get_config_docs,
-    "getConfig",
-    "Configs",
-    "Get a generic config"
-);
-reserved_id_doc!(
-    modify_config_docs,
-    "modifyConfig",
-    "Configs",
-    "Modify a generic config"
-);
-reserved_id_doc!(
-    delete_config_docs,
-    "deleteConfig",
-    "Configs",
-    "Delete a generic config"
-);
-reserved_id_doc!(
-    clone_config_docs,
-    "cloneConfig",
-    "Configs",
-    "Clone a generic config"
-);
-
 reserved_id_doc!(
     get_report_hosts_docs,
     "getReportHosts",
