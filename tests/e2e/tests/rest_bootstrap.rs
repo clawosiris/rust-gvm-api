@@ -44,3 +44,38 @@ async fn rest_bootstrap_public_endpoints_report_live_ready_versioned_gateway() -
 
     Ok(())
 }
+
+// Proves that the shipped compose backend exposes the catalog used by the
+// public timezone route.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires a compose-backed gvmd environment"]
+async fn rest_system_timezones_returns_backend_catalog() -> Result<()> {
+    let harness = E2eHarness::from_env()?;
+    harness.wait_until_ready().await?;
+
+    let session = harness.create_session().await?;
+    let version = harness.get_version().await?;
+    assert_eq!(
+        session.gmp_version, version.gmp_version,
+        "session negotiation and public version endpoint disagreed about GMP version"
+    );
+
+    let timezones = harness.get_timezones(&session.token).await?;
+    assert!(
+        !timezones.data.is_empty(),
+        "timezone catalog should not be empty on the compose-backed backend"
+    );
+    assert!(
+        timezones.data.iter().any(|timezone| timezone.name == "UTC"),
+        "timezone catalog should expose UTC for schedule-compatible clients"
+    );
+    assert!(
+        timezones
+            .data
+            .iter()
+            .all(|timezone| !timezone.name.trim().is_empty()),
+        "timezone catalog should not contain empty timezone names"
+    );
+
+    Ok(())
+}

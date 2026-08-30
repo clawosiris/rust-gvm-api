@@ -15,7 +15,7 @@ use gvm_gateway_domain::{
     Pagination, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
     ReportExportJob, ReportExportRequest, ReportPage, ReportPort, ReportQuery,
     ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery, ScanResult, SessionLimits,
-    SessionManager, SessionTokenDigest, SystemPort, TargetQuery, TlsCertificatePage,
+    SessionManager, SessionTokenDigest, SystemPort, TargetQuery, Timezone, TlsCertificatePage,
 };
 use tokio::sync::Notify;
 
@@ -90,6 +90,40 @@ impl SystemPort for FailingVersionSystemPort {
         Err(GatewayError::BackendUnavailable(
             "version probe failed".to_string(),
         ))
+    }
+
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Ok(vec![])
+    }
+}
+
+#[derive(Clone)]
+struct FixedTimezoneSystemPort;
+
+#[async_trait]
+impl SystemPort for FixedTimezoneSystemPort {
+    async fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
+        Ok(ReadinessStatus {
+            status: "ready",
+            reason: None,
+        })
+    }
+
+    async fn gmp_version(&self) -> Result<String, GatewayError> {
+        Ok("22.8".to_string())
+    }
+
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Ok(vec![
+            Timezone {
+                name: "UTC".to_string(),
+                offset: None,
+            },
+            Timezone {
+                name: "Europe/Berlin".to_string(),
+                offset: Some("+01:00".to_string()),
+            },
+        ])
     }
 }
 
@@ -166,6 +200,44 @@ async fn service_list_targets_with_valid_session() {
         .list_targets(&session.token, TargetQuery::default())
         .await;
     assert!(result.is_ok());
+}
+
+/// Timezone listing must remain session-scoped so the new system surface uses
+/// the same authenticated execution path as the rest of the backend-backed API.
+#[tokio::test]
+async fn service_list_timezones_requires_valid_session() {
+    let service = create_test_service();
+
+    let result = service.list_timezones("invalid-token").await;
+
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+}
+
+/// Backend timezone values should flow through the app layer unchanged once an
+/// authenticated session exists.
+#[tokio::test]
+async fn service_list_timezones_returns_backend_values() {
+    let sessions = Arc::new(SessionManager::default());
+    let mut ports = test_ports();
+    ports.system = Arc::new(FixedTimezoneSystemPort);
+    let service = GatewayService::new(ports, Arc::clone(&sessions));
+    let session = service.session_manager().create("admin").unwrap();
+
+    let result = service.list_timezones(&session.token).await.unwrap();
+
+    assert_eq!(
+        result,
+        vec![
+            Timezone {
+                name: "UTC".to_string(),
+                offset: None,
+            },
+            Timezone {
+                name: "Europe/Berlin".to_string(),
+                offset: Some("+01:00".to_string()),
+            },
+        ]
+    );
 }
 
 /// Target creation rejects unknown session tokens before hitting the port.

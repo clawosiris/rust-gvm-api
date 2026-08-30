@@ -5,7 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use common::{
-    graceful_shutdown_harness, spawn_server, ControlledTargetAdapter, GracefulShutdownHarness,
+    graceful_shutdown_harness, spawn_server, specialized_target_harness, target_harness,
+    ControlledTargetAdapter, GracefulShutdownHarness,
 };
 use gvm_gateway::config::NativeTlsFiles;
 use gvm_gateway::server;
@@ -168,6 +169,70 @@ async fn version_returns_api_and_gmp_version() {
     assert_eq!(json["gmpVersion"], serde_json::json!("22.7"));
 
     handle.abort();
+}
+
+#[tokio::test]
+async fn timezones_return_backend_catalog_when_supported() {
+    // Regression coverage for PR #312's reversal condition: the route is only
+    // valid if it reflects gvmd's live catalog rather than proxy-local files.
+    let harness = specialized_target_harness(|_| {}).await;
+    let session = harness.create_session_with_basic("admin", "admin").await;
+    assert_eq!(session.status(), StatusCode::CREATED);
+    let token = session.json::<serde_json::Value>().await.unwrap()["sessionToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let response = harness
+        .client
+        .get(harness.url("/api/v1/timezones"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.json::<serde_json::Value>().await.unwrap(),
+        serde_json::json!({
+            "data": [
+                { "name": "UTC" },
+                { "name": "Europe/Berlin", "offset": "+01:00" }
+            ]
+        })
+    );
+
+    harness.shutdown().await;
+}
+
+#[tokio::test]
+async fn timezones_return_501_when_backend_lacks_get_timezones() {
+    // This preserves the August 3, 2026 / August 5, 2026 review constraint
+    // from PR #425: older backends must fail explicitly as unsupported rather
+    // than looking like generic backend outages.
+    let harness = target_harness(|_| {}).await;
+    let session = harness.create_session_with_basic("admin", "admin").await;
+    assert_eq!(session.status(), StatusCode::CREATED);
+    let token = session.json::<serde_json::Value>().await.unwrap()["sessionToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let response = harness
+        .client
+        .get(harness.url("/api/v1/timezones"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    let problem = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(problem["code"], serde_json::json!("not_implemented"));
+    assert_eq!(problem["status"], serde_json::json!(501));
+    assert_eq!(problem["instance"], serde_json::json!("/api/v1/timezones"));
+
+    harness.shutdown().await;
 }
 
 #[tokio::test]

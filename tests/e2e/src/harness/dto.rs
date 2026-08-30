@@ -23,6 +23,12 @@ pub struct VersionResponse {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct TimezoneEntry {
+    pub name: String,
+    pub offset: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct ProblemResponse {
     #[serde(rename = "type")]
     pub problem_type: String,
