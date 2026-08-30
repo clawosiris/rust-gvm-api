@@ -75,6 +75,7 @@ paths:
       summary: Get paginated results for a report
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
         - $ref: "./common.yaml#/components/parameters/Page"
         - $ref: "./common.yaml#/components/parameters/PerPage"
       responses:
@@ -100,6 +101,7 @@ paths:
       summary: Get vulnerability findings for a report
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
         - $ref: "./common.yaml#/components/parameters/Page"
         - $ref: "./common.yaml#/components/parameters/PerPage"
       responses:
@@ -127,6 +129,7 @@ paths:
       summary: Get TLS certificates observed in a report
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
         - $ref: "./common.yaml#/components/parameters/Page"
         - $ref: "./common.yaml#/components/parameters/PerPage"
       responses:
@@ -154,6 +157,7 @@ paths:
       summary: Get report error findings
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
         - $ref: "./common.yaml#/components/parameters/Page"
         - $ref: "./common.yaml#/components/parameters/PerPage"
       responses:
@@ -181,6 +185,7 @@ paths:
       summary: Get closed CVE findings for a report
       parameters:
         - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
         - $ref: "./common.yaml#/components/parameters/Page"
         - $ref: "./common.yaml#/components/parameters/PerPage"
       responses:
@@ -190,6 +195,156 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReportClosedCveList"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "501":
+          $ref: "./common.yaml#/components/responses/NotImplemented"
+
+  /reports/{id}/hosts:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportHosts
+      tags: [Reports]
+      summary: Get report hosts
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of report host summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportHostList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "501":
+          $ref: "./common.yaml#/components/responses/NotImplemented"
+
+  /reports/{id}/ports:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportPorts
+      tags: [Reports]
+      summary: Get report ports
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of report port summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportPortList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "501":
+          $ref: "./common.yaml#/components/responses/NotImplemented"
+
+  /reports/{id}/applications:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportApplications
+      tags: [Reports]
+      summary: Get report applications
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of report application summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportApplicationList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "501":
+          $ref: "./common.yaml#/components/responses/NotImplemented"
+
+  /reports/{id}/operating-systems:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportOperatingSystems
+      tags: [Reports]
+      summary: Get report operating systems
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of report operating-system summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportOperatingSystemList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "501":
+          $ref: "./common.yaml#/components/responses/NotImplemented"
+
+  /reports/{id}/cves:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getReportCves
+      tags: [Reports]
+      summary: Get report CVEs
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of report CVE summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportCveList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
         "401":
           $ref: "./common.yaml#/components/responses/Unauthorized"
         "502":
@@ -413,5 +568,140 @@ components:
           maxItems: 1000
           items:
             $ref: "#/components/schemas/TlsCertificate"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    ReportHost:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Backend row identifier when available.
+        name:
+          type: string
+          description: Host label from the report summary row.
+        severity:
+          type: string
+          description: Backend severity summary for the host row.
+
+    ReportHostList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/ReportHost"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    ReportPort:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Backend row identifier when available.
+        name:
+          type: string
+          description: Port label from the report summary row.
+        severity:
+          type: string
+          description: Backend severity summary for the port row.
+
+    ReportPortList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/ReportPort"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    ReportApplication:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Backend row identifier when available.
+        name:
+          type: string
+          description: Application label from the report summary row.
+        severity:
+          type: string
+          description: Backend severity summary for the application row.
+
+    ReportApplicationList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/ReportApplication"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    ReportOperatingSystem:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Backend row identifier when available.
+        name:
+          type: string
+          description: Operating-system label from the report summary row.
+        severity:
+          type: string
+          description: Backend severity summary for the operating-system row.
+
+    ReportOperatingSystemList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/ReportOperatingSystem"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
+    ReportCve:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Backend row identifier when available.
+        name:
+          type: string
+          description: CVE label from the report summary row.
+        severity:
+          type: string
+          description: Backend severity summary for the CVE row.
+
+    ReportCveList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/ReportCve"
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"

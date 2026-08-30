@@ -20,13 +20,15 @@ use gvm_gateway_domain::{
     GroupPage, Host, HostPage, IdentityPort, IdentityQuery, ModifyAgentControlScanConfigInput,
     ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput, ModifyAssetInput,
     ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
-    ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput,
-    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput,
-    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput,
-    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, Override,
+    ModifyOciImageTargetInput, ModifyOperatingSystemInput, ModifyOverrideInput,
+    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage,
+    NvtPage, OciImageTarget, OciImageTargetPage, OperatingSystem, OperatingSystemPage, Override,
     OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
-    ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
-    ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery,
+    ReadinessStatus, Report, ReportApplicationPage, ReportClosedCvePage, ReportCvePage,
+    ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
+    ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPort, ReportPortPage, ReportQuery,
     ReportVulnerabilityPage, ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig,
     ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
     ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SpecializedTargetQuery,
@@ -665,6 +667,61 @@ impl ReportPort for StaticGvmdAdapter {
         ))
     }
 
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support reports".to_string(),
+        ))
+    }
+
     async fn get_report_tls_certificates(
         &self,
         _: &str,
@@ -966,6 +1023,22 @@ impl SupportingResourcePort for StaticGvmdAdapter {
         unsupported!("static adapter does not support hosts")
     }
 
+    async fn list_operating_systems(
+        &self,
+        _: &str,
+        _: &SupportingResourceQuery,
+    ) -> Result<OperatingSystemPage, GatewayError> {
+        unsupported!("static adapter does not support operating systems")
+    }
+
+    async fn get_operating_system(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<OperatingSystem, GatewayError> {
+        unsupported!("static adapter does not support operating systems")
+    }
+
     async fn list_tls_certificates(
         &self,
         _: &str,
@@ -995,8 +1068,21 @@ impl SupportingResourcePort for StaticGvmdAdapter {
         unsupported!("static adapter does not support hosts")
     }
 
+    async fn modify_operating_system(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyOperatingSystemInput,
+    ) -> Result<OperatingSystem, GatewayError> {
+        unsupported!("static adapter does not support operating systems")
+    }
+
     async fn delete_host(&self, _: &str, _: &str) -> Result<(), GatewayError> {
         unsupported!("static adapter does not support hosts")
+    }
+
+    async fn delete_operating_system(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support operating systems")
     }
 
     async fn list_report_formats(

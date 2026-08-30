@@ -299,45 +299,61 @@ async fn browser_docs_use_repository_bundled_redoc() {
 }
 
 #[tokio::test]
-async fn reserved_current_gvmd_routes_explain_typed_response_gap() {
-    // Until rust-gvm exposes typed response models for these new resources, the
-    // gateway must return an explicit capability error instead of parsing raw
-    // GMP XML locally.
-    let app = build_router(static_gateway_service());
+async fn current_gvmd_report_and_operating_system_routes_dispatch_to_backend_boundary() {
+    // These routes are no longer reserved placeholders. Even against the
+    // static adapter they must route into the backend boundary and therefore
+    // surface the shared backend-unavailable problem, not a router-level 501.
+    let service = static_gateway_service();
+    let token = service
+        .session_manager()
+        .create("router-test-user")
+        .expect("test session")
+        .token;
+    let app = build_router(service);
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/reports/123e4567-e89b-12d3-a456-426614174000/hosts")
-                .header("authorization", "Bearer placeholder")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    for path in [
+        "/api/v1/reports/123e4567-e89b-12d3-a456-426614174000/hosts",
+        "/api/v1/operating-systems",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-    assert_eq!(
-        response
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok()),
-        Some("application/problem+json")
-    );
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY, "path={path}");
+        assert_eq!(
+            response
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/problem+json"),
+            "path={path}"
+        );
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let problem: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let problem: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(problem["code"], serde_json::json!("not_implemented"));
-    assert_eq!(problem["status"], serde_json::json!(501));
-    assert_eq!(
-        problem["detail"],
-        serde_json::json!(
-            "This route is reserved for the current GVMD typed surface, but rust-gvm does not yet provide the typed response model required by rust-gvm-api's no-raw-GMP-XML policy."
-        )
-    );
+        assert_eq!(
+            problem["code"],
+            serde_json::json!("backend_unavailable"),
+            "path={path}"
+        );
+        assert_eq!(problem["status"], serde_json::json!(502), "path={path}");
+        assert_eq!(
+            problem["detail"],
+            serde_json::json!("The backend service is unavailable."),
+            "path={path}"
+        );
+    }
 }
 
 #[tokio::test]

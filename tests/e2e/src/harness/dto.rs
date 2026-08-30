@@ -470,6 +470,29 @@ pub struct Report {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct ReportSummaryRow {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub severity: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct OperatingSystemAsset {
+    pub id: String,
+    pub name: String,
+    pub title: String,
+    pub comment: Option<String>,
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    pub writable: bool,
+    pub installs: u32,
+    #[serde(rename = "allInstalls")]
+    pub all_installs: u32,
+    #[serde(rename = "hostCount")]
+    pub host_count: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct ReportExportJob {
     pub id: String,
     pub kind: String,

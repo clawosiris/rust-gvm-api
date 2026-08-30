@@ -554,36 +554,6 @@ paths:
         "409": { $ref: "./common.yaml#/components/responses/Conflict" }
         "502": { $ref: "./common.yaml#/components/responses/BadGateway" }
 
-  /reports/{id}/hosts:
-    parameters:
-      - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getReportHosts, tags: [Reports], summary: Get report hosts, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-  /reports/{id}/ports:
-    parameters:
-      - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getReportPorts, tags: [Reports], summary: Get report ports, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-  /reports/{id}/applications:
-    parameters:
-      - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getReportApplications, tags: [Reports], summary: Get report applications, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-  /reports/{id}/operating-systems:
-    parameters:
-      - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getReportOperatingSystems, tags: [Reports], summary: Get report operating systems, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-  /reports/{id}/cves:
-    parameters:
-      - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getReportCves, tags: [Reports], summary: Get report CVEs, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-
-  /operating-systems:
-    get: { operationId: getOperatingSystems, tags: [Operating Systems], summary: List operating systems, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-  /operating-systems/{id}:
-    parameters:
-      - $ref: "./common.yaml#/components/parameters/ResourceId"
-    get: { operationId: getOperatingSystem, tags: [Operating Systems], summary: Get an operating system, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    put: { operationId: modifyOperatingSystem, tags: [Operating Systems], summary: Modify an operating system, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-    delete: { operationId: deleteOperatingSystem, tags: [Operating Systems], summary: Delete an operating system, responses: { "401": { $ref: "./common.yaml#/components/responses/Unauthorized" }, "502": { $ref: "./common.yaml#/components/responses/BadGateway" }, "501": { $ref: "./common.yaml#/components/responses/NotImplemented" } } }
-
 components:
   schemas:
     AssetType:

@@ -335,6 +335,34 @@ async fn rest_discovery_lifecycle_completes_scan_and_links_report() -> Result<()
             .report_detail_subresources_supported(&session.token, &action.report_id)
             .await?
         {
+            // These five resources are purpose-shaped report summaries. A
+            // completed scan may legitimately produce empty categories, but
+            // every route must preserve its pagination and typed row shape.
+            for subresource in [
+                "hosts",
+                "ports",
+                "applications",
+                "operating-systems",
+                "cves",
+            ] {
+                let summaries = harness
+                    .get_report_summary_page(
+                        &session.token,
+                        &action.report_id,
+                        subresource,
+                        1,
+                        25,
+                    )
+                    .await?;
+                assert_pagination_shape(&format!("report {subresource}"), &summaries);
+                for summary in summaries.data {
+                    assert!(
+                        summary.id.is_some() || summary.name.is_some() || summary.severity.is_some(),
+                        "report {subresource} returned an empty summary row"
+                    );
+                }
+            }
+
             let vulnerabilities = harness
                 .get_report_vulnerabilities_page(&session.token, &action.report_id, 1, 25)
                 .await?;

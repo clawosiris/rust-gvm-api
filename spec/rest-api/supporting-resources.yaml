@@ -128,6 +128,105 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /operating-systems:
+    get:
+      operationId: getOperatingSystems
+      tags: [Operating Systems]
+      summary: List operating systems
+      description: Returns a paginated list of operating-system assets.
+      parameters:
+        - $ref: "./common.yaml#/components/parameters/FilterString"
+        - $ref: "./common.yaml#/components/parameters/FilterId"
+        - $ref: "./common.yaml#/components/parameters/Page"
+        - $ref: "./common.yaml#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Paginated list of operating-system assets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatingSystemList"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /operating-systems/{id}:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    get:
+      operationId: getOperatingSystem
+      tags: [Operating Systems]
+      summary: Get an operating system
+      description: Returns the details for a single operating-system asset.
+      responses:
+        "200":
+          description: Operating-system details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatingSystem"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    put:
+      operationId: modifyOperatingSystem
+      tags: [Operating Systems]
+      summary: Modify an operating system
+      description: >-
+        Updates an operating-system asset's comment. The typed gvmd command only
+        supports comment updates for this resource.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOperatingSystem"
+      responses:
+        "200":
+          description: Operating-system updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatingSystem"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+    delete:
+      operationId: deleteOperatingSystem
+      tags: [Operating Systems]
+      summary: Delete an operating system
+      description: >-
+        Deletes an operating-system asset. The typed gvmd delete command does
+        not support the `ultimate` flag for this resource, so this endpoint
+        always performs a single delete. Deleting an asset that is still in use
+        returns `409 Conflict`.
+      responses:
+        "204":
+          description: Operating-system deleted
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "409":
+          $ref: "./common.yaml#/components/responses/Conflict"
+
   /tls-certificates:
     get:
       operationId: getTlsCertificates
@@ -1163,6 +1262,85 @@ components:
         pagination:
           $ref: "./common.yaml#/components/schemas/Pagination"
 
+    OperatingSystemHost:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        severity:
+          type: string
+
+    OperatingSystem:
+      type: object
+      required:
+        - id
+        - name
+        - writable
+        - inUse
+        - title
+        - installs
+        - allInstalls
+        - hostCount
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        comment:
+          type: string
+        creationTime:
+          type: string
+        modificationTime:
+          type: string
+        writable:
+          type: boolean
+        inUse:
+          type: boolean
+        value:
+          type: string
+        hostsCount:
+          type: integer
+        severity:
+          type: string
+        title:
+          type: string
+        installs:
+          type: integer
+        allInstalls:
+          type: integer
+        latestSeverity:
+          type: string
+        highestSeverity:
+          type: string
+        averageSeverity:
+          type: string
+        hostCount:
+          type: integer
+        hosts:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatingSystemHost"
+
+    OperatingSystemList:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatingSystem"
+        pagination:
+          $ref: "./common.yaml#/components/schemas/Pagination"
+
     TlsCertificateAsset:
       type: object
       required:
@@ -1228,6 +1406,12 @@ components:
           type: string
 
     UpdateHost:
+      type: object
+      properties:
+        comment:
+          type: string
+
+    UpdateOperatingSystem:
       type: object
       properties:
         comment:

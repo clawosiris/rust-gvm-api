@@ -12,11 +12,12 @@ use async_trait::async_trait;
 use gvm_gateway_domain::{
     AssetQuery, CreateReportExportRequest, CreateTargetInput, GatewayError, GenericConfigQuery,
     GetReportOpts, GvmdReportFormatExportRequest, JobStatus, JsonReportExportRequest,
-    ModifyAssetInput, ModifyTargetInput, Pagination, ReadinessStatus, Report, ReportClosedCvePage,
-    ReportErrorPage, ReportExport, ReportExportJob, ReportExportRequest, ReportPage, ReportPort,
-    ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery, ScanResult,
-    SessionLimits, SessionManager, SessionTokenDigest, SystemPort, TargetQuery, Timezone,
-    TlsCertificatePage,
+    ModifyAssetInput, ModifyTargetInput, Pagination, ReadinessStatus, Report,
+    ReportApplicationPage, ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport,
+    ReportExportJob, ReportExportRequest, ReportHostPage, ReportOperatingSystemPage, ReportPage,
+    ReportPort, ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage,
+    ResultQuery, ScanResult, SessionLimits, SessionManager, SessionTokenDigest, SystemPort,
+    TargetQuery, Timezone, TlsCertificatePage,
 };
 use tokio::sync::Notify;
 
@@ -803,6 +804,51 @@ impl ReportPort for BlockingReportPort {
         Ok(empty_report_vulnerability_page(query))
     }
 
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Ok(empty_report_host_page(query))
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Ok(empty_report_port_page(query))
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Ok(empty_report_application_page(query))
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Ok(empty_report_operating_system_page(query))
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Ok(empty_report_cve_page(query))
+    }
+
     async fn get_report_tls_certificates(
         &self,
         _: &str,
@@ -897,6 +943,51 @@ impl ReportPort for ExistingReportPort {
         query: &ResultQuery,
     ) -> Result<ReportVulnerabilityPage, GatewayError> {
         Ok(empty_report_vulnerability_page(query))
+    }
+
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Ok(empty_report_host_page(query))
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Ok(empty_report_port_page(query))
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Ok(empty_report_application_page(query))
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Ok(empty_report_operating_system_page(query))
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Ok(empty_report_cve_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -1001,6 +1092,51 @@ impl ReportPort for CapturingReportPort {
         Ok(empty_report_vulnerability_page(query))
     }
 
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Ok(empty_report_host_page(query))
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Ok(empty_report_port_page(query))
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Ok(empty_report_application_page(query))
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Ok(empty_report_operating_system_page(query))
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Ok(empty_report_cve_page(query))
+    }
+
     async fn get_report_tls_certificates(
         &self,
         _: &str,
@@ -1093,6 +1229,51 @@ impl ReportPort for MissingReportPort {
         Ok(empty_report_vulnerability_page(query))
     }
 
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Ok(empty_report_host_page(query))
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Ok(empty_report_port_page(query))
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Ok(empty_report_application_page(query))
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Ok(empty_report_operating_system_page(query))
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Ok(empty_report_cve_page(query))
+    }
+
     async fn get_report_tls_certificates(
         &self,
         _: &str,
@@ -1174,6 +1355,66 @@ fn empty_report_closed_cve_page(query: &ResultQuery) -> ReportClosedCvePage {
     ReportClosedCvePage {
         data: vec![],
         pagination: empty_result_page(query).pagination,
+    }
+}
+
+fn empty_report_host_page(query: &ResultQuery) -> ReportHostPage {
+    ReportHostPage {
+        data: vec![],
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total: 0,
+            total_pages: 0,
+        },
+    }
+}
+
+fn empty_report_port_page(query: &ResultQuery) -> ReportPortPage {
+    ReportPortPage {
+        data: vec![],
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total: 0,
+            total_pages: 0,
+        },
+    }
+}
+
+fn empty_report_application_page(query: &ResultQuery) -> ReportApplicationPage {
+    ReportApplicationPage {
+        data: vec![],
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total: 0,
+            total_pages: 0,
+        },
+    }
+}
+
+fn empty_report_operating_system_page(query: &ResultQuery) -> ReportOperatingSystemPage {
+    ReportOperatingSystemPage {
+        data: vec![],
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total: 0,
+            total_pages: 0,
+        },
+    }
+}
+
+fn empty_report_cve_page(query: &ResultQuery) -> ReportCvePage {
+    ReportCvePage {
+        data: vec![],
+        pagination: Pagination {
+            page: query.page,
+            per_page: query.per_page,
+            total: 0,
+            total_pages: 0,
+        },
     }
 }
 

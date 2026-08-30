@@ -8,15 +8,16 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common::{spawn_server, spawn_server_with_sessions};
+use common::{spawn_server, spawn_server_with_sessions, specialized_target_harness};
 use gvm_gateway_app::{GatewayPorts, GatewayService};
 use gvm_gateway_domain::{
     Alert, AlertPage, AlertPort, AlertQuery, CreateAlertInput, CreateCredentialInput,
     CreateTargetInput, CreateTaskInput, Credential, CredentialPage, CredentialPort,
     CredentialQuery, CredentialStore, GatewayError, GetReportOpts, ModifyAlertInput,
     ModifyCredentialInput, ModifyTargetInput, ModifyTaskInput, Pagination, Report,
-    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportPage,
-    ReportPort, ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery,
+    ReportApplicationPage, ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport,
+    ReportExportRequest, ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPort,
+    ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery,
     ScanResult, SessionLimits, SessionManager, Target, TargetPage, TargetPort, TargetQuery, Task,
     TaskAction, TaskObservers, TaskPage, TaskPort, TaskQuery, TlsCertificatePage,
 };
@@ -25,6 +26,7 @@ use gvm_gateway_rest::{
     router::build_router,
     targets::{build_gmp_filter, CreateTargetRequest, ModifyTargetRequest, TargetListQuery},
 };
+use gvm_mock_server::Resource;
 use http::{Method, StatusCode};
 use reqwest::Client;
 use serde_json::Value;
@@ -75,6 +77,152 @@ async fn generated_openapi_endpoint_exposes_implemented_contract() {
     }
 
     handle.abort();
+}
+
+#[tokio::test]
+async fn report_drill_down_and_operating_system_routes_expose_typed_contracts() {
+    // End-to-end contract coverage for #344: all five report summary routes and
+    // all four OS operations must leave the reservation handler, preserve their
+    // purpose-shaped JSON, and enforce backend-supported mutation semantics.
+    let report_id =
+        uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").expect("valid report id");
+    let removable_os_id =
+        uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440131").expect("valid OS id");
+    let in_use_os_id =
+        uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440132").expect("valid OS id");
+    let harness = specialized_target_harness(move |store| {
+        store.create(Resource::with_id("report", "Discovery report", report_id));
+        for (id, name, installs) in [
+            (removable_os_id, "Debian", "0"),
+            (in_use_os_id, "Ubuntu", "2"),
+        ] {
+            let mut operating_system = Resource::with_id("asset", name, id);
+            operating_system.set_attr("type", "os");
+            operating_system.set_attr("title", &format!("{name} Linux"));
+            operating_system.set_attr("installs", installs);
+            operating_system.set_attr("all_installs", installs);
+            operating_system.set_attr("highest_severity", "7.5");
+            store.create(operating_system);
+        }
+    })
+    .await;
+
+    for (subresource, expected_name) in [
+        ("hosts", "192.0.2.10"),
+        ("ports", "22/tcp"),
+        ("applications", "OpenSSH"),
+        ("operating-systems", "Debian"),
+        ("cves", "CVE-2026-0001"),
+    ] {
+        let response = harness
+            .client
+            .get(harness.url(&format!(
+                "/api/v1/reports/{report_id}/{subresource}?filter=severity%3E3&page=1&perPage=10"
+            )))
+            .bearer_auth(&harness.token)
+            .send()
+            .await
+            .expect("report drill-down response");
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "subresource={subresource}"
+        );
+        let body = response.json::<Value>().await.expect("report summary JSON");
+        assert_eq!(
+            body["data"][0]["name"],
+            Value::String(expected_name.to_string())
+        );
+        assert_eq!(body["pagination"]["page"], Value::from(1));
+        assert_eq!(body["pagination"]["perPage"], Value::from(10));
+        assert_eq!(
+            body["data"][0].as_object().map(serde_json::Map::len),
+            Some(3),
+            "subresource={subresource} must remain purpose-shaped"
+        );
+    }
+
+    let response = harness
+        .client
+        .get(harness.url("/api/v1/operating-systems?page=1&perPage=10"))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .expect("OS list response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.json::<Value>().await.expect("OS list JSON");
+    assert_eq!(body["data"].as_array().map(Vec::len), Some(2));
+    assert_eq!(
+        body["data"][0]["title"],
+        Value::String("Debian Linux".to_string())
+    );
+    assert!(body["data"][0].get("inUse").is_some());
+
+    let response = harness
+        .client
+        .get(harness.url(&format!("/api/v1/operating-systems/{removable_os_id}")))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .expect("OS get response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.json::<Value>().await.expect("OS get JSON");
+    assert_eq!(body["id"], Value::String(removable_os_id.to_string()));
+    assert_eq!(body["title"], Value::String("Debian Linux".to_string()));
+
+    let response = harness
+        .client
+        .put(harness.url(&format!("/api/v1/operating-systems/{removable_os_id}")))
+        .bearer_auth(&harness.token)
+        .json(&serde_json::json!({ "comment": "reviewed" }))
+        .send()
+        .await
+        .expect("OS update response");
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "the stateful rust-gvm mock currently rejects OS comment mutation after recording it"
+    );
+    let modify_xml = harness
+        .server
+        .command_history()
+        .into_iter()
+        .find(|record| record.command_name() == "modify_asset")
+        .map(|record| String::from_utf8(record.raw_xml().to_vec()).expect("modify XML"))
+        .expect("OS modify command should reach gvmd");
+    assert!(modify_xml.contains("<comment>reviewed</comment>"));
+    assert!(!modify_xml.contains("<name>"));
+
+    let response = harness
+        .client
+        .delete(harness.url(&format!(
+            "/api/v1/operating-systems/{removable_os_id}?ultimate=true"
+        )))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .expect("unsupported ultimate response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = harness
+        .client
+        .delete(harness.url(&format!("/api/v1/operating-systems/{in_use_os_id}")))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .expect("in-use OS delete response");
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+
+    let response = harness
+        .client
+        .delete(harness.url(&format!("/api/v1/operating-systems/{removable_os_id}")))
+        .bearer_auth(&harness.token)
+        .send()
+        .await
+        .expect("unused OS delete response");
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    harness.shutdown().await;
 }
 
 #[tokio::test]
@@ -1009,6 +1157,91 @@ impl ReportPort for JsonExportReportPort {
     ) -> Result<ReportClosedCvePage, GatewayError> {
         Ok(empty_report_closed_cve_page(query))
     }
+
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Ok(ReportHostPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Ok(ReportPortPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Ok(ReportApplicationPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Ok(ReportOperatingSystemPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Ok(ReportCvePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
 }
 
 struct CredentialStoreErrorPort(GatewayError);
@@ -1152,6 +1385,91 @@ impl ReportPort for MissingReportPort {
         query: &ResultQuery,
     ) -> Result<ReportClosedCvePage, GatewayError> {
         Ok(empty_report_closed_cve_page(query))
+    }
+
+    async fn get_report_hosts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        Ok(ReportHostPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_ports(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        Ok(ReportPortPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_applications(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        Ok(ReportApplicationPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        Ok(ReportOperatingSystemPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_report_cves(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        Ok(ReportCvePage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
     }
 }
 

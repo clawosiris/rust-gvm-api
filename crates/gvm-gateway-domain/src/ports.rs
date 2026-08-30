@@ -19,20 +19,22 @@ use crate::{
     GenericConfigPage, GenericConfigQuery, GetReportOpts, Group, GroupPage, Host, HostPage,
     IdentityQuery, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput,
     ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput,
-    ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput, ModifyOverrideInput,
-    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
-    ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
-    ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage,
-    NvtPage, OciImageTarget, OciImageTargetPage, Override, OverridePage, Permission,
-    PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report,
-    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
-    ReportFormatPage, ReportPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery,
-    Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerQuery, Schedule, SchedulePage, ScheduleQuery, SpecializedTargetQuery,
-    SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task, TaskAction,
-    TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
-    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
+    ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput, ModifyOperatingSystemInput,
+    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
+    ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
+    ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt,
+    NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, OperatingSystem,
+    OperatingSystemPage, Override, OverridePage, Permission, PermissionPage, PortList,
+    PortListPage, PortListQuery, ReadinessStatus, Report, ReportApplicationPage,
+    ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest,
+    ReportFormat, ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage,
+    ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery,
+    Schedule, SchedulePage, ScheduleQuery, SpecializedTargetQuery, SupportingResourceQuery, Tag,
+    TagPage, Target, TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket,
+    TicketPage, Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User,
+    UserPage, UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
+    WebApplicationTarget, WebApplicationTargetPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -446,6 +448,46 @@ pub trait ReportPort: Send + Sync + 'static {
         query: &ResultQuery,
     ) -> Result<ReportVulnerabilityPage, GatewayError>;
 
+    /// List host summaries for a specific report.
+    async fn get_report_hosts(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError>;
+
+    /// List port summaries for a specific report.
+    async fn get_report_ports(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError>;
+
+    /// List application summaries for a specific report.
+    async fn get_report_applications(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError>;
+
+    /// List operating-system summaries for a specific report.
+    async fn get_report_operating_systems(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError>;
+
+    /// List CVE summaries for a specific report.
+    async fn get_report_cves(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError>;
+
     /// List TLS certificate observations for a specific report.
     async fn get_report_tls_certificates(
         &self,
@@ -732,6 +774,20 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
     /// Fetch a host by identifier.
     async fn get_host(&self, session_token: &str, id: &str) -> Result<Host, GatewayError>;
 
+    /// List operating-system assets for the session.
+    async fn list_operating_systems(
+        &self,
+        session_token: &str,
+        query: &SupportingResourceQuery,
+    ) -> Result<OperatingSystemPage, GatewayError>;
+
+    /// Fetch an operating-system asset by identifier.
+    async fn get_operating_system(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<OperatingSystem, GatewayError>;
+
     /// List TLS certificate assets for the session.
     async fn list_tls_certificates(
         &self,
@@ -761,12 +817,31 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
         input: ModifyHostInput,
     ) -> Result<Host, GatewayError>;
 
+    /// Modify an operating-system asset by identifier.
+    async fn modify_operating_system(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyOperatingSystemInput,
+    ) -> Result<OperatingSystem, GatewayError>;
+
     /// Delete a host asset by identifier.
     ///
     /// The gvmd host-asset delete command does not support the `ultimate`
     /// (permanent) flag, so this method intentionally takes no `ultimate`
     /// argument: callers cannot request a permanent delete the backend ignores.
     async fn delete_host(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// Delete an operating-system asset by identifier.
+    ///
+    /// The gvmd operating-system delete command does not support the
+    /// `ultimate` (permanent) flag, so this method intentionally takes no
+    /// `ultimate` argument.
+    async fn delete_operating_system(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<(), GatewayError>;
 
     /// List report formats for the session.
     async fn list_report_formats(

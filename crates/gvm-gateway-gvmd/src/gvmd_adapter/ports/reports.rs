@@ -257,6 +257,195 @@ impl ReportPort for GvmdAdapter {
         })
     }
 
+    async fn get_report_hosts(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportHostPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let report_id = parse_entity_id(report_id)?;
+        let opts = report_detail_query(self, session_token, query).await?;
+        let response = match client
+            .lock()
+            .await?
+            .get_report_hosts(&report_id, opts)
+            .await
+        {
+            Ok(parsed) => parsed,
+            Err(error) if typed_report_detail_unsupported(&error, "get_report_hosts") => {
+                return Err(unsupported_typed_report_detail_error(
+                    "get_report_hosts",
+                    "report hosts",
+                ));
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
+        let parsed = GetReportHostsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(report_host_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        Ok(ReportHostPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_report_ports(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportPortPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let report_id = parse_entity_id(report_id)?;
+        let opts = report_detail_query(self, session_token, query).await?;
+        let response = match client
+            .lock()
+            .await?
+            .get_report_ports(&report_id, opts)
+            .await
+        {
+            Ok(parsed) => parsed,
+            Err(error) if typed_report_detail_unsupported(&error, "get_report_ports") => {
+                return Err(unsupported_typed_report_detail_error(
+                    "get_report_ports",
+                    "report ports",
+                ));
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
+        let parsed = GetReportPortsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(report_port_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        Ok(ReportPortPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_report_applications(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportApplicationPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let report_id = parse_entity_id(report_id)?;
+        let opts = report_detail_query(self, session_token, query).await?;
+        let response = match client
+            .lock()
+            .await?
+            .get_report_applications(&report_id, opts)
+            .await
+        {
+            Ok(parsed) => parsed,
+            Err(error) if typed_report_detail_unsupported(&error, "get_report_applications") => {
+                return Err(unsupported_typed_report_detail_error(
+                    "get_report_applications",
+                    "report applications",
+                ));
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
+        let parsed =
+            GetReportApplicationsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(report_application_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        Ok(ReportApplicationPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_report_operating_systems(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportOperatingSystemPage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let report_id = parse_entity_id(report_id)?;
+        let opts = report_detail_query(self, session_token, query).await?;
+        let response = match client
+            .lock()
+            .await?
+            .get_report_operating_systems(&report_id, opts)
+            .await
+        {
+            Ok(parsed) => parsed,
+            Err(error)
+                if typed_report_detail_unsupported(&error, "get_report_operating_systems") =>
+            {
+                return Err(unsupported_typed_report_detail_error(
+                    "get_report_operating_systems",
+                    "report operating systems",
+                ));
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
+        let parsed =
+            GetReportOperatingSystemsResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(report_operating_system_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        Ok(ReportOperatingSystemPage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
+    async fn get_report_cves(
+        &self,
+        session_token: &str,
+        report_id: &str,
+        query: &ResultQuery,
+    ) -> Result<ReportCvePage, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let report_id = parse_entity_id(report_id)?;
+        let opts = report_detail_query(self, session_token, query).await?;
+        let response = match client.lock().await?.get_report_cves(&report_id, opts).await {
+            Ok(parsed) => parsed,
+            Err(error) if typed_report_detail_unsupported(&error, "get_report_cves") => {
+                return Err(unsupported_typed_report_detail_error(
+                    "get_report_cves",
+                    "report CVEs",
+                ));
+            }
+            Err(error) => return Err(map_gvm_error(error)),
+        };
+        let parsed = GetReportCvesResponse::from_response(&response).map_err(map_parse_error)?;
+        let items = parsed
+            .items
+            .into_iter()
+            .map(report_cve_from_gmp)
+            .collect::<Vec<_>>();
+        let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
+
+        Ok(ReportCvePage {
+            data: items,
+            pagination: paged_pagination(total, query.page, query.per_page),
+        })
+    }
+
     async fn get_report_tls_certificates(
         &self,
         session_token: &str,

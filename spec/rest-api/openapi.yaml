@@ -230,15 +230,15 @@ paths:
   /reports/{id}/closed-cves:
     $ref: './reports.yaml#/paths/~1reports~1{id}~1closed-cves'
   /reports/{id}/hosts:
-    $ref: './emerging.yaml#/paths/~1reports~1{id}~1hosts'
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1hosts'
   /reports/{id}/ports:
-    $ref: './emerging.yaml#/paths/~1reports~1{id}~1ports'
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1ports'
   /reports/{id}/applications:
-    $ref: './emerging.yaml#/paths/~1reports~1{id}~1applications'
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1applications'
   /reports/{id}/operating-systems:
-    $ref: './emerging.yaml#/paths/~1reports~1{id}~1operating-systems'
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1operating-systems'
   /reports/{id}/cves:
-    $ref: './emerging.yaml#/paths/~1reports~1{id}~1cves'
+    $ref: './reports.yaml#/paths/~1reports~1{id}~1cves'
   /results:
     $ref: './results.yaml#/paths/~1results'
   /results/{id}:
@@ -260,9 +260,9 @@ paths:
   /scanners/{id}:
     $ref: './scanners.yaml#/paths/~1scanners~1{id}'
   /operating-systems:
-    $ref: './emerging.yaml#/paths/~1operating-systems'
+    $ref: './supporting-resources.yaml#/paths/~1operating-systems'
   /operating-systems/{id}:
-    $ref: './emerging.yaml#/paths/~1operating-systems~1{id}'
+    $ref: './supporting-resources.yaml#/paths/~1operating-systems~1{id}'
   /alerts:
     $ref: './alerts.yaml#/paths/~1alerts'
   /alerts/{id}:

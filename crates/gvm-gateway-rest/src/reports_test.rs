@@ -4,11 +4,15 @@
 use serde_json::json;
 
 use super::{
-    GetReportQuery, ReportClosedCveListResponse, ReportErrorListResponse, ReportResultsQuery,
+    GetReportQuery, ReportApplicationListResponse, ReportClosedCveListResponse,
+    ReportCveListResponse, ReportErrorListResponse, ReportHostListResponse,
+    ReportOperatingSystemListResponse, ReportPortListResponse, ReportResultsQuery,
     ReportVulnerabilityListResponse,
 };
 use gvm_gateway_domain::{
-    Pagination, ReportClosedCve, ReportClosedCvePage, ReportError, ReportErrorPage,
+    Pagination, ReportApplication, ReportApplicationPage, ReportClosedCve, ReportClosedCvePage,
+    ReportCve, ReportCvePage, ReportError, ReportErrorPage, ReportHost, ReportHostPage,
+    ReportOperatingSystem, ReportOperatingSystemPage, ReportPortPage, ReportPortSummary,
     ReportVulnerability, ReportVulnerabilityPage,
 };
 
@@ -138,4 +142,84 @@ fn report_closed_cve_response_preserves_closed_cve_fields() {
     assert_eq!(json["data"][0]["threat"], "Medium");
     assert_eq!(json["data"][0]["nvt"]["name"], json!("Closed check"));
     assert!(json["data"][0].get("name").is_none());
+}
+
+#[test]
+fn report_drill_downs_serialize_as_purpose_shaped_summaries() {
+    // Issue #344 requires five distinct summary DTOs. Keeping this assertion at
+    // the REST boundary prevents future reuse of generic result, asset, or
+    // SecInfo response shapes for these report-scoped rows.
+    let pagination = Pagination {
+        page: 2,
+        per_page: 10,
+        total: 1,
+        total_pages: 1,
+    };
+    let expected_pagination = json!({
+        "page": 2,
+        "perPage": 10,
+        "total": 1,
+        "totalPages": 1
+    });
+
+    let cases = [
+        serde_json::to_value(ReportHostListResponse::from(ReportHostPage {
+            data: vec![ReportHost {
+                id: Some("host-row".to_string()),
+                name: Some("192.0.2.10".to_string()),
+                severity: Some("7.5".to_string()),
+            }],
+            pagination: pagination.clone(),
+        }))
+        .expect("host summary JSON"),
+        serde_json::to_value(ReportPortListResponse::from(ReportPortPage {
+            data: vec![ReportPortSummary {
+                id: Some("port-row".to_string()),
+                name: Some("443/tcp".to_string()),
+                severity: Some("6.0".to_string()),
+            }],
+            pagination: pagination.clone(),
+        }))
+        .expect("port summary JSON"),
+        serde_json::to_value(ReportApplicationListResponse::from(ReportApplicationPage {
+            data: vec![ReportApplication {
+                id: Some("application-row".to_string()),
+                name: Some("nginx".to_string()),
+                severity: Some("5.0".to_string()),
+            }],
+            pagination: pagination.clone(),
+        }))
+        .expect("application summary JSON"),
+        serde_json::to_value(ReportOperatingSystemListResponse::from(
+            ReportOperatingSystemPage {
+                data: vec![ReportOperatingSystem {
+                    id: Some("os-row".to_string()),
+                    name: Some("Debian".to_string()),
+                    severity: Some("4.0".to_string()),
+                }],
+                pagination: pagination.clone(),
+            },
+        ))
+        .expect("operating-system summary JSON"),
+        serde_json::to_value(ReportCveListResponse::from(ReportCvePage {
+            data: vec![ReportCve {
+                id: Some("cve-row".to_string()),
+                name: Some("CVE-2026-0001".to_string()),
+                severity: Some("8.0".to_string()),
+            }],
+            pagination,
+        }))
+        .expect("CVE summary JSON"),
+    ];
+
+    for value in cases {
+        assert_eq!(value["pagination"], expected_pagination);
+        let row = &value["data"][0];
+        assert!(row.get("id").is_some());
+        assert!(row.get("name").is_some());
+        assert!(row.get("severity").is_some());
+        assert_eq!(row.as_object().map(serde_json::Map::len), Some(3));
+        assert!(row.get("results").is_none());
+        assert!(row.get("hostsCount").is_none());
+    }
 }
