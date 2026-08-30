@@ -4,12 +4,46 @@
 use serde_json::json;
 
 use super::{
-    reject_host_ultimate_query, reject_operating_system_ultimate_query, ModifyHostRequest,
-    ModifyOperatingSystemRequest, OperatingSystemResponse, PaginationOnlyQuery,
-    SupportingListQuery, TicketResponse, TicketStatus,
+    reject_host_ultimate_query, reject_operating_system_ultimate_query, ImportReportFormatRequest,
+    ModifyHostRequest, ModifyOperatingSystemRequest, OperatingSystemResponse, PaginationOnlyQuery,
+    SupportingListQuery, TicketResponse, TicketStatus, MAX_REPORT_FORMAT_IMPORT_XML_BYTES,
 };
+use crate::handler::ValidateInto;
 use crate::query::parse_delete_resource_query;
 use gvm_gateway_domain::{OperatingSystem, OperatingSystemHost, SupportingResourceMeta, Ticket};
+
+#[test]
+fn report_format_import_request_enforces_bounds_and_redacts_xml() {
+    let report_format_xml = "<report_format><name>secret format</name></report_format>";
+    let request: ImportReportFormatRequest = serde_json::from_value(json!({
+        "reportFormatXml": report_format_xml
+    }))
+    .expect("bounded report-format import should parse");
+
+    let request_debug = format!("{request:?}");
+    assert!(!request_debug.contains(report_format_xml));
+    assert!(request_debug.contains(&report_format_xml.len().to_string()));
+
+    let input = request
+        .validate_into()
+        .expect("bounded import should validate");
+    let input_debug = format!("{input:?}");
+    assert!(!input_debug.contains(report_format_xml));
+    assert!(input_debug.contains(&report_format_xml.len().to_string()));
+
+    for invalid_xml in [
+        String::new(),
+        "x".repeat(MAX_REPORT_FORMAT_IMPORT_XML_BYTES + 1),
+    ] {
+        let request: ImportReportFormatRequest = serde_json::from_value(json!({
+            "reportFormatXml": invalid_xml
+        }))
+        .expect("JSON shape should parse before semantic validation");
+        request
+            .validate_into()
+            .expect_err("empty and oversized report-format imports must fail");
+    }
+}
 
 #[test]
 fn supporting_query_decodes_percent_encoded_filter_values() {

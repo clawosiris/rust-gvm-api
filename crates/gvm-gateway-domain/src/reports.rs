@@ -3,9 +3,33 @@
 
 //! Report domain types and query options.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{Pagination, ResourceRef, ScanResult};
+
+/// Bounded report-import command.
+#[derive(Clone, Eq, PartialEq)]
+pub struct ImportReportInput {
+    /// Task that owns the imported report.
+    pub task_id: String,
+    /// Complete report XML document. Never included in debug output.
+    pub report_xml: String,
+    /// Whether assets embedded in the report should be imported.
+    pub in_assets: bool,
+}
+
+impl fmt::Debug for ImportReportInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ImportReportInput")
+            .field("task_id", &self.task_id)
+            .field("report_xml_bytes", &self.report_xml.len())
+            .field("in_assets", &self.in_assets)
+            .finish()
+    }
+}
 
 /// Aggregate vulnerability finding returned by a report drill-down.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

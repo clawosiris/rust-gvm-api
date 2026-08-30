@@ -215,6 +215,8 @@ paths:
     $ref: './audits.yaml#/paths/~1audits~1{id}~1resume'
   /reports:
     $ref: './reports.yaml#/paths/~1reports'
+  /reports/import:
+    $ref: './reports.yaml#/paths/~1reports~1import'
   /reports/{id}:
     $ref: './reports.yaml#/paths/~1reports~1{id}'
   /reports/{id}/exports:
@@ -315,6 +317,10 @@ paths:
     $ref: './supporting-resources.yaml#/paths/~1report-formats'
   /report-formats/{id}:
     $ref: './supporting-resources.yaml#/paths/~1report-formats~1{id}'
+  /report-formats/{id}/clone:
+    $ref: './supporting-resources.yaml#/paths/~1report-formats~1{id}~1clone'
+  /report-formats/import:
+    $ref: './supporting-resources.yaml#/paths/~1report-formats~1import'
   /filters:
     $ref: './supporting-resources.yaml#/paths/~1filters'
   /filters/{id}:

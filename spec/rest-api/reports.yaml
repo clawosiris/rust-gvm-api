@@ -26,6 +26,35 @@ paths:
         "502":
           $ref: "./common.yaml#/components/responses/BadGateway"
 
+  /reports/import:
+    post:
+      operationId: importReport
+      tags: [Reports]
+      summary: Import a report
+      description: Imports one well-formed `<report>` XML document for a task. The XML payload is limited to 1 MiB and is never included in diagnostic output.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportReport"
+      responses:
+        "201":
+          description: Report imported
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
   /reports/{id}:
     parameters:
       - $ref: "./common.yaml#/components/parameters/ResourceId"
@@ -356,6 +385,23 @@ paths:
 
 components:
   schemas:
+    ImportReport:
+      type: object
+      required:
+        - taskId
+        - reportXml
+      properties:
+        taskId:
+          type: string
+          format: uuid
+        reportXml:
+          type: string
+          maxLength: 1048576
+          description: One complete XML document with a `report` root element.
+        inAssets:
+          type: boolean
+          default: false
+
     Report:
       type: object
       required:

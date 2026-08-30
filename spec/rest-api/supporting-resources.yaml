@@ -325,6 +325,62 @@ paths:
         "404":
           $ref: "./common.yaml#/components/responses/NotFound"
 
+  /report-formats/{id}/clone:
+    parameters:
+      - $ref: "./common.yaml#/components/parameters/ResourceId"
+    post:
+      operationId: cloneReportFormat
+      tags: [Report Formats]
+      summary: Clone a report format
+      description: Clones an existing report format and returns the new identifier.
+      responses:
+        "201":
+          description: Report format cloned
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "404":
+          $ref: "./common.yaml#/components/responses/NotFound"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
+  /report-formats/import:
+    post:
+      operationId: importReportFormat
+      tags: [Report Formats]
+      summary: Import a report format
+      description: Imports one well-formed report-format XML document. The XML payload is limited to 512 KiB and is never included in diagnostic output.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportReportFormat"
+      responses:
+        "201":
+          description: Report format imported
+          headers:
+            Location:
+              $ref: "./common.yaml#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "./common.yaml#/components/schemas/ResourceCreated"
+        "400":
+          $ref: "./common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./common.yaml#/components/responses/Unauthorized"
+        "502":
+          $ref: "./common.yaml#/components/responses/BadGateway"
+
   /filters:
     get:
       operationId: getFilters
@@ -1217,6 +1273,16 @@ components:
       description: SecInfo identifier such as a CVE, CPE, or advisory id
 
   schemas:
+    ImportReportFormat:
+      type: object
+      required:
+        - reportFormatXml
+      properties:
+        reportFormatXml:
+          type: string
+          maxLength: 524288
+          description: One complete report-format XML document.
+
     Host:
       type: object
       required:

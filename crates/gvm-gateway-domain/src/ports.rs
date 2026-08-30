@@ -17,24 +17,25 @@ use crate::{
     CredentialQuery, CredentialStore, Cve, CvePage, DfnCertAdvisory, DfnCertAdvisoryPage, Feed,
     Filter, FilterPage, GatewayError, GenericAsset, GenericAssetPage, GenericConfig,
     GenericConfigPage, GenericConfigQuery, GetReportOpts, Group, GroupPage, Host, HostPage,
-    IdentityQuery, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput,
-    ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput,
-    ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput, ModifyOperatingSystemInput,
-    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt,
-    NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, OperatingSystem,
-    OperatingSystemPage, Override, OverridePage, Permission, PermissionPage, PortList,
-    PortListPage, PortListQuery, ReadinessStatus, Report, ReportApplicationPage,
-    ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest,
-    ReportFormat, ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage,
-    ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery,
-    Schedule, SchedulePage, ScheduleQuery, SpecializedTargetQuery, SupportingResourceQuery, Tag,
-    TagPage, Target, TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket,
-    TicketPage, Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User,
-    UserPage, UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
-    WebApplicationTarget, WebApplicationTargetPage,
+    IdentityQuery, ImportReportFormatInput, ImportReportInput, ModifyAgentControlScanConfigInput,
+    ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput, ModifyAssetInput,
+    ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
+    ModifyOciImageTargetInput, ModifyOperatingSystemInput, ModifyOverrideInput,
+    ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
+    ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
+    ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage,
+    NvtPage, OciImageTarget, OciImageTargetPage, OperatingSystem, OperatingSystemPage, Override,
+    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
+    ReadinessStatus, Report, ReportApplicationPage, ReportClosedCvePage, ReportCvePage,
+    ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
+    ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPortPage, ReportQuery,
+    ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
+    ScheduleQuery, SpecializedTargetQuery, SupportingResourceQuery, Tag, TagPage, Target,
+    TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone,
+    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
+    WebApplicationTargetPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -407,6 +408,18 @@ pub trait ReportPort: Send + Sync + 'static {
         session_token: &str,
         query: &ReportQuery,
     ) -> Result<ReportPage, GatewayError>;
+
+    /// Import a bounded report XML document.
+    async fn import_report(
+        &self,
+        session_token: &str,
+        input: ImportReportInput,
+    ) -> Result<String, GatewayError> {
+        let _ = (session_token, input);
+        Err(GatewayError::NotImplemented(
+            "report import is not supported by this backend".to_string(),
+        ))
+    }
 
     /// Fetch a report by identifier, optionally with embedded results.
     async fn get_report(
@@ -856,6 +869,30 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
         session_token: &str,
         id: &str,
     ) -> Result<ReportFormat, GatewayError>;
+
+    /// Clone a report format by identifier.
+    async fn clone_report_format(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<String, GatewayError> {
+        let _ = (session_token, id);
+        Err(GatewayError::NotImplemented(
+            "report-format clone is not supported by this backend".to_string(),
+        ))
+    }
+
+    /// Import a bounded report-format XML document.
+    async fn import_report_format(
+        &self,
+        session_token: &str,
+        input: ImportReportFormatInput,
+    ) -> Result<String, GatewayError> {
+        let _ = (session_token, input);
+        Err(GatewayError::NotImplemented(
+            "report-format import is not supported by this backend".to_string(),
+        ))
+    }
 
     /// List saved filters for the session.
     async fn list_filters(

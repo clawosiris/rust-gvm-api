@@ -4,17 +4,52 @@
 use serde_json::json;
 
 use super::{
-    GetReportQuery, ReportApplicationListResponse, ReportClosedCveListResponse,
-    ReportCveListResponse, ReportErrorListResponse, ReportHostListResponse,
-    ReportOperatingSystemListResponse, ReportPortListResponse, ReportResultsQuery,
-    ReportVulnerabilityListResponse,
+    GetReportQuery, ImportReportRequest, ReportApplicationListResponse,
+    ReportClosedCveListResponse, ReportCveListResponse, ReportErrorListResponse,
+    ReportHostListResponse, ReportOperatingSystemListResponse, ReportPortListResponse,
+    ReportResultsQuery, ReportVulnerabilityListResponse, MAX_REPORT_IMPORT_XML_BYTES,
 };
+use crate::handler::ValidateInto;
 use gvm_gateway_domain::{
     Pagination, ReportApplication, ReportApplicationPage, ReportClosedCve, ReportClosedCvePage,
     ReportCve, ReportCvePage, ReportError, ReportErrorPage, ReportHost, ReportHostPage,
     ReportOperatingSystem, ReportOperatingSystemPage, ReportPortPage, ReportPortSummary,
     ReportVulnerability, ReportVulnerabilityPage,
 };
+
+#[test]
+fn report_import_request_enforces_bounds_and_redacts_xml() {
+    let report_xml = "<report><name>secret report</name></report>";
+    let request: ImportReportRequest = serde_json::from_value(json!({
+        "taskId": "123e4567-e89b-12d3-a456-426614174000",
+        "reportXml": report_xml,
+        "inAssets": true
+    }))
+    .expect("bounded report import should parse");
+
+    let request_debug = format!("{request:?}");
+    assert!(!request_debug.contains(report_xml));
+    assert!(request_debug.contains(&report_xml.len().to_string()));
+
+    let input = request
+        .validate_into()
+        .expect("bounded import should validate");
+    let input_debug = format!("{input:?}");
+    assert!(!input_debug.contains(report_xml));
+    assert!(input_debug.contains(&report_xml.len().to_string()));
+    assert!(input.in_assets);
+
+    for invalid_xml in [String::new(), "x".repeat(MAX_REPORT_IMPORT_XML_BYTES + 1)] {
+        let request: ImportReportRequest = serde_json::from_value(json!({
+            "taskId": "123e4567-e89b-12d3-a456-426614174000",
+            "reportXml": invalid_xml
+        }))
+        .expect("JSON shape should parse before semantic validation");
+        request
+            .validate_into()
+            .expect_err("empty and oversized report imports must fail");
+    }
+}
 
 #[test]
 fn report_queries_decode_pagination_and_filter_values() {

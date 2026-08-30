@@ -516,6 +516,45 @@ impl SupportingResourcePort for GvmdAdapter {
             .ok_or_else(|| GatewayError::NotFound(format!("report format {id} not found")))
     }
 
+    async fn clone_report_format(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let response = client
+            .lock()
+            .await?
+            .call(clone_report_format(&parse_entity_id(id)?))
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed =
+            CreateReportFormatResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
+    async fn import_report_format(
+        &self,
+        session_token: &str,
+        input: ImportReportFormatInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let request = import_report_format(&input.report_format_xml).map_err(|_| {
+            GatewayError::InvalidInput(
+                "reportFormatXml must contain one well-formed XML document".to_string(),
+            )
+        })?;
+        let response = client
+            .lock()
+            .await?
+            .call(request)
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed =
+            CreateReportFormatResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
     async fn list_filters(
         &self,
         session_token: &str,

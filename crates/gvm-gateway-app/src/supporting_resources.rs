@@ -7,11 +7,12 @@ use gvm_gateway_domain::{
     AssetQuery, CertBundAdvisory, CertBundAdvisoryPage, Cpe, CpePage, CreateFilterInput,
     CreateHostInput, CreateNoteInput, CreateOverrideInput, CreateTagInput, Cve, CvePage,
     DfnCertAdvisory, DfnCertAdvisoryPage, Filter, FilterPage, GatewayError, GenericAsset,
-    GenericAssetPage, Host, HostPage, ModifyAssetInput, ModifyFilterInput, ModifyHostInput,
-    ModifyNoteInput, ModifyOperatingSystemInput, ModifyOverrideInput, ModifyTagInput, Note,
-    NotePage, Nvt, NvtFamilyPage, NvtPage, OperatingSystem, OperatingSystemPage, Override,
-    OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket,
-    TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
+    GenericAssetPage, Host, HostPage, ImportReportFormatInput, ModifyAssetInput, ModifyFilterInput,
+    ModifyHostInput, ModifyNoteInput, ModifyOperatingSystemInput, ModifyOverrideInput,
+    ModifyTagInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OperatingSystem,
+    OperatingSystemPage, Override, OverridePage, ReportFormat, ReportFormatPage,
+    SupportingResourceQuery, Tag, TagPage, Ticket, TicketPage, TlsCertificateAsset,
+    TlsCertificateAssetPage, VulnerabilityPage,
 };
 
 use crate::GatewayService;
@@ -357,6 +358,48 @@ impl GatewayService {
             |session| async move {
                 self.supporting_resources
                     .get_report_format(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Clones a report format for an authenticated session.
+    pub async fn clone_report_format(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<String, GatewayError> {
+        self.execute_with_resource(
+            "report_formats.clone",
+            session_token,
+            "clone",
+            "report_format",
+            Some(id),
+            |session| async move {
+                self.supporting_resources
+                    .clone_report_format(&session.token, id)
+                    .await
+            },
+        )
+        .await
+    }
+
+    /// Imports a bounded report-format XML document for an authenticated session.
+    pub async fn import_report_format(
+        &self,
+        session_token: &str,
+        input: ImportReportFormatInput,
+    ) -> Result<String, GatewayError> {
+        self.execute_with_resource(
+            "report_formats.import",
+            session_token,
+            "import",
+            "report_format",
+            None,
+            |session| async move {
+                self.supporting_resources
+                    .import_report_format(&session.token, input)
                     .await
             },
         )

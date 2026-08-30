@@ -1802,6 +1802,92 @@ async fn gvmd_adapter_list_reports_requests_summary_metadata_only() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_import_report_uses_bounded_typed_command() {
+    let task_id =
+        uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174020").expect("valid task id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .seed(move |store| {
+            let mut task = Resource::with_id("task", "Import owner", task_id);
+            task.set_attr("usage_type", "scan");
+            store.create(task);
+        })
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+    server.clear_history();
+
+    let report_xml =
+        "<report id=\"imported-report\"><name>Imported</name><in_assets>0</in_assets></report>";
+    let report_id = adapter
+        .import_report(
+            token,
+            ImportReportInput {
+                task_id: task_id.to_string(),
+                report_xml: report_xml.to_string(),
+                in_assets: true,
+            },
+        )
+        .await
+        .expect("typed report import should succeed");
+    assert!(!report_id.is_empty());
+
+    let xml = recorded_xml(&server, "create_report");
+    assert!(
+        xml.contains(&format!("<task id=\"{task_id}\"/>")),
+        "xml={xml}"
+    );
+    assert!(xml.contains(report_xml), "xml={xml}");
+    assert!(xml.contains("<in_assets>1</in_assets>"), "xml={xml}");
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_rejects_invalid_report_imports_before_dispatch() {
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+    server.clear_history();
+
+    let report_error = adapter
+        .import_report(
+            &token,
+            ImportReportInput {
+                task_id: "123e4567-e89b-12d3-a456-426614174020".to_string(),
+                report_xml: "<not-a-report/>".to_string(),
+                in_assets: false,
+            },
+        )
+        .await
+        .expect_err("wrong report root must fail");
+    assert!(matches!(report_error, GatewayError::InvalidInput(_)));
+
+    let format_error = adapter
+        .import_report_format(
+            &token,
+            ImportReportFormatInput {
+                report_format_xml: "<broken>".to_string(),
+            },
+        )
+        .await
+        .expect_err("malformed report-format XML must fail");
+    assert!(matches!(format_error, GatewayError::InvalidInput(_)));
+    assert!(
+        server.command_history().is_empty(),
+        "invalid XML must not reach gvmd"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_list_hosts_emits_backend_pagination_filter() {
     let (adapter, server, token) = create_mock_adapter().await;
     server.clear_history();

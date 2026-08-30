@@ -3,6 +3,8 @@
 
 //! Host, report-format, triage, filter, tag, ticket, and NVT DTOs plus REST handlers.
 
+use std::fmt;
+
 use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
@@ -14,9 +16,9 @@ use axum::{
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
     CreateFilterInput, CreateHostInput, CreateNoteInput, CreateOverrideInput, CreateTagInput,
-    GatewayError, ModifyFilterInput, ModifyHostInput, ModifyNoteInput, ModifyOperatingSystemInput,
-    ModifyOverrideInput, ModifyTagInput, OperatingSystem, OperatingSystemHost,
-    SupportingResourceQuery,
+    GatewayError, ImportReportFormatInput, ModifyFilterInput, ModifyHostInput, ModifyNoteInput,
+    ModifyOperatingSystemInput, ModifyOverrideInput, ModifyTagInput, OperatingSystem,
+    OperatingSystemHost, SupportingResourceQuery,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -26,8 +28,8 @@ use crate::{
     dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
     error::RestError,
     handler::{
-        create_resource, created_resource, delete_resource, gateway_error, get_resource,
-        list_resource, update_resource, ValidateInto,
+        clone_resource, create_resource, created_resource, delete_resource, gateway_error,
+        get_resource, list_resource, parse_json_body_with, update_resource, ValidateInto,
     },
     open_enum::open_string_enum,
     openapi::{created_json, ok_json, problem_response, ResourceIdPathDoc},
@@ -36,6 +38,44 @@ use crate::{
     router::bearer_token,
     targets::validate_uuid,
 };
+
+const MAX_REPORT_FORMAT_IMPORT_XML_BYTES: usize = 524_288;
+
+#[derive(Clone, Deserialize, JsonSchema)]
+#[schemars(rename = "ImportReportFormat")]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ImportReportFormatRequest {
+    #[serde(rename = "reportFormatXml")]
+    #[schemars(length(max = 524_288))]
+    report_format_xml: String,
+}
+
+impl fmt::Debug for ImportReportFormatRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ImportReportFormatRequest")
+            .field("report_format_xml_bytes", &self.report_format_xml.len())
+            .finish()
+    }
+}
+
+impl ValidateInto<ImportReportFormatInput> for ImportReportFormatRequest {
+    fn validate_into(self) -> Result<ImportReportFormatInput, GatewayError> {
+        if self.report_format_xml.is_empty() {
+            return Err(GatewayError::InvalidInput(
+                "reportFormatXml is required".to_string(),
+            ));
+        }
+        if self.report_format_xml.len() > MAX_REPORT_FORMAT_IMPORT_XML_BYTES {
+            return Err(GatewayError::InvalidInput(format!(
+                "reportFormatXml must not exceed {MAX_REPORT_FORMAT_IMPORT_XML_BYTES} bytes"
+            )));
+        }
+        Ok(ImportReportFormatInput {
+            report_format_xml: self.report_format_xml,
+        })
+    }
+}
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 pub(crate) struct SupportingResourceListQueryParams {
@@ -1692,6 +1732,56 @@ pub async fn get_report_format(
     }
 }
 
+/// Clones a report format by id.
+pub async fn clone_report_format(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    uri: OriginalUri,
+) -> Response {
+    clone_resource(
+        service,
+        headers,
+        id,
+        uri,
+        "/api/v1/report-formats",
+        |service, session, id| async move { service.clone_report_format(&session, &id).await },
+    )
+    .await
+}
+
+/// Imports a bounded report-format XML document.
+pub async fn import_report_format(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let request = match parse_json_body_with::<ImportReportFormatRequest, _>(&body, |error| {
+        GatewayError::InvalidInput(format!(
+            "invalid JSON body at line {}, column {}",
+            error.line(),
+            error.column()
+        ))
+    }) {
+        Ok(request) => request,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let input = match request.validate_into() {
+        Ok(input) => input,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.import_report_format(&session, input).await {
+        Ok(id) => created_resource("/api/v1/report-formats", &id),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
 /// Lists saved filters visible to the authenticated session.
 pub async fn list_filters(
     State(service): State<GatewayService>,
@@ -2615,6 +2705,39 @@ pub(crate) fn get_report_format_docs(op: TransformOperation<'_>) -> TransformOpe
     let op = problem_response::<400>(op, "Invalid request");
     let op = problem_response::<401>(op, "Authentication required or session expired");
     problem_response::<404>(op, "Resource not found")
+}
+
+pub(crate) fn clone_report_format_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("cloneReportFormat")
+        .tag("Report Formats")
+        .summary("Clone a report format")
+        .description("Clones an existing report format and returns the new identifier.")
+        .security_requirement("bearerAuth")
+        .input::<Path<ResourceIdPathDoc>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json(
+            "Report format cloned",
+        ));
+    let op = problem_response::<400>(op, "Invalid request");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    let op = problem_response::<404>(op, "Resource not found");
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
+}
+
+pub(crate) fn import_report_format_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("importReportFormat")
+        .tag("Report Formats")
+        .summary("Import a report format")
+        .description("Imports one well-formed report-format XML document. The XML payload is limited to 512 KiB and is never included in diagnostic output.")
+        .security_requirement("bearerAuth")
+        .input::<Json<ImportReportFormatRequest>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json(
+            "Report format imported",
+        ));
+    let op = problem_response::<400>(op, "Invalid or oversized report-format import");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
 }
 
 pub(crate) fn list_filters_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {

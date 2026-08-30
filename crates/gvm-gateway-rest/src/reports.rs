@@ -3,8 +3,11 @@
 
 //! Report DTOs, request parsing, handlers, and response mapping for the REST adapter.
 
+use std::fmt;
+
 use aide::transform::TransformOperation;
 use axum::{
+    body::Bytes,
     extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -12,27 +15,77 @@ use axum::{
 };
 use gvm_gateway_app::GatewayService;
 use gvm_gateway_domain::{
-    GatewayError, GetReportOpts, ReportApplication, ReportApplicationPage, ReportClosedCvePage,
-    ReportCve, ReportCvePage, ReportErrorPage, ReportHost, ReportHostPage, ReportOperatingSystem,
-    ReportOperatingSystemPage, ReportPortPage, ReportPortSummary, ReportQuery,
-    ReportVulnerabilityPage, ResultQuery, TlsCertificate, TlsCertificatePage,
+    GatewayError, GetReportOpts, ImportReportInput, ReportApplication, ReportApplicationPage,
+    ReportClosedCvePage, ReportCve, ReportCvePage, ReportErrorPage, ReportHost, ReportHostPage,
+    ReportOperatingSystem, ReportOperatingSystemPage, ReportPortPage, ReportPortSummary,
+    ReportQuery, ReportVulnerabilityPage, ResultQuery, TlsCertificate, TlsCertificatePage,
 };
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{datetime_schema, parse_uuid, PaginationResponse, ResourceRefResponse},
+    dto::{
+        datetime_schema, parse_uuid, PaginationResponse, ResourceCreatedResponse,
+        ResourceRefResponse,
+    },
     error::RestError,
+    handler::{created_resource, parse_json_body_with, ValidateInto},
     openapi::{
-        ok_json, problem_response, GetReportQueryDoc, ReportListQueryDoc, ReportResultsQueryDoc,
-        ResourceIdPathDoc,
+        created_json, ok_json, problem_response, GetReportQueryDoc, ReportListQueryDoc,
+        ReportResultsQueryDoc, ResourceIdPathDoc,
     },
     query::{parse_collection_query, parse_delete_resource_query, DeleteResourceQueryParams},
     results::{NvtRefResponse, ResultListResponse, ResultResponse, Threat},
     router::bearer_token,
     targets::validate_uuid,
 };
+
+const MAX_REPORT_IMPORT_XML_BYTES: usize = 1_048_576;
+
+#[derive(Clone, Deserialize, JsonSchema)]
+#[schemars(rename = "ImportReport")]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ImportReportRequest {
+    #[serde(rename = "taskId")]
+    task_id: Uuid,
+    #[serde(rename = "reportXml")]
+    #[schemars(length(max = 1_048_576))]
+    report_xml: String,
+    #[serde(rename = "inAssets", default)]
+    in_assets: bool,
+}
+
+impl fmt::Debug for ImportReportRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ImportReportRequest")
+            .field("task_id", &self.task_id)
+            .field("report_xml_bytes", &self.report_xml.len())
+            .field("in_assets", &self.in_assets)
+            .finish()
+    }
+}
+
+impl ValidateInto<ImportReportInput> for ImportReportRequest {
+    fn validate_into(self) -> Result<ImportReportInput, GatewayError> {
+        if self.report_xml.is_empty() {
+            return Err(GatewayError::InvalidInput(
+                "reportXml is required".to_string(),
+            ));
+        }
+        if self.report_xml.len() > MAX_REPORT_IMPORT_XML_BYTES {
+            return Err(GatewayError::InvalidInput(format!(
+                "reportXml must not exceed {MAX_REPORT_IMPORT_XML_BYTES} bytes"
+            )));
+        }
+        Ok(ImportReportInput {
+            task_id: self.task_id.to_string(),
+            report_xml: self.report_xml,
+            in_assets: self.in_assets,
+        })
+    }
+}
 
 // ============================================================================
 // Response DTOs
@@ -652,6 +705,38 @@ fn report_results_query(query: ReportResultsQuery) -> ResultQuery {
 }
 
 /// List reports handler.
+pub async fn import_report(
+    State(service): State<GatewayService>,
+    headers: HeaderMap,
+    uri: OriginalUri,
+    body: Bytes,
+) -> Response {
+    let instance = uri.path().to_string();
+    let session = match bearer_token(&headers) {
+        Ok(session) => session,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let request = match parse_json_body_with::<ImportReportRequest, _>(&body, |error| {
+        GatewayError::InvalidInput(format!(
+            "invalid JSON body at line {}, column {}",
+            error.line(),
+            error.column()
+        ))
+    }) {
+        Ok(request) => request,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    let input = match request.validate_into() {
+        Ok(input) => input,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
+    match service.import_report(&session, input).await {
+        Ok(id) => created_resource("/api/v1/reports", &id),
+        Err(error) => RestError::from_gateway_error(error, instance).into_response(),
+    }
+}
+
+/// List reports handler.
 pub async fn list_reports(
     State(service): State<GatewayService>,
     headers: HeaderMap,
@@ -1065,6 +1150,20 @@ pub async fn get_report_cves(
 // ============================================================================
 // OpenAPI transforms
 // ============================================================================
+
+pub(crate) fn import_report_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    let op = op
+        .id("importReport")
+        .tag("Reports")
+        .summary("Import a report")
+        .description("Imports one well-formed `<report>` XML document for a task. The XML payload is limited to 1 MiB and is never included in diagnostic output.")
+        .security_requirement("bearerAuth")
+        .input::<Json<ImportReportRequest>>()
+        .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Report imported"));
+    let op = problem_response::<400>(op, "Invalid or oversized report import");
+    let op = problem_response::<401>(op, "Authentication required or session expired");
+    problem_response::<502>(op, "Backend service unreachable or connection failed")
+}
 
 /// OpenAPI transform for `GET /api/v1/reports`.
 pub(crate) fn list_reports_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {

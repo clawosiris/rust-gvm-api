@@ -4,6 +4,8 @@
 //! Supporting resource catalogs used by report export, finding triage, saved
 //! filters, tags, tickets, asset inventory, and NVT discovery workflows.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{NvtRef, Pagination, ResourceRef};
@@ -292,6 +294,22 @@ pub struct ReportFormatPage {
     pub data: Vec<ReportFormat>,
     /// Pagination metadata.
     pub pagination: Pagination,
+}
+
+/// Bounded report-format import command.
+#[derive(Clone, Eq, PartialEq)]
+pub struct ImportReportFormatInput {
+    /// Complete report-format XML document. Never included in debug output.
+    pub report_format_xml: String,
+}
+
+impl fmt::Debug for ImportReportFormatInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ImportReportFormatInput")
+            .field("report_format_xml_bytes", &self.report_format_xml.len())
+            .finish()
+    }
 }
 
 /// Domain NVT representation.

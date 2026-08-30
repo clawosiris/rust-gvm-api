@@ -56,6 +56,34 @@ impl ReportPort for GvmdAdapter {
         })
     }
 
+    async fn import_report(
+        &self,
+        session_token: &str,
+        input: ImportReportInput,
+    ) -> Result<String, GatewayError> {
+        let client = self.session_client(session_token)?;
+        let request = import_report(
+            &input.report_xml,
+            &parse_entity_id(&input.task_id)?,
+            ImportReportOpts {
+                in_assets: Some(input.in_assets),
+            },
+        )
+        .map_err(|_| {
+            GatewayError::InvalidInput(
+                "reportXml must contain one well-formed <report> document".to_string(),
+            )
+        })?;
+        let response = client
+            .lock()
+            .await?
+            .call(request)
+            .await
+            .map_err(map_gvm_error)?;
+        let parsed = CreateReportResponse::from_response(&response).map_err(map_parse_error)?;
+        Ok(parsed.id.to_string())
+    }
+
     async fn get_report(
         &self,
         session_token: &str,
