@@ -14,6 +14,9 @@ mod http;
 mod polling;
 mod resources;
 
+#[cfg(test)]
+mod dto_test;
+
 pub use assertions::{assert_problem_response, assert_problem_response_any};
 pub use config::E2eConfig;
 pub use dto::*;

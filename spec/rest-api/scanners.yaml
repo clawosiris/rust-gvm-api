@@ -54,6 +54,8 @@ components:
       required:
         - id
         - name
+        - inUse
+        - writable
       properties:
         id:
           type: string
@@ -72,6 +74,15 @@ components:
             - OpenVAS
             - CVE
             - OSP
+        credential:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        caPub:
+          type: string
+          description: CA certificate material returned for the scanner.
+        inUse:
+          type: boolean
+        writable:
+          type: boolean
 
     ScannerList:
       type: object

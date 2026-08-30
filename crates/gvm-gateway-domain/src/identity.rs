@@ -41,7 +41,7 @@ pub struct IdentityResourceMeta {
     pub comment: Option<String>,
     /// Optional owner reference.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub owner: Option<ResourceRef>,
+    pub owner: Option<IdentityOwner>,
     /// Optional creation timestamp.
     #[serde(rename = "creationTime", skip_serializing_if = "Option::is_none")]
     pub creation_time: Option<String>,
@@ -53,6 +53,13 @@ pub struct IdentityResourceMeta {
     /// Whether the resource is in use.
     #[serde(rename = "inUse")]
     pub in_use: bool,
+}
+
+/// Owner metadata exposed by typed gvmd identity responses.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct IdentityOwner {
+    /// Owner name. Current gvmd identity responses do not provide an owner id.
+    pub name: String,
 }
 
 /// Domain user representation.

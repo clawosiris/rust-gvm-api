@@ -7,6 +7,108 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Pagination, ResourceRef, ScanResult};
 
+/// Aggregate vulnerability finding returned by a report drill-down.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ReportVulnerability {
+    /// Backend row identifier when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// NVT identity and metadata emitted for the aggregate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvt: Option<crate::NvtRef>,
+    /// Singular host when the backend returns one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    /// Singular port when the backend returns one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<String>,
+    /// Backend threat classification.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threat: Option<String>,
+    /// Numeric severity emitted by the backend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<f64>,
+    /// Number of distinct hosts represented by the aggregate.
+    #[serde(rename = "hostsCount", skip_serializing_if = "Option::is_none")]
+    pub hosts_count: Option<u32>,
+    /// Number of result occurrences represented by the aggregate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub occurrences: Option<u32>,
+}
+
+/// Paginated aggregate vulnerability response.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ReportVulnerabilityPage {
+    /// Page items.
+    pub data: Vec<ReportVulnerability>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Error emitted while a report was being produced.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportError {
+    /// Backend row identifier when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Backend error label when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Host associated with the error.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    /// Port associated with the error.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<String>,
+    /// Backend error description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// NVT name reported as the source of the error.
+    #[serde(rename = "nvtName", skip_serializing_if = "Option::is_none")]
+    pub nvt_name: Option<String>,
+}
+
+/// Paginated report-error response.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReportErrorPage {
+    /// Page items.
+    pub data: Vec<ReportError>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
+/// Closed-CVE finding returned by a report drill-down.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ReportClosedCve {
+    /// Backend row identifier when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// NVT identity emitted for the closed CVE.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvt: Option<crate::NvtRef>,
+    /// Closed CVE identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cve: Option<String>,
+    /// Host associated with the closed CVE.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    /// Numeric severity emitted by the backend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<f64>,
+    /// Backend threat classification.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threat: Option<String>,
+}
+
+/// Paginated closed-CVE response.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ReportClosedCvePage {
+    /// Page items.
+    pub data: Vec<ReportClosedCve>,
+    /// Pagination metadata.
+    pub pagination: Pagination,
+}
+
 /// Domain report representation.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Report {

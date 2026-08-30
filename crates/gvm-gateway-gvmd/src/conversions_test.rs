@@ -3,10 +3,11 @@
 
 use super::*;
 use gvm_gmp::responses::{
-    GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetPortListsResponse,
-    GetReportClosedCvesResponse, GetReportVulnsResponse, GetReportsResponse, GetResultsResponse,
-    GetScanConfigsResponse, GetSchedulesResponse, GetTargetsResponse, GetTasksResponse,
-    GetTicketsResponse, GetUsersResponse,
+    GetAlertsResponse, GetCredentialsResponse, GetFeedsResponse, GetNotesResponse,
+    GetOverridesResponse, GetPortListsResponse, GetReportClosedCvesResponse,
+    GetReportTlsCertificatesResponse, GetReportVulnsResponse, GetReportsResponse,
+    GetResultsResponse, GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse,
+    GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetUsersResponse,
 };
 use gvm_protocol::Response as GmpResponse;
 
@@ -569,13 +570,15 @@ fn aggregate_vulnerability_preserves_counts_and_nested_nvt_identity() {
     );
     let parsed = GetReportVulnsResponse::from_response(&response).expect("vulnerabilities parse");
 
-    let result = result_from_report_vulnerability(parsed.items.into_iter().next().unwrap());
+    let result =
+        result_from_report_vulnerability(parsed.items.into_iter().next().unwrap()).expect("maps");
 
-    assert_eq!(result.name, "TLS finding");
     assert_eq!(result.host, None);
     assert_eq!(result.port, None);
     assert_eq!(result.hosts_count, Some(2));
     assert_eq!(result.occurrences, Some(3));
+    assert_eq!(result.threat.as_deref(), Some("Medium"));
+    assert_eq!(result.severity, Some(5.0));
     assert_eq!(
         result.nvt.as_ref().and_then(|nvt| nvt.oid.as_deref()),
         Some("1.3.6.1.4.1.25623.1.0.117761")
@@ -584,12 +587,16 @@ fn aggregate_vulnerability_preserves_counts_and_nested_nvt_identity() {
         result.nvt.as_ref().and_then(|nvt| nvt.name.as_deref()),
         Some("TLS finding")
     );
+    assert_eq!(
+        result.nvt.as_ref().map(|nvt| nvt.cves.clone()),
+        Some(vec!["CVE-2026-0001".to_string()])
+    );
 }
 
 #[test]
-fn closed_cve_keeps_cve_name_and_maps_nested_nvt_identity() {
-    // The public result name is the closed CVE identifier; the nested NVT
-    // name and OID remain available separately instead of replacing it.
+fn closed_cve_preserves_closed_cve_identity_and_nested_nvt_identity() {
+    // Closed-CVE drill-downs need their dedicated cve and threat fields
+    // instead of being coerced into the generic result `name` shape.
     let response = GmpResponse::from(
         r#"<get_report_closed_cves_response status="200" status_text="OK">
             <closed_cves><closed_cve>
@@ -602,9 +609,12 @@ fn closed_cve_keeps_cve_name_and_maps_nested_nvt_identity() {
     );
     let parsed = GetReportClosedCvesResponse::from_response(&response).expect("closed CVEs parse");
 
-    let result = result_from_report_closed_cve(parsed.items.into_iter().next().unwrap());
+    let result =
+        report_closed_cve_from_gmp(parsed.items.into_iter().next().unwrap()).expect("maps");
 
-    assert_eq!(result.name, "CVE-2025-9999");
+    assert_eq!(result.cve.as_deref(), Some("CVE-2025-9999"));
+    assert_eq!(result.host.as_deref(), Some("192.0.2.30"));
+    assert_eq!(result.severity, Some(5.0));
     assert_eq!(result.threat.as_deref(), Some("Medium"));
     assert_eq!(
         result.nvt.as_ref().and_then(|nvt| nvt.oid.as_deref()),
@@ -614,6 +624,160 @@ fn closed_cve_keeps_cve_name_and_maps_nested_nvt_identity() {
         result.nvt.as_ref().and_then(|nvt| nvt.name.as_deref()),
         Some("Closed check")
     );
+}
+
+#[test]
+fn scan_config_from_gmp_preserves_counts_exposed_by_typed_responses() {
+    // Issue #407: config family and NVT counts now arrive as typed fields
+    // and must not be hardcoded to null in the gateway response model.
+    let parsed = GetScanConfigsResponse::from_response(&GmpResponse::from(
+        r#"<get_configs_response status="200" status_text="OK">
+                <config id="123e4567-e89b-12d3-a456-426614174004">
+                    <name>Config</name>
+                    <family_count>12</family_count>
+                    <nvt_count>345</nvt_count>
+                </config>
+            </get_configs_response>"#,
+    ))
+    .expect("scan configs parse");
+
+    let config = scan_config_from_gmp(parsed.items.into_iter().next().unwrap());
+
+    assert_eq!(config.family_count, Some(12));
+    assert_eq!(config.nvt_count, Some(345));
+}
+
+#[test]
+fn tls_certificate_from_gmp_preserves_sha256_fingerprint() {
+    // Issue #407: report TLS certificate reads must surface the typed
+    // SHA-256 fingerprint instead of leaving the REST field null.
+    let parsed = GetReportTlsCertificatesResponse::from_response(&GmpResponse::from(
+        r#"<get_report_tls_certificates_response status="200" status_text="OK">
+                <tls_certificates><tls_certificate id="tls-1">
+                    <name>TLS certificate</name>
+                    <host>192.0.2.55</host>
+                    <port>443/tcp</port>
+                    <subject>CN=example</subject>
+                    <issuer>CN=issuer</issuer>
+                    <sha256_fingerprint>ABCD1234</sha256_fingerprint>
+                </tls_certificate></tls_certificates>
+                <report_tls_certificate_count>1<filtered>1</filtered></report_tls_certificate_count>
+            </get_report_tls_certificates_response>"#,
+    ))
+    .expect("tls certificates parse");
+
+    let certificate =
+        tls_certificate_from_report_tls_certificate(parsed.items.into_iter().next().unwrap());
+
+    assert_eq!(certificate.fingerprint_sha256.as_deref(), Some("ABCD1234"));
+}
+
+#[test]
+fn user_from_gmp_preserves_typed_owner_and_hosts_allow_fields() {
+    // Issues #407 and #410: typed identity metadata now exposes owner names
+    // and host-access booleans directly; the gateway must not discard them.
+    let parsed = GetUsersResponse::from_response(&GmpResponse::from(
+        r#"<get_users_response status="200" status_text="OK">
+                <user id="123e4567-e89b-12d3-a456-426614174005">
+                    <owner><name>admin</name></owner>
+                    <name>User</name>
+                    <hosts allow="0">192.0.2.0/24</hosts>
+                </user>
+            </get_users_response>"#,
+    ))
+    .expect("users parse");
+
+    let user = user_from_gmp(parsed.items.into_iter().next().unwrap());
+
+    assert_eq!(
+        user.meta.owner.as_ref().map(|owner| owner.name.as_str()),
+        Some("admin")
+    );
+    assert_eq!(user.hosts_allow, Some(false));
+}
+
+#[test]
+fn note_and_override_from_gmp_preserve_typed_nvt_name_and_family() {
+    // Issue #410: typed note/override NVT references carry more than an OID,
+    // and the gateway must preserve the emitted name and family metadata.
+    let notes = GetNotesResponse::from_response(&GmpResponse::from(
+        r#"<get_notes_response status="200" status_text="OK">
+                <note id="note-1">
+                    <name>Note</name>
+                    <nvt oid="1.3.6.1.4.1.25623.1.0.100001">
+                        <name>Named NVT</name>
+                        <type>Product detection</type>
+                    </nvt>
+                </note>
+            </get_notes_response>"#,
+    ))
+    .expect("notes parse");
+    let overrides = GetOverridesResponse::from_response(&GmpResponse::from(
+        r#"<get_overrides_response status="200" status_text="OK">
+                <override id="override-1">
+                    <name>Override</name>
+                    <nvt oid="1.3.6.1.4.1.25623.1.0.100002">
+                        <name>Override NVT</name>
+                        <type>General</type>
+                    </nvt>
+                </override>
+            </get_overrides_response>"#,
+    ))
+    .expect("overrides parse");
+
+    let note = note_from_gmp(notes.items.into_iter().next().unwrap());
+    let override_ = override_from_gmp(overrides.items.into_iter().next().unwrap());
+
+    assert_eq!(
+        note.nvt.as_ref().and_then(|nvt| nvt.name.as_deref()),
+        Some("Named NVT")
+    );
+    assert_eq!(
+        note.nvt.as_ref().and_then(|nvt| nvt.family.as_deref()),
+        Some("Product detection")
+    );
+    assert_eq!(
+        override_.nvt.as_ref().and_then(|nvt| nvt.name.as_deref()),
+        Some("Override NVT")
+    );
+    assert_eq!(
+        override_.nvt.as_ref().and_then(|nvt| nvt.family.as_deref()),
+        Some("General")
+    );
+}
+
+#[test]
+fn scanner_from_gmp_preserves_credential_and_write_state_fields() {
+    // Issue #410: typed scanner responses include credential references and
+    // write-state flags that must survive gateway conversion.
+    let parsed = GetScannersResponse::from_response(&GmpResponse::from(
+        r#"<get_scanners_response status="200" status_text="OK">
+                <scanner id="scanner-1">
+                    <name>Default Scanner</name>
+                    <writable>0</writable>
+                    <in_use>1</in_use>
+                    <type>OpenVAS</type>
+                    <host>127.0.0.1</host>
+                    <port>9390</port>
+                    <ca_pub>CA certificate</ca_pub>
+                    <credential id="cred-1"><name>OSP Credential</name></credential>
+                </scanner>
+            </get_scanners_response>"#,
+    ))
+    .expect("scanners parse");
+
+    let scanner = scanner_from_gmp(parsed.items.into_iter().next().unwrap());
+
+    assert_eq!(
+        scanner
+            .credential
+            .as_ref()
+            .map(|credential| credential.id.as_str()),
+        Some("cred-1")
+    );
+    assert_eq!(scanner.ca_pub.as_deref(), Some("CA certificate"));
+    assert!(scanner.in_use);
+    assert!(!scanner.writable);
 }
 
 #[test]

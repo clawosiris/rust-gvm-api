@@ -454,15 +454,53 @@ impl E2eHarness {
         .await
     }
 
-    pub async fn list_credential_stores(&self, token: &str) -> Result<Vec<CredentialStore>> {
-        let response: UnpaginatedListResponse<CredentialStore> = self
-            .send_json(
-                self.authed(Method::GET, "/api/v1/credential-stores", token),
-                StatusCode::OK,
-                "list credential stores",
+    pub async fn list_credential_stores(
+        &self,
+        token: &str,
+    ) -> Result<Option<Vec<CredentialStore>>> {
+        let response = self
+            .authed(Method::GET, "/api/v1/credential-stores", token)
+            .send()
+            .await
+            .context("list credential stores")?;
+        let status = response.status();
+
+        if status == StatusCode::OK {
+            let stores: UnpaginatedListResponse<CredentialStore> = response
+                .json()
+                .await
+                .context("parse credential-store response body as JSON")?;
+            return Ok(Some(stores.data));
+        }
+
+        if status == StatusCode::NOT_IMPLEMENTED {
+            let problem = assert_problem_response(
+                response,
+                StatusCode::NOT_IMPLEMENTED,
+                "list credential stores capability probe",
             )
             .await?;
-        Ok(response.data)
+            if problem.code == "not_implemented" {
+                return Ok(None);
+            }
+            bail!(
+                "list credential stores capability probe: expected code not_implemented but received {} ({})",
+                problem.code,
+                problem.title
+            );
+        }
+
+        let body = response
+            .text()
+            .await
+            .context("read credential-store response body")?;
+        bail!(
+            "list credential stores: expected HTTP {} or {} but received {} with body {}",
+            StatusCode::OK,
+            StatusCode::NOT_IMPLEMENTED,
+            status,
+            truncate(&body)
+        );
     }
 
     pub async fn list_credentials(&self, token: &str) -> Result<ListResponse<Credential>> {

@@ -10,7 +10,7 @@ use gvm_gateway_domain::*;
 use gvm_gateway_gvmd::GvmdAdapter;
 use gvm_mock_server::{
     response_gen::{REPORT_EXPORT_BINARY_FORMAT_ID, REPORT_EXPORT_XML_FORMAT_ID},
-    GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode,
+    Fault, FaultKind, GmpVersion as MockVersion, MockGmpServer, Resource, ServerMode,
 };
 use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use tracing_subscriber::{fmt::format::FmtSpan, layer::SubscriberExt};
@@ -144,6 +144,111 @@ async fn create_mock_adapter_v22_8() -> (GvmdAdapter, MockGmpServer, String) {
             filter.set_attr("term", "threat=Alarm");
             store.create(filter);
         })
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+
+    (adapter, server, token.to_string())
+}
+
+async fn create_mock_adapter_v22_8_with_credential_store_error(
+    message: &str,
+) -> (GvmdAdapter, MockGmpServer, String) {
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .inject_fault(Fault::on_command(
+            "get_credential_stores",
+            FaultKind::ErrorStatus {
+                code: 503,
+                message: message.to_string(),
+            },
+        ))
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+
+    (adapter, server, token.to_string())
+}
+
+async fn create_mock_adapter_v22_8_with_disabled_credential_stores_followed_by_disconnect(
+) -> (GvmdAdapter, MockGmpServer, String) {
+    let credential_id =
+        uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174009").expect("valid credential id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .seed(move |store| {
+            let mut credential =
+                Resource::with_id("credential", "Reconnect-safe credential", credential_id);
+            credential.set_attr("type", "up");
+            credential.set_attr("login", "admin");
+            store.create(credential);
+        })
+        .inject_fault(Fault::on_command(
+            "get_credential_stores",
+            FaultKind::ErrorStatus {
+                code: 503,
+                message: "Service unavailable: Command disabled".to_string(),
+            },
+        ))
+        .inject_fault(Fault::after_commands(3, FaultKind::Disconnect))
+        .unix_socket_auto()
+        .build()
+        .await
+        .unwrap();
+
+    let adapter = GvmdAdapter::unix_socket(server.socket_path().unwrap());
+    let token = "test-session-token";
+    adapter
+        .connect_session(token, "admin", "admin")
+        .await
+        .unwrap();
+
+    (adapter, server, token.to_string())
+}
+
+async fn create_mock_adapter_v22_8_with_unknown_credential_store_probe_followed_by_disconnect(
+) -> (GvmdAdapter, MockGmpServer, String) {
+    let credential_id =
+        uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174010").expect("valid credential id");
+    let server = MockGmpServer::builder()
+        .mode(ServerMode::Stateful)
+        .version(MockVersion::V22_8)
+        .seed(move |store| {
+            let mut credential = Resource::with_id(
+                "credential",
+                "Reconnect-safe unknown probe credential",
+                credential_id,
+            );
+            credential.set_attr("type", "up");
+            credential.set_attr("login", "admin");
+            store.create(credential);
+        })
+        .inject_fault(Fault::on_command(
+            "get_credential_stores",
+            FaultKind::ErrorStatus {
+                code: 503,
+                message: "Service unavailable: database offline".to_string(),
+            },
+        ))
+        .inject_fault(Fault::after_commands(3, FaultKind::Disconnect))
         .unix_socket_auto()
         .build()
         .await
@@ -1808,15 +1913,22 @@ async fn gvmd_adapter_get_report_vulnerabilities_uses_typed_command() {
     assert_eq!(page.pagination.per_page, 10);
     assert_eq!(page.pagination.total, 1);
     assert_eq!(page.data.len(), 1);
-    assert_eq!(page.data[0].name, "SSL/TLS Renegotiation Vulnerability");
     assert_eq!(page.data[0].host, None);
     assert_eq!(page.data[0].port, None);
     assert_eq!(page.data[0].severity, Some(5.0));
+    assert_eq!(page.data[0].threat.as_deref(), Some("Medium"));
     assert_eq!(page.data[0].hosts_count, Some(2));
     assert_eq!(page.data[0].occurrences, Some(3));
     assert_eq!(
         page.data[0].nvt.as_ref().and_then(|nvt| nvt.oid.as_deref()),
         Some("1.3.6.1.4.1.25623.1.0.117761")
+    );
+    assert_eq!(
+        page.data[0]
+            .nvt
+            .as_ref()
+            .and_then(|nvt| nvt.name.as_deref()),
+        Some("SSL/TLS Renegotiation Vulnerability")
     );
     assert_eq!(
         page.data[0]
@@ -1871,6 +1983,249 @@ async fn gvmd_adapter_get_report_vulnerabilities_returns_not_implemented_on_v22_
             .filter(|record| record.command_name() == "get_results")
             .count(),
         0
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_credential_stores_uses_typed_backend_response() {
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+    server.clear_history();
+
+    let stores = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect("typed credential stores");
+
+    assert_eq!(stores.len(), 1);
+    assert_eq!(stores[0].id.as_deref(), Some("local"));
+    assert_eq!(stores[0].name, "Local credential store");
+    assert_eq!(stores[0].provider.as_deref(), Some("local"));
+    assert_eq!(stores[0].default, None);
+    assert_eq!(stores[0].writable, None);
+
+    let history = server.command_history();
+    let command = history
+        .iter()
+        .find(|record| record.command_name() == "get_credential_stores")
+        .expect("get_credential_stores command should be recorded");
+    let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("<get_credential_stores"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_credential_stores_returns_not_implemented_on_v22_7() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("v22.7 should return not implemented");
+
+    assert!(matches!(
+        error,
+        GatewayError::NotImplemented(detail) if detail.contains("get_credential_stores")
+    ));
+    assert_eq!(
+        server
+            .command_history()
+            .into_iter()
+            .filter(|record| record.command_name() == "get_credential_stores")
+            .count(),
+        0,
+        "unsupported backends should return the cached 501 capability result without probing again"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_credential_stores_returns_not_implemented_when_gvmd_disables_command() {
+    let (adapter, server, token) = create_mock_adapter_v22_8_with_credential_store_error(
+        "Service unavailable: Command disabled",
+    )
+    .await;
+    server.clear_history();
+
+    // Regression coverage for PR #463 live E2E: gvmd 22.8 may advertise the
+    // command by version but disable it at runtime, returning a typed 503
+    // parse-status response instead of an UnsupportedCommand client error.
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("disabled credential-store command should return not implemented");
+
+    assert!(matches!(
+        error,
+        GatewayError::NotImplemented(detail) if detail.contains("get_credential_stores")
+    ));
+    assert_eq!(
+        server
+            .command_history()
+            .into_iter()
+            .filter(|record| record.command_name() == "get_credential_stores")
+            .count(),
+        0,
+        "disabled-command capability absence should be cached after connect_session"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_list_credential_stores_keeps_unrelated_503_as_backend_unavailable() {
+    let (adapter, server, token) = create_mock_adapter_v22_8_with_credential_store_error(
+        "Service unavailable: database offline",
+    )
+    .await;
+    server.clear_history();
+
+    // A same-endpoint backend outage without the disabled-command reason must
+    // keep the generic 502 REST behavior through GatewayError::BackendUnavailable.
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("unrelated backend 503 should remain backend unavailable");
+
+    assert!(matches!(
+        error,
+        GatewayError::BackendUnavailable(detail) if detail.contains("database offline")
+    ));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_refreshes_cached_session_after_disabled_credential_store_response() {
+    let (adapter, server, token) =
+        create_mock_adapter_v22_8_with_disabled_credential_stores_followed_by_disconnect().await;
+    server.clear_history();
+
+    // Regression coverage for GitHub E2E run 33263885269 on 2026-08-29:
+    // connect_session must consume the disabled-command capability probe,
+    // restore the authenticated socket before publishing the session, and let
+    // later routes observe 501 plus a healthy credentials list.
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("disabled credential-store command should still return not implemented");
+    assert!(
+        matches!(
+            error,
+            GatewayError::NotImplemented(ref detail) if detail.contains("get_credential_stores")
+        ),
+        "unexpected credential-store error: {error:?}"
+    );
+
+    let page = adapter
+        .list_credentials(
+            &token,
+            &CredentialQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 1000,
+            },
+        )
+        .await
+        .expect("credentials should succeed after the cached session reconnects");
+
+    assert_eq!(page.pagination.page, 1);
+    assert_eq!(page.pagination.per_page, 1000);
+
+    let history = server.command_history();
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "authenticate")
+            .count(),
+        0,
+        "the reconnect should happen during connect_session, before history is cleared"
+    );
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "get_credential_stores")
+            .count(),
+        0,
+        "list_credential_stores should use the cached unsupported capability state"
+    );
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "get_credentials")
+            .count(),
+        1,
+        "credential listing should use the refreshed session instead of failing on a stale socket"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_reconnects_before_caching_unknown_credential_store_capability() {
+    let (adapter, server, token) =
+        create_mock_adapter_v22_8_with_unknown_credential_store_probe_followed_by_disconnect()
+            .await;
+    server.clear_history();
+
+    // If the connect-time capability probe fails for a non-capability reason,
+    // the adapter must still reconnect before publishing the session. That
+    // keeps subsequent commands off a potentially poisoned socket even though
+    // `/credential-stores` must keep probing live and may still fail later.
+    let page = adapter
+        .list_credentials(
+            &token,
+            &CredentialQuery {
+                filter_string: None,
+                filter_id: None,
+                page: 1,
+                per_page: 1000,
+            },
+        )
+        .await
+        .expect("credentials should succeed after the unknown probe reconnects");
+
+    assert_eq!(page.pagination.page, 1);
+    assert_eq!(page.pagination.per_page, 1000);
+
+    let error = adapter
+        .list_credential_stores(&token)
+        .await
+        .expect_err("unknown credential-store failures should stay backend unavailable");
+    assert!(
+        matches!(error, GatewayError::BackendUnavailable(_)),
+        "unexpected credential-store error: {error:?}"
+    );
+
+    let history = server.command_history();
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "authenticate")
+            .count(),
+        0,
+        "the reconnect should happen during connect_session, before history is cleared"
+    );
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "get_credential_stores")
+            .count(),
+        1,
+        "unknown capability state must keep probing `/credential-stores` live"
+    );
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.command_name() == "get_credentials")
+            .count(),
+        1,
+        "credentials should use the refreshed session instead of failing on the stale connect-time probe socket"
     );
 
     server.shutdown().await;
@@ -2055,18 +2410,13 @@ async fn gvmd_adapter_get_report_errors_uses_typed_command() {
 
     assert_eq!(page.pagination.total, 1);
     assert_eq!(page.data.len(), 1);
+    assert_eq!(page.data[0].name.as_deref(), Some("Host dead"));
     assert_eq!(
         page.data[0].description.as_deref(),
         Some("Could not reach host.")
     );
-    assert_eq!(page.data[0].threat.as_deref(), Some("Alarm"));
-    assert_eq!(
-        page.data[0]
-            .nvt
-            .as_ref()
-            .and_then(|nvt| nvt.name.as_deref()),
-        Some("Ping Host")
-    );
+    assert_eq!(page.data[0].nvt_name.as_deref(), Some("Ping Host"));
+    assert_eq!(page.data[0].host.as_deref(), Some("192.0.2.20"));
 
     let history = server.command_history();
     let command = history
@@ -2100,8 +2450,9 @@ async fn gvmd_adapter_get_report_closed_cves_uses_typed_command() {
 
     assert_eq!(page.pagination.total, 1);
     assert_eq!(page.data.len(), 1);
-    assert_eq!(page.data[0].name, "CVE-2025-9999");
+    assert_eq!(page.data[0].cve.as_deref(), Some("CVE-2025-9999"));
     assert_eq!(page.data[0].severity, Some(5.0));
+    assert_eq!(page.data[0].threat.as_deref(), Some("Medium"));
     assert_eq!(
         page.data[0]
             .nvt

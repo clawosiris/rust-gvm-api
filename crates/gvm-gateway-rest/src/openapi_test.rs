@@ -133,6 +133,36 @@ fn generated_openapi_preserves_key_schema_fields() {
         .get("name")
         .is_some());
     assert!(schemas["ModifyUser"]["properties"].get("name").is_some());
+
+    let credential_store_responses = &generated["paths"]["/credential-stores"]["get"]["responses"];
+    assert!(credential_store_responses.get("501").is_some());
+
+    let report_vulnerability_props = &schemas["ReportVulnerability"]["properties"];
+    assert!(report_vulnerability_props.get("hostsCount").is_some());
+    assert!(report_vulnerability_props.get("occurrences").is_some());
+
+    let report_error_props = &schemas["ReportError"]["properties"];
+    assert!(report_error_props.get("nvtName").is_some());
+    assert!(report_error_props.get("threat").is_none());
+
+    let report_closed_cve_props = &schemas["ReportClosedCve"]["properties"];
+    assert!(report_closed_cve_props.get("cve").is_some());
+    assert!(report_closed_cve_props.get("name").is_none());
+
+    let task_props = &schemas["Task"]["properties"];
+    assert_eq!(
+        task_props["lastReport"]["$ref"],
+        json!("#/components/schemas/TaskReportReference")
+    );
+    assert!(task_props.get("usageType").is_some());
+    assert!(task_props.get("trend").is_some());
+
+    let scanner_props = &schemas["Scanner"]["properties"];
+    assert!(scanner_props.get("credential").is_some());
+    assert!(scanner_props.get("caPub").is_some());
+
+    let port_list_props = &schemas["PortList"]["properties"];
+    assert!(port_list_props.get("portRange").is_some());
 }
 
 #[test]

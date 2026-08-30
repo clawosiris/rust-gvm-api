@@ -4,10 +4,10 @@
 use serde_json::json;
 
 use super::{
-    credential_json_body_error, CreateCredentialRequest, CredentialResponse, CredentialType,
-    ModifyCredentialRequest,
+    credential_json_body_error, CreateCredentialRequest, CredentialResponse,
+    CredentialStoreResponse, CredentialType, ModifyCredentialRequest,
 };
-use gvm_gateway_domain::{Credential, GatewayError};
+use gvm_gateway_domain::{Credential, CredentialStore, GatewayError};
 
 fn credential_with_type(credential_type: &str) -> Credential {
     Credential {
@@ -164,4 +164,24 @@ fn credential_requests_preserve_supported_secret_and_type_fields() {
     assert_eq!(modify.certificate.as_deref(), Some("CERTIFICATE"));
     assert_eq!(modify.community.as_deref(), Some("public"));
     assert_eq!(modify.privacy_password.as_deref(), Some("privacy-secret"));
+}
+
+#[test]
+fn credential_store_response_omits_unknown_backend_metadata() {
+    // Backends before the typed credential-store surface only expose the
+    // fields they actually return; the REST DTO must not synthesize defaults.
+    let value = serde_json::to_value(CredentialStoreResponse::from(CredentialStore {
+        id: None,
+        name: "Vault".to_string(),
+        provider: Some("hashicorp".to_string()),
+        default: None,
+        writable: None,
+    }))
+    .expect("credential store response should serialize");
+
+    assert_eq!(value["name"], "Vault");
+    assert_eq!(value["provider"], "hashicorp");
+    assert!(value.get("id").is_none());
+    assert!(value.get("default").is_none());
+    assert!(value.get("writable").is_none());
 }

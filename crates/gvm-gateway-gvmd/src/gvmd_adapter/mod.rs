@@ -27,16 +27,16 @@ use gvm_gateway_domain::{
     ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
     ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget,
     OciImageTargetPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
-    PortListPort, PortListQuery, ReadinessStatus, Report, ReportExport, ReportExportRequest,
-    ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
-    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
-    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
-    SchedulePort, ScheduleQuery, SessionTokenDigest, SpecializedTargetQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
-    WebApplicationTargetPage,
+    PortListPort, PortListQuery, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage,
+    ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
+    ReportQuery, ReportVulnerabilityPage, ResultPage, ResultPort, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
+    SessionTokenDigest, SpecializedTargetQuery, SupportingResourcePort, SupportingResourceQuery,
+    SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
+    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
+    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
 use gvm_gmp::{
     commands::{
@@ -44,7 +44,6 @@ use gvm_gmp::{
             create_alert, delete_alert, get_alert, get_alerts, modify_alert, AlertData, AlertOpts,
             GetAlertsOpts,
         },
-        authentication::authenticate,
         configs::{modify_config as modify_config_generic, ConfigUsageType, ModifyConfigOpts},
         credentials::{
             create_credential, delete_credential, get_credential, get_credentials,
@@ -127,21 +126,21 @@ use gvm_gmp::{
         },
     },
     responses::{
-        ActionResponse, AuthenticateResponse, CreateAlertResponse, CreateCredentialResponse,
-        CreateFilterResponse, CreateGroupResponse, CreateHostResponse, CreateNoteResponse,
-        CreateOciImageTargetResponse, CreateOverrideResponse, CreatePermissionResponse,
-        CreatePortListResponse, CreateRoleResponse, CreateScanConfigResponse,
-        CreateScheduleResponse, CreateTagResponse, CreateTargetResponse, CreateTaskResponse,
-        CreateUserResponse, CreateWebApplicationTargetResponse, GetAlertsResponse,
-        GetCredentialsResponse, GetFeedsResponse, GetFiltersResponse, GetGroupsResponse,
-        GetHostsResponse, GetNotesResponse, GetNvtFamiliesResponse, GetNvtsResponse,
-        GetOciImageTargetsResponse, GetOverridesResponse, GetPermissionsResponse,
-        GetPortListsResponse, GetReportFormatsResponse, GetReportsResponse, GetResultsResponse,
-        GetRolesResponse, GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse,
-        GetTagsResponse, GetTargetsResponse, GetTasksResponse, GetTicketsResponse,
-        GetTlsCertificatesResponse, GetUserSettingsResponse, GetUsersResponse, GetVersionResponse,
-        GetVulnerabilitiesResponse, GetWebApplicationTargetsResponse, ModifyUserSettingResponse,
-        ResumeTaskResponse, StartTaskResponse, User as GmpUser,
+        ActionResponse, CreateAlertResponse, CreateCredentialResponse, CreateFilterResponse,
+        CreateGroupResponse, CreateHostResponse, CreateNoteResponse, CreateOciImageTargetResponse,
+        CreateOverrideResponse, CreatePermissionResponse, CreatePortListResponse,
+        CreateRoleResponse, CreateScanConfigResponse, CreateScheduleResponse, CreateTagResponse,
+        CreateTargetResponse, CreateTaskResponse, CreateUserResponse,
+        CreateWebApplicationTargetResponse, GetAlertsResponse, GetCredentialsResponse,
+        GetFeedsResponse, GetFiltersResponse, GetGroupsResponse, GetHostsResponse,
+        GetNotesResponse, GetNvtFamiliesResponse, GetNvtsResponse, GetOciImageTargetsResponse,
+        GetOverridesResponse, GetPermissionsResponse, GetPortListsResponse,
+        GetReportFormatsResponse, GetReportsResponse, GetResultsResponse, GetRolesResponse,
+        GetScanConfigsResponse, GetScannersResponse, GetSchedulesResponse, GetTagsResponse,
+        GetTargetsResponse, GetTasksResponse, GetTicketsResponse, GetTlsCertificatesResponse,
+        GetUserSettingsResponse, GetUsersResponse, GetVersionResponse, GetVulnerabilitiesResponse,
+        GetWebApplicationTargetsResponse, ModifyUserSettingResponse, ResumeTaskResponse,
+        StartTaskResponse, User as GmpUser,
     },
     CollectionUpdate, EntityId, Pagination as GmpPagination, ScalarUpdate,
 };
@@ -166,18 +165,20 @@ use crate::conversions::{
     parse_alert_event, parse_alert_method, parse_alive_test, parse_credential_type,
     parse_entity_id, parse_hosts_ordering, parse_permission_subject_type,
     parse_snmp_auth_algorithm, parse_snmp_privacy_algorithm, parse_user_auth_type,
-    permission_from_gmp, port_list_from_gmp, report_format_from_gmp, report_from_gmp,
-    result_from_gmp, result_from_report_closed_cve, result_from_report_error,
-    result_from_report_vulnerability, role_from_gmp, scan_config_from_gmp, scanner_from_gmp,
-    schedule_from_gmp, tag_from_gmp, target_from_gmp, task_from_gmp, ticket_from_gmp,
-    tls_certificate_asset_from_gmp, tls_certificate_from_report_tls_certificate, user_from_gmp,
-    user_setting_from_gmp, vulnerability_from_gmp, web_application_target_from_gmp,
+    permission_from_gmp, port_list_from_gmp, report_closed_cve_from_gmp, report_error_from_gmp,
+    report_format_from_gmp, report_from_gmp, result_from_gmp, result_from_report_vulnerability,
+    role_from_gmp, scan_config_from_gmp, scanner_from_gmp, schedule_from_gmp, tag_from_gmp,
+    target_from_gmp, task_from_gmp, ticket_from_gmp, tls_certificate_asset_from_gmp,
+    tls_certificate_from_report_tls_certificate, user_from_gmp, user_setting_from_gmp,
+    vulnerability_from_gmp, web_application_target_from_gmp,
 };
 use filters::{
     backend_ignored_pagination, composed_filter, gvmd_total, needs_client_side_pagination_fallback,
     paged_pagination, paged_slice, paginated_filter,
 };
-use session::{SessionClient, SharedClient};
+use session::{
+    connect_authenticated_client, CredentialStoreCapability, SessionClient, SharedClient,
+};
 use supporting_inputs::{
     collection_update, filter_opts_from_create_input, filter_opts_from_modify_input,
     host_opts_from_create_input, host_opts_from_modify_input, note_opts_from_create_input,
@@ -258,16 +259,32 @@ impl GvmdAdapter {
         );
 
         async move {
-            let connection = UnixSocketConnection::with_path(&self.socket_path);
-            let mut client = GmpClient::connect(connection)
-                .await
-                .map_err(map_gvm_error)?;
+            let mut client =
+                connect_authenticated_client(&self.socket_path, username, password).await?;
             let negotiated = client.version().to_string();
-            let response = client
-                .call(authenticate(username, password))
-                .await
-                .map_err(map_gvm_error)?;
-            AuthenticateResponse::from_response(&response).map_err(map_parse_error)?;
+            let credential_store_capability =
+                match ports::credentials::probe_credential_store_capability(&mut client).await {
+                    Ok(outcome) => {
+                        if outcome.requires_reconnect {
+                            client =
+                                connect_authenticated_client(&self.socket_path, username, password)
+                                    .await?;
+                        }
+                        outcome.capability
+                    }
+                    Err(error) => {
+                        client =
+                            connect_authenticated_client(&self.socket_path, username, password)
+                                .await?;
+                        tracing::debug!(
+                            session_id = %safe_session_id(session_token),
+                            gvmd_username = %username,
+                            ?error,
+                            "credential-store capability probe deferred after reconnect"
+                        );
+                        CredentialStoreCapability::Unknown
+                    }
+                };
 
             self.sessions
                 .lock()
@@ -276,7 +293,7 @@ impl GvmdAdapter {
                 })?
                 .insert(
                     SessionTokenDigest::from_token(session_token),
-                    Arc::new(SessionClient::new(client)),
+                    Arc::new(SessionClient::new(client, credential_store_capability)),
                 );
 
             Ok(negotiated)
@@ -334,16 +351,6 @@ impl GvmdAdapter {
             .into_iter()
             .next()
             .ok_or_else(|| GatewayError::NotFound(format!("user {id} not found")))
-    }
-
-    fn default_credential_stores(&self) -> Vec<CredentialStore> {
-        vec![CredentialStore {
-            id: "default".to_string(),
-            name: "Default".to_string(),
-            provider: Some("gvmd".to_string()),
-            default: true,
-            writable: true,
-        }]
     }
 
     async fn saved_filter_term(

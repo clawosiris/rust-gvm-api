@@ -20,7 +20,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{parse_uuid, PaginationResponse, ResourceCreatedResponse, ResourceRefResponse},
+    dto::{
+        datetime_schema, parse_uuid, PaginationResponse, ResourceCreatedResponse,
+        ResourceRefResponse,
+    },
     error::RestError,
     handler::{
         clone_resource, create_resource, delete_resource, delete_resource_without_ultimate,
@@ -139,11 +142,15 @@ pub(crate) struct TaskResponse {
     #[serde(rename = "schedulePeriods", skip_serializing_if = "Option::is_none")]
     schedule_periods: Option<u32>,
     #[serde(rename = "lastReport", skip_serializing_if = "Option::is_none")]
-    last_report: Option<ResourceRefResponse>,
+    last_report: Option<TaskReportReferenceResponse>,
     #[serde(rename = "currentReport", skip_serializing_if = "Option::is_none")]
-    current_report: Option<ResourceRefResponse>,
+    current_report: Option<TaskReportReferenceResponse>,
     #[serde(rename = "reportCount", skip_serializing_if = "Option::is_none")]
     report_count: Option<u32>,
+    #[serde(rename = "usageType", skip_serializing_if = "Option::is_none")]
+    usage_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trend: Option<String>,
     #[serde(rename = "inUse")]
     in_use: bool,
     writable: bool,
@@ -170,11 +177,101 @@ impl From<gvm_gateway_domain::Task> for TaskResponse {
             hosts_ordering: t.hosts_ordering.as_deref().map(HostsOrdering::parse),
             observers: TaskObserversResponse::from(t.observers),
             schedule_periods: t.schedule_periods,
-            last_report: t.last_report.map(ResourceRefResponse::from),
-            current_report: t.current_report.map(ResourceRefResponse::from),
+            last_report: t.last_report.map(TaskReportReferenceResponse::from),
+            current_report: t.current_report.map(TaskReportReferenceResponse::from),
             report_count: t.report_count,
+            usage_type: t.usage_type,
+            trend: t.trend,
             in_use: t.in_use,
             writable: t.writable,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TaskReportResultCount")]
+struct TaskReportResultCountResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    critical: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    high: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    medium: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    low: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    log: Option<u32>,
+    #[serde(rename = "falsePositive", skip_serializing_if = "Option::is_none")]
+    false_positive: Option<u32>,
+}
+
+impl From<gvm_gateway_domain::TaskReportResultCount> for TaskReportResultCountResponse {
+    fn from(count: gvm_gateway_domain::TaskReportResultCount) -> Self {
+        Self {
+            critical: count.critical,
+            high: count.high,
+            medium: count.medium,
+            low: count.low,
+            log: count.log,
+            false_positive: count.false_positive,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TaskReportComplianceCount")]
+struct TaskReportComplianceCountResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    yes: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    no: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    incomplete: Option<u32>,
+}
+
+impl From<gvm_gateway_domain::TaskReportComplianceCount> for TaskReportComplianceCountResponse {
+    fn from(count: gvm_gateway_domain::TaskReportComplianceCount) -> Self {
+        Self {
+            yes: count.yes,
+            no: count.no,
+            incomplete: count.incomplete,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "TaskReportReference")]
+struct TaskReportReferenceResponse {
+    id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    timestamp: Option<String>,
+    #[serde(rename = "scanStart", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    scan_start: Option<String>,
+    #[serde(rename = "scanEnd", skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "datetime_schema")]
+    scan_end: Option<String>,
+    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
+    result_count: Option<TaskReportResultCountResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+    #[serde(rename = "complianceCount", skip_serializing_if = "Option::is_none")]
+    compliance_count: Option<TaskReportComplianceCountResponse>,
+}
+
+impl From<gvm_gateway_domain::TaskReportReference> for TaskReportReferenceResponse {
+    fn from(report: gvm_gateway_domain::TaskReportReference) -> Self {
+        Self {
+            id: parse_uuid(&report.id),
+            timestamp: report.timestamp,
+            scan_start: report.scan_start,
+            scan_end: report.scan_end,
+            result_count: report.result_count.map(TaskReportResultCountResponse::from),
+            severity: report.severity,
+            compliance_count: report
+                .compliance_count
+                .map(TaskReportComplianceCountResponse::from),
         }
     }
 }

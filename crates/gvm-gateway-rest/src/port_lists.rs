@@ -46,6 +46,8 @@ pub(crate) struct PortListResponse {
     tcp_count: Option<u32>,
     #[serde(rename = "udpCount", skip_serializing_if = "Option::is_none")]
     udp_count: Option<u32>,
+    #[serde(rename = "portRange", skip_serializing_if = "Option::is_none")]
+    port_range: Option<String>,
     #[serde(rename = "inUse")]
     in_use: bool,
     writable: bool,
@@ -60,6 +62,7 @@ impl From<PortList> for PortListResponse {
             port_count: port_list.port_count,
             tcp_count: port_list.tcp_count,
             udp_count: port_list.udp_count,
+            port_range: port_list.port_range,
             in_use: port_list.in_use,
             writable: port_list.writable,
         }

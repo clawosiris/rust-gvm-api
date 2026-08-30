@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::Pagination;
+use crate::{Pagination, ResourceRef};
 
 /// Domain scanner representation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -26,6 +26,17 @@ pub struct Scanner {
     /// Scanner type (e.g. "OpenVAS", "CVE", "OSP").
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub scanner_type: Option<String>,
+    /// Credential associated with the scanner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credential: Option<ResourceRef>,
+    /// Scanner CA certificate material returned by gvmd.
+    #[serde(rename = "caPub", skip_serializing_if = "Option::is_none")]
+    pub ca_pub: Option<String>,
+    /// Whether the scanner is currently referenced.
+    #[serde(rename = "inUse")]
+    pub in_use: bool,
+    /// Whether the scanner is writable.
+    pub writable: bool,
 }
 
 /// Paginated scanner list response.
