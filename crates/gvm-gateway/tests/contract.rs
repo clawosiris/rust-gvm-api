@@ -11,12 +11,14 @@ use async_trait::async_trait;
 use common::{spawn_server, spawn_server_with_sessions};
 use gvm_gateway_app::{GatewayPorts, GatewayService};
 use gvm_gateway_domain::{
-    CreateCredentialInput, CreateTaskInput, Credential, CredentialPage, CredentialPort,
-    CredentialQuery, CredentialStore, GatewayError, GetReportOpts, ModifyCredentialInput,
-    ModifyTaskInput, Pagination, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
-    ReportExportRequest, ReportPage, ReportPort, ReportQuery, ReportVulnerabilityPage, ResourceRef,
-    ResultPage, ResultQuery, ScanResult, SessionLimits, SessionManager, Task, TaskAction,
-    TaskObservers, TaskPage, TaskPort, TaskQuery, TlsCertificatePage,
+    Alert, AlertPage, AlertPort, AlertQuery, CreateAlertInput, CreateCredentialInput,
+    CreateTargetInput, CreateTaskInput, Credential, CredentialPage, CredentialPort,
+    CredentialQuery, CredentialStore, GatewayError, GetReportOpts, ModifyAlertInput,
+    ModifyCredentialInput, ModifyTargetInput, ModifyTaskInput, Pagination, Report,
+    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportPage,
+    ReportPort, ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery,
+    ScanResult, SessionLimits, SessionManager, Target, TargetPage, TargetPort, TargetQuery, Task,
+    TaskAction, TaskObservers, TaskPage, TaskPort, TaskQuery, TlsCertificatePage,
 };
 use gvm_gateway_gvmd::StaticGvmdAdapter;
 use gvm_gateway_rest::{
@@ -375,6 +377,100 @@ async fn credential_store_backend_outage_returns_502_problem() {
 }
 
 #[tokio::test]
+async fn representative_request_bodies_reject_unknown_fields_with_rfc9457_400() {
+    let (addr, token, handle) = spawn_request_body_contract_server(
+        Arc::new(CapturingTaskPort {
+            captured: Arc::new(Mutex::new(None)),
+        }),
+        Arc::new(JsonExportReportPort),
+    )
+    .await;
+    let client = Client::new();
+    let task_id = "550e8400-e29b-41d4-a716-446655440000";
+    let report_id = "660e8400-e29b-41d4-a716-446655440000";
+
+    struct Case {
+        name: &'static str,
+        method: Method,
+        path: String,
+        body: Value,
+        rejected_field: Option<&'static str>,
+    }
+
+    let cases = vec![
+        Case {
+            name: "create target",
+            method: Method::POST,
+            path: "/api/v1/targets".to_string(),
+            body: serde_json::json!({
+                "name": "Example target",
+                "hosts": ["192.0.2.1"],
+                "portlistId": "123e4567-e89b-12d3-a456-426614174000"
+            }),
+            rejected_field: Some("portlistId"),
+        },
+        Case {
+            name: "update task",
+            method: Method::PUT,
+            path: format!("/api/v1/tasks/{task_id}"),
+            body: serde_json::json!({
+                "preferences": {
+                    "scanner.max_hosts": "64"
+                },
+                "preferencez": {
+                    "scanner.max_checks": "4"
+                }
+            }),
+            rejected_field: Some("preferencez"),
+        },
+        Case {
+            name: "create alert",
+            method: Method::POST,
+            path: "/api/v1/alerts".to_string(),
+            body: serde_json::json!({
+                "name": "Notify ops",
+                "event": "task_run_status_changed",
+                "condition": "always",
+                "method": "email",
+                "methodData": {
+                    "to": "ops@example.com"
+                },
+                "methdData": {
+                    "to": "typo@example.com"
+                }
+            }),
+            rejected_field: Some("methdData"),
+        },
+        Case {
+            name: "create report export job",
+            method: Method::POST,
+            path: format!("/api/v1/reports/{report_id}/exports"),
+            body: serde_json::json!({
+                "reportFormatId": "123e4567-e89b-12d3-a456-426614174000",
+                "formatHint": "csv"
+            }),
+            rejected_field: None,
+        },
+    ];
+
+    for case in cases {
+        // Representative create/update/action routes should all reject unknown
+        // top-level JSON fields through the standard RFC 9457 bad-request path.
+        let response = client
+            .request(case.method, format!("http://{addr}{}", case.path))
+            .bearer_auth(&token)
+            .json(&case.body)
+            .send()
+            .await
+            .unwrap();
+
+        assert_unknown_field_problem(response, &case.path, case.rejected_field, case.name).await;
+    }
+
+    handle.abort();
+}
+
+#[tokio::test]
 async fn credential_store_capability_probe_does_not_change_credentials_list_contract() {
     let (addr, token, handle) =
         spawn_credential_server(Arc::new(CredentialStoreErrorPort(GatewayError::NotImplemented(
@@ -408,6 +504,158 @@ async fn credential_store_capability_probe_does_not_change_credentials_list_cont
     assert!(json.get("data").is_some());
     assert_eq!(json["pagination"]["page"], serde_json::json!(1));
     assert_eq!(json["pagination"]["perPage"], serde_json::json!(1000));
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn representative_request_bodies_accept_valid_payloads() {
+    let captured = Arc::new(Mutex::new(None));
+    let (addr, token, handle) = spawn_request_body_contract_server(
+        Arc::new(CapturingTaskPort {
+            captured: Arc::clone(&captured),
+        }),
+        Arc::new(JsonExportReportPort),
+    )
+    .await;
+    let client = Client::new();
+    let task_id = "550e8400-e29b-41d4-a716-446655440000";
+    let report_id = "660e8400-e29b-41d4-a716-446655440000";
+
+    struct Case {
+        name: &'static str,
+        method: Method,
+        path: String,
+        body: Value,
+        expected_status: StatusCode,
+        expected_field: &'static str,
+        expected_value: Option<Value>,
+    }
+
+    let cases = vec![
+        Case {
+            name: "create target",
+            method: Method::POST,
+            path: "/api/v1/targets".to_string(),
+            body: serde_json::json!({
+                "name": "Example target",
+                "hosts": ["192.0.2.1"],
+                "portListId": "123e4567-e89b-12d3-a456-426614174000"
+            }),
+            expected_status: StatusCode::CREATED,
+            expected_field: "id",
+            expected_value: None,
+        },
+        Case {
+            name: "update task",
+            method: Method::PUT,
+            path: format!("/api/v1/tasks/{task_id}"),
+            body: serde_json::json!({
+                "preferences": {
+                    "scanner.max_hosts": "64",
+                    "x-gvmd-extension": "enabled"
+                }
+            }),
+            expected_status: StatusCode::OK,
+            expected_field: "id",
+            expected_value: Some(serde_json::json!(task_id)),
+        },
+        Case {
+            name: "create alert",
+            method: Method::POST,
+            path: "/api/v1/alerts".to_string(),
+            body: serde_json::json!({
+                "name": "Notify ops",
+                "event": "task_run_status_changed",
+                "condition": "always",
+                "method": "email",
+                "eventData": {
+                    "x-gvmd-event-key": "task-finished"
+                },
+                "conditionData": {
+                    "x-gvmd-condition-key": "high"
+                },
+                "methodData": {
+                    "to": "ops@example.com",
+                    "x-gvmd-method-key": "extended"
+                }
+            }),
+            expected_status: StatusCode::CREATED,
+            expected_field: "id",
+            expected_value: None,
+        },
+        Case {
+            name: "create report export job",
+            method: Method::POST,
+            path: format!("/api/v1/reports/{report_id}/exports"),
+            body: serde_json::json!({
+                "format": "json"
+            }),
+            expected_status: StatusCode::ACCEPTED,
+            expected_field: "kind",
+            expected_value: Some(serde_json::json!("report_export")),
+        },
+    ];
+
+    for case in cases {
+        // Valid bodies for the same representative routes should still reach
+        // the handler/application layer rather than failing strict parsing.
+        let response = client
+            .request(case.method, format!("http://{addr}{}", case.path))
+            .bearer_auth(&token)
+            .json(&case.body)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            case.expected_status,
+            "{} should accept its documented body",
+            case.name
+        );
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            content_type.starts_with("application/json"),
+            "{} should return a JSON success response, got {content_type}",
+            case.name
+        );
+
+        let body = response.json::<Value>().await.unwrap();
+        if let Some(expected_value) = case.expected_value {
+            assert_eq!(
+                body[case.expected_field], expected_value,
+                "{} returned an unexpected {} field",
+                case.name, case.expected_field
+            );
+        } else {
+            assert!(
+                body[case.expected_field].is_string(),
+                "{} should return a string {} field",
+                case.name,
+                case.expected_field
+            );
+        }
+    }
+
+    let captured = captured
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("valid task update should reach the task port");
+    let preference_map = captured.preferences.into_iter().collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        preference_map.get("scanner.max_hosts"),
+        Some(&"64".to_string())
+    );
+    assert_eq!(
+        preference_map.get("x-gvmd-extension"),
+        Some(&"enabled".to_string())
+    );
 
     handle.abort();
 }
@@ -484,6 +732,43 @@ async fn spawn_credential_server(
     (addr, token, handle)
 }
 
+async fn spawn_request_body_contract_server(
+    task_port: Arc<dyn TaskPort>,
+    report_port: Arc<dyn ReportPort>,
+) -> (std::net::SocketAddr, String, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let sessions = Arc::new(SessionManager::default());
+    let token = sessions.create("admin").unwrap().token;
+    let adapter = Arc::new(StaticGvmdAdapter::ready("22.7"));
+    let service = GatewayService::new(
+        GatewayPorts {
+            system: adapter.clone(),
+            alerts: Arc::new(AcceptingAlertPort),
+            schedules: adapter.clone(),
+            credentials: adapter.clone(),
+            port_lists: adapter.clone(),
+            feeds: adapter.clone(),
+            identity: adapter.clone(),
+            targets: Arc::new(AcceptingTargetPort),
+            tasks: task_port,
+            auth: adapter.clone(),
+            reports: report_port,
+            results: adapter.clone(),
+            scan_configs: adapter.clone(),
+            scanners: adapter.clone(),
+            supporting_resources: adapter,
+        },
+        sessions,
+    );
+    let app = build_router(service);
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (addr, token, handle)
+}
+
 async fn spawn_report_server(
     report_port: Arc<dyn ReportPort>,
 ) -> (std::net::SocketAddr, String, tokio::task::JoinHandle<()>) {
@@ -534,6 +819,88 @@ async fn spawn_report_server_with_users(
 }
 
 struct JsonExportReportPort;
+
+struct AcceptingAlertPort;
+
+#[async_trait]
+impl AlertPort for AcceptingAlertPort {
+    async fn list_alerts(&self, _: &str, query: &AlertQuery) -> Result<AlertPage, GatewayError> {
+        Ok(AlertPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_alert(&self, _: &str, _: CreateAlertInput) -> Result<String, GatewayError> {
+        Ok("440e8400-e29b-41d4-a716-446655440000".to_string())
+    }
+
+    async fn get_alert(&self, _: &str, id: &str) -> Result<Alert, GatewayError> {
+        Err(GatewayError::NotFound(format!("alert {id} not found")))
+    }
+
+    async fn modify_alert(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyAlertInput,
+    ) -> Result<Alert, GatewayError> {
+        Err(GatewayError::NotFound(format!("alert {id} not found")))
+    }
+
+    async fn delete_alert(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("alert {id} not found")))
+    }
+}
+
+struct AcceptingTargetPort;
+
+#[async_trait]
+impl TargetPort for AcceptingTargetPort {
+    async fn list_targets(&self, _: &str, query: &TargetQuery) -> Result<TargetPage, GatewayError> {
+        Ok(TargetPage {
+            data: vec![],
+            pagination: Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_target(&self, _: &str, _: CreateTargetInput) -> Result<String, GatewayError> {
+        Ok("430e8400-e29b-41d4-a716-446655440000".to_string())
+    }
+
+    async fn clone_target(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        Err(GatewayError::Internal(
+            "clone_target is not used by this test port".to_string(),
+        ))
+    }
+
+    async fn get_target(&self, _: &str, id: &str) -> Result<Target, GatewayError> {
+        Err(GatewayError::NotFound(format!("target {id} not found")))
+    }
+
+    async fn modify_target(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyTargetInput,
+    ) -> Result<Target, GatewayError> {
+        Err(GatewayError::NotFound(format!("target {id} not found")))
+    }
+
+    async fn delete_target(&self, _: &str, id: &str, _: bool) -> Result<(), GatewayError> {
+        Err(GatewayError::NotFound(format!("target {id} not found")))
+    }
+}
 
 #[async_trait]
 impl ReportPort for JsonExportReportPort {
@@ -1001,6 +1368,48 @@ fn task_response(id: &str, name: &str) -> Task {
         trend: None,
         in_use: false,
         writable: true,
+    }
+}
+
+async fn assert_unknown_field_problem(
+    response: reqwest::Response,
+    path: &str,
+    rejected_field: Option<&str>,
+    context: &str,
+) {
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "{context} should reject unknown fields with 400"
+    );
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        content_type.starts_with("application/problem+json"),
+        "{context} should return an RFC 9457 problem response, got {content_type}"
+    );
+
+    let body = response.json::<Value>().await.unwrap();
+    assert_eq!(body["code"], serde_json::json!("bad_request"));
+    assert_eq!(body["title"], serde_json::json!("Bad Request"));
+    assert_eq!(body["status"], serde_json::json!(400));
+    assert_eq!(body["instance"], serde_json::json!(path));
+
+    let detail = body["detail"]
+        .as_str()
+        .expect("problem detail should remain client-visible");
+    assert!(
+        detail.contains("invalid JSON body"),
+        "{context} should describe the body parse failure: {detail}"
+    );
+    if let Some(rejected_field) = rejected_field {
+        assert!(
+            detail.contains(rejected_field),
+            "{context} should name the rejected field {rejected_field}: {detail}"
+        );
     }
 }
 

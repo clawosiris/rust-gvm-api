@@ -166,6 +166,98 @@ fn generated_openapi_preserves_key_schema_fields() {
 }
 
 #[test]
+fn generated_openapi_closes_every_request_object_without_closing_extension_maps() {
+    let generated = build_openapi();
+    let schemas = &generated["components"]["schemas"];
+
+    // Keep an explicit inventory of every current request-body object so the
+    // strictness audit covers less prominent and newly added write endpoints,
+    // including doc-only identity schemas. Policies and audits intentionally
+    // reuse the scan-config and task schemas listed here.
+    for schema_name in [
+        "CreateTarget",
+        "ModifyTarget",
+        "CreateOciImageTarget",
+        "ModifyOciImageTarget",
+        "CreateWebApplicationTarget",
+        "ModifyWebApplicationTarget",
+        "CreateTask",
+        "ModifyTask",
+        "CreateAlert",
+        "ModifyAlert",
+        "CreateCredential",
+        "ModifyCredential",
+        "CreateSchedule",
+        "ModifySchedule",
+        "CreatePortList",
+        "ModifyPortList",
+        "CreateScanConfig",
+        "ModifyScanConfig",
+        "CreateUser",
+        "ModifyUser",
+        "CreateGroup",
+        "ModifyGroup",
+        "CreateRole",
+        "ModifyRole",
+        "CreatePermission",
+        "ModifyPermission",
+        "ModifyUserSetting",
+        "CreateHost",
+        "UpdateHost",
+        "CreateFilter",
+        "UpdateFilter",
+        "CreateTag",
+        "UpdateTag",
+        "CreateNote",
+        "UpdateNote",
+        "CreateOverride",
+        "UpdateOverride",
+        "GvmdReportFormatExportRequest",
+        "JsonReportExportRequest",
+    ] {
+        assert_eq!(
+            schemas[schema_name]["additionalProperties"],
+            json!(false),
+            "{schema_name} should reject unknown top-level fields"
+        );
+    }
+
+    // Open map fields remain extensible for backend-defined keys.
+    assert!(
+        schemas["CreateTask"]["properties"]["preferences"]["additionalProperties"].is_object(),
+        "CreateTask.preferences should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyTask"]["properties"]["preferences"]["additionalProperties"].is_object(),
+        "ModifyTask.preferences should remain an open string map"
+    );
+    assert!(
+        schemas["CreateAlert"]["properties"]["eventData"]["additionalProperties"].is_object(),
+        "CreateAlert.eventData should remain an open string map"
+    );
+    assert!(
+        schemas["CreateAlert"]["properties"]["conditionData"]["additionalProperties"].is_object(),
+        "CreateAlert.conditionData should remain an open string map"
+    );
+    assert!(
+        schemas["CreateAlert"]["properties"]["methodData"]["additionalProperties"].is_object(),
+        "CreateAlert.methodData should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyAlert"]["properties"]["eventData"]["additionalProperties"].is_object(),
+        "ModifyAlert.eventData should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyAlert"]["properties"]["conditionData"]["additionalProperties"].is_object(),
+        "ModifyAlert.conditionData should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyAlert"]["properties"]["methodData"]["additionalProperties"].is_object(),
+        "ModifyAlert.methodData should remain an open string map"
+    );
+}
+
+#[test]
 fn generated_openapi_feed_version_matches_required_runtime_contract() {
     let generated = build_openapi();
     let required = generated["components"]["schemas"]["Feed"]["required"]

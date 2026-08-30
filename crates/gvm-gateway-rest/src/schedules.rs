@@ -92,6 +92,7 @@ impl From<SchedulePage> for ScheduleListResponse {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateSchedule")]
+#[serde(deny_unknown_fields)]
 pub struct CreateScheduleRequest {
     pub name: String,
     pub comment: Option<String>,
@@ -131,6 +132,7 @@ impl ValidateInto<CreateScheduleInput> for CreateScheduleRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifySchedule")]
+#[serde(deny_unknown_fields)]
 pub struct ModifyScheduleRequest {
     pub name: Option<String>,
     pub comment: Option<String>,

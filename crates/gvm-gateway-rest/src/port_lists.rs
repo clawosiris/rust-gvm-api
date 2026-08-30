@@ -87,6 +87,7 @@ impl From<PortListPage> for PortListListResponse {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[schemars(rename = "CreatePortList")]
+#[serde(deny_unknown_fields)]
 pub struct CreatePortListRequest {
     pub name: String,
     pub comment: Option<String>,
@@ -115,6 +116,7 @@ impl ValidateInto<CreatePortListInput> for CreatePortListRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifyPortList")]
+#[serde(deny_unknown_fields)]
 pub struct ModifyPortListRequest {
     pub name: Option<String>,
     pub comment: Option<String>,

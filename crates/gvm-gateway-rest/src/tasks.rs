@@ -338,6 +338,7 @@ impl TaskListQuery {
 
 /// Create-task request payload.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct CreateTaskRequest {
     /// Task name (required).
     pub name: Option<String>,
@@ -423,6 +424,7 @@ impl ValidateInto<CreateTaskInput> for CreateTaskRequest {
 
 /// Modify-task request payload.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct ModifyTaskRequest {
     /// Optional name.
     pub name: Option<String>,

@@ -235,6 +235,7 @@ impl From<gvm_gateway_domain::HostPage> for HostListResponse {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateHost")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CreateHostRequest {
     /// Host name or IP address.
     #[schemars(required)]
@@ -470,6 +471,7 @@ impl From<gvm_gateway_domain::TagPage> for TagListResponse {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateFilter")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CreateFilterRequest {
     #[schemars(required)]
     name: Option<String>,
@@ -502,6 +504,7 @@ impl ValidateInto<CreateFilterInput> for CreateFilterRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "UpdateFilter")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ModifyFilterRequest {
     comment: Option<String>,
     term: Option<String>,
@@ -521,6 +524,7 @@ impl ValidateInto<ModifyFilterInput> for ModifyFilterRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateTag")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CreateTagRequest {
     #[schemars(required)]
     name: Option<String>,
@@ -560,6 +564,7 @@ impl ValidateInto<CreateTagInput> for CreateTagRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "UpdateTag")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ModifyTagRequest {
     comment: Option<String>,
     value: Option<String>,
@@ -770,6 +775,7 @@ impl From<gvm_gateway_domain::OverridePage> for OverrideListResponse {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateNote")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CreateNoteRequest {
     #[serde(rename = "nvtOid")]
     #[schemars(required)]
@@ -791,6 +797,7 @@ pub(crate) struct CreateNoteRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "UpdateNote")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ModifyNoteRequest {
     text: Option<String>,
     /// Host selector list. Omitted or null leaves existing selectors unchanged;
@@ -810,6 +817,7 @@ pub(crate) struct ModifyNoteRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateOverride")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CreateOverrideRequest {
     #[serde(rename = "nvtOid")]
     #[schemars(required)]
@@ -832,6 +840,7 @@ pub(crate) struct CreateOverrideRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "UpdateOverride")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ModifyOverrideRequest {
     text: Option<String>,
     /// Host selector list. Omitted or null leaves existing selectors unchanged;

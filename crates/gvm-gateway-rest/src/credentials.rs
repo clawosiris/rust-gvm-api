@@ -148,6 +148,7 @@ impl From<CredentialPage> for CredentialListResponse {
 
 #[derive(Clone, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateCredential")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CreateCredentialRequest {
     name: String,
     comment: Option<String>,
@@ -225,6 +226,7 @@ impl ValidateInto<CreateCredentialInput> for CreateCredentialRequest {
 
 #[derive(Clone, Default, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifyCredential")]
+#[serde(deny_unknown_fields)]
 pub struct ModifyCredentialRequest {
     pub name: Option<String>,
     pub comment: Option<String>,
