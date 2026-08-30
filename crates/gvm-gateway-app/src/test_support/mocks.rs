@@ -22,7 +22,7 @@ use gvm_gateway_domain::{
     ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOperatingSystemInput,
     ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage,
+    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, NvtQuery,
     OperatingSystem, OperatingSystemPage, Override, OverridePage, Permission, PermissionPage,
     PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
     ReportApplicationPage, ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport,
@@ -1674,11 +1674,7 @@ impl SupportingResourcePort for MockSupportingResourcePort {
         Err(GatewayError::NotFound(format!("override {id} not found")))
     }
 
-    async fn list_nvts(
-        &self,
-        _: &str,
-        query: &SupportingResourceQuery,
-    ) -> Result<NvtPage, GatewayError> {
+    async fn list_nvts(&self, _: &str, query: &NvtQuery) -> Result<NvtPage, GatewayError> {
         Ok(NvtPage {
             data: vec![],
             pagination: gvm_gateway_domain::Pagination {

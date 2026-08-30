@@ -21,6 +21,35 @@ pub struct SupportingResourceQuery {
     pub per_page: u32,
 }
 
+/// Typed NVT catalog query options.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct NvtQuery {
+    /// Optional GMP filter string.
+    pub filter_string: Option<String>,
+    /// Optional saved filter identifier.
+    pub filter_id: Option<String>,
+    /// Requested page number.
+    pub page: u32,
+    /// Requested page size.
+    pub per_page: u32,
+    /// Optional scan-config identifier used to restrict the NVT catalog.
+    pub config_id: Option<String>,
+    /// Optional scan-config identifier used to resolve preference values.
+    pub preferences_config_id: Option<String>,
+    /// Optional NVT family restriction.
+    pub family: Option<String>,
+    /// Whether to include NVT preferences.
+    pub include_preferences: Option<bool>,
+    /// Whether to include the preference count.
+    pub include_preference_count: Option<bool>,
+    /// Whether to include the timeout preference.
+    pub include_timeout: Option<bool>,
+    /// Optional backend sort order (`ascending` or `descending`).
+    pub sort_order: Option<String>,
+    /// Optional backend NVT sort field.
+    pub sort_field: Option<String>,
+}
+
 /// Note create command.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CreateNoteInput {

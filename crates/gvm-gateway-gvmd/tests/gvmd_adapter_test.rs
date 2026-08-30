@@ -2137,11 +2137,19 @@ async fn gvmd_adapter_list_nvts_emits_backend_pagination_filter() {
     let result = adapter
         .list_nvts(
             &token,
-            &SupportingResourceQuery {
+            &NvtQuery {
                 filter_string: Some("family=Databases".to_string()),
                 filter_id: None,
                 page: 3,
                 per_page: 25,
+                config_id: Some("550e8400-e29b-41d4-a716-446655440001".to_string()),
+                preferences_config_id: Some("550e8400-e29b-41d4-a716-446655440002".to_string()),
+                family: Some("Databases".to_string()),
+                include_preferences: Some(true),
+                include_preference_count: Some(false),
+                include_timeout: Some(true),
+                sort_order: Some("ascending".to_string()),
+                sort_field: Some("name".to_string()),
             },
         )
         .await;
@@ -2155,6 +2163,14 @@ async fn gvmd_adapter_list_nvts_emits_backend_pagination_filter() {
     let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
     assert!(xml.contains("<get_nvts"));
     assert!(xml.contains("filter=\"family=Databases first=51 rows=25\""));
+    assert!(xml.contains("config_id=\"550e8400-e29b-41d4-a716-446655440001\""));
+    assert!(xml.contains("preferences_config_id=\"550e8400-e29b-41d4-a716-446655440002\""));
+    assert!(xml.contains("family=\"Databases\""));
+    assert!(xml.contains("preferences=\"1\""));
+    assert!(xml.contains("preference_count=\"0\""));
+    assert!(xml.contains("timeout=\"1\""));
+    assert!(xml.contains("sort_order=\"ascending\""));
+    assert!(xml.contains("sort_field=\"name\""));
 
     server.shutdown().await;
 }
