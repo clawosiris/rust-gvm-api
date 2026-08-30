@@ -44,7 +44,7 @@ struct IdentityMetaResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    owner: Option<ResourceRefResponse>,
+    owner: Option<IdentityOwnerResponse>,
     #[serde(rename = "creationTime", skip_serializing_if = "Option::is_none")]
     creation_time: Option<String>,
     #[serde(rename = "modificationTime", skip_serializing_if = "Option::is_none")]
@@ -60,12 +60,24 @@ impl From<gvm_gateway_domain::IdentityResourceMeta> for IdentityMetaResponse {
             id: parse_uuid(&meta.id),
             name: meta.name,
             comment: meta.comment,
-            owner: meta.owner.map(ResourceRefResponse::from),
+            owner: meta.owner.map(IdentityOwnerResponse::from),
             creation_time: meta.creation_time,
             modification_time: meta.modification_time,
             writable: meta.writable,
             in_use: meta.in_use,
         }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[schemars(rename = "IdentityOwner")]
+struct IdentityOwnerResponse {
+    name: String,
+}
+
+impl From<gvm_gateway_domain::IdentityOwner> for IdentityOwnerResponse {
+    fn from(owner: gvm_gateway_domain::IdentityOwner) -> Self {
+        Self { name: owner.name }
     }
 }
 
@@ -294,7 +306,7 @@ struct IdentityResourceBaseDoc {
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    owner: Option<ResourceRefResponse>,
+    owner: Option<IdentityOwnerResponse>,
     #[serde(rename = "creationTime", skip_serializing_if = "Option::is_none")]
     #[schemars(schema_with = "datetime_schema")]
     creation_time: Option<String>,
@@ -491,6 +503,7 @@ enum PermissionSubjectTypeDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateUser")]
+#[serde(deny_unknown_fields)]
 struct CreateUserDoc {
     name: String,
     comment: Option<String>,
@@ -504,6 +517,7 @@ struct CreateUserDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyUser")]
+#[serde(deny_unknown_fields)]
 struct ModifyUserDoc {
     name: Option<String>,
     comment: Option<String>,
@@ -519,6 +533,7 @@ struct ModifyUserDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateGroup")]
+#[serde(deny_unknown_fields)]
 struct CreateGroupDoc {
     name: String,
     comment: Option<String>,
@@ -527,6 +542,7 @@ struct CreateGroupDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyGroup")]
+#[serde(deny_unknown_fields)]
 struct ModifyGroupDoc {
     comment: Option<String>,
     users: Option<Vec<String>>,
@@ -534,6 +550,7 @@ struct ModifyGroupDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreateRole")]
+#[serde(deny_unknown_fields)]
 struct CreateRoleDoc {
     name: String,
     comment: Option<String>,
@@ -542,6 +559,7 @@ struct CreateRoleDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyRole")]
+#[serde(deny_unknown_fields)]
 struct ModifyRoleDoc {
     comment: Option<String>,
     users: Option<Vec<String>>,
@@ -549,6 +567,7 @@ struct ModifyRoleDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "CreatePermission")]
+#[serde(deny_unknown_fields)]
 struct CreatePermissionDoc {
     name: Option<String>,
     comment: Option<String>,
@@ -564,6 +583,7 @@ struct CreatePermissionDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyPermission")]
+#[serde(deny_unknown_fields)]
 struct ModifyPermissionDoc {
     name: Option<String>,
     comment: Option<String>,
@@ -579,6 +599,7 @@ struct ModifyPermissionDoc {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
 #[schemars(rename = "ModifyUserSetting")]
+#[serde(deny_unknown_fields)]
 struct ModifyUserSettingDoc {
     value: String,
 }
@@ -638,6 +659,7 @@ impl UserSettingsListQuery {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct CreateUserRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -665,6 +687,7 @@ impl CreateUserRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyUserRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -696,6 +719,7 @@ impl ModifyUserRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct CreateGroupRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -713,6 +737,7 @@ impl CreateGroupRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyGroupRequest {
     comment: Option<String>,
     users: Option<Vec<String>>,
@@ -728,6 +753,7 @@ impl ModifyGroupRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct CreateRoleRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -745,6 +771,7 @@ impl CreateRoleRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyRoleRequest {
     comment: Option<String>,
     users: Option<Vec<String>>,
@@ -760,6 +787,7 @@ impl ModifyRoleRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct CreatePermissionRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -790,6 +818,7 @@ impl CreatePermissionRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyPermissionRequest {
     name: Option<String>,
     comment: Option<String>,
@@ -820,6 +849,7 @@ impl ModifyPermissionRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 struct ModifyUserSettingRequest {
     value: Option<String>,
 }

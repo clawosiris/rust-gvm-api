@@ -5,6 +5,7 @@
 
 use aide::transform::{TransformOperation, TransformResponse};
 use axum::{
+    body::Bytes,
     extract::{OriginalUri, Path, State},
     http::{
         header::{self, HeaderValue},
@@ -26,6 +27,7 @@ use uuid::Uuid;
 use crate::{
     dto::{datetime_schema, uri_reference_schema, ResourceRefResponse},
     error::RestError,
+    handler::parse_json_body_with,
     openapi::{accepted_job_json, ok_json, problem_response, ResourceIdPathDoc},
     reports::ReportResponse,
     results::ResultResponse,
@@ -373,12 +375,18 @@ pub(crate) async fn create_report_export_job(
     headers: HeaderMap,
     Path(id): Path<String>,
     uri: OriginalUri,
-    Json(body): Json<CreateReportExportRequestBody>,
+    body: Bytes,
 ) -> Response {
     let instance = uri.path().to_string();
     if let Err(error) = validate_uuid("id", &id) {
         return RestError::from_gateway_error(error, instance).into_response();
     }
+    let body = match parse_json_body_with::<CreateReportExportRequestBody, _>(&body, |error| {
+        GatewayError::InvalidInput(format!("invalid JSON body: {error}"))
+    }) {
+        Ok(body) => body,
+        Err(error) => return RestError::from_gateway_error(error, instance).into_response(),
+    };
     let request = match body.into_domain() {
         Ok(request) => request,
         Err(error) => return RestError::from_gateway_error(error, instance).into_response(),

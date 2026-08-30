@@ -617,7 +617,7 @@ components:
         comment:
           type: string
         owner:
-          $ref: "./common.yaml#/components/schemas/ResourceRef"
+          $ref: "#/components/schemas/IdentityOwner"
         creationTime:
           type: string
           format: date-time
@@ -628,6 +628,15 @@ components:
           type: boolean
         inUse:
           type: boolean
+
+    IdentityOwner:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Owner name as emitted by gvmd identity responses.
 
     User:
       allOf:

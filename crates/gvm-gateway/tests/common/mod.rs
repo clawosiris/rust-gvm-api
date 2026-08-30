@@ -58,7 +58,7 @@ fn live_gateway_service(
 ) -> GatewayService {
     GatewayService::new(
         GatewayPorts {
-            system: Arc::new(StaticGvmdAdapter::ready("22.7")),
+            system: Arc::new(target_adapter.clone()),
             alerts: Arc::new(target_adapter.clone()),
             schedules: Arc::new(target_adapter.clone()),
             credentials: Arc::new(target_adapter.clone()),

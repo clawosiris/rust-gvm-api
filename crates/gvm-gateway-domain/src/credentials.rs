@@ -43,15 +43,15 @@ pub struct CredentialPage {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CredentialStore {
     /// Stable backend identifier.
-    pub id: String,
+    pub id: Option<String>,
     /// Human-friendly store name.
     pub name: String,
     /// Optional provider label.
     pub provider: Option<String>,
     /// Whether this is the default store for new credentials.
-    pub default: bool,
+    pub default: Option<bool>,
     /// Whether clients may write to this store.
-    pub writable: bool,
+    pub writable: Option<bool>,
 }
 
 /// Credential list query options.

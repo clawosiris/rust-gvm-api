@@ -116,6 +116,8 @@ async fn test_server() -> TestServer {
 | `ready_healthy` | `GET /ready` (GMP connected) | 200 |
 | `ready_unhealthy` | `GET /ready` (GMP disconnected) | 503 |
 | `version_returns_info` | `GET /api/v1/version` | 200, includes proxied gvmd GMP version and REST API contract version |
+| `timezones_return_backend_catalog` | `GET /api/v1/timezones` (authenticated, GMP 22.8 backend) | 200, backend-sourced timezone list |
+| `timezones_return_not_implemented_on_older_backend` | `GET /api/v1/timezones` (authenticated, GMP 22.7 backend) | 501 problem response |
 
 ### 3.3 Targets CRUD
 

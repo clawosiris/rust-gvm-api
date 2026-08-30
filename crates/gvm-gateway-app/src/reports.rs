@@ -4,8 +4,9 @@
 //! Report use cases.
 
 use gvm_gateway_domain::{
-    GatewayError, GetReportOpts, Report, ReportExport, ReportExportRequest, ReportPage,
-    ReportQuery, ResultPage, ResultQuery, TlsCertificatePage,
+    GatewayError, GetReportOpts, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
+    ReportExportRequest, ReportPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery,
+    TlsCertificatePage,
 };
 
 use crate::GatewayService;
@@ -124,7 +125,7 @@ impl GatewayService {
         session_token: &str,
         report_id: &str,
         query: ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
         self.execute_with_resource(
             "reports.vulnerabilities.list",
             session_token,
@@ -168,7 +169,7 @@ impl GatewayService {
         session_token: &str,
         report_id: &str,
         query: ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
+    ) -> Result<ReportErrorPage, GatewayError> {
         self.execute_with_resource(
             "reports.errors.list",
             session_token,
@@ -190,7 +191,7 @@ impl GatewayService {
         session_token: &str,
         report_id: &str,
         query: ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
+    ) -> Result<ReportClosedCvePage, GatewayError> {
         self.execute_with_resource(
             "reports.closed_cves.list",
             session_token,

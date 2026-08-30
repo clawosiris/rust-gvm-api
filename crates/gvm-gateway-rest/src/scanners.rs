@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{parse_uuid, PaginationResponse},
+    dto::{parse_uuid, PaginationResponse, ResourceRefResponse},
     error::RestError,
     open_enum::open_string_enum,
     openapi::{ok_json, problem_response, ResourceIdPathDoc},
@@ -53,6 +53,13 @@ pub(crate) struct ScannerResponse {
     port: Option<u32>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     scanner_type: Option<ScannerType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    credential: Option<ResourceRefResponse>,
+    #[serde(rename = "caPub", skip_serializing_if = "Option::is_none")]
+    ca_pub: Option<String>,
+    #[serde(rename = "inUse")]
+    in_use: bool,
+    writable: bool,
 }
 
 impl From<gvm_gateway_domain::Scanner> for ScannerResponse {
@@ -64,6 +71,10 @@ impl From<gvm_gateway_domain::Scanner> for ScannerResponse {
             host: s.host,
             port: s.port,
             scanner_type: s.scanner_type.as_deref().map(ScannerType::parse),
+            credential: s.credential.map(ResourceRefResponse::from),
+            ca_pub: s.ca_pub,
+            in_use: s.in_use,
+            writable: s.writable,
         }
     }
 }

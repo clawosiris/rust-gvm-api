@@ -152,6 +152,7 @@ impl From<AlertPage> for AlertListResponse {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[schemars(rename = "CreateAlert")]
+#[serde(deny_unknown_fields)]
 pub(crate) struct CreateAlertRequest {
     name: String,
     comment: Option<String>,
@@ -204,6 +205,7 @@ impl ValidateInto<CreateAlertInput> for CreateAlertRequest {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema)]
 #[schemars(rename = "ModifyAlert")]
+#[serde(deny_unknown_fields)]
 pub struct ModifyAlertRequest {
     pub name: Option<String>,
     pub comment: Option<String>,

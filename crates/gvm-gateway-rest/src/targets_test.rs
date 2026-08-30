@@ -3,7 +3,7 @@
 
 use serde_json::json;
 
-use super::{TargetListQuery, TargetResponse};
+use super::{CreateTargetRequest, ModifyTargetRequest, TargetListQuery, TargetResponse};
 use gvm_gateway_domain::Target;
 
 #[test]
@@ -47,4 +47,38 @@ fn target_response_preserves_unknown_alive_test() {
 
     let value = serde_json::to_value(response).expect("target response should serialize");
     assert_eq!(value["aliveTest"], json!("Passive DNS"));
+}
+
+#[test]
+fn target_requests_reject_unknown_fields() {
+    // Strict request DTOs make top-level target typos fail fast instead of
+    // silently dropping fields like the issue's `portlistId` example.
+    let error = serde_json::from_value::<CreateTargetRequest>(json!({
+        "name": "Example",
+        "hosts": ["192.0.2.1"],
+        "portlistId": "123e4567-e89b-12d3-a456-426614174000"
+    }))
+    .expect_err("unknown create-target field should be rejected");
+    assert!(
+        error.to_string().contains("portlistId"),
+        "error should name the rejected field: {error}"
+    );
+
+    let error = serde_json::from_value::<ModifyTargetRequest>(json!({
+        "comment": "updated",
+        "reverseLookupOnly": true,
+        "reverseLookupOnlyy": false
+    }))
+    .expect_err("unknown update-target field should be rejected");
+    assert!(
+        error.to_string().contains("reverseLookupOnlyy"),
+        "error should name the rejected field: {error}"
+    );
+
+    serde_json::from_value::<CreateTargetRequest>(json!({
+        "name": "Example",
+        "hosts": ["192.0.2.1"],
+        "portListId": "123e4567-e89b-12d3-a456-426614174000"
+    }))
+    .expect("documented create-target fields should still parse");
 }

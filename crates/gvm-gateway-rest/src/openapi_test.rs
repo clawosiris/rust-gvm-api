@@ -133,6 +133,128 @@ fn generated_openapi_preserves_key_schema_fields() {
         .get("name")
         .is_some());
     assert!(schemas["ModifyUser"]["properties"].get("name").is_some());
+
+    let credential_store_responses = &generated["paths"]["/credential-stores"]["get"]["responses"];
+    assert!(credential_store_responses.get("501").is_some());
+
+    let report_vulnerability_props = &schemas["ReportVulnerability"]["properties"];
+    assert!(report_vulnerability_props.get("hostsCount").is_some());
+    assert!(report_vulnerability_props.get("occurrences").is_some());
+
+    let report_error_props = &schemas["ReportError"]["properties"];
+    assert!(report_error_props.get("nvtName").is_some());
+    assert!(report_error_props.get("threat").is_none());
+
+    let report_closed_cve_props = &schemas["ReportClosedCve"]["properties"];
+    assert!(report_closed_cve_props.get("cve").is_some());
+    assert!(report_closed_cve_props.get("name").is_none());
+
+    let task_props = &schemas["Task"]["properties"];
+    assert_eq!(
+        task_props["lastReport"]["$ref"],
+        json!("#/components/schemas/TaskReportReference")
+    );
+    assert!(task_props.get("usageType").is_some());
+    assert!(task_props.get("trend").is_some());
+
+    let scanner_props = &schemas["Scanner"]["properties"];
+    assert!(scanner_props.get("credential").is_some());
+    assert!(scanner_props.get("caPub").is_some());
+
+    let port_list_props = &schemas["PortList"]["properties"];
+    assert!(port_list_props.get("portRange").is_some());
+}
+
+#[test]
+fn generated_openapi_closes_every_request_object_without_closing_extension_maps() {
+    let generated = build_openapi();
+    let schemas = &generated["components"]["schemas"];
+
+    // Keep an explicit inventory of every current request-body object so the
+    // strictness audit covers less prominent and newly added write endpoints,
+    // including doc-only identity schemas. Policies and audits intentionally
+    // reuse the scan-config and task schemas listed here.
+    for schema_name in [
+        "CreateTarget",
+        "ModifyTarget",
+        "CreateOciImageTarget",
+        "ModifyOciImageTarget",
+        "CreateWebApplicationTarget",
+        "ModifyWebApplicationTarget",
+        "CreateTask",
+        "ModifyTask",
+        "CreateAlert",
+        "ModifyAlert",
+        "CreateCredential",
+        "ModifyCredential",
+        "CreateSchedule",
+        "ModifySchedule",
+        "CreatePortList",
+        "ModifyPortList",
+        "CreateScanConfig",
+        "ModifyScanConfig",
+        "CreateUser",
+        "ModifyUser",
+        "CreateGroup",
+        "ModifyGroup",
+        "CreateRole",
+        "ModifyRole",
+        "CreatePermission",
+        "ModifyPermission",
+        "ModifyUserSetting",
+        "CreateHost",
+        "UpdateHost",
+        "CreateFilter",
+        "UpdateFilter",
+        "CreateTag",
+        "UpdateTag",
+        "CreateNote",
+        "UpdateNote",
+        "CreateOverride",
+        "UpdateOverride",
+        "GvmdReportFormatExportRequest",
+        "JsonReportExportRequest",
+    ] {
+        assert_eq!(
+            schemas[schema_name]["additionalProperties"],
+            json!(false),
+            "{schema_name} should reject unknown top-level fields"
+        );
+    }
+
+    // Open map fields remain extensible for backend-defined keys.
+    assert!(
+        schemas["CreateTask"]["properties"]["preferences"]["additionalProperties"].is_object(),
+        "CreateTask.preferences should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyTask"]["properties"]["preferences"]["additionalProperties"].is_object(),
+        "ModifyTask.preferences should remain an open string map"
+    );
+    assert!(
+        schemas["CreateAlert"]["properties"]["eventData"]["additionalProperties"].is_object(),
+        "CreateAlert.eventData should remain an open string map"
+    );
+    assert!(
+        schemas["CreateAlert"]["properties"]["conditionData"]["additionalProperties"].is_object(),
+        "CreateAlert.conditionData should remain an open string map"
+    );
+    assert!(
+        schemas["CreateAlert"]["properties"]["methodData"]["additionalProperties"].is_object(),
+        "CreateAlert.methodData should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyAlert"]["properties"]["eventData"]["additionalProperties"].is_object(),
+        "ModifyAlert.eventData should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyAlert"]["properties"]["conditionData"]["additionalProperties"].is_object(),
+        "ModifyAlert.conditionData should remain an open string map"
+    );
+    assert!(
+        schemas["ModifyAlert"]["properties"]["methodData"]["additionalProperties"].is_object(),
+        "ModifyAlert.methodData should remain an open string map"
+    );
 }
 
 #[test]
@@ -414,6 +536,28 @@ fn generated_openapi_applies_route_auth_policy_consistently() {
             }
         }
     }
+}
+
+#[test]
+fn generated_openapi_documents_backend_timezone_contract() {
+    let generated = build_openapi();
+    let operation = op(&generated, "/timezones", "get");
+    let schemas = &generated["components"]["schemas"];
+
+    assert_eq!(operation["operationId"], json!("getTimezones"));
+    assert_eq!(
+        response_statuses(operation),
+        BTreeSet::from(["200", "401", "501", "502"])
+    );
+    assert_eq!(
+        operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        json!("#/components/schemas/TimezoneList")
+    );
+    assert_eq!(
+        schemas["Timezone"]["required"],
+        json!(["name"]),
+        "timezone items must only require the backend-provided timezone name"
+    );
 }
 
 #[test]

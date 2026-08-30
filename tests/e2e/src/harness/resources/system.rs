@@ -30,4 +30,16 @@ impl E2eHarness {
         )
         .await
     }
+
+    pub async fn get_timezones(
+        &self,
+        token: &str,
+    ) -> Result<UnpaginatedListResponse<TimezoneEntry>> {
+        self.send_json(
+            self.authed(Method::GET, "/api/v1/timezones", token),
+            StatusCode::OK,
+            "get backend timezones",
+        )
+        .await
+    }
 }

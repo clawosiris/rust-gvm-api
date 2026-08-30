@@ -161,6 +161,7 @@ impl TargetListQuery {
 
 /// Create-target request payload.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct CreateTargetRequest {
     /// Optional name so validation can return RFC 9457 instead of extractor failures.
     pub name: Option<String>,
@@ -241,6 +242,7 @@ impl ValidateInto<CreateTargetInput> for CreateTargetRequest {
 
 /// Modify-target request payload.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct ModifyTargetRequest {
     /// Optional name.
     pub name: Option<String>,

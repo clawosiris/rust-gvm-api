@@ -7,6 +7,60 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Pagination, ResourceRef};
 
+/// Severity counts attached to a task's latest report reference.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TaskReportResultCount {
+    /// Critical finding count.
+    pub critical: Option<u32>,
+    /// High finding count.
+    pub high: Option<u32>,
+    /// Medium finding count.
+    pub medium: Option<u32>,
+    /// Low finding count.
+    pub low: Option<u32>,
+    /// Log finding count.
+    pub log: Option<u32>,
+    /// False-positive count.
+    #[serde(rename = "falsePositive")]
+    pub false_positive: Option<u32>,
+}
+
+/// Compliance counts attached to an audit task's latest report reference.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TaskReportComplianceCount {
+    /// Compliant result count.
+    pub yes: Option<u32>,
+    /// Non-compliant result count.
+    pub no: Option<u32>,
+    /// Incomplete result count.
+    pub incomplete: Option<u32>,
+}
+
+/// Purpose-shaped task report reference.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TaskReportReference {
+    /// Report identifier.
+    pub id: String,
+    /// Backend report timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    /// Scan start timestamp.
+    #[serde(rename = "scanStart", skip_serializing_if = "Option::is_none")]
+    pub scan_start: Option<String>,
+    /// Scan end timestamp.
+    #[serde(rename = "scanEnd", skip_serializing_if = "Option::is_none")]
+    pub scan_end: Option<String>,
+    /// Latest report result counts when supplied for this reference.
+    #[serde(rename = "resultCount", skip_serializing_if = "Option::is_none")]
+    pub result_count: Option<TaskReportResultCount>,
+    /// Latest report severity when supplied for this reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Latest audit compliance counts when supplied for this reference.
+    #[serde(rename = "complianceCount", skip_serializing_if = "Option::is_none")]
+    pub compliance_count: Option<TaskReportComplianceCount>,
+}
+
 /// Observer principals associated with a task.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TaskObservers {
@@ -72,13 +126,19 @@ pub struct Task {
     pub schedule_periods: Option<u32>,
     /// Last report reference.
     #[serde(rename = "lastReport", skip_serializing_if = "Option::is_none")]
-    pub last_report: Option<ResourceRef>,
+    pub last_report: Option<TaskReportReference>,
     /// Current (in-progress) report reference.
     #[serde(rename = "currentReport", skip_serializing_if = "Option::is_none")]
-    pub current_report: Option<ResourceRef>,
+    pub current_report: Option<TaskReportReference>,
     /// Number of reports associated with the task.
     #[serde(rename = "reportCount", skip_serializing_if = "Option::is_none")]
     pub report_count: Option<u32>,
+    /// Backend task usage discriminator, such as `scan` or `audit`.
+    #[serde(rename = "usageType", skip_serializing_if = "Option::is_none")]
+    pub usage_type: Option<String>,
+    /// Backend task trend value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trend: Option<String>,
     /// Whether the task is in use.
     #[serde(rename = "inUse")]
     pub in_use: bool,

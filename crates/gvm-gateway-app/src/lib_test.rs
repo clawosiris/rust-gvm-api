@@ -12,9 +12,10 @@ use async_trait::async_trait;
 use gvm_gateway_domain::{
     CreateReportExportRequest, CreateTargetInput, GatewayError, GetReportOpts,
     GvmdReportFormatExportRequest, JobStatus, JsonReportExportRequest, ModifyTargetInput,
-    Pagination, ReadinessStatus, Report, ReportExport, ReportExportJob, ReportExportRequest,
-    ReportPage, ReportPort, ReportQuery, ResourceRef, ResultPage, ResultQuery, ScanResult,
-    SessionLimits, SessionManager, SessionTokenDigest, SystemPort, TargetQuery, TlsCertificatePage,
+    Pagination, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
+    ReportExportJob, ReportExportRequest, ReportPage, ReportPort, ReportQuery,
+    ReportVulnerabilityPage, ResourceRef, ResultPage, ResultQuery, ScanResult, SessionLimits,
+    SessionManager, SessionTokenDigest, SystemPort, TargetQuery, Timezone, TlsCertificatePage,
 };
 use tokio::sync::Notify;
 
@@ -89,6 +90,40 @@ impl SystemPort for FailingVersionSystemPort {
         Err(GatewayError::BackendUnavailable(
             "version probe failed".to_string(),
         ))
+    }
+
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Ok(vec![])
+    }
+}
+
+#[derive(Clone)]
+struct FixedTimezoneSystemPort;
+
+#[async_trait]
+impl SystemPort for FixedTimezoneSystemPort {
+    async fn readiness(&self) -> Result<ReadinessStatus, GatewayError> {
+        Ok(ReadinessStatus {
+            status: "ready",
+            reason: None,
+        })
+    }
+
+    async fn gmp_version(&self) -> Result<String, GatewayError> {
+        Ok("22.8".to_string())
+    }
+
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Ok(vec![
+            Timezone {
+                name: "UTC".to_string(),
+                offset: None,
+            },
+            Timezone {
+                name: "Europe/Berlin".to_string(),
+                offset: Some("+01:00".to_string()),
+            },
+        ])
     }
 }
 
@@ -165,6 +200,44 @@ async fn service_list_targets_with_valid_session() {
         .list_targets(&session.token, TargetQuery::default())
         .await;
     assert!(result.is_ok());
+}
+
+/// Timezone listing must remain session-scoped so the new system surface uses
+/// the same authenticated execution path as the rest of the backend-backed API.
+#[tokio::test]
+async fn service_list_timezones_requires_valid_session() {
+    let service = create_test_service();
+
+    let result = service.list_timezones("invalid-token").await;
+
+    assert!(matches!(result, Err(GatewayError::SessionInvalidated(_))));
+}
+
+/// Backend timezone values should flow through the app layer unchanged once an
+/// authenticated session exists.
+#[tokio::test]
+async fn service_list_timezones_returns_backend_values() {
+    let sessions = Arc::new(SessionManager::default());
+    let mut ports = test_ports();
+    ports.system = Arc::new(FixedTimezoneSystemPort);
+    let service = GatewayService::new(ports, Arc::clone(&sessions));
+    let session = service.session_manager().create("admin").unwrap();
+
+    let result = service.list_timezones(&session.token).await.unwrap();
+
+    assert_eq!(
+        result,
+        vec![
+            Timezone {
+                name: "UTC".to_string(),
+                offset: None,
+            },
+            Timezone {
+                name: "Europe/Berlin".to_string(),
+                offset: Some("+01:00".to_string()),
+            },
+        ]
+    );
 }
 
 /// Target creation rejects unknown session tokens before hitting the port.
@@ -670,8 +743,8 @@ impl ReportPort for BlockingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -696,8 +769,8 @@ impl ReportPort for BlockingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -705,8 +778,8 @@ impl ReportPort for BlockingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
     }
 }
 
@@ -766,8 +839,8 @@ impl ReportPort for ExistingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -792,8 +865,8 @@ impl ReportPort for ExistingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -801,8 +874,8 @@ impl ReportPort for ExistingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
     }
 }
 
@@ -868,8 +941,8 @@ impl ReportPort for CapturingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -894,8 +967,8 @@ impl ReportPort for CapturingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -903,8 +976,8 @@ impl ReportPort for CapturingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
     }
 }
 
@@ -960,8 +1033,8 @@ impl ReportPort for MissingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(empty_report_vulnerability_page(query))
     }
 
     async fn get_report_tls_certificates(
@@ -986,8 +1059,8 @@ impl ReportPort for MissingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(empty_report_error_page(query))
     }
 
     async fn get_report_closed_cves(
@@ -995,8 +1068,8 @@ impl ReportPort for MissingReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(empty_result_page(query))
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(empty_report_closed_cve_page(query))
     }
 }
 
@@ -1024,6 +1097,27 @@ fn empty_result_page(query: &ResultQuery) -> ResultPage {
             total: 0,
             total_pages: 0,
         },
+    }
+}
+
+fn empty_report_vulnerability_page(query: &ResultQuery) -> ReportVulnerabilityPage {
+    ReportVulnerabilityPage {
+        data: vec![],
+        pagination: empty_result_page(query).pagination,
+    }
+}
+
+fn empty_report_error_page(query: &ResultQuery) -> ReportErrorPage {
+    ReportErrorPage {
+        data: vec![],
+        pagination: empty_result_page(query).pagination,
+    }
+}
+
+fn empty_report_closed_cve_page(query: &ResultQuery) -> ReportClosedCvePage {
+    ReportClosedCvePage {
+        data: vec![],
+        pagination: empty_result_page(query).pagination,
     }
 }
 

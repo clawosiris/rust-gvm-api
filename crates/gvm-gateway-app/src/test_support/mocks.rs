@@ -17,12 +17,13 @@ use gvm_gateway_domain::{
     ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
     Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override, OverridePage, Permission,
     PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
-    ReportQuery, ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
-    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort,
-    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
-    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
+    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
+    ReportFormatPage, ReportPage, ReportPort, ReportQuery, ReportVulnerabilityPage, ResultPage,
+    ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
+    SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort, SupportingResourceQuery,
+    SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
+    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
     TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
     UserSettingQuery, VulnerabilityPage,
 };
@@ -52,6 +53,10 @@ impl SystemPort for MockSystemPort {
 
     async fn gmp_version(&self) -> Result<String, GatewayError> {
         Ok(self.gmp_version.clone())
+    }
+
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Ok(vec![])
     }
 }
 
@@ -151,11 +156,11 @@ pub(crate) struct MockCredentialPort;
 impl CredentialPort for MockCredentialPort {
     async fn list_credential_stores(&self, _: &str) -> Result<Vec<CredentialStore>, GatewayError> {
         Ok(vec![CredentialStore {
-            id: "default".to_string(),
+            id: Some("default".to_string()),
             name: "Default".to_string(),
             provider: Some("gvmd".to_string()),
-            default: true,
-            writable: true,
+            default: Some(true),
+            writable: Some(true),
         }])
     }
 
@@ -599,6 +604,8 @@ impl TaskPort for MockTaskPort {
             last_report: None,
             current_report: None,
             report_count: None,
+            usage_type: None,
+            trend: None,
             in_use: false,
             writable: true,
         })
@@ -788,8 +795,8 @@ impl ReportPort for MockReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(ResultPage {
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
+        Ok(ReportVulnerabilityPage {
             data: vec![],
             pagination: gvm_gateway_domain::Pagination {
                 page: query.page,
@@ -822,8 +829,8 @@ impl ReportPort for MockReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(ResultPage {
+    ) -> Result<ReportErrorPage, GatewayError> {
+        Ok(ReportErrorPage {
             data: vec![],
             pagination: gvm_gateway_domain::Pagination {
                 page: query.page,
@@ -839,8 +846,8 @@ impl ReportPort for MockReportPort {
         _: &str,
         _: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
-        Ok(ResultPage {
+    ) -> Result<ReportClosedCvePage, GatewayError> {
+        Ok(ReportClosedCvePage {
             data: vec![],
             pagination: gvm_gateway_domain::Pagination {
                 page: query.page,

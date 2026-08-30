@@ -3,8 +3,11 @@
 
 use serde_json::json;
 
-use super::{ModifyTaskRequest, TaskResponse};
-use gvm_gateway_domain::{ResourceRef, Task, TaskObservers};
+use super::{CreateTaskRequest, ModifyTaskRequest, TaskResponse};
+use gvm_gateway_domain::{
+    ResourceRef, Task, TaskObservers, TaskReportComplianceCount, TaskReportReference,
+    TaskReportResultCount,
+};
 
 fn task_with_status(status: &str) -> Task {
     Task {
@@ -25,6 +28,8 @@ fn task_with_status(status: &str) -> Task {
         last_report: None,
         current_report: None,
         report_count: Some(3),
+        usage_type: None,
+        trend: None,
         in_use: false,
         writable: true,
     }
@@ -117,4 +122,90 @@ fn modify_task_request_forwards_alterable() {
         .expect("alterable requires no ID validation");
 
     assert_eq!(input.alterable, Some(false));
+}
+
+#[test]
+fn task_response_preserves_report_reference_metadata_and_usage_fields() {
+    // Task reads must expose typed report summaries, usageType, and trend
+    // instead of dropping that gvmd metadata at the REST boundary.
+    let response = TaskResponse::from(Task {
+        last_report: Some(TaskReportReference {
+            id: "33333333-3333-3333-3333-333333333333".to_string(),
+            timestamp: Some("2026-08-28T12:00:00Z".to_string()),
+            scan_start: Some("2026-08-28T11:30:00Z".to_string()),
+            scan_end: Some("2026-08-28T11:59:00Z".to_string()),
+            result_count: Some(TaskReportResultCount {
+                critical: Some(1),
+                high: Some(2),
+                medium: Some(3),
+                low: Some(4),
+                log: Some(5),
+                false_positive: Some(6),
+            }),
+            severity: Some("8.8".to_string()),
+            compliance_count: Some(TaskReportComplianceCount {
+                yes: Some(7),
+                no: Some(8),
+                incomplete: Some(9),
+            }),
+        }),
+        current_report: Some(TaskReportReference {
+            id: "44444444-4444-4444-4444-444444444444".to_string(),
+            timestamp: Some("2026-08-28T12:10:00Z".to_string()),
+            scan_start: Some("2026-08-28T12:05:00Z".to_string()),
+            scan_end: None,
+            result_count: None,
+            severity: None,
+            compliance_count: None,
+        }),
+        usage_type: Some("audit".to_string()),
+        trend: Some("up".to_string()),
+        ..task_with_status("Done")
+    });
+
+    let json = serde_json::to_value(response).expect("task response should serialize");
+
+    assert_eq!(json["usageType"], "audit");
+    assert_eq!(json["trend"], "up");
+    assert_eq!(
+        json["lastReport"]["timestamp"],
+        json!("2026-08-28T12:00:00Z")
+    );
+    assert_eq!(json["lastReport"]["resultCount"]["critical"], 1);
+    assert_eq!(json["lastReport"]["resultCount"]["falsePositive"], 6);
+    assert_eq!(json["lastReport"]["severity"], "8.8");
+    assert_eq!(json["lastReport"]["complianceCount"]["yes"], 7);
+    assert_eq!(json["currentReport"]["scanStart"], "2026-08-28T12:05:00Z");
+    assert!(json["currentReport"].get("severity").is_none());
+}
+
+#[test]
+fn task_requests_reject_unknown_fields_without_closing_preferences() {
+    // Strict task DTOs must still allow backend-defined preference keys inside
+    // the documented map field while rejecting misspelled sibling fields.
+    let error = serde_json::from_value::<ModifyTaskRequest>(json!({
+        "preferences": {
+            "scanner.max_hosts": "64"
+        },
+        "preferencez": {
+            "scanner.max_checks": "4"
+        }
+    }))
+    .expect_err("unknown update-task field should be rejected");
+    assert!(
+        error.to_string().contains("preferencez"),
+        "error should name the rejected field: {error}"
+    );
+
+    serde_json::from_value::<CreateTaskRequest>(json!({
+        "name": "Example",
+        "targetId": "123e4567-e89b-12d3-a456-426614174000",
+        "scanConfigId": "223e4567-e89b-12d3-a456-426614174000",
+        "scannerId": "323e4567-e89b-12d3-a456-426614174000",
+        "preferences": {
+            "scanner.max_hosts": "64",
+            "x-gvmd-extension": "enabled"
+        }
+    }))
+    .expect("documented task fields and open preference keys should still parse");
 }

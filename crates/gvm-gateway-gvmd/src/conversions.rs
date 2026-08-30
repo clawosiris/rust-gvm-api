@@ -9,11 +9,13 @@
 use std::str::FromStr;
 
 use gvm_gateway_domain::{
-    Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityResourceMeta, Note, Nvt,
-    NvtFamily, NvtRef, OciImageTarget, Override, Permission, PortList, Report, ReportFormat,
-    ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
-    SupportingResourceMeta, Tag, Target, Task, TaskObservers, Ticket, TlsCertificate,
-    TlsCertificateAsset, User, UserSetting, Vulnerability, WebApplicationTarget,
+    Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityOwner,
+    IdentityResourceMeta, Note, Nvt, NvtFamily, NvtRef, OciImageTarget, Override, Permission,
+    PortList, Report, ReportClosedCve, ReportError, ReportFormat, ReportVulnerability, ResourceRef,
+    ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
+    Target, Task, TaskObservers, TaskReportComplianceCount, TaskReportReference,
+    TaskReportResultCount, Ticket, Timezone, TlsCertificate, TlsCertificateAsset, User,
+    UserSetting, Vulnerability, WebApplicationTarget,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -157,7 +159,15 @@ pub(crate) fn feed_from_gmp(feed: gvm_gmp::responses::Feed) -> Feed {
     }
 }
 
+pub(crate) fn timezone_from_gmp(timezone: gvm_gmp::responses::Timezone) -> Timezone {
+    Timezone {
+        name: timezone.name,
+        offset: timezone.offset,
+    }
+}
+
 pub(crate) fn user_from_gmp(user: gvm_gmp::responses::User) -> User {
+    let hosts_allow = user.host_access().map(|access| access.allow);
     User {
         meta: identity_meta_from_gmp(user.meta),
         roles: user
@@ -170,7 +180,7 @@ pub(crate) fn user_from_gmp(user: gvm_gmp::responses::User) -> User {
             .into_iter()
             .map(resource_ref_from_named_entity)
             .collect(),
-        hosts_allow: user.hosts_allow.as_deref().and_then(parse_bool_flag),
+        hosts_allow,
         hosts: user.hosts,
         authentication_type: user.authentication_type,
     }
@@ -251,15 +261,40 @@ pub(crate) fn task_from_gmp(task: gvm_gmp::responses::Task) -> Task {
             })
             .unwrap_or_default(),
         schedule_periods: task.schedule_periods,
-        last_report: task.last_report.map(|lr| ResourceRef {
-            id: lr.id.to_string(),
-            name: None,
-        }),
-        current_report: task.current_report.map(|report| ResourceRef {
+        last_report: task.last_report.map(|report| TaskReportReference {
             id: report.id.to_string(),
-            name: None,
+            timestamp: report.timestamp,
+            scan_start: report.scan_start,
+            scan_end: report.scan_end,
+            result_count: report.result_count.map(|count| TaskReportResultCount {
+                critical: count.critical,
+                high: count.high,
+                medium: count.medium,
+                low: count.low,
+                log: count.log,
+                false_positive: count.false_positive,
+            }),
+            severity: report.severity,
+            compliance_count: report
+                .compliance_count
+                .map(|count| TaskReportComplianceCount {
+                    yes: count.yes,
+                    no: count.no,
+                    incomplete: count.incomplete,
+                }),
+        }),
+        current_report: task.current_report.map(|report| TaskReportReference {
+            id: report.id.to_string(),
+            timestamp: report.timestamp,
+            scan_start: report.scan_start,
+            scan_end: report.scan_end,
+            result_count: None,
+            severity: None,
+            compliance_count: None,
         }),
         report_count: task.report_count,
+        usage_type: task.usage_type,
+        trend: task.trend,
         in_use: task.meta.in_use,
         writable: task.meta.writable,
     }
@@ -324,32 +359,28 @@ pub(crate) fn result_from_gmp(result: gvm_gmp::responses::ScanResult) -> ScanRes
 
 pub(crate) fn result_from_report_vulnerability(
     vulnerability: gvm_gmp::responses::ReportVulnerability,
-) -> ScanResult {
-    let name = vulnerability.name.unwrap_or_default();
-    ScanResult {
-        id: vulnerability.id.unwrap_or_default(),
-        name: name.clone(),
+) -> Result<ReportVulnerability, GatewayError> {
+    let nvt_name = vulnerability.name;
+    Ok(ReportVulnerability {
+        id: vulnerability.id,
         host: vulnerability.host,
         port: vulnerability.port,
-        severity: vulnerability
-            .severity
-            .as_deref()
-            .and_then(|value| value.parse::<f64>().ok()),
+        severity: parse_optional_backend_f64(
+            vulnerability.severity,
+            "report vulnerability severity",
+        )?,
         threat: vulnerability.threat,
         nvt: Some(NvtRef {
             oid: vulnerability.nvt_oid,
-            name: if name.is_empty() { None } else { Some(name) },
+            name: nvt_name,
             family: vulnerability.family,
             cvss_base: None,
             cves: vulnerability.cves,
             tags: None,
         }),
-        description: None,
-        task: None,
-        report: None,
         hosts_count: vulnerability.hosts_count,
         occurrences: vulnerability.occurrences,
-    }
+    })
 }
 
 pub(crate) fn tls_certificate_from_report_tls_certificate(
@@ -363,62 +394,39 @@ pub(crate) fn tls_certificate_from_report_tls_certificate(
         issuer: certificate.issuer,
         not_before: certificate.activation_time,
         not_after: certificate.expiration_time,
-        fingerprint_sha256: None,
+        fingerprint_sha256: certificate.sha256_fingerprint,
     }
 }
 
-pub(crate) fn result_from_report_error(error: gvm_gmp::responses::ReportError) -> ScanResult {
-    ScanResult {
-        id: error.id.unwrap_or_default(),
-        name: error.name.unwrap_or_default(),
+pub(crate) fn report_error_from_gmp(error: gvm_gmp::responses::ReportError) -> ReportError {
+    ReportError {
+        id: error.id,
+        name: error.name,
         host: error.host,
         port: error.port,
-        severity: None,
-        threat: Some("Alarm".to_string()),
-        nvt: error.nvt_name.map(|name| NvtRef {
-            oid: None,
-            name: Some(name),
-            family: None,
-            cvss_base: None,
-            cves: Vec::new(),
-            tags: None,
-        }),
         description: error.description,
-        task: None,
-        report: None,
-        hosts_count: None,
-        occurrences: None,
+        nvt_name: error.nvt_name,
     }
 }
 
-pub(crate) fn result_from_report_closed_cve(
+pub(crate) fn report_closed_cve_from_gmp(
     closed_cve: gvm_gmp::responses::ReportClosedCve,
-) -> ScanResult {
-    let cve = closed_cve.cve.unwrap_or_default();
-    ScanResult {
-        id: closed_cve.id.unwrap_or_default(),
-        name: cve.clone(),
+) -> Result<ReportClosedCve, GatewayError> {
+    Ok(ReportClosedCve {
+        id: closed_cve.id,
         host: closed_cve.host,
-        port: None,
-        severity: closed_cve
-            .severity
-            .as_deref()
-            .and_then(|value| value.parse::<f64>().ok()),
+        severity: parse_optional_backend_f64(closed_cve.severity, "closed CVE severity")?,
         threat: closed_cve.threat,
         nvt: Some(NvtRef {
             oid: closed_cve.nvt_oid,
             name: closed_cve.name,
             family: None,
             cvss_base: None,
-            cves: if cve.is_empty() { vec![] } else { vec![cve] },
+            cves: closed_cve.cve.clone().into_iter().collect(),
             tags: None,
         }),
-        description: None,
-        task: None,
-        report: None,
-        hosts_count: None,
-        occurrences: None,
-    }
+        cve: closed_cve.cve,
+    })
 }
 
 pub(crate) fn scan_config_from_gmp(config: gvm_gmp::responses::ScanConfig) -> ScanConfig {
@@ -426,8 +434,8 @@ pub(crate) fn scan_config_from_gmp(config: gvm_gmp::responses::ScanConfig) -> Sc
         id: config.meta.id.to_string(),
         name: config.meta.name,
         comment: config.meta.comment,
-        family_count: None,
-        nvt_count: None,
+        family_count: config.family_count,
+        nvt_count: config.nvt_count,
         config_type: config.type_,
         usage_type: config.usage_type,
         in_use: config.meta.in_use,
@@ -443,6 +451,10 @@ pub(crate) fn scanner_from_gmp(scanner: gvm_gmp::responses::Scanner) -> Scanner 
         host: scanner.host,
         port: scanner.port.map(|p| p as u32),
         scanner_type: scanner.scanner_type,
+        credential: scanner.credential.map(resource_ref_from_named_entity),
+        ca_pub: scanner.ca_pub,
+        in_use: scanner.meta.in_use,
+        writable: scanner.meta.writable,
     }
 }
 
@@ -521,7 +533,7 @@ pub(crate) fn note_from_gmp(note: gvm_gmp::responses::Note) -> Note {
     Note {
         meta: supporting_meta_from_gmp(note.meta),
         text: note.text,
-        nvt: note.nvt_oid.map(nvt_ref_from_oid),
+        nvt: note.nvt.map(nvt_ref_from_gmp),
         hosts: note.hosts,
         port: note.port,
         severity: note.severity,
@@ -536,7 +548,7 @@ pub(crate) fn override_from_gmp(override_: gvm_gmp::responses::Override) -> Over
     Override {
         meta: supporting_meta_from_gmp(override_.meta),
         text: override_.text,
-        nvt: override_.nvt_oid.map(nvt_ref_from_oid),
+        nvt: override_.nvt.map(nvt_ref_from_gmp),
         hosts: override_.hosts,
         port: override_.port,
         severity: override_.severity,
@@ -687,7 +699,7 @@ fn identity_meta_from_gmp(meta: gvm_gmp::responses::common::EntityMeta) -> Ident
         id: meta.id.to_string(),
         name: meta.name,
         comment: meta.comment,
-        owner: None,
+        owner: meta.owner.map(|owner| IdentityOwner { name: owner.name }),
         creation_time: meta.creation_time,
         modification_time: meta.modification_time,
         writable: meta.writable,
@@ -720,23 +732,28 @@ fn resource_ref_from_named_entity(entity: gvm_gmp::responses::NamedEntity) -> Re
     }
 }
 
-fn nvt_ref_from_oid(oid: String) -> NvtRef {
+fn nvt_ref_from_gmp(nvt: gvm_gmp::responses::common::NvtReference) -> NvtRef {
     NvtRef {
-        oid: Some(oid),
-        name: None,
-        family: None,
+        oid: Some(nvt.oid),
+        name: nvt.name,
+        family: nvt.type_,
         cvss_base: None,
         cves: vec![],
         tags: None,
     }
 }
 
-fn parse_bool_flag(value: &str) -> Option<bool> {
-    match value {
-        "0" => Some(false),
-        "1" => Some(true),
-        _ => None,
-    }
+fn parse_optional_backend_f64(
+    value: Option<String>,
+    field: &str,
+) -> Result<Option<f64>, GatewayError> {
+    value
+        .map(|value| {
+            value.parse::<f64>().map_err(|_| {
+                GatewayError::BackendUnavailable(format!("gvmd returned invalid {field}: {value}"))
+            })
+        })
+        .transpose()
 }
 
 pub(crate) fn map_parse_error(error: gvm_gmp::responses::ParseError) -> GatewayError {

@@ -19,15 +19,16 @@ use gvm_gateway_domain::{
     ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
     ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget,
     OciImageTargetPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
-    PortListPort, PortListQuery, ReadinessStatus, Report, ReportExport, ReportExportRequest,
-    ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery, ResultPage, ResultPort,
-    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
-    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
-    SchedulePort, ScheduleQuery, SpecializedTargetQuery, SupportingResourcePort,
-    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
-    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, TlsCertificateAsset,
-    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
+    PortListPort, PortListQuery, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage,
+    ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
+    ReportQuery, ReportVulnerabilityPage, ResultPage, ResultPort, ResultQuery, Role, RolePage,
+    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
+    SpecializedTargetQuery, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
+    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset, TlsCertificateAssetPage,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -84,6 +85,12 @@ impl SystemPort for StaticGvmdAdapter {
                     .unwrap_or_else(|| "gvmd unavailable".to_string()),
             ))
         }
+    }
+
+    async fn list_timezones(&self, _: &str) -> Result<Vec<Timezone>, GatewayError> {
+        Err(GatewayError::BackendUnavailable(
+            "static adapter does not support timezones".to_string(),
+        ))
     }
 }
 
@@ -153,11 +160,11 @@ impl SchedulePort for StaticGvmdAdapter {
 impl CredentialPort for StaticGvmdAdapter {
     async fn list_credential_stores(&self, _: &str) -> Result<Vec<CredentialStore>, GatewayError> {
         Ok(vec![CredentialStore {
-            id: "default".to_string(),
+            id: Some("default".to_string()),
             name: "Default".to_string(),
             provider: Some("gvmd".to_string()),
-            default: true,
-            writable: true,
+            default: Some(true),
+            writable: Some(true),
         }])
     }
 
@@ -646,7 +653,7 @@ impl ReportPort for StaticGvmdAdapter {
         _: &str,
         _: &str,
         _: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support reports".to_string(),
         ))
@@ -668,7 +675,7 @@ impl ReportPort for StaticGvmdAdapter {
         _: &str,
         _: &str,
         _: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
+    ) -> Result<ReportErrorPage, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support reports".to_string(),
         ))
@@ -679,7 +686,7 @@ impl ReportPort for StaticGvmdAdapter {
         _: &str,
         _: &str,
         _: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
+    ) -> Result<ReportClosedCvePage, GatewayError> {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support reports".to_string(),
         ))

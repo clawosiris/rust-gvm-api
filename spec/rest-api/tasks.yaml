@@ -267,11 +267,15 @@ components:
         schedulePeriods:
           type: integer
         lastReport:
-          $ref: "./common.yaml#/components/schemas/ResourceRef"
+          $ref: "#/components/schemas/TaskReportReference"
         currentReport:
-          $ref: "./common.yaml#/components/schemas/ResourceRef"
+          $ref: "#/components/schemas/TaskReportReference"
         reportCount:
           type: integer
+        usageType:
+          type: string
+        trend:
+          type: string
         inUse:
           type: boolean
         writable:
@@ -337,6 +341,56 @@ components:
           type: array
           items:
             $ref: "./common.yaml#/components/schemas/ResourceRef"
+
+    TaskReportResultCount:
+      type: object
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+        log:
+          type: integer
+        falsePositive:
+          type: integer
+
+    TaskReportComplianceCount:
+      type: object
+      properties:
+        yes:
+          type: integer
+        no:
+          type: integer
+        incomplete:
+          type: integer
+
+    TaskReportReference:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        scanStart:
+          type: string
+          format: date-time
+        scanEnd:
+          type: string
+          format: date-time
+        resultCount:
+          $ref: "#/components/schemas/TaskReportResultCount"
+        severity:
+          type: string
+        complianceCount:
+          $ref: "#/components/schemas/TaskReportComplianceCount"
 
     ModifyTask:
       type: object

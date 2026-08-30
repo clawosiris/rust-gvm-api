@@ -225,7 +225,7 @@ impl ReportPort for GvmdAdapter {
         session_token: &str,
         report_id: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
+    ) -> Result<ReportVulnerabilityPage, GatewayError> {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
         let opts = report_detail_query(self, session_token, query).await?;
@@ -248,10 +248,10 @@ impl ReportPort for GvmdAdapter {
             .items
             .into_iter()
             .map(result_from_report_vulnerability)
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
         let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
-        Ok(ResultPage {
+        Ok(ReportVulnerabilityPage {
             data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
@@ -305,7 +305,7 @@ impl ReportPort for GvmdAdapter {
         session_token: &str,
         report_id: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
+    ) -> Result<ReportErrorPage, GatewayError> {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
         let opts = report_detail_query(self, session_token, query).await?;
@@ -327,11 +327,11 @@ impl ReportPort for GvmdAdapter {
         let items = parsed
             .items
             .into_iter()
-            .map(result_from_report_error)
+            .map(report_error_from_gmp)
             .collect::<Vec<_>>();
         let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
-        Ok(ResultPage {
+        Ok(ReportErrorPage {
             data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })
@@ -342,7 +342,7 @@ impl ReportPort for GvmdAdapter {
         session_token: &str,
         report_id: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError> {
+    ) -> Result<ReportClosedCvePage, GatewayError> {
         let client = self.session_client(session_token)?;
         let report_id = parse_entity_id(report_id)?;
         let opts = report_detail_query(self, session_token, query).await?;
@@ -364,11 +364,11 @@ impl ReportPort for GvmdAdapter {
         let items = parsed
             .items
             .into_iter()
-            .map(result_from_report_closed_cve)
-            .collect::<Vec<_>>();
+            .map(report_closed_cve_from_gmp)
+            .collect::<Result<Vec<_>, _>>()?;
         let total = gvmd_total(parsed.counts.filtered, parsed.counts.total, items.len());
 
-        Ok(ResultPage {
+        Ok(ReportClosedCvePage {
             data: items,
             pagination: paged_pagination(total, query.page, query.per_page),
         })

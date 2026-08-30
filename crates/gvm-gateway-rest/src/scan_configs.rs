@@ -133,6 +133,7 @@ impl ScanConfigListQuery {
 /// Create-scan-config request payload.
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[schemars(rename = "CreateScanConfig")]
+#[serde(deny_unknown_fields)]
 pub struct CreateScanConfigRequest {
     /// Optional name so validation can return RFC 9457 instead of extractor failures.
     #[schemars(required)]
@@ -173,6 +174,7 @@ impl ValidateInto<CreateScanConfigInput> for CreateScanConfigRequest {
 /// Modify-scan-config request payload.
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[schemars(rename = "ModifyScanConfig")]
+#[serde(deny_unknown_fields)]
 pub struct ModifyScanConfigRequest {
     /// Optional name.
     pub name: Option<String>,

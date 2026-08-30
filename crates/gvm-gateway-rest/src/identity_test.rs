@@ -6,7 +6,7 @@ use serde_json::json;
 use super::{
     AuthenticationType, IdentityListQuery, ModifyUserRequest, UserResponse, UserSettingsListQuery,
 };
-use gvm_gateway_domain::{IdentityResourceMeta, User};
+use gvm_gateway_domain::{IdentityOwner, IdentityResourceMeta, User};
 
 #[test]
 fn identity_queries_decode_filters_and_filter_ids() {
@@ -97,4 +97,24 @@ fn modify_user_request_preserves_rename_and_explicit_role_clear() {
     assert_eq!(clear.name.as_deref(), Some("renamed-user"));
     assert_eq!(clear.role_ids, Some(Vec::new()));
     assert_eq!(omitted.role_ids, None);
+}
+
+#[test]
+fn user_response_preserves_name_only_owner_metadata() {
+    // Typed identity responses only expose owner names today; the REST
+    // contract must serialize that partial owner shape instead of faking an id.
+    let user = User {
+        meta: IdentityResourceMeta {
+            owner: Some(IdentityOwner {
+                name: "admin".to_string(),
+            }),
+            ..user_with_auth_type("file").meta
+        },
+        ..user_with_auth_type("file")
+    };
+
+    let json = serde_json::to_value(UserResponse::from(user)).expect("user response serializes");
+
+    assert_eq!(json["owner"], json!({ "name": "admin" }));
+    assert!(json["owner"].get("id").is_none());
 }

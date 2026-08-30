@@ -3,7 +3,7 @@
 
 //! System-oriented gateway use cases.
 
-use gvm_gateway_domain::{GatewayError, HealthStatus, ReadinessStatus, VersionInfo};
+use gvm_gateway_domain::{GatewayError, HealthStatus, ReadinessStatus, Timezone, VersionInfo};
 
 use crate::GatewayService;
 
@@ -25,5 +25,18 @@ impl GatewayService {
             api_version: env!("CARGO_PKG_VERSION").to_string(),
             gmp_version,
         })
+    }
+
+    /// Lists backend timezones for an authenticated session.
+    pub async fn list_timezones(&self, session_token: &str) -> Result<Vec<Timezone>, GatewayError> {
+        self.execute_with_resource(
+            "timezones.list",
+            session_token,
+            "list",
+            "timezone",
+            None,
+            |session| async move { self.system.list_timezones(&session.token).await },
+        )
+        .await
     }
 }

@@ -54,21 +54,21 @@ macro_rules! open_string_enum {
         }
 
         impl $name {
-            fn parse(value: &str) -> Self {
+            pub(crate) fn parse(value: &str) -> Self {
                 match value {
                     $($value => Self::$variant,)+
                     _ => Self::Unknown(value.to_string()),
                 }
             }
 
-            fn as_str(&self) -> &str {
+            pub(crate) fn as_str(&self) -> &str {
                 match self {
                     $(Self::$variant => $value,)+
                     Self::Unknown(value) => value.as_str(),
                 }
             }
 
-            fn known_values() -> &'static [&'static str] {
+            pub(crate) fn known_values() -> &'static [&'static str] {
                 &[$($value),+]
             }
         }
@@ -124,21 +124,21 @@ macro_rules! open_u32_enum {
         }
 
         impl $name {
-            fn parse(value: u32) -> Self {
+            pub(crate) fn parse(value: u32) -> Self {
                 match value {
                     $($value => Self::$variant,)+
                     _ => Self::Unknown(value),
                 }
             }
 
-            fn as_u32(&self) -> u32 {
+            pub(crate) fn as_u32(&self) -> u32 {
                 match self {
                     $(Self::$variant => $value,)+
                     Self::Unknown(value) => *value,
                 }
             }
 
-            fn known_values() -> &'static [u32] {
+            pub(crate) fn known_values() -> &'static [u32] {
                 &[$($value),+]
             }
         }

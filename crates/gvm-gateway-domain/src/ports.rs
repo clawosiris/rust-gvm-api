@@ -18,14 +18,15 @@ use crate::{
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
     ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt,
     NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, Override, OverridePage, Permission,
-    PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report, ReportExport,
-    ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportQuery, ResultPage,
-    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner,
-    ScannerPage, ScannerQuery, Schedule, SchedulePage, ScheduleQuery, SpecializedTargetQuery,
+    PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report,
+    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
+    ReportFormatPage, ReportPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery,
+    Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
+    ScannerQuery, Schedule, SchedulePage, ScheduleQuery, SpecializedTargetQuery,
     SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task, TaskAction,
-    TaskPage, TaskQuery, Ticket, TicketPage, TlsCertificateAsset, TlsCertificateAssetPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
-    VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
+    TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
+    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -36,6 +37,9 @@ pub trait SystemPort: Send + Sync + 'static {
 
     /// Returns the GMP version string for the connected backend.
     async fn gmp_version(&self) -> Result<String, GatewayError>;
+
+    /// Lists backend timezones for the authenticated session.
+    async fn list_timezones(&self, session_token: &str) -> Result<Vec<Timezone>, GatewayError>;
 }
 
 /// Port for session authentication with the backend.
@@ -434,7 +438,7 @@ pub trait ReportPort: Send + Sync + 'static {
         session_token: &str,
         report_id: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError>;
+    ) -> Result<ReportVulnerabilityPage, GatewayError>;
 
     /// List TLS certificate observations for a specific report.
     async fn get_report_tls_certificates(
@@ -450,7 +454,7 @@ pub trait ReportPort: Send + Sync + 'static {
         session_token: &str,
         report_id: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError>;
+    ) -> Result<ReportErrorPage, GatewayError>;
 
     /// List closed-CVE findings for a specific report.
     async fn get_report_closed_cves(
@@ -458,7 +462,7 @@ pub trait ReportPort: Send + Sync + 'static {
         session_token: &str,
         report_id: &str,
         query: &ResultQuery,
-    ) -> Result<ResultPage, GatewayError>;
+    ) -> Result<ReportClosedCvePage, GatewayError>;
 }
 
 /// Port for result operations.

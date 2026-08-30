@@ -149,3 +149,40 @@ fn alert_requests_preserve_selector_data_maps_and_rename() {
         Some("soc@example.com")
     );
 }
+
+#[test]
+fn alert_requests_reject_unknown_fields_but_keep_data_maps_open() {
+    // Alert selector data maps are intentional extension points, but misspelled
+    // top-level fields must now fail fast instead of being ignored.
+    let error = serde_json::from_value::<ModifyAlertRequest>(json!({
+        "eventData": {
+            "recipient": "ops@example.com"
+        },
+        "eventdata": {
+            "recipient": "typo@example.com"
+        }
+    }))
+    .expect_err("unknown alert field should be rejected");
+    assert!(
+        error.to_string().contains("eventdata"),
+        "error should name the rejected field: {error}"
+    );
+
+    serde_json::from_value::<CreateAlertRequest>(json!({
+        "name": "Alert",
+        "event": "task_run_status_changed",
+        "condition": "always",
+        "method": "email",
+        "eventData": {
+            "x-gvmd-event-key": "task-finished"
+        },
+        "conditionData": {
+            "x-gvmd-condition-key": "high"
+        },
+        "methodData": {
+            "to": "ops@example.com",
+            "x-gvmd-method-key": "extended"
+        }
+    }))
+    .expect("documented alert fields and open data-map keys should still parse");
+}

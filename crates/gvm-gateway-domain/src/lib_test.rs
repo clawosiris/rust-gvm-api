@@ -89,6 +89,20 @@ fn version_info_camel_case_fields() {
     assert!(json.contains("\"gmpVersion\""));
 }
 
+/// Backend timezone entries keep `offset` optional so gvmd can return bare
+/// names like `UTC` without the gateway inventing extra normalization.
+#[test]
+fn timezone_omits_none_offset() {
+    let timezone = Timezone {
+        name: "UTC".to_string(),
+        offset: None,
+    };
+    let json = serde_json::to_string(&timezone).unwrap();
+
+    assert!(json.contains("\"name\":\"UTC\""));
+    assert!(!json.contains("offset"));
+}
+
 /// Pagination keeps camelCase wire fields after the split.
 #[test]
 fn pagination_serializes_camel_case() {
@@ -355,11 +369,18 @@ fn task_serializes_lifecycle_detail_fields() {
         },
         schedule_periods: Some(3),
         last_report: None,
-        current_report: Some(ResourceRef {
+        current_report: Some(TaskReportReference {
             id: "33333333-3333-3333-3333-333333333333".to_string(),
-            name: None,
+            timestamp: None,
+            scan_start: None,
+            scan_end: None,
+            result_count: None,
+            severity: None,
+            compliance_count: None,
         }),
         report_count: Some(7),
+        usage_type: Some("scan".to_string()),
+        trend: None,
         in_use: true,
         writable: true,
     };
