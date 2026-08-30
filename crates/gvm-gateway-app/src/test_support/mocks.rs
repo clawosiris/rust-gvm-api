@@ -5,27 +5,32 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use gvm_gateway_domain::{
-    Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
-    CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput, CreateOverrideInput,
-    CreatePermissionInput, CreatePortListInput, CreateRoleInput, CreateScanConfigInput,
-    CreateScheduleInput, CreateTagInput, CreateTargetInput, CreateTaskInput, CreateUserInput,
-    Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort,
-    Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage,
-    IdentityPort, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput,
-    ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput,
+    Agent, AgentConfig, AgentControlConfig, AgentGroup, AgentGroupPage, AgentGroupQuery,
+    AgentHeartbeatConfig, AgentInstallerInstruction, AgentInstallerInstructionQuery, AgentPage,
+    AgentPort, AgentQuery, AgentRetryConfig, AgentScriptExecutorConfig, AgentSupportBundle,
+    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AuthPort,
+    CreateAgentGroupInput, CreateAlertInput, CreateCredentialInput, CreateFilterInput,
+    CreateGroupInput, CreateHostInput, CreateNoteInput, CreateOverrideInput, CreatePermissionInput,
+    CreatePortListInput, CreateRoleInput, CreateScanConfigInput, CreateScheduleInput,
+    CreateTagInput, CreateTargetInput, CreateTaskInput, CreateUserInput, Credential,
+    CredentialPage, CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter,
+    FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort,
+    IdentityQuery, JobArtifact, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput,
+    ModifyAgentInput, ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput,
+    ModifyHostInput, ModifyNoteInput, ModifyOverrideInput, ModifyPermissionInput,
     ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
     ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
     Note, NotePage, Nvt, NvtFamilyPage, NvtPage, Override, OverridePage, Permission,
     PermissionPage, PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
     ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
-    ReportFormatPage, ReportPage, ReportPort, ReportQuery, ReportVulnerabilityPage, ResultPage,
-    ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
-    SchedulePage, SchedulePort, ScheduleQuery, SupportingResourcePort, SupportingResourceQuery,
-    SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
-    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
-    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery, VulnerabilityPage,
+    ReportFormatPage, ReportPage, ReportPort, ReportQuery, ReportVulnerabilityPage, ResourceRef,
+    ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
+    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourceMeta,
+    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
+    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -1001,6 +1006,210 @@ impl ScannerPort for MockScannerPort {
 
     async fn get_scanner(&self, _: &str, id: &str) -> Result<Scanner, GatewayError> {
         Err(GatewayError::NotFound(format!("scanner {id} not found")))
+    }
+}
+
+/// Mock agent port for tests that only need service wiring.
+#[derive(Clone, Default)]
+pub(crate) struct MockAgentPort;
+
+#[async_trait]
+impl AgentPort for MockAgentPort {
+    async fn list_agents(&self, _: &str, query: &AgentQuery) -> Result<AgentPage, GatewayError> {
+        Ok(AgentPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_agent(&self, _: &str, id: &str) -> Result<Agent, GatewayError> {
+        Ok(Agent {
+            meta: SupportingResourceMeta {
+                id: id.to_string(),
+                name: "Mock Agent".to_string(),
+                comment: None,
+                creation_time: None,
+                modification_time: None,
+                writable: true,
+                in_use: false,
+            },
+            authorized: Some(true),
+            update_to_latest: Some(false),
+            status: Some("online".to_string()),
+            version: Some("1.0.0".to_string()),
+            last_update_time: None,
+            last_contact_time: None,
+            scanner: Some(ResourceRef {
+                id: "00000000-0000-0000-0000-000000000041".to_string(),
+                name: Some("Mock Scanner".to_string()),
+            }),
+            config: Some(AgentConfig {
+                agent_control: Some(AgentControlConfig {
+                    retry: Some(AgentRetryConfig {
+                        attempts: Some(3),
+                        delay_in_seconds: Some(10),
+                        max_jitter_in_seconds: Some(2),
+                    }),
+                }),
+                agent_script_executor: Some(AgentScriptExecutorConfig {
+                    bulk_size: Some(10),
+                    bulk_throttle_time_in_ms: Some(250),
+                    indexer_dir_depth: Some(3),
+                    scheduler_cron_time: vec!["0 */6 * * *".to_string()],
+                }),
+                heartbeat: Some(AgentHeartbeatConfig {
+                    interval_in_seconds: Some(60),
+                    miss_until_inactive: Some(3),
+                }),
+            }),
+        })
+    }
+
+    async fn modify_agent(
+        &self,
+        _: &str,
+        id: &str,
+        input: ModifyAgentInput,
+    ) -> Result<Agent, GatewayError> {
+        let mut agent = self.get_agent("", id).await?;
+        if let Some(authorized) = input.authorized {
+            agent.authorized = Some(authorized);
+        }
+        if let Some(update_to_latest) = input.update_to_latest {
+            agent.update_to_latest = Some(update_to_latest);
+        }
+        if input.comment.is_some() {
+            agent.meta.comment = input.comment;
+        }
+        if input.config.is_some() {
+            agent.config = input.config;
+        }
+        Ok(agent)
+    }
+
+    async fn delete_agent(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn sync_agents(&self, _: &str) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn get_agent_support_bundle(
+        &self,
+        _: &str,
+        _: &str,
+        _: &AgentSupportBundleQuery,
+    ) -> Result<AgentSupportBundle, GatewayError> {
+        Ok(AgentSupportBundle {
+            artifact: JobArtifact {
+                bytes: b"mock-agent-support-bundle".to_vec(),
+                content_type: "application/zip".to_string(),
+                filename: "support-bundle.zip".to_string(),
+            },
+            size: Some(25),
+            encoding: Some("base64".to_string()),
+        })
+    }
+
+    async fn modify_agent_control_scan_config(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyAgentControlScanConfigInput,
+    ) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn get_agent_installer_instruction(
+        &self,
+        _: &str,
+        _: &str,
+        _: &AgentInstallerInstructionQuery,
+    ) -> Result<AgentInstallerInstruction, GatewayError> {
+        Ok(AgentInstallerInstruction {
+            language: "en".to_string(),
+            instruction: "Install the mock agent.".to_string(),
+        })
+    }
+
+    async fn list_agent_groups(
+        &self,
+        _: &str,
+        query: &AgentGroupQuery,
+    ) -> Result<AgentGroupPage, GatewayError> {
+        Ok(AgentGroupPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn create_agent_group(
+        &self,
+        _: &str,
+        _: CreateAgentGroupInput,
+    ) -> Result<String, GatewayError> {
+        Ok("00000000-0000-0000-0000-000000000042".to_string())
+    }
+
+    async fn get_agent_group(&self, _: &str, id: &str) -> Result<AgentGroup, GatewayError> {
+        Ok(AgentGroup {
+            meta: SupportingResourceMeta {
+                id: id.to_string(),
+                name: "Mock Agent Group".to_string(),
+                comment: None,
+                creation_time: None,
+                modification_time: None,
+                writable: true,
+                in_use: false,
+            },
+            scheduler_cron_time: Some("0 */6 * * *".to_string()),
+            agents: vec![ResourceRef {
+                id: "00000000-0000-0000-0000-000000000043".to_string(),
+                name: Some("Mock Agent".to_string()),
+            }],
+        })
+    }
+
+    async fn modify_agent_group(
+        &self,
+        _: &str,
+        id: &str,
+        input: ModifyAgentGroupInput,
+    ) -> Result<AgentGroup, GatewayError> {
+        let mut group = self.get_agent_group("", id).await?;
+        group.scheduler_cron_time = Some(input.scheduler_cron_time);
+        if let Some(name) = input.name {
+            group.meta.name = name;
+        }
+        if input.comment.is_some() {
+            group.meta.comment = input.comment;
+        }
+        if let Some(agent_ids) = input.agent_ids {
+            group.agents = agent_ids
+                .into_iter()
+                .map(|id| ResourceRef { id, name: None })
+                .collect();
+        }
+        Ok(group)
+    }
+
+    async fn delete_agent_group(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn clone_agent_group(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        Ok("00000000-0000-0000-0000-000000000044".to_string())
     }
 }
 

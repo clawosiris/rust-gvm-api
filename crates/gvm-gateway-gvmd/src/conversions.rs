@@ -9,13 +9,15 @@
 use std::str::FromStr;
 
 use gvm_gateway_domain::{
+    Agent, AgentConfig, AgentControlConfig, AgentGroup, AgentHeartbeatConfig,
+    AgentInstallerInstruction, AgentRetryConfig, AgentScriptExecutorConfig, AgentSupportBundle,
     Alert, Credential, Feed, Filter, GatewayError, Group, Host, IdentityOwner,
-    IdentityResourceMeta, Note, Nvt, NvtFamily, NvtRef, OciImageTarget, Override, Permission,
-    PortList, Report, ReportClosedCve, ReportError, ReportFormat, ReportVulnerability, ResourceRef,
-    ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule, SupportingResourceMeta, Tag,
-    Target, Task, TaskObservers, TaskReportComplianceCount, TaskReportReference,
-    TaskReportResultCount, Ticket, Timezone, TlsCertificate, TlsCertificateAsset, User,
-    UserSetting, Vulnerability, WebApplicationTarget,
+    IdentityResourceMeta, JobArtifact, Note, Nvt, NvtFamily, NvtRef, OciImageTarget, Override,
+    Permission, PortList, Report, ReportClosedCve, ReportError, ReportFormat, ReportVulnerability,
+    ResourceRef, ResultCount, Role, ScanConfig, ScanResult, Scanner, Schedule,
+    SupportingResourceMeta, Tag, Target, Task, TaskObservers, TaskReportComplianceCount,
+    TaskReportReference, TaskReportResultCount, Ticket, Timezone, TlsCertificate,
+    TlsCertificateAsset, User, UserSetting, Vulnerability, WebApplicationTarget,
 };
 use gvm_gmp::{
     AlertCondition, AlertEvent, AlertMethod, AliveTest, CredentialType, EntityId, HostsOrdering,
@@ -46,6 +48,58 @@ pub(crate) fn target_from_gmp(target: gvm_gmp::responses::Target) -> Target {
     }
 }
 
+pub(crate) fn agent_from_gmp(agent: gvm_gmp::responses::Agent) -> Agent {
+    Agent {
+        meta: supporting_meta_from_gmp(agent.meta),
+        authorized: agent.authorized,
+        update_to_latest: agent.update_to_latest,
+        status: agent.status,
+        version: agent.version,
+        last_update_time: agent.last_update_time,
+        last_contact_time: agent.last_contact_time,
+        scanner: agent.scanner.map(resource_ref_from_named_entity),
+        config: agent.config.map(agent_config_from_gmp),
+    }
+}
+
+pub(crate) fn agent_group_from_gmp(agent_group: gvm_gmp::responses::AgentGroup) -> AgentGroup {
+    AgentGroup {
+        meta: supporting_meta_from_gmp(agent_group.meta),
+        scheduler_cron_time: agent_group.scheduler_cron_time,
+        agents: agent_group
+            .agents
+            .into_iter()
+            .map(resource_ref_from_named_entity)
+            .collect(),
+    }
+}
+
+pub(crate) fn agent_installer_instruction_from_gmp(
+    response: gvm_gmp::responses::GetAgentInstallerInstructionResponse,
+) -> AgentInstallerInstruction {
+    AgentInstallerInstruction {
+        language: response.language,
+        instruction: response.instruction,
+    }
+}
+
+pub(crate) fn agent_support_bundle_from_gmp(
+    response: gvm_gmp::responses::GetAgentSupportBundleResponse,
+) -> AgentSupportBundle {
+    AgentSupportBundle {
+        artifact: JobArtifact {
+            bytes: response.file.content,
+            content_type: response
+                .file
+                .content_type
+                .unwrap_or_else(|| "application/octet-stream".to_string()),
+            filename: response.file.name,
+        },
+        size: response.file.size.map(u64::from),
+        encoding: response.file.encoding,
+    }
+}
+
 pub(crate) fn oci_image_target_from_gmp(
     target: gvm_gmp::responses::OciImageTarget,
 ) -> OciImageTarget {
@@ -62,6 +116,52 @@ pub(crate) fn oci_image_target_from_gmp(
             .collect(),
         in_use: target.meta.in_use,
         writable: target.meta.writable,
+    }
+}
+
+fn agent_config_from_gmp(config: gvm_gmp::responses::AgentConfig) -> AgentConfig {
+    AgentConfig {
+        agent_control: config.agent_control.map(agent_control_config_from_gmp),
+        agent_script_executor: config
+            .agent_script_executor
+            .map(agent_script_executor_config_from_gmp),
+        heartbeat: config.heartbeat.map(agent_heartbeat_config_from_gmp),
+    }
+}
+
+fn agent_control_config_from_gmp(
+    config: gvm_gmp::responses::AgentControlConfig,
+) -> AgentControlConfig {
+    AgentControlConfig {
+        retry: config.retry.map(agent_retry_config_from_gmp),
+    }
+}
+
+fn agent_retry_config_from_gmp(config: gvm_gmp::responses::AgentRetryConfig) -> AgentRetryConfig {
+    AgentRetryConfig {
+        attempts: config.attempts,
+        delay_in_seconds: config.delay_in_seconds,
+        max_jitter_in_seconds: config.max_jitter_in_seconds,
+    }
+}
+
+fn agent_script_executor_config_from_gmp(
+    config: gvm_gmp::responses::AgentScriptExecutorConfig,
+) -> AgentScriptExecutorConfig {
+    AgentScriptExecutorConfig {
+        bulk_size: config.bulk_size,
+        bulk_throttle_time_in_ms: config.bulk_throttle_time_in_ms,
+        indexer_dir_depth: config.indexer_dir_depth,
+        scheduler_cron_time: config.scheduler_cron_time,
+    }
+}
+
+fn agent_heartbeat_config_from_gmp(
+    config: gvm_gmp::responses::AgentHeartbeatConfig,
+) -> AgentHeartbeatConfig {
+    AgentHeartbeatConfig {
+        interval_in_seconds: config.interval_in_seconds,
+        miss_until_inactive: config.miss_until_inactive,
     }
 }
 

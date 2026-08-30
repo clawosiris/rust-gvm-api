@@ -6,27 +6,31 @@
 use async_trait::async_trait;
 
 use crate::{
-    Alert, AlertPage, AlertQuery, CreateAlertInput, CreateCredentialInput, CreateFilterInput,
-    CreateGroupInput, CreateHostInput, CreateNoteInput, CreateOciImageTargetInput,
-    CreateOverrideInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
-    CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput, CreateTaskInput,
-    CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage, CredentialQuery,
-    CredentialStore, Feed, Filter, FilterPage, GatewayError, GetReportOpts, Group, GroupPage, Host,
-    HostPage, IdentityQuery, ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput,
-    ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput,
-    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt,
-    NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, Override, OverridePage, Permission,
-    PermissionPage, PortList, PortListPage, PortListQuery, ReadinessStatus, Report,
-    ReportClosedCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
-    ReportFormatPage, ReportPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultQuery,
-    Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerQuery, Schedule, SchedulePage, ScheduleQuery, SpecializedTargetQuery,
-    SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery, Task, TaskAction,
-    TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
-    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
-    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
+    Agent, AgentGroup, AgentGroupPage, AgentGroupQuery, AgentInstallerInstruction,
+    AgentInstallerInstructionQuery, AgentPage, AgentQuery, AgentSupportBundle,
+    AgentSupportBundleQuery, Alert, AlertPage, AlertQuery, CreateAgentGroupInput, CreateAlertInput,
+    CreateCredentialInput, CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
+    CreateOciImageTargetInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
+    CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput,
+    CreateTaskInput, CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage,
+    CredentialQuery, CredentialStore, Feed, Filter, FilterPage, GatewayError, GetReportOpts, Group,
+    GroupPage, Host, HostPage, IdentityQuery, ModifyAgentControlScanConfigInput,
+    ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput, ModifyCredentialInput,
+    ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
+    ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput,
+    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput,
+    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput,
+    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, Override,
+    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListQuery,
+    ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
+    ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportQuery,
+    ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
+    ScheduleQuery, SpecializedTargetQuery, SupportingResourceQuery, Tag, TagPage, Target,
+    TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone,
+    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
+    WebApplicationTargetPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -560,6 +564,102 @@ pub trait ScannerPort: Send + Sync + 'static {
 
     /// Fetch a scanner by identifier.
     async fn get_scanner(&self, session_token: &str, id: &str) -> Result<Scanner, GatewayError>;
+}
+
+/// Port for agent and agent-group management operations.
+#[async_trait]
+pub trait AgentPort: Send + Sync + 'static {
+    /// List agents for the session.
+    async fn list_agents(
+        &self,
+        session_token: &str,
+        query: &AgentQuery,
+    ) -> Result<AgentPage, GatewayError>;
+
+    /// Fetch an agent by identifier.
+    async fn get_agent(&self, session_token: &str, id: &str) -> Result<Agent, GatewayError>;
+
+    /// Modify an agent by identifier.
+    async fn modify_agent(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyAgentInput,
+    ) -> Result<Agent, GatewayError>;
+
+    /// Delete an agent by identifier.
+    async fn delete_agent(&self, session_token: &str, id: &str) -> Result<(), GatewayError>;
+
+    /// Synchronize agents with the backend.
+    async fn sync_agents(&self, session_token: &str) -> Result<(), GatewayError>;
+
+    /// Download an agent support bundle.
+    async fn get_agent_support_bundle(
+        &self,
+        session_token: &str,
+        id: &str,
+        query: &AgentSupportBundleQuery,
+    ) -> Result<AgentSupportBundle, GatewayError>;
+
+    /// Update agent-control scan-config defaults.
+    async fn modify_agent_control_scan_config(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyAgentControlScanConfigInput,
+    ) -> Result<(), GatewayError>;
+
+    /// Fetch agent installer instructions for a scanner.
+    async fn get_agent_installer_instruction(
+        &self,
+        session_token: &str,
+        scanner_id: &str,
+        query: &AgentInstallerInstructionQuery,
+    ) -> Result<AgentInstallerInstruction, GatewayError>;
+
+    /// List agent groups for the session.
+    async fn list_agent_groups(
+        &self,
+        session_token: &str,
+        query: &AgentGroupQuery,
+    ) -> Result<AgentGroupPage, GatewayError>;
+
+    /// Create an agent group.
+    async fn create_agent_group(
+        &self,
+        session_token: &str,
+        input: CreateAgentGroupInput,
+    ) -> Result<String, GatewayError>;
+
+    /// Fetch an agent group by identifier.
+    async fn get_agent_group(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<AgentGroup, GatewayError>;
+
+    /// Modify an agent group by identifier.
+    async fn modify_agent_group(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: ModifyAgentGroupInput,
+    ) -> Result<AgentGroup, GatewayError>;
+
+    /// Delete an agent group by identifier.
+    async fn delete_agent_group(
+        &self,
+        session_token: &str,
+        id: &str,
+        ultimate: bool,
+    ) -> Result<(), GatewayError>;
+
+    /// Clone an agent group by identifier.
+    async fn clone_agent_group(
+        &self,
+        session_token: &str,
+        id: &str,
+    ) -> Result<String, GatewayError>;
 }
 
 /// Port for supporting report-format, triage, asset, and NVT catalogs.

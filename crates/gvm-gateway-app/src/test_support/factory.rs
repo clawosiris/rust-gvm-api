@@ -42,6 +42,7 @@ pub(crate) fn test_ports() -> GatewayPorts {
         results: Arc::new(MockResultPort),
         scan_configs: Arc::new(MockScanConfigPort),
         scanners: Arc::new(MockScannerPort),
+        agents: Arc::new(MockAgentPort),
         supporting_resources: Arc::new(MockSupportingResourcePort),
     }
 }

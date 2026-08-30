@@ -94,6 +94,35 @@ fn generated_openapi_preserves_key_schema_fields() {
     assert!(preferences_description.contains("Omitted or empty objects"));
     assert!(preferences_description.contains("clearing preferences is not supported"));
 
+    let create_agent_group_required = generated["components"]["schemas"]["CreateAgentGroup"]
+        ["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert!(create_agent_group_required.contains("name"));
+    assert!(create_agent_group_required.contains("schedulerCronTime"));
+
+    let modify_agent_group_required = generated["components"]["schemas"]["ModifyAgentGroup"]
+        ["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert!(modify_agent_group_required.contains("schedulerCronTime"));
+
+    let scanner_instruction_parameters = generated["paths"]
+        ["/scanners/{id}/agent-installer-instruction"]["get"]["parameters"]
+        .as_array()
+        .unwrap();
+    let origin_url_parameter = scanner_instruction_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "originUrl")
+        .expect("agent installer instruction must document originUrl");
+    assert_eq!(origin_url_parameter["schema"]["format"], "uri");
+
     let schemas = &generated["components"]["schemas"];
     let create_alert_props = &schemas["CreateAlert"]["properties"];
     assert!(create_alert_props.get("eventData").is_some());

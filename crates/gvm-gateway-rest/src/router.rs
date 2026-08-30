@@ -31,6 +31,16 @@ use tracing::{field, Instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
+    agents::{
+        clone_agent_group, clone_agent_group_docs, create_agent_group, create_agent_group_docs,
+        delete_agent, delete_agent_docs, delete_agent_group, delete_agent_group_docs, get_agent,
+        get_agent_docs, get_agent_group, get_agent_group_docs, get_agent_installer_instruction,
+        get_agent_installer_instruction_docs, get_agent_support_bundle,
+        get_agent_support_bundle_docs, list_agent_groups, list_agent_groups_docs, list_agents,
+        list_agents_docs, modify_agent_control_scan_config_docs, modify_agent_docs,
+        modify_agent_group_docs, sync_agents, sync_agents_docs, update_agent,
+        update_agent_control_scan_config, update_agent_group,
+    },
     alerts::{
         create_alert, create_alert_docs, delete_alert, delete_alert_docs, get_alert,
         get_alert_docs, list_alerts, list_alerts_docs, update_alert, update_alert_docs,
@@ -42,16 +52,12 @@ use crate::{
     },
     docs::{api_docs, redoc_js},
     emerging::{
-        clone_agent_group_docs, clone_config_docs, create_agent_group_docs, create_asset_docs,
-        create_config_docs, delete_agent_docs, delete_agent_group_docs, delete_asset_docs,
-        delete_config_docs, delete_operating_system_docs, get_agent_docs, get_agent_group_docs,
-        get_agent_installer_instruction_docs, get_agent_support_bundle_docs, get_asset_docs,
-        get_config_docs, get_operating_system_docs, get_report_applications_docs,
-        get_report_cves_docs, get_report_hosts_docs, get_report_operating_systems_docs,
-        get_report_ports_docs, list_agent_groups_docs, list_agents_docs, list_assets_docs,
-        list_configs_docs, list_operating_systems_docs, modify_agent_control_scan_config_docs,
-        modify_agent_docs, modify_agent_group_docs, modify_asset_docs, modify_config_docs,
-        modify_operating_system_docs, not_implemented, sync_agents_docs,
+        clone_config_docs, create_asset_docs, create_config_docs, delete_asset_docs,
+        delete_config_docs, delete_operating_system_docs, get_asset_docs, get_config_docs,
+        get_operating_system_docs, get_report_applications_docs, get_report_cves_docs,
+        get_report_hosts_docs, get_report_operating_systems_docs, get_report_ports_docs,
+        list_assets_docs, list_configs_docs, list_operating_systems_docs, modify_asset_docs,
+        modify_config_docs, modify_operating_system_docs, not_implemented,
     },
     error::RestError,
     feeds::{list_feeds, list_feeds_docs},
@@ -261,62 +267,62 @@ fn documented_router() -> ApiRouter<GatewayService> {
             "/api/v1/targets/{id}/clone",
             post_with(clone_target, clone_target_docs),
         )
-        // Current-GVMD agent management reserved until rust-gvm exposes typed responses
+        // Agents and agent groups
+        .api_route("/api/v1/agents", get_with(list_agents, list_agents_docs))
+        .api_route("/api/v1/agents/{id}", get_with(get_agent, get_agent_docs))
         .api_route(
-            "/api/v1/agents",
-            get_with(not_implemented, list_agents_docs),
+            "/api/v1/agents/{id}",
+            put_with(update_agent, modify_agent_docs),
         )
         .api_route(
             "/api/v1/agents/{id}",
-            get_with(not_implemented, get_agent_docs),
-        )
-        .api_route(
-            "/api/v1/agents/{id}",
-            put_with(not_implemented, modify_agent_docs),
-        )
-        .api_route(
-            "/api/v1/agents/{id}",
-            delete_with(not_implemented, delete_agent_docs),
+            delete_with(delete_agent, delete_agent_docs),
         )
         .api_route(
             "/api/v1/agents/sync",
-            post_with(not_implemented, sync_agents_docs),
+            post_with(sync_agents, sync_agents_docs),
         )
         .api_route(
             "/api/v1/agents/{id}/support-bundle",
-            get_with(not_implemented, get_agent_support_bundle_docs),
+            get_with(get_agent_support_bundle, get_agent_support_bundle_docs),
         )
         .api_route(
             "/api/v1/agent-control-scan-configs/{id}",
-            put_with(not_implemented, modify_agent_control_scan_config_docs),
+            put_with(
+                update_agent_control_scan_config,
+                modify_agent_control_scan_config_docs,
+            ),
         )
         .api_route(
             "/api/v1/scanners/{id}/agent-installer-instruction",
-            get_with(not_implemented, get_agent_installer_instruction_docs),
+            get_with(
+                get_agent_installer_instruction,
+                get_agent_installer_instruction_docs,
+            ),
         )
         .api_route(
             "/api/v1/agent-groups",
-            get_with(not_implemented, list_agent_groups_docs),
+            get_with(list_agent_groups, list_agent_groups_docs),
         )
         .api_route(
             "/api/v1/agent-groups",
-            post_with(not_implemented, create_agent_group_docs),
+            post_with(create_agent_group, create_agent_group_docs),
         )
         .api_route(
             "/api/v1/agent-groups/{id}",
-            get_with(not_implemented, get_agent_group_docs),
+            get_with(get_agent_group, get_agent_group_docs),
         )
         .api_route(
             "/api/v1/agent-groups/{id}",
-            put_with(not_implemented, modify_agent_group_docs),
+            put_with(update_agent_group, modify_agent_group_docs),
         )
         .api_route(
             "/api/v1/agent-groups/{id}",
-            delete_with(not_implemented, delete_agent_group_docs),
+            delete_with(delete_agent_group, delete_agent_group_docs),
         )
         .api_route(
             "/api/v1/agent-groups/{id}/clone",
-            post_with(not_implemented, clone_agent_group_docs),
+            post_with(clone_agent_group, clone_agent_group_docs),
         )
         // Generic assets/configs reserved without changing specific hosts/scan-configs contracts
         .api_route(

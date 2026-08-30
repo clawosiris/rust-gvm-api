@@ -6,29 +6,33 @@
 
 use async_trait::async_trait;
 use gvm_gateway_domain::{
-    Alert, AlertPage, AlertPort, AlertQuery, AuthPort, CreateAlertInput, CreateCredentialInput,
-    CreateFilterInput, CreateGroupInput, CreateHostInput, CreateNoteInput,
-    CreateOciImageTargetInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
-    CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput,
-    CreateTaskInput, CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage,
-    CredentialPort, CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage,
-    GatewayError, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
-    ModifyAlertInput, ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput,
-    ModifyNoteInput, ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput,
-    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
-    ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
-    ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget,
-    OciImageTargetPage, Override, OverridePage, Permission, PermissionPage, PortList, PortListPage,
-    PortListPort, PortListQuery, ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage,
-    ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort,
-    ReportQuery, ReportVulnerabilityPage, ResultPage, ResultPort, ResultQuery, Role, RolePage,
-    ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage,
-    ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery,
-    SpecializedTargetQuery, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
-    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
-    TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset, TlsCertificateAssetPage,
-    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
-    VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
+    Agent, AgentGroup, AgentGroupPage, AgentGroupQuery, AgentInstallerInstruction,
+    AgentInstallerInstructionQuery, AgentPage, AgentPort, AgentQuery, AgentSupportBundle,
+    AgentSupportBundleQuery, Alert, AlertPage, AlertPort, AlertQuery, AuthPort,
+    CreateAgentGroupInput, CreateAlertInput, CreateCredentialInput, CreateFilterInput,
+    CreateGroupInput, CreateHostInput, CreateNoteInput, CreateOciImageTargetInput,
+    CreateOverrideInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
+    CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput, CreateTaskInput,
+    CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage, CredentialPort,
+    CredentialQuery, CredentialStore, Feed, FeedPort, Filter, FilterPage, GatewayError,
+    GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
+    ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput,
+    ModifyCredentialInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput, ModifyNoteInput,
+    ModifyOciImageTargetInput, ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput,
+    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput,
+    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput,
+    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, Override,
+    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
+    ReadinessStatus, Report, ReportClosedCvePage, ReportErrorPage, ReportExport,
+    ReportExportRequest, ReportFormat, ReportFormatPage, ReportPage, ReportPort, ReportQuery,
+    ReportVulnerabilityPage, ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig,
+    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
+    ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SpecializedTargetQuery,
+    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
+    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
+    WebApplicationTargetPage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -809,6 +813,98 @@ impl ScannerPort for StaticGvmdAdapter {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support scanners".to_string(),
         ))
+    }
+}
+
+#[async_trait]
+impl AgentPort for StaticGvmdAdapter {
+    async fn list_agents(&self, _: &str, _: &AgentQuery) -> Result<AgentPage, GatewayError> {
+        unsupported!("static adapter does not support agents")
+    }
+
+    async fn get_agent(&self, _: &str, _: &str) -> Result<Agent, GatewayError> {
+        unsupported!("static adapter does not support agents")
+    }
+
+    async fn modify_agent(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyAgentInput,
+    ) -> Result<Agent, GatewayError> {
+        unsupported!("static adapter does not support agents")
+    }
+
+    async fn delete_agent(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support agents")
+    }
+
+    async fn sync_agents(&self, _: &str) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support agents")
+    }
+
+    async fn get_agent_support_bundle(
+        &self,
+        _: &str,
+        _: &str,
+        _: &AgentSupportBundleQuery,
+    ) -> Result<AgentSupportBundle, GatewayError> {
+        unsupported!("static adapter does not support agents")
+    }
+
+    async fn modify_agent_control_scan_config(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyAgentControlScanConfigInput,
+    ) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support agents")
+    }
+
+    async fn get_agent_installer_instruction(
+        &self,
+        _: &str,
+        _: &str,
+        _: &AgentInstallerInstructionQuery,
+    ) -> Result<AgentInstallerInstruction, GatewayError> {
+        unsupported!("static adapter does not support agents")
+    }
+
+    async fn list_agent_groups(
+        &self,
+        _: &str,
+        _: &AgentGroupQuery,
+    ) -> Result<AgentGroupPage, GatewayError> {
+        unsupported!("static adapter does not support agent groups")
+    }
+
+    async fn create_agent_group(
+        &self,
+        _: &str,
+        _: CreateAgentGroupInput,
+    ) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support agent groups")
+    }
+
+    async fn get_agent_group(&self, _: &str, _: &str) -> Result<AgentGroup, GatewayError> {
+        unsupported!("static adapter does not support agent groups")
+    }
+
+    async fn modify_agent_group(
+        &self,
+        _: &str,
+        _: &str,
+        _: ModifyAgentGroupInput,
+    ) -> Result<AgentGroup, GatewayError> {
+        unsupported!("static adapter does not support agent groups")
+    }
+
+    async fn delete_agent_group(&self, _: &str, _: &str, _: bool) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support agent groups")
+    }
+
+    async fn clone_agent_group(&self, _: &str, _: &str) -> Result<String, GatewayError> {
+        unsupported!("static adapter does not support agent groups")
     }
 }
 
