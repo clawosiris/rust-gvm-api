@@ -14,8 +14,8 @@ use crate::{
     CreateOciImageTargetInput, CreateOverrideInput, CreatePermissionInput, CreatePortListInput,
     CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput,
     CreateTaskInput, CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage,
-    CredentialQuery, CredentialStore, Cve, CvePage, DfnCertAdvisory, DfnCertAdvisoryPage, Feed,
-    Filter, FilterPage, GatewayError, GenericAsset, GenericAssetPage, GenericConfig,
+    CredentialQuery, CredentialStore, Cve, CvePage, DfnCertAdvisory, DfnCertAdvisoryPage, FeedList,
+    FeedQuery, Filter, FilterPage, GatewayError, GenericAsset, GenericAssetPage, GenericConfig,
     GenericConfigPage, GenericConfigQuery, GetReportOpts, Group, GroupPage, Host, HostPage,
     IdentityQuery, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput,
     ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput, ModifyCredentialStoreInput,
@@ -257,7 +257,11 @@ pub trait PortListPort: Send + Sync + 'static {
 #[async_trait]
 pub trait FeedPort: Send + Sync + 'static {
     /// List feed status for the session.
-    async fn list_feeds(&self, session_token: &str) -> Result<Vec<Feed>, GatewayError>;
+    async fn list_feeds(
+        &self,
+        session_token: &str,
+        query: &FeedQuery,
+    ) -> Result<FeedList, GatewayError>;
 }
 
 /// Port for identity and access-control operations.

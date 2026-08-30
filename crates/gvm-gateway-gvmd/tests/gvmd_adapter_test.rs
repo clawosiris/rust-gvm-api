@@ -3565,6 +3565,39 @@ async fn gvmd_adapter_create_task_emits_each_typed_target_variant() {
     server.shutdown().await;
 }
 
+#[tokio::test]
+async fn gvmd_adapter_feed_filter_uses_typed_command_and_preserves_access_flags() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let feeds = adapter
+        .list_feeds(
+            &token,
+            &FeedQuery {
+                feed_type: Some("NVT".to_string()),
+            },
+        )
+        .await
+        .expect("filtered feed list");
+
+    let xml = recorded_xml(&server, "get_feeds");
+    assert!(xml.contains("type=\"NVT\""));
+    assert!(feeds.data.iter().all(|feed| feed.feed_type == "NVT"));
+
+    let error = adapter
+        .list_feeds(
+            &token,
+            &FeedQuery {
+                feed_type: Some("FUTURE".to_string()),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, GatewayError::InvalidInput(message) if message.contains("FUTURE")));
+
+    server.shutdown().await;
+}
+
 fn recorded_xml(server: &MockGmpServer, command_name: &str) -> String {
     let history = server.command_history();
     let command = history

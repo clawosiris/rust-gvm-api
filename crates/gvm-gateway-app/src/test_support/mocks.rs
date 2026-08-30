@@ -14,8 +14,8 @@ use gvm_gateway_domain::{
     CreateOverrideInput, CreatePermissionInput, CreatePortListInput, CreateRoleInput,
     CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput, CreateTaskInput,
     CreateUserInput, Credential, CredentialPage, CredentialPort, CredentialQuery, CredentialStore,
-    Cve, CvePage, DfnCertAdvisory, DfnCertAdvisoryPage, Feed, FeedPort, Filter, FilterPage,
-    GatewayError, GenericAsset, GenericAssetPage, GenericConfig, GenericConfigPage,
+    Cve, CvePage, DfnCertAdvisory, DfnCertAdvisoryPage, FeedList, FeedPort, FeedQuery, Filter,
+    FilterPage, GatewayError, GenericAsset, GenericAssetPage, GenericConfig, GenericConfigPage,
     GenericConfigQuery, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort,
     IdentityQuery, JobArtifact, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput,
     ModifyAgentInput, ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput,
@@ -296,8 +296,13 @@ pub(crate) struct MockFeedPort;
 
 #[async_trait]
 impl FeedPort for MockFeedPort {
-    async fn list_feeds(&self, _: &str) -> Result<Vec<Feed>, GatewayError> {
-        Ok(vec![])
+    async fn list_feeds(&self, _: &str, _: &FeedQuery) -> Result<FeedList, GatewayError> {
+        Ok(FeedList {
+            data: vec![],
+            feed_owner_configured: false,
+            feed_roles_configured: false,
+            feed_resources_access: false,
+        })
     }
 }
 
