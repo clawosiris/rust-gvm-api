@@ -181,6 +181,53 @@ pub(crate) struct TaskListQueryDoc {
 pub(crate) struct CreateTaskDoc {
     name: String,
     comment: Option<String>,
+    #[serde(rename = "type")]
+    task_type: Option<TaskCreateTypeDoc>,
+    #[serde(rename = "targetId")]
+    target_id: Option<Uuid>,
+    #[serde(rename = "agentGroupId")]
+    agent_group_id: Option<Uuid>,
+    #[serde(rename = "ociImageTargetId")]
+    oci_image_target_id: Option<Uuid>,
+    #[serde(rename = "webApplicationTargetId")]
+    web_application_target_id: Option<Uuid>,
+    #[serde(rename = "scanConfigId")]
+    scan_config_id: Option<Uuid>,
+    #[serde(rename = "scannerId")]
+    scanner_id: Option<Uuid>,
+    #[serde(rename = "scheduleId")]
+    schedule_id: Option<Uuid>,
+    #[serde(rename = "alertIds")]
+    alert_ids: Option<Vec<Uuid>>,
+    alterable: Option<bool>,
+    #[serde(rename = "hostsOrdering")]
+    hosts_ordering: Option<HostsOrderingDoc>,
+    observers: Option<Vec<String>>,
+    #[serde(rename = "schedulePeriods")]
+    schedule_periods: Option<u32>,
+    preferences: Option<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+pub(crate) enum TaskCreateTypeDoc {
+    #[serde(rename = "classic")]
+    Classic,
+    #[serde(rename = "agentGroup")]
+    AgentGroup,
+    #[serde(rename = "ociImage")]
+    OciImage,
+    #[serde(rename = "webApplication")]
+    WebApplication,
+    #[serde(rename = "import")]
+    Import,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[schemars(rename = "CreateAudit")]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CreateAuditDoc {
+    name: String,
+    comment: Option<String>,
     #[serde(rename = "targetId")]
     target_id: Uuid,
     #[serde(rename = "scanConfigId")]

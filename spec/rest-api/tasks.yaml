@@ -248,6 +248,12 @@ components:
           type: integer
         target:
           $ref: "./common.yaml#/components/schemas/ResourceRef"
+        agentGroup:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        ociImageTarget:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
+        webApplicationTarget:
+          $ref: "./common.yaml#/components/schemas/ResourceRef"
         scanConfig:
           $ref: "./common.yaml#/components/schemas/ResourceRef"
         scanner:
@@ -282,6 +288,79 @@ components:
           type: boolean
 
     CreateTask:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        comment:
+          type: string
+        type:
+          type: string
+          description: |
+            Optional task variant discriminator. Existing classic requests may
+            omit it. Non-classic requests may be inferred from their selector;
+            import tasks must use `import`.
+          enum:
+            - classic
+            - agentGroup
+            - ociImage
+            - webApplication
+            - import
+        targetId:
+          type: string
+          format: uuid
+          description: Classic target selector.
+        agentGroupId:
+          type: string
+          format: uuid
+          description: Agent-group selector.
+        ociImageTargetId:
+          type: string
+          format: uuid
+          description: OCI image target selector.
+        webApplicationTargetId:
+          type: string
+          format: uuid
+          description: Web application target selector.
+        scanConfigId:
+          type: string
+          format: uuid
+          description: Required for classic tasks and rejected for other variants.
+        scannerId:
+          type: string
+          format: uuid
+          description: Required for every non-import task.
+        scheduleId:
+          type: string
+          format: uuid
+        alertIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        alterable:
+          type: boolean
+        hostsOrdering:
+          $ref: "./common.yaml#/components/schemas/HostsOrdering"
+        observers:
+          type: array
+          items:
+            type: string
+        schedulePeriods:
+          type: integer
+        preferences:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value scan preferences.
+      description: |
+        Exactly one target selector is required for scan tasks. Classic tasks
+        additionally require `scanConfigId`; every scan task requires
+        `scannerId`. Import tasks accept only `type`, `name`, and `comment`.
+
+    CreateAudit:
       type: object
       required:
         - name

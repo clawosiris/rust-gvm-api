@@ -37,7 +37,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "./tasks.yaml#/components/schemas/CreateTask"
+              $ref: "./tasks.yaml#/components/schemas/CreateAudit"
       responses:
         "201":
           description: Audit created

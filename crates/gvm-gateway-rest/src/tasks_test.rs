@@ -5,8 +5,8 @@ use serde_json::json;
 
 use super::{CreateTaskRequest, ModifyTaskRequest, TaskResponse};
 use gvm_gateway_domain::{
-    ResourceRef, Task, TaskObservers, TaskReportComplianceCount, TaskReportReference,
-    TaskReportResultCount,
+    CreateTaskTarget, ResourceRef, Task, TaskObservers, TaskReportComplianceCount,
+    TaskReportReference, TaskReportResultCount,
 };
 
 fn task_with_status(status: &str) -> Task {
@@ -17,6 +17,9 @@ fn task_with_status(status: &str) -> Task {
         status: status.to_string(),
         progress: Some(42),
         target: None,
+        agent_group: None,
+        oci_image_target: None,
+        web_application_target: None,
         scan_config: None,
         scanner: None,
         schedule: None,
@@ -108,6 +111,144 @@ fn task_response_preserves_group_and_role_observers() {
     assert!(json["observers"].get("users").is_none());
     assert_eq!(json["observers"]["groups"][0]["name"], "Auditors");
     assert_eq!(json["observers"]["roles"][0]["name"], "Observers");
+}
+
+#[test]
+fn task_response_projects_specialized_target_references() {
+    let response = TaskResponse::from(Task {
+        agent_group: Some(ResourceRef {
+            id: "11111111-1111-1111-1111-111111111111".to_string(),
+            name: Some("Agents".to_string()),
+        }),
+        oci_image_target: Some(ResourceRef {
+            id: "22222222-2222-2222-2222-222222222222".to_string(),
+            name: Some("Container".to_string()),
+        }),
+        web_application_target: Some(ResourceRef {
+            id: "33333333-3333-3333-3333-333333333333".to_string(),
+            name: Some("Web app".to_string()),
+        }),
+        ..task_with_status("New")
+    });
+
+    let json = serde_json::to_value(response).expect("task response should serialize");
+    assert_eq!(json["agentGroup"]["name"], "Agents");
+    assert_eq!(json["ociImageTarget"]["name"], "Container");
+    assert_eq!(json["webApplicationTarget"]["name"], "Web app");
+}
+
+#[test]
+fn create_task_request_preserves_classic_compatibility_and_infers_specialized_variants() {
+    let classic: CreateTaskRequest = serde_json::from_value(json!({
+        "name": "Classic",
+        "targetId": "11111111-1111-1111-1111-111111111111",
+        "scanConfigId": "22222222-2222-2222-2222-222222222222",
+        "scannerId": "33333333-3333-3333-3333-333333333333"
+    }))
+    .unwrap();
+    assert!(matches!(
+        classic.validate().unwrap().target,
+        CreateTaskTarget::Classic { .. }
+    ));
+
+    for (request, expected) in [
+        (
+            json!({
+                "name": "Agents",
+                "agentGroupId": "11111111-1111-1111-1111-111111111111",
+                "scannerId": "33333333-3333-3333-3333-333333333333"
+            }),
+            "agentGroup",
+        ),
+        (
+            json!({
+                "name": "Container",
+                "ociImageTargetId": "11111111-1111-1111-1111-111111111111",
+                "scannerId": "33333333-3333-3333-3333-333333333333"
+            }),
+            "ociImage",
+        ),
+        (
+            json!({
+                "name": "Web",
+                "webApplicationTargetId": "11111111-1111-1111-1111-111111111111",
+                "scannerId": "33333333-3333-3333-3333-333333333333"
+            }),
+            "webApplication",
+        ),
+    ] {
+        let input = serde_json::from_value::<CreateTaskRequest>(request)
+            .unwrap()
+            .validate()
+            .unwrap();
+        assert!(matches!(
+            (&input.target, expected),
+            (CreateTaskTarget::AgentGroup { .. }, "agentGroup")
+                | (CreateTaskTarget::OciImage { .. }, "ociImage")
+                | (CreateTaskTarget::WebApplication { .. }, "webApplication")
+        ));
+    }
+}
+
+#[test]
+fn create_import_task_accepts_only_name_and_comment() {
+    let input = serde_json::from_value::<CreateTaskRequest>(json!({
+        "type": "import",
+        "name": "Imported reports",
+        "comment": "bounded upload owner"
+    }))
+    .unwrap()
+    .validate()
+    .unwrap();
+    assert_eq!(input.target, CreateTaskTarget::Import);
+
+    let error = serde_json::from_value::<CreateTaskRequest>(json!({
+        "type": "import",
+        "name": "Invalid import",
+        "scannerId": "33333333-3333-3333-3333-333333333333"
+    }))
+    .unwrap()
+    .validate()
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        gvm_gateway_domain::GatewayError::InvalidInput(message)
+            if message.contains("accept only")
+    ));
+}
+
+#[test]
+fn create_task_rejects_ambiguous_or_mismatched_selectors() {
+    let ambiguous = serde_json::from_value::<CreateTaskRequest>(json!({
+        "name": "Ambiguous",
+        "targetId": "11111111-1111-1111-1111-111111111111",
+        "agentGroupId": "22222222-2222-2222-2222-222222222222",
+        "scanConfigId": "33333333-3333-3333-3333-333333333333",
+        "scannerId": "44444444-4444-4444-4444-444444444444"
+    }))
+    .unwrap()
+    .validate()
+    .unwrap_err();
+    assert!(matches!(
+        ambiguous,
+        gvm_gateway_domain::GatewayError::InvalidInput(message)
+            if message.contains("exactly one")
+    ));
+
+    let mismatch = serde_json::from_value::<CreateTaskRequest>(json!({
+        "type": "ociImage",
+        "name": "Mismatch",
+        "agentGroupId": "22222222-2222-2222-2222-222222222222",
+        "scannerId": "44444444-4444-4444-4444-444444444444"
+    }))
+    .unwrap()
+    .validate()
+    .unwrap_err();
+    assert!(matches!(
+        mismatch,
+        gvm_gateway_domain::GatewayError::InvalidInput(message)
+            if message.contains("does not match")
+    ));
 }
 
 #[test]

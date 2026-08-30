@@ -20,8 +20,8 @@ use crate::auth_policy::{
 mod doc;
 
 pub(crate) use doc::{
-    CreateTargetDoc, CreateTaskDoc, GetReportQueryDoc, ModifyTargetDoc, ModifyTaskDoc,
-    ProblemDetailDoc, ReportListQueryDoc, ReportResultsQueryDoc, ResourceIdPathDoc,
+    CreateAuditDoc, CreateTargetDoc, CreateTaskDoc, GetReportQueryDoc, ModifyTargetDoc,
+    ModifyTaskDoc, ProblemDetailDoc, ReportListQueryDoc, ReportResultsQueryDoc, ResourceIdPathDoc,
     ResultListQueryDoc, ScanConfigListQueryDoc, TargetListQueryDoc, TaskListQueryDoc,
 };
 
