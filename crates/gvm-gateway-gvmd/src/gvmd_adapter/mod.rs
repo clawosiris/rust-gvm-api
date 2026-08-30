@@ -162,7 +162,8 @@ use gvm_gmp::{
         GetVulnerabilitiesResponse, GetWebApplicationTargetsResponse, ModifyUserSettingResponse,
         ResumeTaskResponse, StartTaskResponse, User as GmpUser,
     },
-    CollectionUpdate, EntityId, Pagination as GmpPagination, ScalarUpdate,
+    CollectionUpdate, EntityId, Pagination as GmpPagination, ScalarUpdate, TargetHost, TargetHosts,
+    TargetPortRange, TargetPortSelection,
 };
 use gvm_protocol::{Request, Response};
 use tracing::{field, info_span, Instrument};
@@ -204,10 +205,10 @@ use session::{
     connect_authenticated_client, CredentialStoreCapability, SessionClient, SharedClient,
 };
 use supporting_inputs::{
-    collection_update, filter_opts_from_create_input, filter_opts_from_modify_input,
-    host_opts_from_create_input, host_opts_from_modify_input, note_opts_from_create_input,
-    note_opts_from_modify_input, override_opts_from_create_input, override_opts_from_modify_input,
-    tag_opts_from_create_input, tag_opts_from_modify_input,
+    filter_opts_from_create_input, filter_opts_from_modify_input, host_opts_from_create_input,
+    host_opts_from_modify_input, note_opts_from_create_input, note_opts_from_modify_input,
+    override_opts_from_create_input, override_opts_from_modify_input, tag_opts_from_create_input,
+    tag_opts_from_modify_input,
 };
 
 /// gvmd adapter backed by session-keyed GMP clients.

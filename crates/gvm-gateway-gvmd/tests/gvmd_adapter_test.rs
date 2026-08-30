@@ -1022,6 +1022,48 @@ async fn gvmd_adapter_modify_port_list_forwards_rename() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_rejects_unsupported_atomic_port_range_replacement() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let result = adapter
+        .modify_port_list(
+            &token,
+            "550e8400-e29b-41d4-a716-446655440124",
+            ModifyPortListInput {
+                port_range: Some("T:22".to_string()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(matches!(result, Err(GatewayError::InvalidInput(_))));
+    assert!(server.command_history().is_empty());
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_validates_atomic_target_host_replacements() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    server.clear_history();
+
+    let result = adapter
+        .modify_target(
+            &token,
+            "550e8400-e29b-41d4-a716-446655440001",
+            ModifyTargetInput {
+                exclude_hosts: Some(vec!["192.0.2.1".to_string()]),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(matches!(result, Err(GatewayError::InvalidInput(_))));
+    assert!(server.command_history().is_empty());
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_modify_user_preserves_hosts_when_request_omits_hosts() {
     let user_id =
         uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440099").expect("valid user id");

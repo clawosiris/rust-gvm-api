@@ -98,6 +98,12 @@ impl PortListPort for GvmdAdapter {
         id: &str,
         input: ModifyPortListInput,
     ) -> Result<PortList, GatewayError> {
+        if input.port_range.is_some() {
+            return Err(GatewayError::InvalidInput(
+                "portRange cannot be replaced atomically; update individual port ranges instead"
+                    .to_string(),
+            ));
+        }
         let client = self.session_client(session_token)?;
         let response = client
             .lock()
@@ -107,7 +113,6 @@ impl PortListPort for GvmdAdapter {
                 ModifyPortListOpts {
                     name: input.name,
                     comment: input.comment,
-                    port_range: input.port_range,
                 },
             ))
             .await

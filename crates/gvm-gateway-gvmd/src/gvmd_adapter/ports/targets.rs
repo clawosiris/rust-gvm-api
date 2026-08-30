@@ -95,33 +95,38 @@ impl TargetPort for GvmdAdapter {
         session_token: &str,
         input: CreateTargetInput,
     ) -> Result<String, GatewayError> {
+        let hosts = target_hosts(input.hosts, input.exclude_hosts)?;
+        let ports = input
+            .port_list_id
+            .as_deref()
+            .map(parse_entity_id)
+            .transpose()?
+            .map(TargetPortSelection::PortList)
+            .unwrap_or_else(default_target_ports);
         let request = create_target(
             &input.name,
             CreateTargetOpts {
                 comment: input.comment,
-                hosts: input.hosts,
-                exclude_hosts: input.exclude_hosts,
+                hosts,
                 alive_test: input
                     .alive_test
                     .as_deref()
                     .map(parse_alive_test)
                     .transpose()?,
-                port_list_id: input
-                    .port_list_id
-                    .as_deref()
-                    .map(parse_entity_id)
-                    .transpose()?,
+                ports,
                 ssh_credential_id: input
                     .ssh_credential_id
                     .as_deref()
                     .map(parse_entity_id)
                     .transpose()?,
                 ssh_credential_port: None,
+                ssh_elevate_credential_id: None,
                 smb_credential_id: input
                     .smb_credential_id
                     .as_deref()
                     .map(parse_entity_id)
                     .transpose()?,
+                krb5_credential_id: None,
                 esxi_credential_id: input
                     .esxi_credential_id
                     .as_deref()
@@ -134,6 +139,7 @@ impl TargetPort for GvmdAdapter {
                     .transpose()?,
                 reverse_lookup_only: input.reverse_lookup_only,
                 reverse_lookup_unify: input.reverse_lookup_unify,
+                allow_simultaneous_ips: None,
             },
         )
         .map_err(|error| GatewayError::InvalidInput(error.to_string()))?;
@@ -180,13 +186,24 @@ impl TargetPort for GvmdAdapter {
         input: ModifyTargetInput,
     ) -> Result<Target, GatewayError> {
         let target_id = parse_entity_id(id)?;
+        let hosts = match (input.hosts, input.exclude_hosts) {
+            (None, None) => None,
+            (Some(included), excluded) => {
+                Some(target_hosts(included, excluded.unwrap_or_default())?)
+            }
+            (None, Some(_)) => {
+                return Err(GatewayError::InvalidInput(
+                    "excludeHosts requires hosts so both lists can be replaced atomically"
+                        .to_string(),
+                ));
+            }
+        };
         let request = modify_target(
             &target_id,
             ModifyTargetOpts {
                 name: input.name,
                 comment: input.comment,
-                hosts: collection_update(input.hosts),
-                exclude_hosts: collection_update(input.exclude_hosts),
+                hosts,
                 reverse_lookup_only: input.reverse_lookup_only,
                 reverse_lookup_unify: input.reverse_lookup_unify,
                 alive_test: input
@@ -209,6 +226,7 @@ impl TargetPort for GvmdAdapter {
                     .map(ScalarUpdate::Set)
                     .unwrap_or_default(),
                 ssh_credential_port: ScalarUpdate::Omitted,
+                ssh_elevate_credential_id: ScalarUpdate::Omitted,
                 smb_credential_id: input
                     .smb_credential_id
                     .as_deref()
@@ -216,6 +234,7 @@ impl TargetPort for GvmdAdapter {
                     .transpose()?
                     .map(ScalarUpdate::Set)
                     .unwrap_or_default(),
+                krb5_credential_id: ScalarUpdate::Omitted,
                 esxi_credential_id: input
                     .esxi_credential_id
                     .as_deref()
@@ -230,6 +249,7 @@ impl TargetPort for GvmdAdapter {
                     .transpose()?
                     .map(ScalarUpdate::Set)
                     .unwrap_or_default(),
+                allow_simultaneous_ips: None,
             },
         )
         .map_err(|error| GatewayError::InvalidInput(error.to_string()))?;
@@ -662,4 +682,27 @@ impl TargetPort for GvmdAdapter {
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(())
     }
+}
+
+fn target_hosts(included: Vec<String>, excluded: Vec<String>) -> Result<TargetHosts, GatewayError> {
+    let included = included
+        .into_iter()
+        .map(|host| host.parse::<TargetHost>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| GatewayError::InvalidInput(error.to_string()))?;
+    let excluded = excluded
+        .into_iter()
+        .map(|host| host.parse::<TargetHost>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| GatewayError::InvalidInput(error.to_string()))?;
+    TargetHosts::new(included, excluded)
+        .map_err(|error| GatewayError::InvalidInput(error.to_string()))
+}
+
+fn default_target_ports() -> TargetPortSelection {
+    TargetPortSelection::PortRange(
+        "T:1-65535"
+            .parse::<TargetPortRange>()
+            .expect("the built-in full TCP port range is valid"),
+    )
 }
