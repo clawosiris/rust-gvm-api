@@ -30,13 +30,14 @@ use gvm_gateway_domain::{
     ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest,
     ReportFormat, ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage,
     ReportPort, ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultPort,
-    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
-    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
-    SchedulePort, ScheduleQuery, SpecializedTargetQuery, SupportingResourcePort,
-    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
-    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone,
-    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
+    ResultQuery, Role, RolePage, ScanConfig, ScanConfigNvtPage, ScanConfigNvtQuery, ScanConfigPage,
+    ScanConfigPort, ScanConfigPreference, ScanConfigPreferenceQuery, ScanConfigQuery, ScanResult,
+    Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort,
+    ScheduleQuery, SetScanConfigFamilySelectionInput, SpecializedTargetQuery,
+    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
+    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
     WebApplicationTargetPage,
 };
 
@@ -856,6 +857,68 @@ impl ScanConfigPort for StaticGvmdAdapter {
         Err(GatewayError::BackendUnavailable(
             "static adapter does not support scan configs".to_string(),
         ))
+    }
+
+    async fn list_scan_config_nvts(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ScanConfigNvtQuery,
+    ) -> Result<ScanConfigNvtPage, GatewayError> {
+        unsupported!("static adapter does not support scan config NVTs")
+    }
+
+    async fn get_scan_config_nvt(&self, _: &str, _: &str, _: &str) -> Result<Nvt, GatewayError> {
+        unsupported!("static adapter does not support scan config NVTs")
+    }
+
+    async fn list_scan_config_preferences(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ScanConfigPreferenceQuery,
+    ) -> Result<Vec<ScanConfigPreference>, GatewayError> {
+        unsupported!("static adapter does not support scan config preferences")
+    }
+
+    async fn get_scan_config_preference(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: &ScanConfigPreferenceQuery,
+    ) -> Result<ScanConfigPreference, GatewayError> {
+        unsupported!("static adapter does not support scan config preferences")
+    }
+
+    async fn set_scan_config_nvt_selection(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: Vec<String>,
+    ) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support scan config selection")
+    }
+
+    async fn set_scan_config_family_selection(
+        &self,
+        _: &str,
+        _: &str,
+        _: SetScanConfigFamilySelectionInput,
+    ) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support scan config selection")
+    }
+
+    async fn set_scan_config_preference(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: Option<String>,
+        _: Option<String>,
+    ) -> Result<(), GatewayError> {
+        unsupported!("static adapter does not support scan config preferences")
     }
 
     async fn list_policies(

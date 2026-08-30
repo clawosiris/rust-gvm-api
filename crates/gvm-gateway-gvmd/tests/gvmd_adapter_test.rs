@@ -990,6 +990,67 @@ async fn gvmd_adapter_modify_scan_config_forwards_rename() {
 }
 
 #[tokio::test]
+async fn gvmd_adapter_scan_config_selection_uses_typed_modify_shapes() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    let config_id = "550e8400-e29b-41d4-a716-446655440123";
+
+    let _ = adapter
+        .set_scan_config_nvt_selection(
+            &token,
+            config_id,
+            "Web Servers",
+            vec!["1.3.6.1.4.1".to_string()],
+        )
+        .await;
+    let _ = adapter
+        .set_scan_config_family_selection(
+            &token,
+            config_id,
+            SetScanConfigFamilySelectionInput {
+                families: vec![ScanConfigFamilySelection {
+                    name: "Web Servers".to_string(),
+                    growing: true,
+                    all: false,
+                }],
+                auto_add_new_families: true,
+            },
+        )
+        .await;
+    let _ = adapter
+        .set_scan_config_preference(
+            &token,
+            config_id,
+            "Timeout",
+            Some("1.3.6.1.4.1".to_string()),
+            Some("10".to_string()),
+        )
+        .await;
+
+    let commands = server
+        .command_history()
+        .into_iter()
+        .filter(|record| record.command_name() == "modify_config")
+        .map(|record| String::from_utf8(record.raw_xml().to_vec()).expect("XML command"))
+        .collect::<Vec<_>>();
+    assert!(commands.iter().any(|xml| {
+        xml.contains("<nvt_selection>")
+            && xml.contains("<family>Web Servers</family>")
+            && xml.contains("oid=\"1.3.6.1.4.1\"")
+    }));
+    assert!(commands.iter().any(|xml| {
+        xml.contains("<family_selection>")
+            && xml.contains("<growing>1</growing>")
+            && xml.contains("<all>0</all>")
+    }));
+    assert!(commands.iter().any(|xml| {
+        xml.contains("<preference>")
+            && xml.contains("<nvt oid=\"1.3.6.1.4.1\"")
+            && xml.contains("<value>MTA=</value>")
+    }));
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn gvmd_adapter_modify_port_list_forwards_rename() {
     let (adapter, server, token) = create_mock_adapter().await;
     server.clear_history();

@@ -96,9 +96,15 @@ use crate::{
     scan_configs::{
         create_policy, create_policy_docs, create_scan_config, create_scan_config_docs,
         delete_policy, delete_policy_docs, delete_scan_config, delete_scan_config_docs, get_policy,
-        get_policy_docs, get_scan_config, get_scan_config_docs, list_policies, list_policies_docs,
-        list_scan_configs, list_scan_configs_docs, update_policy, update_policy_docs,
-        update_scan_config, update_scan_config_docs,
+        get_policy_docs, get_scan_config, get_scan_config_docs, get_scan_config_nvt,
+        get_scan_config_nvt_docs, get_scan_config_preference, get_scan_config_preference_docs,
+        list_policies, list_policies_docs, list_scan_config_nvts, list_scan_config_nvts_docs,
+        list_scan_config_preferences, list_scan_config_preferences_docs, list_scan_configs,
+        list_scan_configs_docs, set_scan_config_family_selection,
+        set_scan_config_family_selection_docs, set_scan_config_nvt_selection,
+        set_scan_config_nvt_selection_docs, set_scan_config_preference,
+        set_scan_config_preference_docs, update_policy, update_policy_docs, update_scan_config,
+        update_scan_config_docs,
     },
     scanners::{get_scanner, get_scanner_docs, list_scanners, list_scanners_docs},
     schedules::{
@@ -855,6 +861,43 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/scan-configs/{id}",
             delete_with(delete_scan_config, delete_scan_config_docs),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}/nvts",
+            get_with(list_scan_config_nvts, list_scan_config_nvts_docs),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}/nvts/{oid}",
+            get_with(get_scan_config_nvt, get_scan_config_nvt_docs),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}/preferences",
+            get_with(
+                list_scan_config_preferences,
+                list_scan_config_preferences_docs,
+            ),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}/preferences/{name}",
+            get_with(get_scan_config_preference, get_scan_config_preference_docs),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}/preferences/{name}",
+            put_with(set_scan_config_preference, set_scan_config_preference_docs),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}/families/{family}/nvts",
+            put_with(
+                set_scan_config_nvt_selection,
+                set_scan_config_nvt_selection_docs,
+            ),
+        )
+        .api_route(
+            "/api/v1/scan-configs/{id}/family-selection",
+            put_with(
+                set_scan_config_family_selection,
+                set_scan_config_family_selection_docs,
+            ),
         )
         // Policies (compliance scan configs; get reuses the scan-config handler)
         .api_route(

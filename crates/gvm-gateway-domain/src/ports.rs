@@ -29,13 +29,14 @@ use crate::{
     ReadinessStatus, Report, ReportApplicationPage, ReportClosedCvePage, ReportCvePage,
     ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
     ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPortPage, ReportQuery,
-    ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery, Schedule, SchedulePage,
-    ScheduleQuery, SpecializedTargetQuery, SupportingResourceQuery, Tag, TagPage, Target,
-    TargetPage, TargetQuery, Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone,
-    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
-    WebApplicationTargetPage,
+    ReportVulnerabilityPage, ResultPage, ResultQuery, Role, RolePage, ScanConfig,
+    ScanConfigNvtPage, ScanConfigNvtQuery, ScanConfigPage, ScanConfigPreference,
+    ScanConfigPreferenceQuery, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerQuery,
+    Schedule, SchedulePage, ScheduleQuery, SetScanConfigFamilySelectionInput,
+    SpecializedTargetQuery, SupportingResourceQuery, Tag, TagPage, Target, TargetPage, TargetQuery,
+    Task, TaskAction, TaskPage, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
+    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
 
 /// Port for system information needed by the gateway.
@@ -613,6 +614,66 @@ pub trait ScanConfigPort: Send + Sync + 'static {
         session_token: &str,
         id: &str,
         ultimate: bool,
+    ) -> Result<(), GatewayError>;
+
+    /// List NVTs selected by a scan configuration.
+    async fn list_scan_config_nvts(
+        &self,
+        session_token: &str,
+        id: &str,
+        query: &ScanConfigNvtQuery,
+    ) -> Result<ScanConfigNvtPage, GatewayError>;
+
+    /// Fetch one selected NVT.
+    async fn get_scan_config_nvt(
+        &self,
+        session_token: &str,
+        id: &str,
+        oid: &str,
+    ) -> Result<Nvt, GatewayError>;
+
+    /// List scanner or NVT preferences resolved for a scan configuration.
+    async fn list_scan_config_preferences(
+        &self,
+        session_token: &str,
+        id: &str,
+        query: &ScanConfigPreferenceQuery,
+    ) -> Result<Vec<ScanConfigPreference>, GatewayError>;
+
+    /// Fetch one scanner or NVT preference.
+    async fn get_scan_config_preference(
+        &self,
+        session_token: &str,
+        id: &str,
+        name: &str,
+        query: &ScanConfigPreferenceQuery,
+    ) -> Result<ScanConfigPreference, GatewayError>;
+
+    /// Replace the selected NVTs for one family.
+    async fn set_scan_config_nvt_selection(
+        &self,
+        session_token: &str,
+        id: &str,
+        family: &str,
+        nvt_oids: Vec<String>,
+    ) -> Result<(), GatewayError>;
+
+    /// Replace scan-config family selection atomically.
+    async fn set_scan_config_family_selection(
+        &self,
+        session_token: &str,
+        id: &str,
+        input: SetScanConfigFamilySelectionInput,
+    ) -> Result<(), GatewayError>;
+
+    /// Set or reset a scanner or NVT preference.
+    async fn set_scan_config_preference(
+        &self,
+        session_token: &str,
+        id: &str,
+        name: &str,
+        nvt_oid: Option<String>,
+        value: Option<String>,
     ) -> Result<(), GatewayError>;
 
     /// List policies (compliance scan configs) for the session.
