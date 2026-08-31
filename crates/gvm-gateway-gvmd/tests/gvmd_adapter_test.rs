@@ -3234,6 +3234,113 @@ async fn gvmd_adapter_clone_task_emits_copy_command() {
     server.shutdown().await;
 }
 
+#[tokio::test]
+async fn gvmd_adapter_create_task_emits_each_typed_target_variant() {
+    let (adapter, server, token) = create_mock_adapter().await;
+    let scanner_id = "11111111-1111-1111-1111-111111111111";
+    let target_id = "22222222-2222-2222-2222-222222222222";
+    let config_id = "33333333-3333-3333-3333-333333333333";
+    let input = |name: &str, target| CreateTaskInput {
+        name: name.to_string(),
+        comment: Some("typed selector".to_string()),
+        target,
+        schedule_id: None,
+        alert_ids: vec![],
+        alterable: Some(true),
+        hosts_ordering: None,
+        observers: vec![],
+        schedule_periods: None,
+        preferences: vec![],
+    };
+
+    server.clear_history();
+    let _ = adapter
+        .create_task(
+            &token,
+            input(
+                "Classic",
+                CreateTaskTarget::Classic {
+                    target_id: target_id.to_string(),
+                    scan_config_id: config_id.to_string(),
+                    scanner_id: scanner_id.to_string(),
+                },
+            ),
+        )
+        .await;
+    let xml = recorded_xml(&server, "create_task");
+    assert!(xml.contains(&format!("<target id=\"{target_id}\"")));
+    assert!(xml.contains(&format!("<config id=\"{config_id}\"")));
+
+    server.clear_history();
+    let _ = adapter
+        .create_task(
+            &token,
+            input(
+                "Agents",
+                CreateTaskTarget::AgentGroup {
+                    agent_group_id: target_id.to_string(),
+                    scanner_id: scanner_id.to_string(),
+                },
+            ),
+        )
+        .await;
+    assert!(
+        recorded_xml(&server, "create_task").contains(&format!("<agent_group id=\"{target_id}\""))
+    );
+
+    server.clear_history();
+    let _ = adapter
+        .create_task(
+            &token,
+            input(
+                "Container",
+                CreateTaskTarget::OciImage {
+                    oci_image_target_id: target_id.to_string(),
+                    scanner_id: scanner_id.to_string(),
+                },
+            ),
+        )
+        .await;
+    assert!(recorded_xml(&server, "create_task")
+        .contains(&format!("<oci_image_target id=\"{target_id}\"")));
+
+    server.clear_history();
+    let _ = adapter
+        .create_task(
+            &token,
+            input(
+                "Web",
+                CreateTaskTarget::WebApplication {
+                    web_application_target_id: target_id.to_string(),
+                    scanner_id: scanner_id.to_string(),
+                },
+            ),
+        )
+        .await;
+    assert!(recorded_xml(&server, "create_task")
+        .contains(&format!("<web_application_target id=\"{target_id}\"")));
+
+    server.clear_history();
+    let import = CreateTaskInput {
+        name: "Import".to_string(),
+        comment: Some("report owner".to_string()),
+        target: CreateTaskTarget::Import,
+        schedule_id: None,
+        alert_ids: vec![],
+        alterable: None,
+        hosts_ordering: None,
+        observers: vec![],
+        schedule_periods: None,
+        preferences: vec![],
+    };
+    let _ = adapter.create_task(&token, import).await;
+    let xml = recorded_xml(&server, "create_task");
+    assert!(xml.contains("<target id=\"0\""));
+    assert!(!xml.contains("<scanner"));
+
+    server.shutdown().await;
+}
+
 fn recorded_xml(server: &MockGmpServer, command_name: &str) -> String {
     let history = server.command_history();
     let command = history

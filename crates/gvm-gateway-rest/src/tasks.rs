@@ -31,8 +31,8 @@ use crate::{
     },
     open_enum::open_string_enum,
     openapi::{
-        created_json, ok_json, problem_response, CreateTaskDoc, ModifyTaskDoc, ResourceIdPathDoc,
-        TaskListQueryDoc,
+        created_json, ok_json, problem_response, CreateAuditDoc, CreateTaskDoc, ModifyTaskDoc,
+        ResourceIdPathDoc, TaskListQueryDoc,
     },
     query::{parse_collection_query, DeleteResourceQueryParams},
     router::bearer_token,
@@ -125,6 +125,15 @@ pub(crate) struct TaskResponse {
     progress: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     target: Option<ResourceRefResponse>,
+    #[serde(rename = "agentGroup", skip_serializing_if = "Option::is_none")]
+    agent_group: Option<ResourceRefResponse>,
+    #[serde(rename = "ociImageTarget", skip_serializing_if = "Option::is_none")]
+    oci_image_target: Option<ResourceRefResponse>,
+    #[serde(
+        rename = "webApplicationTarget",
+        skip_serializing_if = "Option::is_none"
+    )]
+    web_application_target: Option<ResourceRefResponse>,
     #[serde(rename = "scanConfig", skip_serializing_if = "Option::is_none")]
     scan_config: Option<ResourceRefResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -165,6 +174,9 @@ impl From<gvm_gateway_domain::Task> for TaskResponse {
             status: TaskStatus::parse(&t.status),
             progress: t.progress,
             target: t.target.map(ResourceRefResponse::from),
+            agent_group: t.agent_group.map(ResourceRefResponse::from),
+            oci_image_target: t.oci_image_target.map(ResourceRefResponse::from),
+            web_application_target: t.web_application_target.map(ResourceRefResponse::from),
             scan_config: t.scan_config.map(ResourceRefResponse::from),
             scanner: t.scanner.map(ResourceRefResponse::from),
             schedule: t.schedule.map(ResourceRefResponse::from),
@@ -344,13 +356,25 @@ pub struct CreateTaskRequest {
     pub name: Option<String>,
     /// Optional comment.
     pub comment: Option<String>,
-    /// Target identifier (required).
+    /// Optional task variant discriminator. Existing classic requests may omit it.
+    #[serde(rename = "type")]
+    pub task_type: Option<String>,
+    /// Classic target identifier.
     #[serde(rename = "targetId")]
     pub target_id: Option<String>,
-    /// Scan config identifier (required).
+    /// Agent-group identifier.
+    #[serde(rename = "agentGroupId")]
+    pub agent_group_id: Option<String>,
+    /// OCI image target identifier.
+    #[serde(rename = "ociImageTargetId")]
+    pub oci_image_target_id: Option<String>,
+    /// Web application target identifier.
+    #[serde(rename = "webApplicationTargetId")]
+    pub web_application_target_id: Option<String>,
+    /// Scan config identifier for classic tasks.
     #[serde(rename = "scanConfigId")]
     pub scan_config_id: Option<String>,
-    /// Scanner identifier (required).
+    /// Scanner identifier for scan tasks.
     #[serde(rename = "scannerId")]
     pub scanner_id: Option<String>,
     /// Optional schedule identifier.
@@ -378,40 +402,157 @@ pub struct CreateTaskRequest {
 impl CreateTaskRequest {
     /// Validate the request and convert it into the application command.
     pub fn validate(self) -> Result<CreateTaskInput, GatewayError> {
-        let name = self
-            .name
+        let Self {
+            name,
+            comment,
+            task_type,
+            target_id,
+            agent_group_id,
+            oci_image_target_id,
+            web_application_target_id,
+            scan_config_id,
+            scanner_id,
+            schedule_id,
+            alert_ids,
+            alterable,
+            hosts_ordering,
+            observers,
+            schedule_periods,
+            preferences,
+        } = self;
+        let name = name
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| GatewayError::InvalidInput("name is required".to_string()))?;
-        let target_id = self
-            .target_id
-            .ok_or_else(|| GatewayError::InvalidInput("targetId is required".to_string()))?;
-        validate_uuid("targetId", &target_id)?;
-        let scan_config_id = self
-            .scan_config_id
-            .ok_or_else(|| GatewayError::InvalidInput("scanConfigId is required".to_string()))?;
-        validate_uuid("scanConfigId", &scan_config_id)?;
-        let scanner_id = self
-            .scanner_id
-            .ok_or_else(|| GatewayError::InvalidInput("scannerId is required".to_string()))?;
-        validate_uuid("scannerId", &scanner_id)?;
-        validate_optional_uuid("scheduleId", self.schedule_id.as_deref())?;
-        for (index, alert_id) in self.alert_ids.iter().enumerate() {
+        let selectors = [
+            target_id.is_some(),
+            agent_group_id.is_some(),
+            oci_image_target_id.is_some(),
+            web_application_target_id.is_some(),
+        ]
+        .into_iter()
+        .filter(|selected| *selected)
+        .count();
+        if selectors > 1 {
+            return Err(GatewayError::InvalidInput(
+                "exactly one of targetId, agentGroupId, ociImageTargetId, or webApplicationTargetId is allowed"
+                    .to_string(),
+            ));
+        }
+
+        let inferred_type = if target_id.is_some() {
+            Some("classic")
+        } else if agent_group_id.is_some() {
+            Some("agentGroup")
+        } else if oci_image_target_id.is_some() {
+            Some("ociImage")
+        } else if web_application_target_id.is_some() {
+            Some("webApplication")
+        } else {
+            None
+        };
+        let selected_type = task_type.as_deref().or(inferred_type).ok_or_else(|| {
+            GatewayError::InvalidInput(
+                "one task target selector is required unless type is import".to_string(),
+            )
+        })?;
+        if let (Some(explicit), Some(inferred)) = (task_type.as_deref(), inferred_type) {
+            if explicit != inferred {
+                return Err(GatewayError::InvalidInput(format!(
+                    "type {explicit} does not match the supplied {inferred} target selector"
+                )));
+            }
+        }
+
+        let required_uuid = |field: &str, value: Option<&String>| {
+            let value =
+                value.ok_or_else(|| GatewayError::InvalidInput(format!("{field} is required")))?;
+            validate_uuid(field, value)?;
+            Ok(value.clone())
+        };
+        let target = match selected_type {
+            "classic" => gvm_gateway_domain::CreateTaskTarget::Classic {
+                target_id: required_uuid("targetId", target_id.as_ref())?,
+                scan_config_id: required_uuid("scanConfigId", scan_config_id.as_ref())?,
+                scanner_id: required_uuid("scannerId", scanner_id.as_ref())?,
+            },
+            "agentGroup" => gvm_gateway_domain::CreateTaskTarget::AgentGroup {
+                agent_group_id: required_uuid("agentGroupId", agent_group_id.as_ref())?,
+                scanner_id: required_uuid("scannerId", scanner_id.as_ref())?,
+            },
+            "ociImage" => gvm_gateway_domain::CreateTaskTarget::OciImage {
+                oci_image_target_id: required_uuid(
+                    "ociImageTargetId",
+                    oci_image_target_id.as_ref(),
+                )?,
+                scanner_id: required_uuid("scannerId", scanner_id.as_ref())?,
+            },
+            "webApplication" => gvm_gateway_domain::CreateTaskTarget::WebApplication {
+                web_application_target_id: required_uuid(
+                    "webApplicationTargetId",
+                    web_application_target_id.as_ref(),
+                )?,
+                scanner_id: required_uuid("scannerId", scanner_id.as_ref())?,
+            },
+            "import" => {
+                if selectors != 0
+                    || scan_config_id.is_some()
+                    || scanner_id.is_some()
+                    || schedule_id.is_some()
+                    || !alert_ids.is_empty()
+                    || alterable.is_some()
+                    || hosts_ordering.is_some()
+                    || !observers.is_empty()
+                    || schedule_periods.is_some()
+                    || !preferences.is_empty()
+                {
+                    return Err(GatewayError::InvalidInput(
+                        "import tasks accept only type, name, and comment".to_string(),
+                    ));
+                }
+                gvm_gateway_domain::CreateTaskTarget::Import
+            }
+            other => {
+                return Err(GatewayError::InvalidInput(format!(
+                    "unsupported task type: {other}"
+                )))
+            }
+        };
+
+        if !matches!(
+            &target,
+            gvm_gateway_domain::CreateTaskTarget::Classic { .. }
+        ) && scan_config_id.is_some()
+        {
+            return Err(GatewayError::InvalidInput(
+                "scanConfigId is only valid for classic tasks".to_string(),
+            ));
+        }
+        if !matches!(
+            &target,
+            gvm_gateway_domain::CreateTaskTarget::Classic { .. }
+                | gvm_gateway_domain::CreateTaskTarget::Import
+        ) && hosts_ordering.is_some()
+        {
+            return Err(GatewayError::InvalidInput(
+                "hostsOrdering is only valid for classic tasks".to_string(),
+            ));
+        }
+        validate_optional_uuid("scheduleId", schedule_id.as_deref())?;
+        for (index, alert_id) in alert_ids.iter().enumerate() {
             validate_uuid(&format!("alertIds[{index}]"), alert_id)?;
         }
 
         Ok(CreateTaskInput {
             name,
-            comment: self.comment,
-            target_id,
-            scan_config_id,
-            scanner_id,
-            schedule_id: self.schedule_id,
-            alert_ids: self.alert_ids,
-            alterable: self.alterable,
-            hosts_ordering: self.hosts_ordering,
-            observers: self.observers,
-            schedule_periods: self.schedule_periods,
-            preferences: self.preferences.into_iter().collect(),
+            comment,
+            target,
+            schedule_id,
+            alert_ids,
+            alterable,
+            hosts_ordering,
+            observers,
+            schedule_periods,
+            preferences: preferences.into_iter().collect(),
         })
     }
 }
@@ -1039,7 +1180,7 @@ pub(crate) fn create_audit_docs(op: TransformOperation<'_>) -> TransformOperatio
         .summary("Create an audit")
         .description("Creates a new compliance audit.")
         .security_requirement("bearerAuth")
-        .input::<Json<CreateTaskDoc>>()
+        .input::<Json<CreateAuditDoc>>()
         .response_with::<201, Json<ResourceCreatedResponse>, _>(created_json("Audit created"));
 
     let op = problem_response::<400>(op, "Invalid request");

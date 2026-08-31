@@ -100,6 +100,18 @@ pub struct Task {
     /// Target reference.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<ResourceRef>,
+    /// Agent group reference for agent-group scan tasks.
+    #[serde(rename = "agentGroup", skip_serializing_if = "Option::is_none")]
+    pub agent_group: Option<ResourceRef>,
+    /// OCI image target reference for container-image scan tasks.
+    #[serde(rename = "ociImageTarget", skip_serializing_if = "Option::is_none")]
+    pub oci_image_target: Option<ResourceRef>,
+    /// Web application target reference for web scan tasks.
+    #[serde(
+        rename = "webApplicationTarget",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub web_application_target: Option<ResourceRef>,
     /// Scan configuration reference.
     #[serde(rename = "scanConfig", skip_serializing_if = "Option::is_none")]
     pub scan_config: Option<ResourceRef>,
@@ -168,6 +180,43 @@ pub struct TaskQuery {
     pub per_page: u32,
 }
 
+/// Target selector for a task create command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CreateTaskTarget {
+    /// Classic target plus scan configuration and scanner.
+    Classic {
+        /// Classic target identifier.
+        target_id: String,
+        /// Scan configuration identifier.
+        scan_config_id: String,
+        /// Scanner identifier.
+        scanner_id: String,
+    },
+    /// Agent-group scan task.
+    AgentGroup {
+        /// Agent-group identifier.
+        agent_group_id: String,
+        /// Scanner identifier.
+        scanner_id: String,
+    },
+    /// OCI image scan task.
+    OciImage {
+        /// OCI image target identifier.
+        oci_image_target_id: String,
+        /// Scanner identifier.
+        scanner_id: String,
+    },
+    /// Web application scan task.
+    WebApplication {
+        /// Web application target identifier.
+        web_application_target_id: String,
+        /// Scanner identifier.
+        scanner_id: String,
+    },
+    /// Import-only task used as the owner for imported reports.
+    Import,
+}
+
 /// Task create command.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateTaskInput {
@@ -175,12 +224,8 @@ pub struct CreateTaskInput {
     pub name: String,
     /// Optional comment.
     pub comment: Option<String>,
-    /// Target identifier (required).
-    pub target_id: String,
-    /// Scan config identifier (required).
-    pub scan_config_id: String,
-    /// Scanner identifier (required).
-    pub scanner_id: String,
+    /// Exactly one validated task target variant.
+    pub target: CreateTaskTarget,
     /// Optional schedule identifier.
     pub schedule_id: Option<String>,
     /// Optional alert identifiers.

@@ -428,6 +428,12 @@ pub struct Task {
     pub comment: Option<String>,
     pub status: String,
     pub target: Option<ResourceRef>,
+    #[serde(rename = "agentGroup")]
+    pub agent_group: Option<ResourceRef>,
+    #[serde(rename = "ociImageTarget")]
+    pub oci_image_target: Option<ResourceRef>,
+    #[serde(rename = "webApplicationTarget")]
+    pub web_application_target: Option<ResourceRef>,
     #[serde(rename = "scanConfig")]
     pub scan_config: Option<ResourceRef>,
     pub scanner: Option<ResourceRef>,

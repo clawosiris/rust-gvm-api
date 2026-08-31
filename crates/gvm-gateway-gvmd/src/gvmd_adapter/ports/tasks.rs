@@ -60,47 +60,164 @@ impl TaskPort for GvmdAdapter {
         session_token: &str,
         input: CreateTaskInput,
     ) -> Result<String, GatewayError> {
-        let config_id = parse_entity_id(&input.scan_config_id)?;
-        let target_id = parse_entity_id(&input.target_id)?;
-        let scanner_id = parse_entity_id(&input.scanner_id)?;
-        let schedule_id = input
-            .schedule_id
-            .as_deref()
-            .map(parse_entity_id)
-            .transpose()?;
-        let alert_ids = input
-            .alert_ids
+        let CreateTaskInput {
+            name,
+            comment,
+            target,
+            schedule_id,
+            alert_ids,
+            alterable,
+            hosts_ordering,
+            observers,
+            schedule_periods,
+            preferences,
+        } = input;
+        let schedule_id = schedule_id.as_deref().map(parse_entity_id).transpose()?;
+        let alert_ids = alert_ids
             .iter()
             .map(|id| parse_entity_id(id))
             .collect::<Result<Vec<_>, _>>()?;
-        let hosts_ordering = input
-            .hosts_ordering
-            .as_deref()
-            .map(parse_hosts_ordering)
-            .transpose()?;
 
-        let response = self
-            .call_with_session(
-                session_token,
-                "tasks.create",
-                create_task(
-                    &input.name,
-                    &config_id,
-                    &target_id,
-                    &scanner_id,
-                    CreateTaskOpts {
-                        alterable: input.alterable,
-                        hosts_ordering,
-                        schedule_id,
-                        alert_ids,
-                        comment: input.comment,
-                        schedule_periods: input.schedule_periods,
-                        observers: input.observers,
-                        preferences: input.preferences,
-                    },
-                ),
-            )
-            .await?;
+        let response = match target {
+            CreateTaskTarget::Classic {
+                target_id,
+                scan_config_id,
+                scanner_id,
+            } => {
+                let hosts_ordering = hosts_ordering
+                    .as_deref()
+                    .map(parse_hosts_ordering)
+                    .transpose()?;
+                self.call_with_session(
+                    session_token,
+                    "tasks.create",
+                    create_task(
+                        &name,
+                        &parse_entity_id(&scan_config_id)?,
+                        &parse_entity_id(&target_id)?,
+                        &parse_entity_id(&scanner_id)?,
+                        CreateTaskOpts {
+                            alterable,
+                            hosts_ordering,
+                            schedule_id,
+                            alert_ids,
+                            comment,
+                            schedule_periods,
+                            observers,
+                            preferences,
+                        },
+                    ),
+                )
+                .await?
+            }
+            CreateTaskTarget::AgentGroup {
+                agent_group_id,
+                scanner_id,
+            } => {
+                if hosts_ordering.is_some() {
+                    return Err(GatewayError::InvalidInput(
+                        "hostsOrdering is only valid for classic tasks".to_string(),
+                    ));
+                }
+                self.call_with_session(
+                    session_token,
+                    "tasks.create",
+                    create_agent_group_task(
+                        &name,
+                        &parse_entity_id(&agent_group_id)?,
+                        &parse_entity_id(&scanner_id)?,
+                        CreateAgentGroupTaskOpts {
+                            comment,
+                            alterable,
+                            schedule_id,
+                            alert_ids,
+                            schedule_periods,
+                            observers,
+                            preferences,
+                        },
+                    ),
+                )
+                .await?
+            }
+            CreateTaskTarget::OciImage {
+                oci_image_target_id,
+                scanner_id,
+            } => {
+                if hosts_ordering.is_some() {
+                    return Err(GatewayError::InvalidInput(
+                        "hostsOrdering is only valid for classic tasks".to_string(),
+                    ));
+                }
+                self.call_with_session(
+                    session_token,
+                    "tasks.create",
+                    create_oci_image_target_task(
+                        &name,
+                        &parse_entity_id(&oci_image_target_id)?,
+                        &parse_entity_id(&scanner_id)?,
+                        CreateOciImageTargetTaskOpts {
+                            comment,
+                            alterable,
+                            schedule_id,
+                            alert_ids,
+                            schedule_periods,
+                            observers,
+                            preferences,
+                        },
+                    ),
+                )
+                .await?
+            }
+            CreateTaskTarget::WebApplication {
+                web_application_target_id,
+                scanner_id,
+            } => {
+                if hosts_ordering.is_some() {
+                    return Err(GatewayError::InvalidInput(
+                        "hostsOrdering is only valid for classic tasks".to_string(),
+                    ));
+                }
+                self.call_with_session(
+                    session_token,
+                    "tasks.create",
+                    create_web_application_task(
+                        &name,
+                        &parse_entity_id(&web_application_target_id)?,
+                        &parse_entity_id(&scanner_id)?,
+                        CreateWebApplicationTaskOpts {
+                            alterable,
+                            schedule_id,
+                            alert_ids,
+                            comment,
+                            schedule_periods,
+                            observers,
+                            preferences,
+                        },
+                    ),
+                )
+                .await?
+            }
+            CreateTaskTarget::Import => {
+                if schedule_id.is_some()
+                    || !alert_ids.is_empty()
+                    || alterable.is_some()
+                    || hosts_ordering.is_some()
+                    || !observers.is_empty()
+                    || schedule_periods.is_some()
+                    || !preferences.is_empty()
+                {
+                    return Err(GatewayError::InvalidInput(
+                        "import tasks accept only type, name, and comment".to_string(),
+                    ));
+                }
+                self.call_with_session(
+                    session_token,
+                    "tasks.create",
+                    create_import_task(&name, comment.as_deref()),
+                )
+                .await?
+            }
+        };
         let parsed = CreateTaskResponse::from_response(&response).map_err(map_parse_error)?;
         Ok(parsed.id.to_string())
     }
@@ -319,9 +436,19 @@ impl TaskPort for GvmdAdapter {
         session_token: &str,
         input: CreateTaskInput,
     ) -> Result<String, GatewayError> {
-        let config_id = parse_entity_id(&input.scan_config_id)?;
-        let target_id = parse_entity_id(&input.target_id)?;
-        let scanner_id = parse_entity_id(&input.scanner_id)?;
+        let CreateTaskTarget::Classic {
+            target_id,
+            scan_config_id,
+            scanner_id,
+        } = input.target
+        else {
+            return Err(GatewayError::InvalidInput(
+                "audits require targetId, scanConfigId, and scannerId".to_string(),
+            ));
+        };
+        let config_id = parse_entity_id(&scan_config_id)?;
+        let target_id = parse_entity_id(&target_id)?;
+        let scanner_id = parse_entity_id(&scanner_id)?;
         let schedule_id = input
             .schedule_id
             .as_deref()
