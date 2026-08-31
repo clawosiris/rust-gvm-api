@@ -15,30 +15,30 @@ use gvm_gateway_domain::{
     CreateRoleInput, CreateScanConfigInput, CreateScheduleInput, CreateTagInput, CreateTargetInput,
     CreateTaskInput, CreateUserInput, CreateWebApplicationTargetInput, Credential, CredentialPage,
     CredentialPort, CredentialQuery, CredentialStore, Cve, CvePage, DfnCertAdvisory,
-    DfnCertAdvisoryPage, Feed, FeedPort, Filter, FilterPage, GatewayError, GenericAsset,
-    GenericAssetPage, GenericConfig, GenericConfigPage, GenericConfigQuery, GetReportOpts, Group,
-    GroupPage, Host, HostPage, IdentityPort, IdentityQuery, ModifyAgentControlScanConfigInput,
-    ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput, ModifyAssetInput,
-    ModifyCredentialInput, ModifyCredentialStoreInput, ModifyFilterInput, ModifyGroupInput,
-    ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput, ModifyOperatingSystemInput,
-    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt,
-    NvtFamilyPage, NvtPage, NvtQuery, OciImageTarget, OciImageTargetPage, OperatingSystem,
-    OperatingSystemPage, Override, OverridePage, Permission, PermissionPage, PortList,
-    PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report, ReportApplicationPage,
-    ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest,
-    ReportFormat, ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage,
-    ReportPort, ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultPort,
-    ResultQuery, Role, RolePage, ScanConfig, ScanConfigNvtPage, ScanConfigNvtQuery, ScanConfigPage,
-    ScanConfigPort, ScanConfigPreference, ScanConfigPreferenceQuery, ScanConfigQuery, ScanResult,
-    Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort,
-    ScheduleQuery, SetScanConfigFamilySelectionInput, SpecializedTargetQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
-    WebApplicationTargetPage,
+    DfnCertAdvisoryPage, FeedList, FeedPort, FeedQuery, Filter, FilterPage, GatewayError,
+    GenericAsset, GenericAssetPage, GenericConfig, GenericConfigPage, GenericConfigQuery,
+    GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort, IdentityQuery,
+    ModifyAgentControlScanConfigInput, ModifyAgentGroupInput, ModifyAgentInput, ModifyAlertInput,
+    ModifyAssetInput, ModifyCredentialInput, ModifyCredentialStoreInput, ModifyFilterInput,
+    ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOciImageTargetInput,
+    ModifyOperatingSystemInput, ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput,
+    ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput,
+    ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput,
+    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, NvtQuery, OciImageTarget, OciImageTargetPage,
+    OperatingSystem, OperatingSystemPage, Override, OverridePage, Permission, PermissionPage,
+    PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
+    ReportApplicationPage, ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport,
+    ReportExportRequest, ReportFormat, ReportFormatPage, ReportHostPage, ReportOperatingSystemPage,
+    ReportPage, ReportPort, ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage,
+    ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigNvtPage, ScanConfigNvtQuery,
+    ScanConfigPage, ScanConfigPort, ScanConfigPreference, ScanConfigPreferenceQuery,
+    ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule,
+    SchedulePage, SchedulePort, ScheduleQuery, SetScanConfigFamilySelectionInput,
+    SpecializedTargetQuery, SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag,
+    TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort,
+    TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset, TlsCertificateAssetPage,
+    TlsCertificatePage, User, UserPage, UserSetting, UserSettingList, UserSettingQuery,
+    VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -263,7 +263,7 @@ impl PortListPort for StaticGvmdAdapter {
 
 #[async_trait]
 impl FeedPort for StaticGvmdAdapter {
-    async fn list_feeds(&self, _: &str) -> Result<Vec<Feed>, GatewayError> {
+    async fn list_feeds(&self, _: &str, _: &FeedQuery) -> Result<FeedList, GatewayError> {
         unsupported!("static adapter does not support feeds")
     }
 }
