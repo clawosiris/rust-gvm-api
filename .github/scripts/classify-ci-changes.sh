@@ -5,6 +5,7 @@ output_file="${GITHUB_OUTPUT:?GITHUB_OUTPUT must be set}"
 summary_file="${GITHUB_STEP_SUMMARY:-/dev/null}"
 event_name="${GITHUB_EVENT_NAME:-}"
 target_branch="${TARGET_BRANCH:-${GITHUB_REF_NAME:-}}"
+target_branch="${target_branch#refs/heads/}"
 
 docs_only=false
 changed_count=0
@@ -41,7 +42,7 @@ collect_changed_files() {
   local head=""
 
   case "$event_name" in
-    pull_request|pull_request_target)
+    pull_request|pull_request_target|merge_group)
       base="${BASE_SHA:-}"
       head="${HEAD_SHA:-}"
       ;;
@@ -78,7 +79,7 @@ collect_changed_files() {
 }
 
 case "$event_name" in
-  pull_request|pull_request_target)
+  pull_request|pull_request_target|merge_group)
     range_label="${BASE_SHA:-}...${HEAD_SHA:-}"
     ;;
   push)
