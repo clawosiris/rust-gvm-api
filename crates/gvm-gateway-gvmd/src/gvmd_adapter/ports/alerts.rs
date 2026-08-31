@@ -87,6 +87,7 @@ impl AlertPort for GvmdAdapter {
                         .as_deref()
                         .map(parse_entity_id)
                         .transpose()?,
+                    active: None,
                 },
             ))
             .await
@@ -146,6 +147,7 @@ impl AlertPort for GvmdAdapter {
                         .as_deref()
                         .map(parse_entity_id)
                         .transpose()?,
+                    active: None,
                 },
             ))
             .await

@@ -104,6 +104,7 @@ impl TaskPort for GvmdAdapter {
                             comment,
                             schedule_periods,
                             observers,
+                            observer_group_ids: Vec::new(),
                             preferences,
                         },
                     ),
@@ -133,6 +134,7 @@ impl TaskPort for GvmdAdapter {
                             alert_ids,
                             schedule_periods,
                             observers,
+                            observer_group_ids: Vec::new(),
                             preferences,
                         },
                     ),
@@ -162,6 +164,7 @@ impl TaskPort for GvmdAdapter {
                             alert_ids,
                             schedule_periods,
                             observers,
+                            observer_group_ids: Vec::new(),
                             preferences,
                         },
                     ),
@@ -191,6 +194,7 @@ impl TaskPort for GvmdAdapter {
                             comment,
                             schedule_periods,
                             observers,
+                            observer_group_ids: Vec::new(),
                             preferences,
                         },
                     ),
@@ -294,28 +298,27 @@ impl TaskPort for GvmdAdapter {
             .map(parse_hosts_ordering)
             .transpose()?;
 
+        let request = modify_task_cmd(
+            &task_id,
+            ModifyTaskOpts {
+                name: input.name,
+                comment: input.comment,
+                alterable: input.alterable,
+                hosts_ordering,
+                schedule_id,
+                schedule_periods: input.schedule_periods,
+                target_id,
+                config_id,
+                scanner_id,
+                alert_ids,
+                observers: CollectionUpdate::Replace(input.observers),
+                observer_group_ids: CollectionUpdate::Omitted,
+                preferences: input.preferences,
+            },
+        )
+        .map_err(|error| GatewayError::InvalidInput(error.to_string()))?;
         let response = self
-            .call_with_session(
-                session_token,
-                "tasks.modify",
-                modify_task_cmd(
-                    &task_id,
-                    ModifyTaskOpts {
-                        name: input.name,
-                        comment: input.comment,
-                        alterable: input.alterable,
-                        hosts_ordering,
-                        schedule_id,
-                        schedule_periods: input.schedule_periods,
-                        target_id,
-                        config_id,
-                        scanner_id,
-                        alert_ids,
-                        observers: input.observers,
-                        preferences: input.preferences,
-                    },
-                ),
-            )
+            .call_with_session(session_token, "tasks.modify", request)
             .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         self.get_task(session_token, id).await
@@ -482,6 +485,7 @@ impl TaskPort for GvmdAdapter {
                         comment: input.comment,
                         schedule_periods: input.schedule_periods,
                         observers: input.observers,
+                        observer_group_ids: Vec::new(),
                         preferences: input.preferences,
                     },
                 ),
@@ -534,28 +538,27 @@ impl TaskPort for GvmdAdapter {
             .map(parse_hosts_ordering)
             .transpose()?;
 
+        let request = modify_audit_cmd(
+            &task_id,
+            ModifyTaskOpts {
+                name: input.name,
+                comment: input.comment,
+                alterable: input.alterable,
+                hosts_ordering,
+                schedule_id,
+                schedule_periods: input.schedule_periods,
+                target_id,
+                config_id,
+                scanner_id,
+                alert_ids,
+                observers: CollectionUpdate::Replace(input.observers),
+                observer_group_ids: CollectionUpdate::Omitted,
+                preferences: input.preferences,
+            },
+        )
+        .map_err(|error| GatewayError::InvalidInput(error.to_string()))?;
         let response = self
-            .call_with_session(
-                session_token,
-                "audits.modify",
-                modify_audit_cmd(
-                    &task_id,
-                    ModifyTaskOpts {
-                        name: input.name,
-                        comment: input.comment,
-                        alterable: input.alterable,
-                        hosts_ordering,
-                        schedule_id,
-                        schedule_periods: input.schedule_periods,
-                        target_id,
-                        config_id,
-                        scanner_id,
-                        alert_ids,
-                        observers: input.observers,
-                        preferences: input.preferences,
-                    },
-                ),
-            )
+            .call_with_session(session_token, "audits.modify", request)
             .await?;
         let _ = ActionResponse::from_response(&response).map_err(map_parse_error)?;
         self.get_audit(session_token, id).await
