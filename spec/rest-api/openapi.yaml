@@ -273,6 +273,10 @@ paths:
     $ref: './schedules.yaml#/paths/~1schedules~1{id}'
   /credential-stores:
     $ref: './credentials.yaml#/paths/~1credential-stores'
+  /credential-stores/{id}:
+    $ref: './credentials.yaml#/paths/~1credential-stores~1{id}'
+  /credential-stores/{id}/actions/verify:
+    $ref: './credentials.yaml#/paths/~1credential-stores~1{id}~1actions~1verify'
   /credentials:
     $ref: './credentials.yaml#/paths/~1credentials'
   /credentials/{id}:

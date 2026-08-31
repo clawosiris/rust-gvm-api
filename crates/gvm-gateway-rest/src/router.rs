@@ -47,8 +47,10 @@ use crate::{
     },
     credentials::{
         create_credential, create_credential_docs, delete_credential, delete_credential_docs,
-        get_credential, get_credential_docs, list_credential_stores, list_credential_stores_docs,
-        list_credentials, list_credentials_docs, update_credential, update_credential_docs,
+        get_credential, get_credential_docs, get_credential_store, get_credential_store_docs,
+        list_credential_stores, list_credential_stores_docs, list_credentials,
+        list_credentials_docs, update_credential, update_credential_docs, update_credential_store,
+        update_credential_store_docs, verify_credential_store, verify_credential_store_docs,
     },
     docs::{api_docs, redoc_js},
     error::RestError,
@@ -456,6 +458,18 @@ fn documented_router() -> ApiRouter<GatewayService> {
         .api_route(
             "/api/v1/credential-stores",
             get_with(list_credential_stores, list_credential_stores_docs),
+        )
+        .api_route(
+            "/api/v1/credential-stores/{id}",
+            get_with(get_credential_store, get_credential_store_docs),
+        )
+        .api_route(
+            "/api/v1/credential-stores/{id}",
+            put_with(update_credential_store, update_credential_store_docs),
+        )
+        .api_route(
+            "/api/v1/credential-stores/{id}/actions/verify",
+            post_with(verify_credential_store, verify_credential_store_docs),
         )
         .api_route(
             "/api/v1/credentials",

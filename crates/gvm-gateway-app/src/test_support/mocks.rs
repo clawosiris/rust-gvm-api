@@ -18,23 +18,24 @@ use gvm_gateway_domain::{
     GatewayError, GenericAsset, GenericAssetPage, GenericConfig, GenericConfigPage,
     GenericConfigQuery, GetReportOpts, Group, GroupPage, Host, HostPage, IdentityPort,
     IdentityQuery, JobArtifact, ModifyAgentControlScanConfigInput, ModifyAgentGroupInput,
-    ModifyAgentInput, ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput, ModifyFilterInput,
-    ModifyGroupInput, ModifyHostInput, ModifyNoteInput, ModifyOperatingSystemInput,
-    ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
-    ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
-    ModifyUserInput, ModifyUserSettingInput, Note, NotePage, Nvt, NvtFamilyPage, NvtPage, NvtQuery,
-    OperatingSystem, OperatingSystemPage, Override, OverridePage, Permission, PermissionPage,
-    PortList, PortListPage, PortListPort, PortListQuery, ReadinessStatus, Report,
-    ReportApplicationPage, ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport,
-    ReportExportRequest, ReportFormat, ReportFormatPage, ReportHostPage, ReportOperatingSystemPage,
-    ReportPage, ReportPort, ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResourceRef,
-    ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage,
-    ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery,
-    Schedule, SchedulePage, SchedulePort, ScheduleQuery, SupportingResourceMeta,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
+    ModifyAgentInput, ModifyAlertInput, ModifyAssetInput, ModifyCredentialInput,
+    ModifyCredentialStoreInput, ModifyFilterInput, ModifyGroupInput, ModifyHostInput,
+    ModifyNoteInput, ModifyOperatingSystemInput, ModifyOverrideInput, ModifyPermissionInput,
+    ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput, ModifyScheduleInput,
+    ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput, ModifyUserSettingInput,
+    Note, NotePage, Nvt, NvtFamilyPage, NvtPage, NvtQuery, OperatingSystem, OperatingSystemPage,
+    Override, OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort,
+    PortListQuery, ReadinessStatus, Report, ReportApplicationPage, ReportClosedCvePage,
+    ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
+    ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPort,
+    ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultPort,
+    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
+    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
+    SchedulePort, ScheduleQuery, SupportingResourceMeta, SupportingResourcePort,
+    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
+    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone,
+    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
+    UserSettingList, UserSettingQuery, VulnerabilityPage,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -171,6 +172,31 @@ impl CredentialPort for MockCredentialPort {
             default: Some(true),
             writable: Some(true),
         }])
+    }
+
+    async fn get_credential_store(
+        &self,
+        _: &str,
+        id: &str,
+    ) -> Result<CredentialStore, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "credential store {id} not found"
+        )))
+    }
+
+    async fn modify_credential_store(
+        &self,
+        _: &str,
+        id: &str,
+        _: ModifyCredentialStoreInput,
+    ) -> Result<CredentialStore, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "credential store {id} not found"
+        )))
+    }
+
+    async fn verify_credential_store(&self, _: &str, _: &str) -> Result<(), GatewayError> {
+        Ok(())
     }
 
     async fn list_credentials(

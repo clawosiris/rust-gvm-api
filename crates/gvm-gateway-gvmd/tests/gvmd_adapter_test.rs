@@ -749,6 +749,7 @@ async fn gvmd_adapter_create_credential_forwards_certificate_and_community_field
                 auth_algorithm: None,
                 privacy_algorithm: None,
                 privacy_password: None,
+                ..Default::default()
             },
         )
         .await;
@@ -2339,6 +2340,110 @@ async fn gvmd_adapter_list_credential_stores_uses_typed_backend_response() {
         .expect("get_credential_stores command should be recorded");
     let xml = String::from_utf8(command.raw_xml().to_vec()).expect("xml command");
     assert!(xml.contains("<get_credential_stores"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_credential_store_item_update_and_verify_use_typed_commands() {
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+    server.clear_history();
+    let id = "123e4567-e89b-12d3-a456-426614174000";
+
+    let store = adapter
+        .get_credential_store(&token, id)
+        .await
+        .expect("credential store item response");
+    assert_eq!(store.name, "Local credential store");
+
+    adapter
+        .modify_credential_store(
+            &token,
+            id,
+            ModifyCredentialStoreInput {
+                active: Some(true),
+                host: Some("vault.internal".to_string()),
+                path: Some("/v1".to_string()),
+                port: Some(8200),
+                comment: Some("Vault".to_string()),
+                preferences: vec![CredentialStorePreferenceInput {
+                    name: "token".to_string(),
+                    value: "write-only-token".to_string(),
+                }],
+            },
+        )
+        .await
+        .expect("credential store update");
+    adapter
+        .verify_credential_store(&token, id)
+        .await
+        .expect("credential store verification");
+
+    let history = server.command_history();
+    let modify = history
+        .iter()
+        .find(|record| record.command_name() == "modify_credential_store")
+        .expect("modify command should be recorded");
+    let xml = String::from_utf8(modify.raw_xml().to_vec()).expect("xml command");
+    assert!(xml.contains("credential_store_id=\"123e4567-e89b-12d3-a456-426614174000\""));
+    assert!(xml.contains("<host>vault.internal</host>"));
+    assert!(xml.contains("<name>token</name>"));
+    assert!(xml.contains("<value>write-only-token</value>"));
+    assert!(history
+        .iter()
+        .any(|record| record.command_name() == "verify_credential_store"));
+
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn gvmd_adapter_store_backed_credential_create_and_update_forward_vault_references() {
+    let (adapter, server, token) = create_mock_adapter_v22_8().await;
+    server.clear_history();
+
+    let credential_id = adapter
+        .create_credential(
+            &token,
+            CreateCredentialInput {
+                name: "Vault credential".to_string(),
+                credential_type: "cs_up".to_string(),
+                credential_store_id: Some("123e4567-e89b-12d3-a456-426614174000".to_string()),
+                vault_id: Some("secret/data/service".to_string()),
+                host_identifier: Some("production".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("store-backed credential create");
+    adapter
+        .modify_credential(
+            &token,
+            &credential_id,
+            ModifyCredentialInput {
+                vault_id: Some("secret/data/service-v2".to_string()),
+                host_identifier: Some("staging".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("store-backed credential update");
+
+    let history = server.command_history();
+    let create = history
+        .iter()
+        .find(|record| record.command_name() == "create_credential")
+        .expect("create command should be recorded");
+    let create_xml = String::from_utf8(create.raw_xml().to_vec()).expect("xml command");
+    assert!(create_xml.contains("<type>cs_up</type>"));
+    assert!(create_xml.contains("<vault_id>secret/data/service</vault_id>"));
+    assert!(create_xml.contains("<host_identifier>production</host_identifier>"));
+    let modify = history
+        .iter()
+        .find(|record| record.command_name() == "modify_credential")
+        .expect("modify command should be recorded");
+    let modify_xml = String::from_utf8(modify.raw_xml().to_vec()).expect("xml command");
+    assert!(modify_xml.contains("<vault_id>secret/data/service-v2</vault_id>"));
+    assert!(modify_xml.contains("<host_identifier>staging</host_identifier>"));
 
     server.shutdown().await;
 }
