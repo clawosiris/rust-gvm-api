@@ -9,9 +9,9 @@ use gvm_gateway_domain::{
     DfnCertAdvisory, DfnCertAdvisoryPage, Filter, FilterPage, GatewayError, GenericAsset,
     GenericAssetPage, Host, HostPage, ModifyAssetInput, ModifyFilterInput, ModifyHostInput,
     ModifyNoteInput, ModifyOperatingSystemInput, ModifyOverrideInput, ModifyTagInput, Note,
-    NotePage, Nvt, NvtFamilyPage, NvtPage, OperatingSystem, OperatingSystemPage, Override,
-    OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage, Ticket,
-    TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
+    NotePage, Nvt, NvtFamilyPage, NvtPage, NvtQuery, OperatingSystem, OperatingSystemPage,
+    Override, OverridePage, ReportFormat, ReportFormatPage, SupportingResourceQuery, Tag, TagPage,
+    Ticket, TicketPage, TlsCertificateAsset, TlsCertificateAssetPage, VulnerabilityPage,
 };
 
 use crate::GatewayService;
@@ -851,7 +851,7 @@ impl GatewayService {
     pub async fn list_nvts(
         &self,
         session_token: &str,
-        query: SupportingResourceQuery,
+        query: NvtQuery,
     ) -> Result<NvtPage, GatewayError> {
         self.execute_with_resource(
             "nvts.list",

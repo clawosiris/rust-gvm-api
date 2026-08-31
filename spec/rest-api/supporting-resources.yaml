@@ -1140,6 +1140,57 @@ paths:
         - $ref: "./common.yaml#/components/parameters/FilterId"
         - $ref: "./common.yaml#/components/parameters/Page"
         - $ref: "./common.yaml#/components/parameters/PerPage"
+        - name: configId
+          in: query
+          required: false
+          description: Restrict the catalog to NVTs selected by this scan config.
+          schema:
+            type: string
+            format: uuid
+        - name: preferencesConfigId
+          in: query
+          required: false
+          description: Resolve preference values from this scan config.
+          schema:
+            type: string
+            format: uuid
+        - name: family
+          in: query
+          required: false
+          description: Restrict the catalog to one NVT family.
+          schema:
+            type: string
+        - name: includePreferences
+          in: query
+          required: false
+          description: Include NVT preference definitions and values.
+          schema:
+            type: boolean
+        - name: includePreferenceCount
+          in: query
+          required: false
+          description: Include each NVT's preference count.
+          schema:
+            type: boolean
+        - name: includeTimeout
+          in: query
+          required: false
+          description: Include the special timeout preference. When true, `configId` is required.
+          schema:
+            type: boolean
+        - name: sortOrder
+          in: query
+          required: false
+          description: Backend sort direction.
+          schema:
+            type: string
+            enum: [ascending, descending]
+        - name: sortField
+          in: query
+          required: false
+          description: Backend NVT field used for sorting.
+          schema:
+            type: string
       responses:
         "200":
           description: Paginated list of NVTs

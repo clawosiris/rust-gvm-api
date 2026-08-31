@@ -602,6 +602,30 @@ impl E2eHarness {
         .await
     }
 
+    pub async fn list_nvts_with_typed_options(
+        &self,
+        token: &str,
+        family: &str,
+        config_id: &str,
+    ) -> Result<ListResponse<NvtCatalogEntry>> {
+        let query = form_urlencoded::Serializer::new(String::new())
+            .append_pair("perPage", "1")
+            .append_pair("family", family)
+            .append_pair("configId", config_id)
+            .append_pair("includePreferences", "true")
+            .append_pair("includePreferenceCount", "true")
+            .append_pair("includeTimeout", "true")
+            .append_pair("sortOrder", "ascending")
+            .append_pair("sortField", "name")
+            .finish();
+        self.send_json(
+            self.authed(Method::GET, &format!("/api/v1/nvts?{query}"), token),
+            StatusCode::OK,
+            "list nvts with typed options",
+        )
+        .await
+    }
+
     pub async fn list_nvts_page(
         &self,
         token: &str,

@@ -833,6 +833,25 @@ async fn assert_nvt_catalog(harness: &E2eHarness, token: &str) -> Result<()> {
 
     assert_nvt_pagination_round_trip(harness, token, &nvts).await?;
 
+    if let Some(family) = selected.family.as_deref() {
+        let scan_configs = harness.list_scan_configs(token).await?;
+        let config_id = &scan_configs
+            .first()
+            .context("scan config catalog returned no configs for typed NVT query")?
+            .id;
+        let selected_family = harness
+            .list_nvts_with_typed_options(token, family, config_id)
+            .await?;
+        assert_pagination_shape("nvts with typed options", &selected_family);
+        assert!(
+            selected_family
+                .data
+                .iter()
+                .all(|nvt| nvt.family.as_deref() == Some(family)),
+            "typed family filter must not return NVTs from another family"
+        );
+    }
+
     let fetched = harness.get_nvt(token, &selected.oid).await?;
     assert_nvt_matches_read(&fetched, selected);
     Ok(())

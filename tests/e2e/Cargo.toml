@@ -10,8 +10,8 @@ publish = false
 
 [dependencies]
 anyhow = "1.0.100"
+form_urlencoded = "1.2.2"
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-

@@ -2,6 +2,41 @@
 // Copyright (C) 2026 Greenbone AG
 use super::super::*;
 
+fn nvt_opts(query: &NvtQuery, filter_string: Option<String>) -> Result<GetNvtsOpts, GatewayError> {
+    let entity_id = |field: &str, value: Option<&str>| {
+        value
+            .map(|value| {
+                EntityId::new(value)
+                    .map_err(|_| GatewayError::InvalidInput(format!("invalid {field}")))
+            })
+            .transpose()
+    };
+    if let Some(sort_order) = query.sort_order.as_deref() {
+        if !matches!(sort_order, "ascending" | "descending") {
+            return Err(GatewayError::InvalidInput(
+                "sortOrder must be ascending or descending".to_string(),
+            ));
+        }
+    }
+
+    Ok(GetNvtsOpts {
+        filter_string,
+        filter_id: None,
+        details: Some(true),
+        preferences: query.include_preferences,
+        preference_count: query.include_preference_count,
+        timeout: query.include_timeout,
+        config_id: entity_id("configId", query.config_id.as_deref())?,
+        preferences_config_id: entity_id(
+            "preferencesConfigId",
+            query.preferences_config_id.as_deref(),
+        )?,
+        family: query.family.clone(),
+        sort_order: query.sort_order.clone(),
+        sort_field: query.sort_field.clone(),
+    })
+}
+
 #[async_trait]
 impl SupportingResourcePort for GvmdAdapter {
     async fn list_assets(
@@ -1103,7 +1138,7 @@ impl SupportingResourcePort for GvmdAdapter {
     async fn list_nvts(
         &self,
         session_token: &str,
-        query: &SupportingResourceQuery,
+        query: &NvtQuery,
     ) -> Result<NvtPage, GatewayError> {
         let client = self.session_client(session_token)?;
         let filter_id = query
@@ -1128,12 +1163,7 @@ impl SupportingResourcePort for GvmdAdapter {
         let response = client
             .lock()
             .await?
-            .call(get_nvts(GetNvtsOpts {
-                filter_string,
-                filter_id: None,
-                details: Some(true),
-                ..Default::default()
-            }))
+            .call(get_nvts(nvt_opts(query, filter_string)?))
             .await
             .map_err(map_gvm_error)?;
         let parsed = GetNvtsResponse::from_response(&response).map_err(map_parse_error)?;
@@ -1156,20 +1186,17 @@ impl SupportingResourcePort for GvmdAdapter {
                 .call_with_session(
                     session_token,
                     "nvts.list",
-                    get_nvts(GetNvtsOpts {
-                        filter_string: self
-                            .filter_resolving_filter_id(
-                                session_token,
-                                None,
-                                query.filter_string.as_deref(),
-                                filter_id.as_ref(),
-                                &[],
-                            )
-                            .await?,
-                        filter_id: None,
-                        details: Some(true),
-                        ..Default::default()
-                    }),
+                    get_nvts(nvt_opts(
+                        query,
+                        self.filter_resolving_filter_id(
+                            session_token,
+                            None,
+                            query.filter_string.as_deref(),
+                            filter_id.as_ref(),
+                            &[],
+                        )
+                        .await?,
+                    )?),
                 )
                 .await?;
             let parsed = GetNvtsResponse::from_response(&fallback).map_err(map_parse_error)?;

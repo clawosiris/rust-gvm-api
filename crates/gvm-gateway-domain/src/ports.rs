@@ -23,7 +23,7 @@ use crate::{
     ModifyOverrideInput, ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput,
     ModifyScanConfigInput, ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput,
     ModifyUserInput, ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt,
-    NvtFamilyPage, NvtPage, OciImageTarget, OciImageTargetPage, OperatingSystem,
+    NvtFamilyPage, NvtPage, NvtQuery, OciImageTarget, OciImageTargetPage, OperatingSystem,
     OperatingSystemPage, Override, OverridePage, Permission, PermissionPage, PortList,
     PortListPage, PortListQuery, ReadinessStatus, Report, ReportApplicationPage,
     ReportClosedCvePage, ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest,
@@ -1009,7 +1009,7 @@ pub trait SupportingResourcePort: Send + Sync + 'static {
     async fn list_nvts(
         &self,
         session_token: &str,
-        query: &SupportingResourceQuery,
+        query: &NvtQuery,
     ) -> Result<NvtPage, GatewayError>;
 
     /// Fetch an NVT by OID.

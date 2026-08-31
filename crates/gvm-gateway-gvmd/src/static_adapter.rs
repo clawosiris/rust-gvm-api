@@ -24,19 +24,19 @@ use gvm_gateway_domain::{
     ModifyPermissionInput, ModifyPortListInput, ModifyRoleInput, ModifyScanConfigInput,
     ModifyScheduleInput, ModifyTagInput, ModifyTargetInput, ModifyTaskInput, ModifyUserInput,
     ModifyUserSettingInput, ModifyWebApplicationTargetInput, Note, NotePage, Nvt, NvtFamilyPage,
-    NvtPage, OciImageTarget, OciImageTargetPage, OperatingSystem, OperatingSystemPage, Override,
-    OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort, PortListQuery,
-    ReadinessStatus, Report, ReportApplicationPage, ReportClosedCvePage, ReportCvePage,
-    ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat, ReportFormatPage,
-    ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPort, ReportPortPage, ReportQuery,
-    ReportVulnerabilityPage, ResultPage, ResultPort, ResultQuery, Role, RolePage, ScanConfig,
-    ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult, Scanner, ScannerPage, ScannerPort,
-    ScannerQuery, Schedule, SchedulePage, SchedulePort, ScheduleQuery, SpecializedTargetQuery,
-    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
-    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
-    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
-    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage, WebApplicationTarget,
-    WebApplicationTargetPage,
+    NvtPage, NvtQuery, OciImageTarget, OciImageTargetPage, OperatingSystem, OperatingSystemPage,
+    Override, OverridePage, Permission, PermissionPage, PortList, PortListPage, PortListPort,
+    PortListQuery, ReadinessStatus, Report, ReportApplicationPage, ReportClosedCvePage,
+    ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
+    ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPort,
+    ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResultPage, ResultPort, ResultQuery,
+    Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery, ScanResult,
+    Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort,
+    ScheduleQuery, SpecializedTargetQuery, SupportingResourcePort, SupportingResourceQuery,
+    SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery, Task, TaskAction,
+    TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone, TlsCertificateAsset,
+    TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting, UserSettingList,
+    UserSettingQuery, VulnerabilityPage, WebApplicationTarget, WebApplicationTargetPage,
 };
 
 /// Static adapter for system readiness and version information.
@@ -1232,11 +1232,7 @@ impl SupportingResourcePort for StaticGvmdAdapter {
         unsupported!("static adapter does not support override mutations")
     }
 
-    async fn list_nvts(
-        &self,
-        _: &str,
-        _: &SupportingResourceQuery,
-    ) -> Result<NvtPage, GatewayError> {
+    async fn list_nvts(&self, _: &str, _: &NvtQuery) -> Result<NvtPage, GatewayError> {
         unsupported!("static adapter does not support nvts")
     }
 
