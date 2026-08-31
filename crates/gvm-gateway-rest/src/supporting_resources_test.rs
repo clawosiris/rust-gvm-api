@@ -59,6 +59,7 @@ fn nvt_query_maps_all_typed_options_and_rejects_invalid_values() {
         "sortOrder=sideways",
         "includePreferences=1",
         "configId=not-a-uuid",
+        "includeTimeout=true",
         "family=%20",
         "unknown=value",
     ] {

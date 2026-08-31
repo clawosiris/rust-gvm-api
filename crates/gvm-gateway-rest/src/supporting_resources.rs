@@ -180,6 +180,12 @@ impl NvtListQuery {
             }
         }
 
+        if include_timeout == Some(true) && config_id.is_none() {
+            return Err(GatewayError::InvalidInput(
+                "includeTimeout=true requires configId".to_string(),
+            ));
+        }
+
         Ok(Self {
             filter_string: common.filter_string,
             filter_id: common.filter_id,

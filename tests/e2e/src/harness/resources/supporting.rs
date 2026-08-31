@@ -606,10 +606,12 @@ impl E2eHarness {
         &self,
         token: &str,
         family: &str,
+        config_id: &str,
     ) -> Result<ListResponse<NvtCatalogEntry>> {
         let query = form_urlencoded::Serializer::new(String::new())
             .append_pair("perPage", "1")
             .append_pair("family", family)
+            .append_pair("configId", config_id)
             .append_pair("includePreferences", "true")
             .append_pair("includePreferenceCount", "true")
             .append_pair("includeTimeout", "true")

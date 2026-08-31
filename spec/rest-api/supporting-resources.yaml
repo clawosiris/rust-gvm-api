@@ -1175,7 +1175,7 @@ paths:
         - name: includeTimeout
           in: query
           required: false
-          description: Include the special timeout preference.
+          description: Include the special timeout preference. When true, `configId` is required.
           schema:
             type: boolean
         - name: sortOrder
