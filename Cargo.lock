@@ -650,7 +650,7 @@ dependencies = [
 [[package]]
 name = "gvm-client"
 version = "0.6.0"
-source = "git+https://github.com/greenbone-hive/rust-gvm?rev=5a43e1e90a0645202a79c10d47bef15b6684aeab#5a43e1e90a0645202a79c10d47bef15b6684aeab"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=next#f127fe69d56a0d09aee2ce6084e5104f0f5e94d2"
 dependencies = [
  "async-trait",
  "gvm-connection",
@@ -664,7 +664,7 @@ dependencies = [
 [[package]]
 name = "gvm-connection"
 version = "0.6.0"
-source = "git+https://github.com/greenbone-hive/rust-gvm?rev=5a43e1e90a0645202a79c10d47bef15b6684aeab#5a43e1e90a0645202a79c10d47bef15b6684aeab"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=next#f127fe69d56a0d09aee2ce6084e5104f0f5e94d2"
 dependencies = [
  "async-trait",
  "gvm-protocol",
@@ -800,7 +800,7 @@ dependencies = [
 [[package]]
 name = "gvm-gmp"
 version = "0.6.0"
-source = "git+https://github.com/greenbone-hive/rust-gvm?rev=5a43e1e90a0645202a79c10d47bef15b6684aeab#5a43e1e90a0645202a79c10d47bef15b6684aeab"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=next#f127fe69d56a0d09aee2ce6084e5104f0f5e94d2"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -814,12 +814,12 @@ dependencies = [
 [[package]]
 name = "gvm-mock-server"
 version = "0.6.0"
-source = "git+https://github.com/greenbone-hive/rust-gvm?rev=5a43e1e90a0645202a79c10d47bef15b6684aeab#5a43e1e90a0645202a79c10d47bef15b6684aeab"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=next#f127fe69d56a0d09aee2ce6084e5104f0f5e94d2"
 dependencies = [
  "base64 0.23.1",
  "chrono",
  "clap",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "gvm-gmp",
  "gvm-protocol",
  "quick-xml",
@@ -833,7 +833,7 @@ dependencies = [
 [[package]]
 name = "gvm-protocol"
 version = "0.6.0"
-source = "git+https://github.com/greenbone-hive/rust-gvm?rev=5a43e1e90a0645202a79c10d47bef15b6684aeab#5a43e1e90a0645202a79c10d47bef15b6684aeab"
+source = "git+https://github.com/greenbone-hive/rust-gvm?branch=next#f127fe69d56a0d09aee2ce6084e5104f0f5e94d2"
 dependencies = [
  "quick-xml",
  "thiserror",
@@ -2314,7 +2314,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

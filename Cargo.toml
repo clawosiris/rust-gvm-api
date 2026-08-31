@@ -23,11 +23,11 @@ async-trait = "0.1.89"
 base64 = "0.23.0"
 axum = "0.8.9"
 clap = { version = "4.6.1", features = ["derive"] }
-gvm-client = { git = "https://github.com/greenbone-hive/rust-gvm", rev = "5a43e1e90a0645202a79c10d47bef15b6684aeab" }
-gvm-connection = { git = "https://github.com/greenbone-hive/rust-gvm", rev = "5a43e1e90a0645202a79c10d47bef15b6684aeab" }
-gvm-gmp = { git = "https://github.com/greenbone-hive/rust-gvm", rev = "5a43e1e90a0645202a79c10d47bef15b6684aeab", features = ["serde"] }
-gvm-mock-server = { git = "https://github.com/greenbone-hive/rust-gvm", rev = "5a43e1e90a0645202a79c10d47bef15b6684aeab" }
-gvm-protocol = { git = "https://github.com/greenbone-hive/rust-gvm", rev = "5a43e1e90a0645202a79c10d47bef15b6684aeab" }
+gvm-client = { git = "https://github.com/greenbone-hive/rust-gvm", branch = "next" }
+gvm-connection = { git = "https://github.com/greenbone-hive/rust-gvm", branch = "next" }
+gvm-gmp = { git = "https://github.com/greenbone-hive/rust-gvm", branch = "next", features = ["serde"] }
+gvm-mock-server = { git = "https://github.com/greenbone-hive/rust-gvm", branch = "next" }
+gvm-protocol = { git = "https://github.com/greenbone-hive/rust-gvm", branch = "next" }
 http = "1.4.1"
 opentelemetry = { version = "0.32.0", features = ["trace"] }
 opentelemetry-otlp = { version = "0.32.0", features = ["grpc-tonic", "trace"] }

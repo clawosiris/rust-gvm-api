@@ -4,7 +4,7 @@ on:
   merge_group:
     types: [checks_requested]
   push:
-    branches: [main, devel]
+    branches: [main, devel, next]
     paths-ignore:
       - 'docs/**'
       - 'spec/**'
@@ -12,7 +12,7 @@ on:
       - 'LICENSE'
       - '.github/ISSUE_TEMPLATE/**'
   pull_request:
-    branches: [main, devel]
+    branches: [main, devel, next]
   schedule:
     # Run weekly on Monday at 06:00 UTC
     - cron: "0 6 * * 1"

@@ -4,9 +4,9 @@ on:
   merge_group:
     types: [checks_requested]
   push:
-    branches: [main, devel]
+    branches: [main, devel, next]
   pull_request:
-    branches: [main, devel]
+    branches: [main, devel, next]
 
 env:
   CARGO_TERM_COLOR: always

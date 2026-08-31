@@ -12,6 +12,10 @@
 
 Gateway API surfaces for [Greenbone Vulnerability Management (GVM)](https://greenbone.github.io/docs/latest/), built on top of [rust-gvm](https://github.com/greenbone-hive/rust-gvm). REST is implemented on `main`; gRPC and MCP remain planned peer adapters over the same shared core.
 
+Forward-looking adoption of rust-gvm's typed request/response execution model
+is developed on the paired [`next`](docs/NEXT_BRANCH.md) branch without
+blocking feature and release work on `main`.
+
 ## Overview
 
 This project provides a modern gateway on top of the Greenbone Management Protocol (GMP). Instead of speaking GMP's raw XML over Unix sockets or SSH, consumers interact through higher-level gateway surfaces while the gateway keeps XML parsing and protocol-shape handling inside `rust-gvm`.

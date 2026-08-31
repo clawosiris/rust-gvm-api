@@ -7,9 +7,9 @@ on:
   schedule:
     - cron: "0 3 * * *"
   push:
-    branches: [main, devel]
+    branches: [main, devel, next]
   pull_request:
-    branches: [main, devel]
+    branches: [main, devel, next]
 
 concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
@@ -150,4 +150,38 @@ jobs:
           fi
 
           echo "Devel E2E scan did not pass." >&2
+          exit 1
+
+  rest-discovery-scan-next-gate:
+    name: REST Discovery Scan E2E (next)
+    if: >-
+      always() &&
+      ((github.event_name == 'pull_request' && github.base_ref == 'next') ||
+       (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/next') ||
+       (github.event_name != 'pull_request' && github.event_name != 'merge_group' && github.ref_name == 'next'))
+    needs: [classify-changes, rest-discovery-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate next E2E gate
+        run: |
+          echo "docs_only=${{ needs.classify-changes.outputs.docs_only }}"
+          echo "e2e_required=${{ needs.classify-changes.outputs.e2e_required }}"
+          echo "scan_result=${{ needs.rest-discovery-scan.result }}"
+
+          if [[ "${{ needs.classify-changes.result }}" != "success" ]]; then
+            echo "Change classification failed; failing closed." >&2
+            exit 1
+          fi
+
+          if [[ "${{ needs.classify-changes.outputs.e2e_required }}" != "true" ]]; then
+            echo "Docs-only change; expensive E2E scan is not required."
+            exit 0
+          fi
+
+          if [[ "${{ needs.rest-discovery-scan.result }}" == "success" ]]; then
+            echo "Next E2E scan passed."
+            exit 0
+          fi
+
+          echo "Next E2E scan did not pass." >&2
           exit 1
