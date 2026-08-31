@@ -29,13 +29,14 @@ use gvm_gateway_domain::{
     ReportCvePage, ReportErrorPage, ReportExport, ReportExportRequest, ReportFormat,
     ReportFormatPage, ReportHostPage, ReportOperatingSystemPage, ReportPage, ReportPort,
     ReportPortPage, ReportQuery, ReportVulnerabilityPage, ResourceRef, ResultPage, ResultPort,
-    ResultQuery, Role, RolePage, ScanConfig, ScanConfigPage, ScanConfigPort, ScanConfigQuery,
-    ScanResult, Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage,
-    SchedulePort, ScheduleQuery, SupportingResourceMeta, SupportingResourcePort,
-    SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage, TargetPort, TargetQuery,
-    Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage, Timezone,
-    TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage, UserSetting,
-    UserSettingList, UserSettingQuery, VulnerabilityPage,
+    ResultQuery, Role, RolePage, ScanConfig, ScanConfigNvtPage, ScanConfigNvtQuery, ScanConfigPage,
+    ScanConfigPort, ScanConfigPreference, ScanConfigPreferenceQuery, ScanConfigQuery, ScanResult,
+    Scanner, ScannerPage, ScannerPort, ScannerQuery, Schedule, SchedulePage, SchedulePort,
+    ScheduleQuery, SetScanConfigFamilySelectionInput, SupportingResourceMeta,
+    SupportingResourcePort, SupportingResourceQuery, SystemPort, Tag, TagPage, Target, TargetPage,
+    TargetPort, TargetQuery, Task, TaskAction, TaskPage, TaskPort, TaskQuery, Ticket, TicketPage,
+    Timezone, TlsCertificateAsset, TlsCertificateAssetPage, TlsCertificatePage, User, UserPage,
+    UserSetting, UserSettingList, UserSettingQuery, VulnerabilityPage,
 };
 
 /// Mock system port for tests that need deterministic readiness/version responses.
@@ -1084,6 +1085,78 @@ impl ScanConfigPort for MockScanConfigPort {
         Err(GatewayError::NotFound(format!(
             "scan config {id} not found"
         )))
+    }
+
+    async fn list_scan_config_nvts(
+        &self,
+        _: &str,
+        _: &str,
+        query: &ScanConfigNvtQuery,
+    ) -> Result<ScanConfigNvtPage, GatewayError> {
+        Ok(ScanConfigNvtPage {
+            data: vec![],
+            pagination: gvm_gateway_domain::Pagination {
+                page: query.page,
+                per_page: query.per_page,
+                total: 0,
+                total_pages: 0,
+            },
+        })
+    }
+
+    async fn get_scan_config_nvt(&self, _: &str, _: &str, oid: &str) -> Result<Nvt, GatewayError> {
+        Err(GatewayError::NotFound(format!("NVT {oid} not found")))
+    }
+
+    async fn list_scan_config_preferences(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ScanConfigPreferenceQuery,
+    ) -> Result<Vec<ScanConfigPreference>, GatewayError> {
+        Ok(vec![])
+    }
+
+    async fn get_scan_config_preference(
+        &self,
+        _: &str,
+        _: &str,
+        name: &str,
+        _: &ScanConfigPreferenceQuery,
+    ) -> Result<ScanConfigPreference, GatewayError> {
+        Err(GatewayError::NotFound(format!(
+            "preference {name} not found"
+        )))
+    }
+
+    async fn set_scan_config_nvt_selection(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: Vec<String>,
+    ) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn set_scan_config_family_selection(
+        &self,
+        _: &str,
+        _: &str,
+        _: SetScanConfigFamilySelectionInput,
+    ) -> Result<(), GatewayError> {
+        Ok(())
+    }
+
+    async fn set_scan_config_preference(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: Option<String>,
+        _: Option<String>,
+    ) -> Result<(), GatewayError> {
+        Ok(())
     }
 
     async fn list_policies(
